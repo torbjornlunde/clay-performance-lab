@@ -27,7 +27,11 @@ export default function AnalysisPage() {
       .select("id,name,discipline,shooting_format")
       .eq("id", params.id)
       .single();
-    const { data: missData } = await supabase.from("misses").select("*").eq("session_id", params.id).order("created_at");
+    const { data: missData } = await supabase
+      .from("misses")
+      .select("*")
+      .eq("session_id", params.id)
+      .order("created_at");
     setSession(sessionData);
     setMisses(missData || []);
   }
@@ -53,7 +57,9 @@ export default function AnalysisPage() {
         <span className="pill">
           Miss rows <strong>{analysis.rowTotal}</strong>
         </span>
-        {session.shooting_format && <span className="pill">{session.shooting_format}</span>}
+        {session.shooting_format && (
+          <span className="pill">{session.shooting_format}</span>
+        )}
         <div className="btns">
           <Link className="button" href={`/sessions/${session.id}/log`}>
             Log more
@@ -72,13 +78,13 @@ export default function AnalysisPage() {
           <strong>Plate:</strong> {analysis.formatted.byPlate}
         </p>
         <p>
-          <strong>Target type:</strong> {analysis.formatted.byTargetType}
+          <strong>Machine:</strong> {analysis.formatted.byTargetLabel}
         </p>
         <p>
-          <strong>Miss row type:</strong> {analysis.formatted.byMissedTarget}
+          <strong>Presentation:</strong> {analysis.formatted.byTargetType}
         </p>
         <p>
-          <strong>Detailed missed target:</strong> {analysis.formatted.byTargetPosition}
+          <strong>Missed target:</strong> {analysis.formatted.byTargetPosition}
         </p>
         <p>
           <strong>Where miss:</strong> {analysis.formatted.byWhere}
@@ -107,18 +113,22 @@ export default function AnalysisPage() {
           misses.map((miss) => (
             <div className="subcard" key={miss.id}>
               <strong>
-                Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · Target {miss.target_number ?? "-"}
+                Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} ·{" "}
+                {miss.target_label || "Unknown"}
               </strong>
               <div className="small muted">
-                {miss.target_type || "-"} · {miss.missed_target} · {miss.where_miss || "-"} · {miss.main_reason || "-"}
+                {miss.target_type || "-"} · {miss.missed_target} ·{" "}
+                {miss.where_miss || "-"} · {miss.main_reason || "-"}
               </div>
               {miss.missed_target === "Both targets in pair" && (
                 <>
                   <div className="small muted">
-                    First target: {miss.first_where_miss || "-"} · {miss.first_main_reason || "-"}
+                    First in pair: {miss.first_where_miss || "-"} ·{" "}
+                    {miss.first_main_reason || "-"}
                   </div>
                   <div className="small muted">
-                    Second target: {miss.second_where_miss || "-"} · {miss.second_main_reason || "-"}
+                    Second in pair: {miss.second_where_miss || "-"} ·{" "}
+                    {miss.second_main_reason || "-"}
                   </div>
                 </>
               )}
