@@ -20,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <nav className="topNav" aria-label="Primary navigation">
               <Link href="/dashboard">Dashboard</Link>
               <Link href="/stats">Stats</Link>
+              <Link href="/fitasc">FITASC</Link>
             </nav>
           </div>
         </header>
