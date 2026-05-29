@@ -1,16 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { analyzeMisses, MissForAnalysis } from "@/lib/analysis/sessionAnalysis";
 import { supabase } from "@/lib/supabase/client";
+
+type TargetDefinition = {
+  course_number: number;
+  machine: string;
+  target_type: string | null;
+  direction: string | null;
+};
+
+function definitionText(definition?: TargetDefinition) {
+  if (!definition) return null;
+  const parts = [definition.direction, definition.target_type].filter((value) => value && value !== "Unknown");
+  return parts.length ? parts.join(" ").toLowerCase() : null;
+}
 
 export default function AnalysisPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [session, setSession] = useState<any>(null);
   const [misses, setMisses] = useState<any[]>([]);
+  const [definitions, setDefinitions] = useState<TargetDefinition[]>([]);
 
   useEffect(() => {
     load();
@@ -28,9 +42,31 @@ export default function AnalysisPage() {
       .eq("id", params.id)
       .single();
     const { data: missData } = await supabase.from("misses").select("*").eq("session_id", params.id).order("created_at");
+    const { data: definitionData } = await supabase
+      .from("session_target_definitions")
+      .select("course_number,machine,target_type,direction")
+      .eq("session_id", params.id)
+      .returns<TargetDefinition[]>();
     setSession(sessionData);
     setMisses(missData || []);
+    setDefinitions(definitionData || []);
   }
+
+  const enrichedMisses = useMemo(
+    () =>
+      misses.map((miss) => {
+        const labels = String(miss.target_label || "")
+          .split("+")
+          .map((label) => label.trim())
+          .filter(Boolean);
+        const enrichedLabels = labels.map((label) => {
+          const text = definitionText(definitions.find((definition) => definition.course_number === miss.course_number && definition.machine === label));
+          return text ? `${label} – ${text}` : label;
+        });
+        return { ...miss, target_display_label: enrichedLabels.length ? enrichedLabels.join(" + ") : miss.target_label };
+      }),
+    [definitions, misses],
+  );
 
   if (!session) {
     return (
@@ -40,7 +76,7 @@ export default function AnalysisPage() {
     );
   }
 
-  const analysis = analyzeMisses(misses as MissForAnalysis[]);
+  const analysis = analyzeMisses(enrichedMisses as MissForAnalysis[]);
 
   return (
     <main>
@@ -58,6 +94,9 @@ export default function AnalysisPage() {
           <Link className="button" href={`/sessions/${session.id}/log`}>
             Log more
           </Link>
+          <Link className="button secondary" href={`/sessions/${session.id}/targets`}>
+            Target definitions
+          </Link>
           <Link className="button secondary" href={`/sessions/${session.id}`}>
             Session
           </Link>
@@ -72,7 +111,10 @@ export default function AnalysisPage() {
           <strong>Plate:</strong> {analysis.formatted.byPlate}
         </p>
         <p>
-          <strong>Target type:</strong> {analysis.formatted.byTargetType}
+          <strong>Misses by machine/target label:</strong> {analysis.formatted.byTargetLabel}
+        </p>
+        <p>
+          <strong>Misses by target type:</strong> {analysis.formatted.byTargetType}
         </p>
         <p>
           <strong>Miss row type:</strong> {analysis.formatted.byMissedTarget}
@@ -101,16 +143,16 @@ export default function AnalysisPage() {
       </div>
       <div className="card">
         <h2>Registered misses</h2>
-        {misses.length === 0 ? (
+        {enrichedMisses.length === 0 ? (
           <p>No misses registered yet.</p>
         ) : (
-          misses.map((miss) => (
+          enrichedMisses.map((miss) => (
             <div className="subcard" key={miss.id}>
               <strong>
                 Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · Target {miss.target_number ?? "-"}
               </strong>
               <div className="small muted">
-                {miss.target_type || "-"} · {miss.missed_target} · {miss.where_miss || "-"} · {miss.main_reason || "-"}
+                {miss.target_display_label || miss.target_label || "-"} · {miss.target_type || "-"} · {miss.missed_target} · {miss.where_miss || "-"} · {miss.main_reason || "-"}
               </div>
               {miss.missed_target === "Both targets in pair" && (
                 <>
