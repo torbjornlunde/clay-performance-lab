@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { getTargetTypeForScheme } from "@/lib/fitasc/schemes";
+import { getCompakEvent, getMachineLabel } from "@/lib/fitasc/schemes";
 import { supabase } from "@/lib/supabase/client";
 
 type Session = {
@@ -32,6 +32,7 @@ type RecentMiss = {
   course_number: number | null;
   plate: number | null;
   target_number: number | null;
+  target_label: string | null;
   target_type: string | null;
   missed_target: string;
   where_miss: string | null;
@@ -57,7 +58,7 @@ const defaultDetail = (): MissDetail => ({
 });
 
 const detailSelect =
-  "id,course_number,plate,target_number,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
+  "id,course_number,plate,target_number,target_label,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
 
 export default function LogPage() {
   const params = useParams<{ id: string }>();
@@ -86,7 +87,14 @@ export default function LogPage() {
   );
   const isCompak = session?.discipline === "Compak Sporting";
   const schemeMissing = Boolean(isCompak && current && !current.fitasc_scheme);
-  const targetType = isCompak && current?.fitasc_scheme ? getTargetTypeForScheme(current.fitasc_scheme, targetNumber) : "Unknown";
+  const calculatedEvent = isCompak ? getCompakEvent(current?.fitasc_scheme ?? null, plate, targetNumber) : null;
+  const targetType = calculatedEvent?.targetType === "Report pair" ? "Report double" : calculatedEvent?.targetType === "Simo pair" ? "Simo double" : calculatedEvent?.targetType ?? "Unknown";
+  const targetLabel = calculatedEvent?.isVerified ? getMachineLabel(calculatedEvent) : "Unknown";
+  const calculatedText = calculatedEvent?.isVerified
+    ? calculatedEvent.isPair
+      ? `Calculated pair: ${getMachineLabel(calculatedEvent).replace("+", " + ")} · ${calculatedEvent.targetType}`
+      : `Calculated target: ${getMachineLabel(calculatedEvent)} · Single`
+    : "Machine unknown for this scheme until exact FITASC data is imported.";
 
   useEffect(() => {
     if (targetType === "Single") setMissedTarget("Single target");
@@ -176,7 +184,7 @@ export default function LogPage() {
       course_number: isCompak ? courseNumber : null,
       plate: isCompak ? plate : null,
       target_number: isCompak ? targetNumber : null,
-      target_label: isCompak ? `Target ${targetNumber}` : null,
+      target_label: isCompak ? targetLabel : null,
       target_type: targetType,
       missed_target: missedTarget,
       where_miss: primaryDetail.whereMiss,
@@ -341,9 +349,7 @@ export default function LogPage() {
                 </option>
               ))}
             </select>
-            <div className="notice small">
-              Detected target type: <strong>{targetType}</strong>
-            </div>
+            <div className="notice small">{calculatedText}</div>
             {schemeMissing && (
               <div className="notice small">
                 No FITASC scheme set for this course yet. You can still log the miss, but target type may be unknown.
@@ -386,7 +392,7 @@ export default function LogPage() {
                 Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · Target {miss.target_number ?? "-"}
               </strong>
               <div className="small muted">
-                Target type: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}
+                Machine: {miss.target_label || "-"} · Target type: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}
               </div>
               {miss.missed_target === "Both targets in pair" ? (
                 <>

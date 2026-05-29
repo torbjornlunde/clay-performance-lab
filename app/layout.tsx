@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AuthNav } from "./AuthNav";
 import "./globals.css";
 
 export const metadata: Metadata = { title: "Clay Performance Lab", description: "Performance analysis for clay target shooters." };
@@ -17,10 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <div className="small muted">Performance analysis for clay target shooters</div>
               </div>
             </Link>
-            <nav className="topNav" aria-label="Primary navigation">
-              <Link href="/dashboard">Dashboard</Link>
-              <Link href="/stats">Stats</Link>
-            </nav>
+            <AuthNav />
           </div>
         </header>
         {children}

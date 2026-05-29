@@ -167,6 +167,9 @@ export default function DashboardPage() {
           <Link href="/stats" className="button secondary">
             Stats
           </Link>
+          <Link href="/fitasc" className="button secondary">
+            FITASC schemes
+          </Link>
           <button className="secondary" onClick={load}>
             Refresh
           </button>
