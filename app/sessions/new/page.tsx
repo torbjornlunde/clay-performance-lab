@@ -97,12 +97,12 @@ export default function NewSessionPage() {
       <div className="card">
         <h2>New session</h2>
         <label>Session name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Kismul Compak 29.05.26" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Session name" />
         <label>Leirdue.net result URL</label>
         <input
           value={leirdueResultUrl}
           onChange={(e) => setLeirdueResultUrl(e.target.value)}
-          placeholder="Optional"
+          placeholder="https://www.leirdue.net/..."
           type="url"
         />
         <div className="row">

@@ -53,18 +53,15 @@ export default function Page() {
         <span className="pill">
           Misses <strong>{count}</strong>
         </span>
-        {session.leirdue_result_url && (
-          <p>
-            <strong>Leirdue.net:</strong>{" "}
-            <a href={session.leirdue_result_url} target="_blank" rel="noreferrer">
-              {session.leirdue_result_url}
-            </a>
-          </p>
-        )}
         <div className="btns">
           <Link href={`/sessions/${session.id}/log`} className="button">
             Log miss
           </Link>
+          {session.leirdue_result_url && (
+            <a href={session.leirdue_result_url} target="_blank" rel="noreferrer" className="button secondary">
+              Open Leirdue.net result
+            </a>
+          )}
           <Link href={`/sessions/${session.id}/edit`} className="button secondary">
             Edit setup
           </Link>
