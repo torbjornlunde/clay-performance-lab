@@ -188,7 +188,7 @@ export default function EditSessionPage() {
         <label>Session name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Session name" />
         <label>Date</label>
-        <input value={competitionDate} onChange={(e) => setCompetitionDate(e.target.value)} type="date" />
+        <input className="compactDateInput" value={competitionDate} onChange={(e) => setCompetitionDate(e.target.value)} type="date" />
         <label>Leirdue.net result URL</label>
         <input
           value={leirdueResultUrl}

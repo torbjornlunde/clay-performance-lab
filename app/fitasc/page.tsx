@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { getAllSchemeNumbers, getCompakSchemeType, getExpectedPresentationRows, getMachineLabelFromRow, getPresentationLabel, type CompakSchemeRow } from "@/lib/fitasc/compakSchemes";
 import { supabase } from "@/lib/supabase/client";
 
@@ -33,10 +32,7 @@ export default function FitascPage() {
           <h2>FITASC schemes</h2>
           <p>{getCompakSchemeType(scheme)}</p>
         </div>
-        <div className="btns heroActions">
-          <Link href="/dashboard" className="button secondary">Dashboard</Link>
-          <Link href="/fitasc/admin" className="button secondary">Admin import</Link>
-        </div>
+
       </div>
       <div className="card">
         <div className="row">
@@ -52,16 +48,23 @@ export default function FitascPage() {
           </div>
         </div>
         {loading ? <p>Loading...</p> : (
-          <div className="schemeOverview">
+          <div className="schemeOverview" aria-label={`Scheme ${scheme} plate overview`}>
+            <div className="schemeGridHeader" aria-hidden="true">
+              <span />
+              {[1, 2, 3, 4, 5].map((plateNumber) => (
+                <strong key={plateNumber}>
+                  <span className="desktopOnlyLabel">Plate {plateNumber}</span>
+                  <span className="mobileOnlyLabel">P{plateNumber}</span>
+                </strong>
+              ))}
+            </div>
             {expectedRows.map((presentation, rowIndex) => (
               <div className="schemeRowCard" key={`${presentation}-${rowIndex}`}>
-                <strong>{getPresentationLabel(presentation)}</strong>
-                <div className="schemePlateGrid">
-                  {[1, 2, 3, 4, 5].map((plateNumber) => {
-                    const row = rows.find((item) => item.event_number === rowIndex + 1 && item.plate_number === plateNumber);
-                    return <span key={plateNumber}>Plate {plateNumber} <b>{getMachineLabelFromRow(row)}</b></span>;
-                  })}
-                </div>
+                <strong className="schemePresentationLabel">{getPresentationLabel(presentation)}</strong>
+                {[1, 2, 3, 4, 5].map((plateNumber) => {
+                  const row = rows.find((item) => item.event_number === rowIndex + 1 && item.plate_number === plateNumber);
+                  return <span className="schemeMachineCell" key={plateNumber}>{getMachineLabelFromRow(row)}</span>;
+                })}
               </div>
             ))}
           </div>

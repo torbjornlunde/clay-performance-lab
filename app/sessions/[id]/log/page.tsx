@@ -69,7 +69,7 @@ export default function LogPage() {
   const [courseNumber, setCourseNumber] = useState(1);
   const [plate, setPlate] = useState(1);
   const [targetNumber, setTargetNumber] = useState(1);
-  const [logMode, setLogMode] = useState("During shooting");
+  const [showManualMachine, setShowManualMachine] = useState(false);
   const [manualMachine, setManualMachine] = useState("Unknown");
   const [schemeRows, setSchemeRows] = useState<CompakSchemeRow[]>([]);
   const [missedTarget, setMissedTarget] = useState("Single target");
@@ -93,8 +93,10 @@ export default function LogPage() {
   const expectedRows = current?.fitasc_scheme ? getExpectedPresentationRows(current.fitasc_scheme) : ["unknown"];
   const schemeRow = schemeRows.find((row) => row.scheme_number === current?.fitasc_scheme && row.plate_number === plate && row.event_number === targetNumber);
   const targetType = schemeRow ? getPresentationLabel(schemeRow.presentation) : current?.fitasc_scheme ? getPresentationLabel(expectedRows[targetNumber - 1]) : "Unknown";
-  const targetLabel = logMode === "After shooting / manual" ? manualMachine : getMachineLabelFromRow(schemeRow);
-  const calculatedText = schemeRow ? `Calculated: ${getMachineLabelFromRow(schemeRow)} · ${getPresentationLabel(schemeRow.presentation)}` : "Machine unknown for this scheme until exact FITASC data is imported.";
+  const targetLabel = showManualMachine ? manualMachine : getMachineLabelFromRow(schemeRow);
+  const calculatedText = schemeRow
+    ? `Calculated: ${getMachineLabelFromRow(schemeRow)} · ${getPresentationLabel(schemeRow.presentation)}`
+    : "Machine unavailable for this plate and target / pair selection.";
 
   useEffect(() => {
     if (targetType === "Single") setMissedTarget("Single target");
@@ -350,31 +352,26 @@ export default function LogPage() {
                 </select>
               </div>
             </div>
-            <label>Logging mode</label>
-            <select value={logMode} onChange={(e) => setLogMode(e.target.value)}>
-              <option>During shooting</option>
-              <option>After shooting / manual</option>
+            <label>Target / pair</label>
+            <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
+              {expectedRows.map((_row, index) => {
+                const row = schemeRows.find((item) => item.scheme_number === current?.fitasc_scheme && item.plate_number === plate && item.event_number === index + 1);
+                const label = row ? `${getPresentationLabel(row.presentation)} ${getMachineLabelFromRow(row)}` : getPresentationLabel(expectedRows[index]);
+                return <option key={index + 1} value={index + 1}>{label}</option>;
+              })}
             </select>
-            {logMode === "After shooting / manual" ? (
-              <>
+            <div className="notice small">{calculatedText}</div>
+            <button type="button" className="secondary smallButton inlineToggle" onClick={() => setShowManualMachine((value) => !value)}>
+              Manual machine entry
+            </button>
+            {showManualMachine && (
+              <div className="subcard compactSubcard">
                 <label>Machine</label>
                 <select value={manualMachine} onChange={(e) => setManualMachine(e.target.value)}>
                   {["A", "B", "C", "D", "E", "F", "Unknown"].map((v) => <option key={v}>{v}</option>)}
                 </select>
-                <p className="small muted">Use manual mode when you remember the target/machine but not the exact plate.</p>
-              </>
-            ) : (
-              <>
-                <label>Visible row</label>
-                <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
-                  {expectedRows.map((_row, index) => {
-                    const row = schemeRows.find((item) => item.scheme_number === current?.fitasc_scheme && item.plate_number === plate && item.event_number === index + 1);
-                    const label = row ? `${getPresentationLabel(row.presentation)} ${getMachineLabelFromRow(row)}` : getPresentationLabel(expectedRows[index]);
-                    return <option key={index + 1} value={index + 1}>{label}</option>;
-                  })}
-                </select>
-                <div className="notice small">{calculatedText}</div>
-              </>
+                <p className="small muted">Use only when the machine is known but the plate or target / pair selection is not.</p>
+              </div>
             )}
             {schemeMissing && (
               <div className="notice small">

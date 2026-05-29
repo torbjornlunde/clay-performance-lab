@@ -74,7 +74,7 @@ function SessionCard({ session, missCounts }: { session: Row; missCounts: Record
 
   return (
     <article className="sessionItem">
-      <div>
+      <div className="sessionContent">
         <div className="sessionTopline">
           <strong>{session.name}</strong>
           <span className={`badge ${label === "Competition" ? "badgeGold" : label === "Result only" ? "badgeBlue" : "badgeGreen"}`}>{label}</span>
@@ -100,9 +100,11 @@ function SessionCard({ session, missCounts }: { session: Row; missCounts: Record
           )}
         </div>
       </div>
-      <Link href={`/sessions/${session.id}`} className="button secondary smallButton">
-        Open
-      </Link>
+      <div className="sessionActions">
+        <Link href={`/sessions/${session.id}`} className="button secondary smallButton">
+          Open
+        </Link>
+      </div>
     </article>
   );
 }

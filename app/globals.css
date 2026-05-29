@@ -697,3 +697,191 @@ html, body {
     grid-template-columns: 1fr;
   }
 }
+
+.sessionContent {
+  min-width: 0;
+}
+
+.sessionActions {
+  align-self: stretch;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 96px;
+}
+
+.sessionActions .button {
+  width: 100%;
+  max-width: 112px;
+}
+
+.compactDateInput {
+  width: min(100%, 220px);
+  min-height: 42px;
+  padding: 9px 12px;
+}
+
+.inlineToggle {
+  margin-top: 10px;
+}
+
+.compactSubcard {
+  padding: 12px;
+}
+
+.summaryGrid {
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.summaryStat {
+  padding: 12px;
+}
+
+.summaryStat strong {
+  font-size: clamp(20px, 4vw, 28px);
+}
+
+.chartWrap {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.performanceChart {
+  height: clamp(190px, 30vw, 230px);
+}
+
+.chartLegend {
+  justify-content: center;
+}
+
+.schemeOverview {
+  gap: 6px;
+  overflow: hidden;
+}
+
+.schemeGridHeader,
+.schemeRowCard {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.8fr) repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  align-items: stretch;
+}
+
+.schemeGridHeader {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+  padding: 0 4px;
+}
+
+.schemeGridHeader strong,
+.schemePresentationLabel,
+.schemeMachineCell {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(7, 11, 17, 0.72);
+  padding: 8px 6px;
+  min-width: 0;
+}
+
+.schemePresentationLabel {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.15;
+}
+
+.schemeMachineCell {
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.mobileOnlyLabel {
+  display: none;
+}
+
+@media (min-width: 721px) {
+  .sessionItem {
+    grid-template-columns: minmax(420px, 1fr) minmax(96px, auto);
+  }
+}
+
+@media (max-width: 720px) {
+  .sessionActions {
+    width: 100%;
+    justify-content: stretch;
+    min-width: 0;
+  }
+
+  .sessionActions .button {
+    max-width: none;
+  }
+
+  .compactDateInput {
+    width: min(100%, 210px);
+    min-height: 44px;
+  }
+
+  .summaryGrid {
+    gap: 8px;
+  }
+
+  .summaryStat {
+    padding: 10px 12px;
+  }
+
+  .performanceChart {
+    height: 190px;
+  }
+
+  .chartLegend span {
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+
+  .schemeOverview {
+    gap: 4px;
+  }
+
+  .schemeGridHeader,
+  .schemeRowCard {
+    grid-template-columns: minmax(42px, 0.95fr) repeat(5, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .schemeGridHeader strong,
+  .schemePresentationLabel,
+  .schemeMachineCell {
+    border-radius: 8px;
+    padding: 5px 3px;
+  }
+
+  .schemeGridHeader {
+    font-size: clamp(10px, 2.7vw, 12px);
+    padding: 0;
+  }
+
+  .schemePresentationLabel {
+    font-size: clamp(10px, 2.6vw, 12px);
+    overflow-wrap: normal;
+  }
+
+  .schemeMachineCell {
+    font-size: clamp(11px, 3vw, 13px);
+  }
+
+  .desktopOnlyLabel {
+    display: none;
+  }
+
+  .mobileOnlyLabel {
+    display: inline;
+  }
+}
