@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { ExportCourse, ExportMiss, ExportTargetDefinition } from "@/lib/export/exportUserData";
 import { supabase } from "@/lib/supabase/client";
 
 type Row = {
@@ -21,6 +22,10 @@ type Row = {
 };
 
 type MissRow = { session_id: string };
+
+type ExportCourseRow = ExportCourse;
+type ExportMissRow = ExportMiss;
+type ExportTargetDefinitionRow = ExportTargetDefinition;
 
 type SessionGroup = {
   title: string;
@@ -122,6 +127,8 @@ export default function DashboardPage() {
   const [sessions, setSessions] = useState<Row[]>([]);
   const [missCounts, setMissCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   useEffect(() => {
     load();
@@ -145,6 +152,77 @@ export default function DashboardPage() {
     setSessions((data || []).slice().sort(sortNewestFirst));
     setMissCounts(counts);
     setLoading(false);
+  }
+
+  async function exportMyData() {
+    setExportError("");
+    setExporting(true);
+
+    try {
+      const { data: u, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
+      if (!u.user) {
+        router.push("/login");
+        return;
+      }
+
+      const { data: sessionData, error: sessionError } = await supabase
+        .from("sessions")
+        .select("*")
+        .eq("user_id", u.user.id)
+        .order("created_at", { ascending: false })
+        .returns<Row[]>();
+      if (sessionError) throw sessionError;
+
+      const exportSessions = sessionData || [];
+      const sessionIds = exportSessions.map((session) => session.id);
+      let exportCourses: ExportCourseRow[] = [];
+      let exportMisses: ExportMissRow[] = [];
+      let exportTargetDefinitions: ExportTargetDefinitionRow[] = [];
+
+      if (sessionIds.length > 0) {
+        const [coursesResult, missesResult, definitionsResult] = await Promise.all([
+          supabase
+            .from("session_courses")
+            .select("session_id,course_number,fitasc_scheme,shooter_number,start_plate")
+            .in("session_id", sessionIds)
+            .order("course_number")
+            .returns<ExportCourseRow[]>(),
+          supabase
+            .from("misses")
+            .select(
+              "session_id,course_number,plate,target_number,target_label,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at",
+            )
+            .in("session_id", sessionIds)
+            .order("created_at")
+            .returns<ExportMissRow[]>(),
+          supabase
+            .from("session_target_definitions")
+            .select("session_id,course_number,machine,target_type,direction,speed,distance,difficulty")
+            .in("session_id", sessionIds)
+            .order("course_number")
+            .returns<ExportTargetDefinitionRow[]>(),
+        ]);
+
+        if (coursesResult.error) throw coursesResult.error;
+        if (missesResult.error) throw missesResult.error;
+        if (definitionsResult.error) throw definitionsResult.error;
+
+        exportCourses = coursesResult.data || [];
+        exportMisses = missesResult.data || [];
+        exportTargetDefinitions = definitionsResult.data || [];
+      }
+
+      const { exportFileName, exportUserDataToExcel } = await import("@/lib/export/exportUserData");
+      exportUserDataToExcel(
+        { sessions: exportSessions, courses: exportCourses, misses: exportMisses, targetDefinitions: exportTargetDefinitions },
+        exportFileName(),
+      );
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Could not export your data. Please try again.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function logout() {
@@ -184,6 +262,9 @@ export default function DashboardPage() {
           <Link href="/stats" className="button secondary">
             Stats
           </Link>
+          <button className="secondary" onClick={exportMyData} disabled={exporting || loading}>
+            {exporting ? "Exporting..." : "Export my data"}
+          </button>
           <button className="secondary" onClick={load}>
             Refresh
           </button>
@@ -191,6 +272,7 @@ export default function DashboardPage() {
             Logout
           </button>
         </div>
+        {exportError && <div className="error">{exportError}</div>}
       </div>
 
       <div className="card">
