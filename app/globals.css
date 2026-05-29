@@ -620,3 +620,86 @@ button:disabled,
     align-items: flex-start;
   }
 }
+
+.schemeTypeCard {
+  display: grid;
+  gap: 5px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(10, 16, 24, 0.78);
+}
+
+.schemeTypeCard strong {
+  font-size: 18px;
+}
+
+.schemeGrid {
+  display: grid;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.schemeGridHeader,
+.schemeGridRow {
+  display: grid;
+  grid-template-columns: 34px repeat(5, minmax(74px, 1fr));
+  gap: 8px;
+  min-width: 450px;
+}
+
+.schemeCorner,
+.schemePlateHeader,
+.schemeRowHeader,
+.schemeCell {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.schemePlateHeader,
+.schemeRowHeader {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.schemeCell {
+  background: rgba(10, 16, 24, 0.82);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 720px) {
+  .schemeGridHeader,
+  .schemeGridRow {
+    grid-template-columns: 30px repeat(5, minmax(58px, 1fr));
+    gap: 6px;
+    min-width: 350px;
+  }
+
+  .schemeCorner,
+  .schemePlateHeader,
+  .schemeRowHeader,
+  .schemeCell {
+    border-radius: 12px;
+    min-height: 44px;
+  }
+
+  .schemePlateHeader,
+  .schemeRowHeader {
+    font-size: 11px;
+  }
+
+  .schemeCell {
+    font-size: 13px;
+  }
+}
