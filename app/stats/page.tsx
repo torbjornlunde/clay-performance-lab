@@ -14,6 +14,8 @@ type SessionRow = {
   course_count: number | null;
   total_targets?: number | null;
   created_at: string;
+  competition_date?: string | null;
+  leirdue_result_url?: string | null;
   own_score?: number | null;
   winning_score?: number | null;
   calculated_score?: number | null;
@@ -28,12 +30,17 @@ type ChartPoint = {
   percentage: number;
   score: number;
   winningScore: number;
+  leirdueResultUrl?: string | null;
   x: number;
   y: number;
 };
 
 function isUsableNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function displayDate(session: SessionRow) {
+  return session.competition_date || session.created_at;
 }
 
 function formatDate(value: string) {
@@ -73,14 +80,19 @@ function PerformanceChart({ points }: { points: ChartPoint[] }) {
         <line x1={padding} x2={padding} y1={padding} y2={height - padding} className="chartAxis" />
         <line x1={padding} x2={width - padding} y1={height - padding} y2={height - padding} className="chartAxis" />
         <path d={path} className="chartLine" />
-        {points.map((point) => (
-          <g key={point.id}>
-            <circle cx={point.x} cy={point.y} r="6" className="chartPoint" />
-            <text x={point.x} y={Math.max(point.y - 12, 16)} textAnchor="middle" className="chartText chartPointLabel">
-              {point.percentage.toFixed(0)}%
-            </text>
-          </g>
-        ))}
+        {points.map((point, index) => {
+          const showLabel = points.length <= 8 || index === 0 || index === points.length - 1 || index % Math.ceil(points.length / 6) === 0;
+          return (
+            <g key={point.id}>
+              <circle cx={point.x} cy={point.y} r="6" className="chartPoint" />
+              {showLabel && (
+                <text x={point.x} y={Math.max(point.y - 12, 16)} textAnchor="middle" className="chartText chartPointLabel">
+                  {point.percentage.toFixed(0)}%
+                </text>
+              )}
+            </g>
+          );
+        })}
       </svg>
       <div className="chartLegend">
         {points.map((point) => (
@@ -117,7 +129,7 @@ export default function StatsPage() {
       return acc;
     }, {});
 
-    setSessions(data || []);
+    setSessions((data || []).slice().sort((a, b) => new Date(displayDate(a)).getTime() - new Date(displayDate(b)).getTime()));
     setMissCounts(counts);
     setLoading(false);
   }
@@ -143,10 +155,11 @@ export default function StatsPage() {
       return {
         id: item.session.id,
         name: item.session.name,
-        date: item.session.created_at,
+        date: displayDate(item.session),
         percentage: item.result.percentage,
         score: item.result.score,
         winningScore: item.session.winning_score || 0,
+        leirdueResultUrl: item.session.leirdue_result_url,
         x,
         y,
       };
@@ -229,13 +242,20 @@ export default function StatsPage() {
             .slice()
             .reverse()
             .map((point) => (
-              <Link href={`/sessions/${point.id}`} className="statListItem" key={point.id}>
-                <div>
+              <div className="statListItem" key={point.id}>
+                <Link href={`/sessions/${point.id}`}>
                   <strong>{point.name}</strong>
                   <div className="small muted">{formatDate(point.date)} · {point.score} / {point.winningScore}</div>
+                </Link>
+                <div className="statActions">
+                  {point.leirdueResultUrl && (
+                    <a href={point.leirdueResultUrl} target="_blank" rel="noreferrer" className="small">
+                      Open Leirdue
+                    </a>
+                  )}
+                  <span className="statPercent">{point.percentage.toFixed(1)}%</span>
                 </div>
-                <span className="statPercent">{point.percentage.toFixed(1)}%</span>
-              </Link>
+              </div>
             ))
         )}
       </div>

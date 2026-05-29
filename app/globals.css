@@ -620,3 +620,120 @@ button:disabled,
     align-items: flex-start;
   }
 }
+
+.sessionActions,
+.statActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.statActions {
+  flex-direction: column;
+}
+
+.statActions a {
+  color: #cae5ff;
+  font-weight: 900;
+}
+
+.chartWrap {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+.performanceChart {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.schemeOverview {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.8fr) repeat(5, minmax(86px, 1fr));
+  gap: 8px;
+  max-width: 100%;
+}
+
+.schemeRow {
+  display: contents;
+}
+
+.schemeCell {
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: rgba(10, 16, 24, 0.78);
+  border-radius: 14px;
+  padding: 10px;
+  overflow-wrap: anywhere;
+}
+
+.schemeHeader {
+  color: #ffe2a0;
+  font-weight: 950;
+}
+
+.schemeCell strong,
+.schemeCell span,
+.schemeCell em {
+  display: block;
+}
+
+.schemeCell span {
+  color: var(--text);
+  margin-top: 5px;
+}
+
+.schemeCell em {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+@media (max-width: 720px) {
+  .sessionItem {
+    align-items: stretch;
+  }
+
+  .sessionActions {
+    justify-content: stretch;
+  }
+
+  .sessionActions .button {
+    flex: 1 1 140px;
+  }
+
+  .statActions {
+    align-items: flex-start;
+  }
+
+  .schemeOverview {
+    display: block;
+  }
+
+  .schemeOverview > .schemeHeader {
+    display: none;
+  }
+
+  .schemeRow {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 10px;
+    margin: 12px 0;
+    background: rgba(7, 11, 17, 0.45);
+  }
+
+  .schemeRow .schemeHeader {
+    display: block;
+  }
+
+  .schemeRow .schemeCell:not(.schemeHeader)::before {
+    content: "Plate " attr(data-plate);
+  }
+}
