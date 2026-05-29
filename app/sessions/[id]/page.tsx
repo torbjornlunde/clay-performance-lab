@@ -65,6 +65,9 @@ export default function Page() {
           <Link href={`/sessions/${session.id}/edit`} className="button secondary">
             Edit setup
           </Link>
+          <Link href={`/sessions/${session.id}/targets`} className="button secondary">
+            Target definitions
+          </Link>
           <Link href={`/sessions/${session.id}/analysis`} className="button secondary">
             Analysis
           </Link>

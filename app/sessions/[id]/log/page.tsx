@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { getTargetTypeForScheme } from "@/lib/fitasc/schemes";
+import { getCompakEvent, getMachineOptions, TargetMachine } from "@/lib/fitasc/compakSchemes";
 import { supabase } from "@/lib/supabase/client";
 
 type Session = {
@@ -20,6 +20,17 @@ type Course = {
   start_plate: number | null;
 };
 
+type TargetDefinition = {
+  course_number: number;
+  machine: TargetMachine;
+  target_type: string | null;
+  direction: string | null;
+  speed: string | null;
+  distance: string | null;
+  difficulty: string | null;
+  notes: string | null;
+};
+
 type MissDetail = {
   whereMiss: string;
   mainReason: string;
@@ -32,6 +43,7 @@ type RecentMiss = {
   course_number: number | null;
   plate: number | null;
   target_number: number | null;
+  target_label: string | null;
   target_type: string | null;
   missed_target: string;
   where_miss: string | null;
@@ -57,17 +69,36 @@ const defaultDetail = (): MissDetail => ({
 });
 
 const detailSelect =
-  "id,course_number,plate,target_number,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
+  "id,course_number,plate,target_number,target_label,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
+const manualMachines = getMachineOptions();
+
+function presentationLabel(presentation: string) {
+  if (presentation === "single") return "Single";
+  if (presentation === "report_pair") return "Report pair";
+  if (presentation === "simo_pair") return "Simo pair";
+  return "Unknown";
+}
+
+function targetDefinitionLabel(definition?: TargetDefinition) {
+  if (!definition) return null;
+  const parts = [definition.direction, definition.target_type].filter((value) => value && value !== "Unknown");
+  return parts.length ? parts.join(" ") : definition.target_type && definition.target_type !== "Unknown" ? definition.target_type : null;
+}
 
 export default function LogPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [definitions, setDefinitions] = useState<TargetDefinition[]>([]);
   const [recentMisses, setRecentMisses] = useState<RecentMiss[]>([]);
+  const [mode, setMode] = useState<"during" | "manual">("during");
   const [courseNumber, setCourseNumber] = useState(1);
   const [plate, setPlate] = useState(1);
+  const [manualPlate, setManualPlate] = useState("");
   const [targetNumber, setTargetNumber] = useState(1);
+  const [manualTargetNumber, setManualTargetNumber] = useState("");
+  const [manualMachine, setManualMachine] = useState<TargetMachine>("Unknown");
   const [missedTarget, setMissedTarget] = useState("Single target");
   const [genericDetail, setGenericDetail] = useState<MissDetail>(defaultDetail);
   const [firstDetail, setFirstDetail] = useState<MissDetail>(defaultDetail);
@@ -86,12 +117,20 @@ export default function LogPage() {
   );
   const isCompak = session?.discipline === "Compak Sporting";
   const schemeMissing = Boolean(isCompak && current && !current.fitasc_scheme);
-  const targetType = isCompak && current?.fitasc_scheme ? getTargetTypeForScheme(current.fitasc_scheme, targetNumber) : "Unknown";
+  const calculatedEvent = useMemo(() => getCompakEvent(current?.fitasc_scheme ?? null, plate, targetNumber), [current?.fitasc_scheme, plate, targetNumber]);
+  const calculatedLabel = calculatedEvent.machines.join("+");
+  const calculatedType = presentationLabel(calculatedEvent.presentation);
+  const selectedDefinition = definitions.find((definition) => definition.course_number === courseNumber && definition.machine === manualMachine);
+  const calculatedDefinitions = calculatedEvent.machines
+    .map((machine) => definitions.find((definition) => definition.course_number === courseNumber && definition.machine === machine))
+    .filter(Boolean) as TargetDefinition[];
+  const duringTargetType = calculatedDefinitions.map(targetDefinitionLabel).filter(Boolean).join(" + ") || calculatedType;
+  const manualTargetType = targetDefinitionLabel(selectedDefinition) || "Unknown";
 
   useEffect(() => {
-    if (targetType === "Single") setMissedTarget("Single target");
-    else if (targetType === "Report double" || targetType === "Simo double") setMissedTarget("Second target in pair");
-  }, [targetType]);
+    if (calculatedEvent.presentation === "single") setMissedTarget("Single target");
+    else if (calculatedEvent.presentation === "report_pair" || calculatedEvent.presentation === "simo_pair") setMissedTarget("Second target in pair");
+  }, [calculatedEvent.presentation]);
 
   async function load() {
     const { data: u } = await supabase.auth.getUser();
@@ -111,9 +150,15 @@ export default function LogPage() {
       .eq("session_id", params.id)
       .order("course_number")
       .returns<Course[]>();
+    const { data: definitionData } = await supabase
+      .from("session_target_definitions")
+      .select("course_number,machine,target_type,direction,speed,distance,difficulty,notes")
+      .eq("session_id", params.id)
+      .returns<TargetDefinition[]>();
 
     setSession(sessionData);
     setCourses(courseData || []);
+    setDefinitions(definitionData || []);
     if (courseData?.[0]) {
       setCourseNumber(courseData[0].course_number);
       if (sessionData?.shooting_format === "Squad" && courseData[0].start_plate) setPlate(courseData[0].start_plate);
@@ -164,19 +209,24 @@ export default function LogPage() {
       return;
     }
 
+    const isManual = mode === "manual";
     const primaryDetail = activePrimaryDetail();
     const isFirst = missedTarget === "First target in pair";
     const isSecond = missedTarget === "Second target in pair";
     const isBoth = missedTarget === "Both targets in pair";
     const originalComment = isBoth ? combinedBothComment() : primaryDetail.comment.trim();
+    const savedPlate = isCompak ? (isManual ? (manualPlate ? Number(manualPlate) : null) : plate) : null;
+    const savedTargetNumber = isCompak ? (isManual ? (manualTargetNumber ? Number(manualTargetNumber) : null) : targetNumber) : null;
+    const targetLabel = isCompak ? (isManual ? manualMachine : calculatedLabel) : null;
+    const targetType = isCompak ? (isManual ? manualTargetType : duringTargetType) : "Unknown";
 
     setSaving(true);
     const { error } = await supabase.from("misses").insert({
       session_id: session.id,
       course_number: isCompak ? courseNumber : null,
-      plate: isCompak ? plate : null,
-      target_number: isCompak ? targetNumber : null,
-      target_label: isCompak ? `Target ${targetNumber}` : null,
+      plate: savedPlate,
+      target_number: savedTargetNumber,
+      target_label: targetLabel,
       target_type: targetType,
       missed_target: missedTarget,
       where_miss: primaryDetail.whereMiss,
@@ -311,6 +361,11 @@ export default function LogPage() {
         <p className="small muted">{session.name}</p>
         {session.discipline === "Compak Sporting" && (
           <>
+            <label>Logging mode</label>
+            <select value={mode} onChange={(e) => setMode(e.target.value as "during" | "manual")}>
+              <option value="during">During shooting</option>
+              <option value="manual">After shooting / manual</option>
+            </select>
             <div className="row">
               <div>
                 <label>Course</label>
@@ -322,29 +377,73 @@ export default function LogPage() {
                   ))}
                 </select>
               </div>
-              <div>
-                <label>Plate</label>
-                <select value={plate} onChange={(e) => setPlate(Number(e.target.value))}>
+              {mode === "during" ? (
+                <div>
+                  <label>Plate</label>
+                  <select value={plate} onChange={(e) => setPlate(Number(e.target.value))}>
+                    {[1, 2, 3, 4, 5].map((v) => (
+                      <option key={v} value={v}>
+                        Plate {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label>Machine</label>
+                  <select value={manualMachine} onChange={(e) => setManualMachine(e.target.value as TargetMachine)}>
+                    {manualMachines.map((machine) => (
+                      <option key={machine}>{machine}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {mode === "during" ? (
+              <>
+                <label>Target / event number</label>
+                <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
                   {[1, 2, 3, 4, 5].map((v) => (
                     <option key={v} value={v}>
-                      Plate {v}
+                      Target {v}
                     </option>
                   ))}
                 </select>
-              </div>
-            </div>
-            <label>Target</label>
-            <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
-              {[1, 2, 3, 4, 5].map((v) => (
-                <option key={v} value={v}>
-                  Target {v}
-                </option>
-              ))}
-            </select>
-            <div className="notice small">
-              Detected target type: <strong>{targetType}</strong>
-            </div>
-            {schemeMissing && (
+                <div className="notice small">
+                  {calculatedEvent.presentation === "single" ? "Calculated target" : "Calculated pair"}: <strong>{calculatedEvent.machines.join(" + ")}</strong> · {calculatedType}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="notice small">Manual mode is for after-the-fact analysis when you remember the target/machine but not the exact plate/event.</div>
+                <div className="row">
+                  <div>
+                    <label>Plate if known</label>
+                    <select value={manualPlate} onChange={(e) => setManualPlate(e.target.value)}>
+                      <option value="">Unknown</option>
+                      {[1, 2, 3, 4, 5].map((v) => (
+                        <option key={v} value={v}>
+                          Plate {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label>Target / event if known</label>
+                    <select value={manualTargetNumber} onChange={(e) => setManualTargetNumber(e.target.value)}>
+                      <option value="">Unknown</option>
+                      {[1, 2, 3, 4, 5].map((v) => (
+                        <option key={v} value={v}>
+                          Target {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </>
+            )}
+            {schemeMissing && mode === "during" && (
               <div className="notice small">
                 No FITASC scheme set for this course yet. You can still log the miss, but target type may be unknown.
               </div>
@@ -368,6 +467,9 @@ export default function LogPage() {
           <Link className="button secondary" href={`/sessions/${params.id}`}>
             Back
           </Link>
+          <Link className="button secondary" href={`/sessions/${params.id}/targets`}>
+            Target definitions
+          </Link>
           <Link className="button secondary" href={`/sessions/${params.id}/analysis`}>
             Analysis
           </Link>
@@ -386,7 +488,7 @@ export default function LogPage() {
                 Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · Target {miss.target_number ?? "-"}
               </strong>
               <div className="small muted">
-                Target type: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}
+                Machine: {miss.target_label || "-"} · Target type: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}
               </div>
               {miss.missed_target === "Both targets in pair" ? (
                 <>
