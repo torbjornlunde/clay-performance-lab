@@ -1,2 +1,132 @@
-"use client";import {useEffect,useState} from "react";import Link from "next/link";import {useParams,useRouter} from "next/navigation";import {supabase} from "@/lib/supabase/client";import {analyzeMisses,MissForAnalysis} from "@/lib/analysis/sessionAnalysis";
-export default function AnalysisPage(){const params=useParams<{id:string}>();const router=useRouter();const[s,setS]=useState<any>(null);const[misses,setMisses]=useState<any[]>([]);useEffect(()=>{load()},[]);async function load(){const{data:u}=await supabase.auth.getUser();if(!u.user){router.push('/login');return;}const{data:sd}=await supabase.from('sessions').select('id,name,discipline,shooting_format').eq('id',params.id).single();const{data:md}=await supabase.from('misses').select('*').eq('session_id',params.id).order('created_at');setS(sd);setMisses(md||[])} if(!s)return <main><div className="card">Loading...</div></main>;const a=analyzeMisses(misses as MissForAnalysis[]);return <main><div className="card"><h2>Analysis</h2><p className="small muted">{s.name}</p><span className="pill">Misses <strong>{a.total}</strong></span>{s.shooting_format&&<span className="pill">{s.shooting_format}</span>}<div className="btns"><Link className="button" href={`/sessions/${s.id}/log`}>Log more</Link><Link className="button secondary" href={`/sessions/${s.id}`}>Session</Link></div></div><div className="card"><h2>Patterns</h2><p><strong>Course:</strong> {a.formatted.byCourse}</p><p><strong>Plate:</strong> {a.formatted.byPlate}</p><p><strong>Target type:</strong> {a.formatted.byTargetType}</p><p><strong>Missed target:</strong> {a.formatted.byMissedTarget}</p><p><strong>Where miss:</strong> {a.formatted.byWhere}</p><p><strong>Main reason:</strong> {a.formatted.byReason}</p></div><div className="card"><h2>Interpretation</h2>{a.interpretation.map((x:string)=><p key={x}>• {x}</p>)}</div><div className="card"><h2>Training recommendation</h2>{a.recommendation.map((x:string)=><p key={x}>• {x}</p>)}</div><div className="card"><h2>Registered misses</h2>{misses.length===0?<p>No misses registered yet.</p>:misses.map(m=><div className="subcard" key={m.id}><strong>Course {m.course_number??'-'} · Plate {m.plate??'-'} · Target {m.target_number??'-'}</strong><div className="small muted">{m.target_type} · {m.missed_target} · {m.where_miss} · {m.main_reason}</div>{m.comment&&<div>{m.comment}</div>}</div>)}</div></main>}
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { analyzeMisses, MissForAnalysis } from "@/lib/analysis/sessionAnalysis";
+import { supabase } from "@/lib/supabase/client";
+
+export default function AnalysisPage() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const [session, setSession] = useState<any>(null);
+  const [misses, setMisses] = useState<any[]>([]);
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function load() {
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) {
+      router.push("/login");
+      return;
+    }
+    const { data: sessionData } = await supabase
+      .from("sessions")
+      .select("id,name,discipline,shooting_format")
+      .eq("id", params.id)
+      .single();
+    const { data: missData } = await supabase.from("misses").select("*").eq("session_id", params.id).order("created_at");
+    setSession(sessionData);
+    setMisses(missData || []);
+  }
+
+  if (!session) {
+    return (
+      <main>
+        <div className="card">Loading...</div>
+      </main>
+    );
+  }
+
+  const analysis = analyzeMisses(misses as MissForAnalysis[]);
+
+  return (
+    <main>
+      <div className="card">
+        <h2>Analysis</h2>
+        <p className="small muted">{session.name}</p>
+        <span className="pill">
+          Detailed missed targets <strong>{analysis.total}</strong>
+        </span>
+        <span className="pill">
+          Miss rows <strong>{analysis.rowTotal}</strong>
+        </span>
+        {session.shooting_format && <span className="pill">{session.shooting_format}</span>}
+        <div className="btns">
+          <Link className="button" href={`/sessions/${session.id}/log`}>
+            Log more
+          </Link>
+          <Link className="button secondary" href={`/sessions/${session.id}`}>
+            Session
+          </Link>
+        </div>
+      </div>
+      <div className="card">
+        <h2>Patterns</h2>
+        <p>
+          <strong>Course:</strong> {analysis.formatted.byCourse}
+        </p>
+        <p>
+          <strong>Plate:</strong> {analysis.formatted.byPlate}
+        </p>
+        <p>
+          <strong>Target type:</strong> {analysis.formatted.byTargetType}
+        </p>
+        <p>
+          <strong>Miss row type:</strong> {analysis.formatted.byMissedTarget}
+        </p>
+        <p>
+          <strong>Detailed missed target:</strong> {analysis.formatted.byTargetPosition}
+        </p>
+        <p>
+          <strong>Where miss:</strong> {analysis.formatted.byWhere}
+        </p>
+        <p>
+          <strong>Main reason:</strong> {analysis.formatted.byReason}
+        </p>
+      </div>
+      <div className="card">
+        <h2>Interpretation</h2>
+        {analysis.interpretation.map((text: string) => (
+          <p key={text}>• {text}</p>
+        ))}
+      </div>
+      <div className="card">
+        <h2>Training recommendation</h2>
+        {analysis.recommendation.map((text: string) => (
+          <p key={text}>• {text}</p>
+        ))}
+      </div>
+      <div className="card">
+        <h2>Registered misses</h2>
+        {misses.length === 0 ? (
+          <p>No misses registered yet.</p>
+        ) : (
+          misses.map((miss) => (
+            <div className="subcard" key={miss.id}>
+              <strong>
+                Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · Target {miss.target_number ?? "-"}
+              </strong>
+              <div className="small muted">
+                {miss.target_type || "-"} · {miss.missed_target} · {miss.where_miss || "-"} · {miss.main_reason || "-"}
+              </div>
+              {miss.missed_target === "Both targets in pair" && (
+                <>
+                  <div className="small muted">
+                    First target: {miss.first_where_miss || "-"} · {miss.first_main_reason || "-"}
+                  </div>
+                  <div className="small muted">
+                    Second target: {miss.second_where_miss || "-"} · {miss.second_main_reason || "-"}
+                  </div>
+                </>
+              )}
+              {miss.comment && <div>{miss.comment}</div>}
+            </div>
+          ))
+        )}
+      </div>
+    </main>
+  );
+}
