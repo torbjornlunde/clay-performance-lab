@@ -26,3 +26,27 @@ drop policy if exists "misses_select_own" on public.misses; create policy "misse
 drop policy if exists "misses_insert_own" on public.misses; create policy "misses_insert_own" on public.misses for insert with check (exists(select 1 from public.sessions s where s.id=misses.session_id and s.user_id=auth.uid()));
 drop policy if exists "misses_update_own" on public.misses; create policy "misses_update_own" on public.misses for update using (exists(select 1 from public.sessions s where s.id=misses.session_id and s.user_id=auth.uid()));
 drop policy if exists "misses_delete_own" on public.misses; create policy "misses_delete_own" on public.misses for delete using (exists(select 1 from public.sessions s where s.id=misses.session_id and s.user_id=auth.uid()));
+
+create table if not exists public.fitasc_compak_schemes(
+  id uuid primary key default gen_random_uuid(),
+  scheme_number integer not null,
+  plate_number integer not null,
+  event_number integer not null,
+  presentation text not null,
+  first_machine text,
+  second_machine text,
+  is_verified boolean not null default false,
+  source text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (scheme_number, plate_number, event_number)
+);
+alter table public.fitasc_compak_schemes enable row level security;
+grant select on public.fitasc_compak_schemes to anon, authenticated;
+grant insert, update on public.fitasc_compak_schemes to authenticated;
+drop policy if exists "fitasc_compak_schemes_select_all" on public.fitasc_compak_schemes;
+create policy "fitasc_compak_schemes_select_all" on public.fitasc_compak_schemes for select using (true);
+drop policy if exists "fitasc_compak_schemes_insert_authenticated" on public.fitasc_compak_schemes;
+create policy "fitasc_compak_schemes_insert_authenticated" on public.fitasc_compak_schemes for insert to authenticated with check (true);
+drop policy if exists "fitasc_compak_schemes_update_authenticated" on public.fitasc_compak_schemes;
+create policy "fitasc_compak_schemes_update_authenticated" on public.fitasc_compak_schemes for update to authenticated using (true) with check (true);
