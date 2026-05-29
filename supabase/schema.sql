@@ -1,6 +1,8 @@
 create extension if not exists "pgcrypto";
-create table if not exists public.sessions(id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id) on delete cascade,name text not null,discipline text not null,session_type text not null,shooting_format text,course_count integer,total_targets integer,notes text,leirdue_result_url text,created_at timestamptz not null default now());
+create table if not exists public.sessions(id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id) on delete cascade,name text not null,discipline text not null,session_type text not null,shooting_format text,course_count integer,total_targets integer,notes text,leirdue_result_url text,own_score integer,winning_score integer,created_at timestamptz not null default now());
 alter table public.sessions add column if not exists leirdue_result_url text;
+alter table public.sessions add column if not exists own_score integer;
+alter table public.sessions add column if not exists winning_score integer;
 alter table public.sessions enable row level security;
 drop policy if exists "sessions_select_own" on public.sessions; create policy "sessions_select_own" on public.sessions for select using (auth.uid()=user_id);
 drop policy if exists "sessions_insert_own" on public.sessions; create policy "sessions_insert_own" on public.sessions for insert with check (auth.uid()=user_id);
@@ -26,3 +28,26 @@ drop policy if exists "misses_select_own" on public.misses; create policy "misse
 drop policy if exists "misses_insert_own" on public.misses; create policy "misses_insert_own" on public.misses for insert with check (exists(select 1 from public.sessions s where s.id=misses.session_id and s.user_id=auth.uid()));
 drop policy if exists "misses_update_own" on public.misses; create policy "misses_update_own" on public.misses for update using (exists(select 1 from public.sessions s where s.id=misses.session_id and s.user_id=auth.uid()));
 drop policy if exists "misses_delete_own" on public.misses; create policy "misses_delete_own" on public.misses for delete using (exists(select 1 from public.sessions s where s.id=misses.session_id and s.user_id=auth.uid()));
+
+create table if not exists public.session_target_definitions(id uuid primary key default gen_random_uuid(),session_id uuid not null references public.sessions(id) on delete cascade,course_number integer not null,machine text not null,target_type text,direction text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+alter table public.session_target_definitions add column if not exists target_type text;
+alter table public.session_target_definitions add column if not exists direction text;
+alter table public.session_target_definitions add column if not exists updated_at timestamptz not null default now();
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'session_target_definitions_unique_machine_per_course'
+      and conrelid = 'public.session_target_definitions'::regclass
+  ) then
+    alter table public.session_target_definitions
+    add constraint session_target_definitions_unique_machine_per_course
+    unique (session_id, course_number, machine);
+  end if;
+end $$;
+alter table public.session_target_definitions enable row level security;
+drop policy if exists "session_target_definitions_select_own" on public.session_target_definitions; create policy "session_target_definitions_select_own" on public.session_target_definitions for select using (exists(select 1 from public.sessions s where s.id=session_target_definitions.session_id and s.user_id=auth.uid()));
+drop policy if exists "session_target_definitions_insert_own" on public.session_target_definitions; create policy "session_target_definitions_insert_own" on public.session_target_definitions for insert with check (exists(select 1 from public.sessions s where s.id=session_target_definitions.session_id and s.user_id=auth.uid()));
+drop policy if exists "session_target_definitions_update_own" on public.session_target_definitions; create policy "session_target_definitions_update_own" on public.session_target_definitions for update using (exists(select 1 from public.sessions s where s.id=session_target_definitions.session_id and s.user_id=auth.uid()));
+drop policy if exists "session_target_definitions_delete_own" on public.session_target_definitions; create policy "session_target_definitions_delete_own" on public.session_target_definitions for delete using (exists(select 1 from public.sessions s where s.id=session_target_definitions.session_id and s.user_id=auth.uid()));

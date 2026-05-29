@@ -14,6 +14,8 @@ type Session = {
   shooting_format: string | null;
   course_count: number | null;
   leirdue_result_url: string | null;
+  own_score: number | null;
+  winning_score: number | null;
 };
 
 type CourseSetup = {
@@ -51,6 +53,8 @@ export default function EditSessionPage() {
   const [count, setCount] = useState(1);
   const [courses, setCourses] = useState<CourseSetup[]>([]);
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
+  const [ownScore, setOwnScore] = useState("");
+  const [winningScore, setWinningScore] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -67,7 +71,7 @@ export default function EditSessionPage() {
 
     const { data: session } = await supabase
       .from("sessions")
-      .select("id,name,discipline,session_type,shooting_format,course_count,leirdue_result_url")
+      .select("id,name,discipline,session_type,shooting_format,course_count,leirdue_result_url,own_score,winning_score")
       .eq("id", params.id)
       .single<Session>();
     const { data: courseRows } = await supabase
@@ -98,6 +102,8 @@ export default function EditSessionPage() {
     setCount(nextCount);
     setCourses(makeCourses(nextCount, mappedCourses));
     setLeirdueResultUrl(session.leirdue_result_url || "");
+    setOwnScore(session.own_score == null ? "" : String(session.own_score));
+    setWinningScore(session.winning_score == null ? "" : String(session.winning_score));
     setLoaded(true);
   }
 
@@ -123,6 +129,8 @@ export default function EditSessionPage() {
         course_count: count,
         total_targets: count * 25,
         leirdue_result_url: leirdueResultUrl.trim() || null,
+        own_score: sessionType === "Competition" && ownScore !== "" ? Number(ownScore) : null,
+        winning_score: sessionType === "Competition" && winningScore !== "" ? Number(winningScore) : null,
       })
       .eq("id", params.id);
 
@@ -205,6 +213,21 @@ export default function EditSessionPage() {
             </select>
           </div>
         </div>
+        {sessionType === "Competition" && (
+          <div className="subcard">
+            <h3>Competition score</h3>
+            <div className="row">
+              <div>
+                <label>Own score</label>
+                <input value={ownScore} onChange={(e) => setOwnScore(e.target.value)} inputMode="numeric" min="0" type="number" placeholder="Optional" />
+              </div>
+              <div>
+                <label>Winning score</label>
+                <input value={winningScore} onChange={(e) => setWinningScore(e.target.value)} inputMode="numeric" min="1" type="number" placeholder="Optional" />
+              </div>
+            </div>
+          </div>
+        )}
         <label>Number of courses/layouts</label>
         <select value={count} onChange={(e) => setCourseCount(Number(e.target.value))}>
           {[1, 2, 3, 4, 5, 6, 8].map((n) => (
