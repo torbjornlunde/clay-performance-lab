@@ -35,6 +35,14 @@ export default function Page() {
     setCount(missCount || 0);
   }
 
+  const performancePercentage =
+    session?.session_type === "Competition" &&
+    session.own_score != null &&
+    session.winning_score != null &&
+    Number(session.winning_score) > 0
+      ? (Number(session.own_score) / Number(session.winning_score)) * 100
+      : null;
+
   if (!session) {
     return (
       <main>
@@ -53,6 +61,9 @@ export default function Page() {
         <span className="pill">
           Misses <strong>{count}</strong>
         </span>
+        {performancePercentage != null && (
+          <p className="success">Performance vs winning score: {performancePercentage.toFixed(1)}%</p>
+        )}
         <div className="btns">
           <Link href={`/sessions/${session.id}/log`} className="button">
             Log miss
@@ -65,6 +76,11 @@ export default function Page() {
           <Link href={`/sessions/${session.id}/edit`} className="button secondary">
             Edit setup
           </Link>
+          {session.discipline === "Compak Sporting" && (
+            <Link href={`/sessions/${session.id}/targets`} className="button secondary">
+              Target definitions
+            </Link>
+          )}
           <Link href={`/sessions/${session.id}/analysis`} className="button secondary">
             Analysis
           </Link>

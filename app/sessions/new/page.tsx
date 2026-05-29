@@ -30,6 +30,8 @@ export default function NewSessionPage() {
   const [count, setCount] = useState(3);
   const [courses, setCourses] = useState<CourseSetup[]>(makeCourses(3, []));
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
+  const [ownScore, setOwnScore] = useState("");
+  const [winningScore, setWinningScore] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -63,6 +65,8 @@ export default function NewSessionPage() {
         course_count: isCompak ? count : null,
         total_targets: isCompak ? count * 25 : null,
         leirdue_result_url: leirdueResultUrl.trim() || null,
+        own_score: sessionType === "Competition" && ownScore !== "" ? Number(ownScore) : null,
+        winning_score: sessionType === "Competition" && winningScore !== "" ? Number(winningScore) : null,
       })
       .select("id")
       .single();
@@ -126,6 +130,21 @@ export default function NewSessionPage() {
             </select>
           </div>
         </div>
+        {sessionType === "Competition" && (
+          <div className="subcard">
+            <h3>Competition score</h3>
+            <div className="row">
+              <div>
+                <label>Own score</label>
+                <input value={ownScore} onChange={(e) => setOwnScore(e.target.value)} inputMode="numeric" min="0" type="number" placeholder="Optional" />
+              </div>
+              <div>
+                <label>Winning score</label>
+                <input value={winningScore} onChange={(e) => setWinningScore(e.target.value)} inputMode="numeric" min="1" type="number" placeholder="Optional" />
+              </div>
+            </div>
+          </div>
+        )}
         {discipline === "Compak Sporting" && (
           <>
             <div className="row">
