@@ -29,6 +29,7 @@ export default function NewSessionPage() {
   const [format, setFormat] = useState("Inline");
   const [count, setCount] = useState(3);
   const [courses, setCourses] = useState<CourseSetup[]>(makeCourses(3, []));
+  const [competitionDate, setCompetitionDate] = useState("");
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
@@ -62,6 +63,7 @@ export default function NewSessionPage() {
         shooting_format: isCompak ? format : null,
         course_count: isCompak ? count : null,
         total_targets: isCompak ? count * 25 : null,
+        competition_date: competitionDate || null,
         leirdue_result_url: leirdueResultUrl.trim() || null,
       })
       .select("id")
@@ -98,6 +100,8 @@ export default function NewSessionPage() {
         <h2>New session</h2>
         <label>Session name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Session name" />
+        <label>Date</label>
+        <input value={competitionDate} onChange={(e) => setCompetitionDate(e.target.value)} type="date" />
         <label>Leirdue.net result URL</label>
         <input
           value={leirdueResultUrl}

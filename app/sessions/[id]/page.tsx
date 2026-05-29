@@ -6,6 +6,10 @@ import { useParams, useRouter } from "next/navigation";
 import { getSchemeType, plateRotation } from "@/lib/fitasc/schemes";
 import { supabase } from "@/lib/supabase/client";
 
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
+}
+
 export default function Page() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -48,11 +52,17 @@ export default function Page() {
       <div className="card">
         <h2>{session.name}</h2>
         <span className="pill">{session.discipline}</span>
+        <span className="pill">{formatDate(session.competition_date || session.created_at)}</span>
         <span className="pill">{session.session_type}</span>
         {session.shooting_format && <span className="pill">{session.shooting_format}</span>}
         <span className="pill">
           Misses <strong>{count}</strong>
         </span>
+        {session.own_score !== null && session.own_score !== undefined && session.winning_score !== null && session.winning_score !== undefined && (
+          <span className="pill">
+            Score <strong>{session.own_score} / {session.winning_score}</strong>
+          </span>
+        )}
         <div className="btns">
           <Link href={`/sessions/${session.id}/log`} className="button">
             Log miss

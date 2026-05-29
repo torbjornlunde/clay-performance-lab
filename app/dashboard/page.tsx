@@ -14,6 +14,8 @@ type Row = {
   course_count: number | null;
   total_targets?: number | null;
   created_at: string;
+  competition_date?: string | null;
+  leirdue_result_url?: string | null;
   own_score?: number | null;
   winning_score?: number | null;
   calculated_score?: number | null;
@@ -62,6 +64,10 @@ function typeLabel(session: Row, missCounts: Record<string, number>) {
   return session.session_type === "Competition" ? "Competition" : "Training";
 }
 
+function displayDate(session: Row) {
+  return session.competition_date || session.created_at;
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
 }
@@ -81,7 +87,7 @@ function SessionCard({ session, missCounts }: { session: Row; missCounts: Record
         <div className="small muted sessionMeta">
           <span>{session.discipline}</span>
           {session.shooting_format && <span>{session.shooting_format}</span>}
-          <span>{formatDate(session.created_at)}</span>
+          <span>{formatDate(displayDate(session))}</span>
         </div>
         <div className="metricsRow">
           {session.course_count ? (
@@ -99,9 +105,16 @@ function SessionCard({ session, missCounts }: { session: Row; missCounts: Record
           )}
         </div>
       </div>
-      <Link href={`/sessions/${session.id}`} className="button secondary smallButton">
-        Open
-      </Link>
+      <div className="sessionActions">
+        {session.leirdue_result_url && (
+          <a href={session.leirdue_result_url} target="_blank" rel="noreferrer" className="button secondary smallButton">
+            Open Leirdue
+          </a>
+        )}
+        <Link href={`/sessions/${session.id}`} className="button secondary smallButton">
+          Open
+        </Link>
+      </div>
     </article>
   );
 }
@@ -131,7 +144,7 @@ export default function DashboardPage() {
       return acc;
     }, {});
 
-    setSessions(data || []);
+    setSessions((data || []).slice().sort((a, b) => new Date(displayDate(b)).getTime() - new Date(displayDate(a)).getTime()));
     setMissCounts(counts);
     setLoading(false);
   }
@@ -163,6 +176,9 @@ export default function DashboardPage() {
         <div className="btns heroActions">
           <Link href="/sessions/new" className="button">
             New session
+          </Link>
+          <Link href="/results/new" className="button secondary">
+            Add result
           </Link>
           <Link href="/stats" className="button secondary">
             Stats

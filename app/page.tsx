@@ -1,2 +1,21 @@
 import Link from "next/link";
-export default function HomePage(){return <main><div className="card"><h2>Clay Performance Lab</h2><p>Mobile-first performance logging for clay target shooters.</p><div className="btns"><Link href="/login" className="button">Login</Link><Link href="/dashboard" className="button secondary">Dashboard</Link></div></div></main>}
+
+export default function HomePage() {
+  return (
+    <main className="authMain">
+      <div className="card authCard">
+        <p className="eyebrow">Clay Performance Lab</p>
+        <h2>Mobile-first performance logging for clay target shooters.</h2>
+        <p className="compactCopy">Login or create an account to open your protected shooter workspace.</p>
+        <div className="btns stackedOnMobile">
+          <Link href="/login" className="button">
+            Login
+          </Link>
+          <Link href="/login" className="button secondary">
+            Create account
+          </Link>
+        </div>
+      </div>
+    </main>
+  );
+}

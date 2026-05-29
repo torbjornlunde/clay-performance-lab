@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { getTargetTypeForScheme } from "@/lib/fitasc/schemes";
+import { getTargetTypeForScheme, machineText, type FitascSchemeRow } from "@/lib/fitasc/schemes";
 import { supabase } from "@/lib/supabase/client";
 
 type Session = {
@@ -65,6 +65,7 @@ export default function LogPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [recentMisses, setRecentMisses] = useState<RecentMiss[]>([]);
+  const [schemeRows, setSchemeRows] = useState<FitascSchemeRow[]>([]);
   const [courseNumber, setCourseNumber] = useState(1);
   const [plate, setPlate] = useState(1);
   const [targetNumber, setTargetNumber] = useState(1);
@@ -87,11 +88,35 @@ export default function LogPage() {
   const isCompak = session?.discipline === "Compak Sporting";
   const schemeMissing = Boolean(isCompak && current && !current.fitasc_scheme);
   const targetType = isCompak && current?.fitasc_scheme ? getTargetTypeForScheme(current.fitasc_scheme, targetNumber) : "Unknown";
+  const machineLookup = useMemo(() => {
+    if (!current?.fitasc_scheme) return null;
+    return schemeRows.find(
+      (row) => row.scheme_number === current.fitasc_scheme && row.plate_number === plate && row.event_number === targetNumber,
+    );
+  }, [current?.fitasc_scheme, plate, schemeRows, targetNumber]);
 
   useEffect(() => {
     if (targetType === "Single") setMissedTarget("Single target");
     else if (targetType === "Report double" || targetType === "Simo double") setMissedTarget("Second target in pair");
   }, [targetType]);
+
+
+  useEffect(() => {
+    async function loadSchemeRows() {
+      if (!current?.fitasc_scheme) {
+        setSchemeRows([]);
+        return;
+      }
+      const { data } = await supabase
+        .from("fitasc_compak_schemes")
+        .select("scheme_number,plate_number,event_number,presentation,first_machine,second_machine,is_verified,source")
+        .eq("scheme_number", current.fitasc_scheme)
+        .returns<FitascSchemeRow[]>();
+      setSchemeRows(data || []);
+    }
+
+    loadSchemeRows();
+  }, [current?.fitasc_scheme]);
 
   async function load() {
     const { data: u } = await supabase.auth.getUser();
@@ -343,6 +368,14 @@ export default function LogPage() {
             </select>
             <div className="notice small">
               Detected target type: <strong>{targetType}</strong>
+              <br />
+              Machine/pair: <strong>{machineLookup ? machineText(machineLookup.first_machine, machineLookup.second_machine) : "Unknown"}</strong>
+              {(!machineLookup || machineText(machineLookup.first_machine, machineLookup.second_machine) === "Unknown") && (
+                <>
+                  <br />
+                  Machine unknown for this scheme until exact FITASC data is imported.
+                </>
+              )}
             </div>
             {schemeMissing && (
               <div className="notice small">

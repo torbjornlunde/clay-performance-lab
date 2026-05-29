@@ -13,6 +13,7 @@ type Session = {
   session_type: string;
   shooting_format: string | null;
   course_count: number | null;
+  competition_date: string | null;
   leirdue_result_url: string | null;
 };
 
@@ -50,6 +51,7 @@ export default function EditSessionPage() {
   const [format, setFormat] = useState("Inline");
   const [count, setCount] = useState(1);
   const [courses, setCourses] = useState<CourseSetup[]>([]);
+  const [competitionDate, setCompetitionDate] = useState("");
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
@@ -67,7 +69,7 @@ export default function EditSessionPage() {
 
     const { data: session } = await supabase
       .from("sessions")
-      .select("id,name,discipline,session_type,shooting_format,course_count,leirdue_result_url")
+      .select("id,name,discipline,session_type,shooting_format,course_count,competition_date,leirdue_result_url")
       .eq("id", params.id)
       .single<Session>();
     const { data: courseRows } = await supabase
@@ -97,6 +99,7 @@ export default function EditSessionPage() {
     setFormat(session.shooting_format || "Inline");
     setCount(nextCount);
     setCourses(makeCourses(nextCount, mappedCourses));
+    setCompetitionDate(session.competition_date || "");
     setLeirdueResultUrl(session.leirdue_result_url || "");
     setLoaded(true);
   }
@@ -122,6 +125,7 @@ export default function EditSessionPage() {
         shooting_format: format,
         course_count: count,
         total_targets: count * 25,
+        competition_date: competitionDate || null,
         leirdue_result_url: leirdueResultUrl.trim() || null,
       })
       .eq("id", params.id);
@@ -182,6 +186,8 @@ export default function EditSessionPage() {
         <h2>Edit setup</h2>
         <label>Session name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Session name" />
+        <label>Date</label>
+        <input value={competitionDate} onChange={(e) => setCompetitionDate(e.target.value)} type="date" />
         <label>Leirdue.net result URL</label>
         <input
           value={leirdueResultUrl}
