@@ -965,6 +965,7 @@ html, body {
 }
 
 .compactSummaryGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   max-width: none;
   margin: 4px 0 0;
 }
@@ -980,6 +981,15 @@ html, body {
 
 .compactSummaryGrid .summaryStat strong {
   font-size: clamp(18px, 3vw, 24px);
+}
+
+.compactSummaryGrid .consistencyStat strong {
+  font-size: clamp(16px, 2.6vw, 22px);
+}
+
+.consistencyStat p {
+  margin: 7px 0 0;
+  line-height: 1.35;
 }
 
 .statsChartCard .sectionHeader {
@@ -1024,7 +1034,7 @@ html, body {
   }
 
   .compactSummaryGrid {
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 7px;
   }
 

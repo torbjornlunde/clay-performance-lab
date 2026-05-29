@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { calculateRollingAverage, calculateRollingStdDev, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
 import { supabase } from "@/lib/supabase/client";
 
 type SessionRow = {
@@ -54,6 +55,10 @@ function sortOldestFirst(a: { session: SessionRow }, b: { session: SessionRow })
 
 function sortNewestChartPoints(a: ChartPoint, b: ChartPoint) {
   return new Date(b.date).getTime() - new Date(a.date).getTime();
+}
+
+function formatConsistency(value: number | null) {
+  return value === null ? "Not enough data yet" : `± ${value.toFixed(1)} pp`;
 }
 
 function chartBounds(percentages: number[]) {
@@ -200,10 +205,27 @@ export default function StatsPage() {
 
   const summary = useMemo(() => {
     if (chartPoints.length === 0) return null;
-    const latest = chartPoints[chartPoints.length - 1].percentage;
-    const best = Math.max(...chartPoints.map((point) => point.percentage));
-    const average = chartPoints.reduce((sum, point) => sum + point.percentage, 0) / chartPoints.length;
-    return { latest, best, average };
+    const percentages = chartPoints.map((point) => point.percentage);
+    const rollingAverages = calculateRollingAverage(percentages, DEFAULT_ROLLING_WINDOW_SIZE);
+    const rollingConsistency = calculateRollingStdDev(percentages, DEFAULT_ROLLING_WINDOW_SIZE);
+    const latest = percentages[percentages.length - 1];
+    const best = Math.max(...percentages);
+    const average = percentages.reduce((sum, point) => sum + point, 0) / percentages.length;
+    const latestConsistency = rollingConsistency[rollingConsistency.length - 1] ?? null;
+    const bestConsistency = rollingConsistency.reduce<number | null>((lowest, value) => {
+      if (value === null) return lowest;
+      return lowest === null ? value : Math.min(lowest, value);
+    }, null);
+    const latestRollingAverage = rollingAverages[rollingAverages.length - 1] ?? null;
+    return {
+      latest,
+      best,
+      average,
+      latestConsistency,
+      bestConsistency,
+      latestRollingAverage,
+      rollingWindowSize: DEFAULT_ROLLING_WINDOW_SIZE,
+    };
   }, [chartPoints]);
 
   return (
@@ -251,6 +273,18 @@ export default function StatsPage() {
             <div className="summaryStat">
               <span>Average</span>
               <strong>{summary.average.toFixed(1)}%</strong>
+            </div>
+            <div className="summaryStat consistencyStat">
+              <span>Consistency</span>
+              <strong>{formatConsistency(summary.latestConsistency)}</strong>
+              <p className="small muted">Lower is better. Shows variation around your rolling average.</p>
+              {summary.bestConsistency !== null && (
+                <p className="small muted">Best variation: {formatConsistency(summary.bestConsistency)}</p>
+              )}
+              <p className="small muted">
+                Rolling window: latest {summary.rollingWindowSize} results
+                {summary.latestRollingAverage !== null ? ` · rolling average ${summary.latestRollingAverage.toFixed(1)}%` : ""}
+              </p>
             </div>
           </div>
         ) : null}
