@@ -30,6 +30,7 @@ export default function NewSessionPage() {
   const [count, setCount] = useState(3);
   const [courses, setCourses] = useState<CourseSetup[]>(makeCourses(3, []));
   const [sporttrapStand, setSporttrapStand] = useState(1);
+  const [sporttrapSeriesCount, setSporttrapSeriesCount] = useState(1);
   const [competitionDate, setCompetitionDate] = useState(new Date().toISOString().slice(0, 10));
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
   const [ownScore, setOwnScore] = useState("");
@@ -66,7 +67,8 @@ export default function NewSessionPage() {
         session_type: sessionType,
         shooting_format: isCompak ? format : isSporttrap ? "Sporttrap" : null,
         course_count: isCompak ? count : isSporttrap ? 1 : null,
-        total_targets: isCompak ? count * 25 : isSporttrap ? 25 : null,
+        sporttrap_series_count: isSporttrap ? sporttrapSeriesCount : null,
+        total_targets: isCompak ? count * 25 : isSporttrap ? sporttrapSeriesCount * 25 : null,
         competition_date: competitionDate || null,
         own_score: ownScore === "" ? null : Number(ownScore),
         winning_score: winningScore === "" ? null : Number(winningScore),
@@ -167,7 +169,15 @@ export default function NewSessionPage() {
         {discipline === "Sporttrap" && (
           <div className="subcard">
             <h3>Sporttrap setup</h3>
-            <p className="small muted">Fixed program: 3 rounds / 5 stands / machines A-E. Total targets defaults to 25.</p>
+            <p className="small muted">Each 25-target series uses the fixed Sporttrap program. Total targets: {sporttrapSeriesCount * 25}.</p>
+            <label>Number of 25-target series</label>
+            <select value={sporttrapSeriesCount} onChange={(e) => setSporttrapSeriesCount(Number(e.target.value))}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
             <label>Shooter / stand number</label>
             <select value={sporttrapStand} onChange={(e) => setSporttrapStand(Number(e.target.value))}>
               {[1, 2, 3, 4, 5].map((n) => (

@@ -13,6 +13,8 @@ type Session = {
   session_type: string;
   shooting_format: string | null;
   course_count: number | null;
+  total_targets: number | null;
+  sporttrap_series_count: number | null;
   leirdue_result_url: string | null;
   competition_date: string | null;
   own_score: number | null;
@@ -54,6 +56,7 @@ export default function EditSessionPage() {
   const [format, setFormat] = useState("Inline");
   const [count, setCount] = useState(1);
   const [courses, setCourses] = useState<CourseSetup[]>([]);
+  const [sporttrapSeriesCount, setSporttrapSeriesCount] = useState(1);
   const [competitionDate, setCompetitionDate] = useState("");
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
   const [ownScore, setOwnScore] = useState("");
@@ -74,7 +77,7 @@ export default function EditSessionPage() {
 
     const { data: session } = await supabase
       .from("sessions")
-      .select("id,name,discipline,session_type,shooting_format,course_count,leirdue_result_url,competition_date,own_score,winning_score")
+      .select("id,name,discipline,session_type,shooting_format,course_count,total_targets,sporttrap_series_count,leirdue_result_url,competition_date,own_score,winning_score")
       .eq("id", params.id)
       .single<Session>();
     const { data: courseRows } = await supabase
@@ -90,7 +93,8 @@ export default function EditSessionPage() {
       return;
     }
 
-    const nextCount = session.course_count || Math.max(courseRows?.length || 0, 1);
+    const sporttrapSeries = session.sporttrap_series_count || (session.discipline === "Sporttrap" && session.total_targets ? Math.max(Math.round(session.total_targets / 25), 1) : 1);
+    const nextCount = session.discipline === "Sporttrap" ? 1 : session.course_count || Math.max(courseRows?.length || 0, 1);
     const mappedCourses = (courseRows || []).map((course) => ({
       id: course.id,
       courseNumber: course.course_number,
@@ -105,6 +109,7 @@ export default function EditSessionPage() {
     setFormat(session.shooting_format || "Inline");
     setCount(nextCount);
     setCourses(makeCourses(nextCount, mappedCourses));
+    setSporttrapSeriesCount(sporttrapSeries);
     setCompetitionDate(session.competition_date || "");
     setLeirdueResultUrl(session.leirdue_result_url || "");
     setOwnScore(session.own_score === null || session.own_score === undefined ? "" : String(session.own_score));
@@ -136,7 +141,7 @@ export default function EditSessionPage() {
         ...(isCompak
           ? { shooting_format: format, course_count: count, total_targets: count * 25 }
           : isSporttrap
-            ? { shooting_format: "Sporttrap", course_count: 1, total_targets: 25 }
+            ? { shooting_format: "Sporttrap", course_count: 1, sporttrap_series_count: sporttrapSeriesCount, total_targets: sporttrapSeriesCount * 25 }
             : {}),
         competition_date: competitionDate || null,
         own_score: ownScore === "" ? null : Number(ownScore),
@@ -244,7 +249,15 @@ export default function EditSessionPage() {
         {discipline === "Sporttrap" && (
           <div className="subcard">
             <h3>Sporttrap setup</h3>
-            <p className="small muted">Fixed program: 3 rounds / 5 stands / machines A-E. Total targets defaults to 25.</p>
+            <p className="small muted">Each 25-target series uses the fixed Sporttrap program. Total targets: {sporttrapSeriesCount * 25}.</p>
+            <label>Number of 25-target series</label>
+            <select value={sporttrapSeriesCount} onChange={(e) => setSporttrapSeriesCount(Number(e.target.value))}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
             <label>Shooter / stand number</label>
             <select value={courses[0]?.shooterNumber || 1} onChange={(e) => updateCourse(0, { shooterNumber: Number(e.target.value) })}>
               {[1, 2, 3, 4, 5].map((n) => (

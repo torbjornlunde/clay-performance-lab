@@ -74,13 +74,13 @@ export default function AnalysisPage() {
       <div className="card">
         <h2>Patterns</h2>
         <p>
-          <strong>Course:</strong> {analysis.formatted.byCourse}
+          <strong>{isSporttrap ? "Series" : "Course"}:</strong> {analysis.formatted.byCourse}
         </p>
         <p>
           <strong>{isSporttrap ? "Stand" : "Plate"}:</strong> {analysis.formatted.byPlate}
         </p>
         <p>
-          <strong>{isSporttrap ? "Round" : "Target / pair"}:</strong> {analysis.formatted.byTargetNumber}
+          <strong>{isSporttrap ? "Sporttrap sequence" : "Target / pair"}:</strong> {analysis.formatted.byTargetNumber}
         </p>
         <p>
           <strong>Target/machine:</strong> {analysis.formatted.byTargetLabel}
@@ -122,7 +122,7 @@ export default function AnalysisPage() {
             <div className="subcard" key={miss.id}>
               <strong>
                 {isSporttrap
-                  ? `Stand ${miss.plate ?? "-"} · Round ${miss.target_number ?? "-"} · ${miss.target_label || "Unknown"}`
+                  ? `Series ${miss.course_number ?? "-"} · Stand ${miss.plate ?? "-"} · Sporttrap sequence ${miss.target_type || "-"} · ${miss.target_label || "Unknown"}`
                   : `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Unknown"}`}
               </strong>
               <div className="small muted">

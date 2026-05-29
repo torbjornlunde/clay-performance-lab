@@ -30,11 +30,13 @@ export default function Page() {
 
   if (!session) return <main><div className="card">Loading...</div></main>;
 
-  const calculatedScore = typeof session.total_targets === "number" ? Math.max(session.total_targets - count, 0) : null;
+  const isSporttrap = session.discipline === "Sporttrap";
+  const sporttrapSeriesCount = isSporttrap ? session.sporttrap_series_count || (session.total_targets ? Math.max(Math.round(session.total_targets / 25), 1) : 1) : null;
+  const totalTargets = isSporttrap && sporttrapSeriesCount ? sporttrapSeriesCount * 25 : session.total_targets;
+  const calculatedScore = typeof totalTargets === "number" ? Math.max(totalTargets - count, 0) : null;
   const scoreUsed = typeof session.own_score === "number" ? session.own_score : calculatedScore;
   const percentage = typeof scoreUsed === "number" && typeof session.winning_score === "number" && session.winning_score > 0 ? (scoreUsed / session.winning_score) * 100 : null;
   const resultOnly = session.session_type === "Competition" && session.own_score !== null && session.winning_score !== null && courses.length === 0 && count === 0;
-  const isSporttrap = session.discipline === "Sporttrap";
   const sporttrapStand = courses[0]?.shooter_number;
 
   return (
@@ -47,7 +49,7 @@ export default function Page() {
         {resultOnly && <span className="pill">Result only</span>}
         {session.shooting_format && !isSporttrap && <span className="pill">{session.shooting_format}</span>}
         <div className="summaryGrid">
-          <div className="summaryStat"><span>Total targets</span><strong>{session.total_targets ?? "-"}</strong></div>
+          <div className="summaryStat"><span>Total targets</span><strong>{totalTargets ?? "-"}</strong></div>
           <div className="summaryStat"><span>Registered misses</span><strong>{count}</strong></div>
           <div className="summaryStat"><span>Calculated score</span><strong>{calculatedScore ?? "-"}</strong></div>
           <div className="summaryStat"><span>Manual/official score</span><strong>{session.own_score ?? "-"}</strong></div>
@@ -70,8 +72,9 @@ export default function Page() {
         <div className="card">
           <h2>Sporttrap setup</h2>
           <div className="subcard">
-            <strong>Fixed program</strong>
-            <div className="small muted">3 rounds / 5 stands / machines A-E</div>
+            <strong>Sporttrap</strong>
+            <div className="small muted">Number of 25-target series: {sporttrapSeriesCount ?? "-"}</div>
+            <div className="small muted">Total targets: {totalTargets ?? "-"}</div>
             <div className="small muted">Stand/shooter number: {sporttrapStand ?? "-"}</div>
           </div>
         </div>

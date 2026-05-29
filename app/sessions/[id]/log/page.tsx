@@ -12,6 +12,8 @@ type Session = {
   name: string;
   discipline: string;
   shooting_format: string | null;
+  total_targets: number | null;
+  sporttrap_series_count: number | null;
 };
 
 type Course = {
@@ -69,6 +71,7 @@ export default function LogPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [recentMisses, setRecentMisses] = useState<RecentMiss[]>([]);
   const [courseNumber, setCourseNumber] = useState(1);
+  const [seriesNumber, setSeriesNumber] = useState(1);
   const [plate, setPlate] = useState(1);
   const [targetNumber, setTargetNumber] = useState(1);
   const [showManualMachine, setShowManualMachine] = useState(false);
@@ -95,6 +98,7 @@ export default function LogPage() {
   const schemeMissing = Boolean(isCompak && current && !current.fitasc_scheme);
   const expectedRows = current?.fitasc_scheme ? getExpectedPresentationRows(current.fitasc_scheme) : ["unknown"];
   const schemeRow = schemeRows.find((row) => row.scheme_number === current?.fitasc_scheme && row.plate_number === plate && row.event_number === targetNumber);
+  const sporttrapSeriesCount = isSporttrap ? session?.sporttrap_series_count || (session?.total_targets ? Math.max(Math.round(session.total_targets / 25), 1) : 1) : 1;
   const sporttrapEvent = getSporttrapEvent(plate, targetNumber);
   const sporttrapTargetType = getSporttrapPresentationLabel(sporttrapEvent.presentation);
   const sporttrapTargetLabel = getSporttrapMachineLabel(sporttrapEvent);
@@ -107,7 +111,7 @@ export default function LogPage() {
         : "Unknown";
   const targetLabel = isSporttrap ? sporttrapTargetLabel : showManualMachine ? manualMachine : getMachineLabelFromRow(schemeRow);
   const calculatedText = isSporttrap
-    ? `Calculated: ${sporttrapTargetLabel} · ${sporttrapTargetType}`
+    ? `Sporttrap sequence: ${sporttrapTargetType} · ${sporttrapTargetLabel}`
     : schemeRow
       ? `Calculated: ${getMachineLabelFromRow(schemeRow)} · ${getPresentationLabel(schemeRow.presentation)}`
       : "Machine unavailable for this plate and target / pair selection.";
@@ -126,7 +130,7 @@ export default function LogPage() {
 
     const { data: sessionData } = await supabase
       .from("sessions")
-      .select("id,name,discipline,shooting_format")
+      .select("id,name,discipline,shooting_format,total_targets,sporttrap_series_count")
       .eq("id", params.id)
       .single<Session>();
     const { data: courseData } = await supabase
@@ -207,7 +211,7 @@ export default function LogPage() {
     setSaving(true);
     const { error } = await supabase.from("misses").insert({
       session_id: session.id,
-      course_number: isCompak || isSporttrap ? courseNumber : null,
+      course_number: isSporttrap ? seriesNumber : isCompak ? courseNumber : null,
       plate: isCompak || isSporttrap ? plate : null,
       target_number: isCompak || isSporttrap ? targetNumber : null,
       target_label: isCompak || isSporttrap ? targetLabel : null,
@@ -347,6 +351,18 @@ export default function LogPage() {
         {session.discipline === "Sporttrap" && (
           <>
             <div className="row">
+              {sporttrapSeriesCount > 1 && (
+                <div>
+                  <label>Series</label>
+                  <select value={seriesNumber} onChange={(e) => setSeriesNumber(Number(e.target.value))}>
+                    {Array.from({ length: sporttrapSeriesCount }, (_, index) => index + 1).map((v) => (
+                      <option key={v} value={v}>
+                        Series {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label>Stand / shooter number</label>
                 <select value={plate} onChange={(e) => setPlate(Number(e.target.value))}>
@@ -358,13 +374,16 @@ export default function LogPage() {
                 </select>
               </div>
               <div>
-                <label>Round</label>
+                <label>Sporttrap sequence</label>
                 <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
-                  {[1, 2, 3].map((v) => (
-                    <option key={v} value={v}>
-                      Round {v}
-                    </option>
-                  ))}
+                  {[1, 2, 3].map((v) => {
+                    const event = getSporttrapEvent(plate, v);
+                    return (
+                      <option key={v} value={v}>
+                        {getSporttrapPresentationLabel(event.presentation)}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>
@@ -456,7 +475,7 @@ export default function LogPage() {
             <div className="subcard" key={miss.id}>
               <strong>
                 {isSporttrap
-                  ? `Stand ${miss.plate ?? "-"} · Round ${miss.target_number ?? "-"} · ${miss.target_label || "Unknown"}`
+                  ? `Series ${miss.course_number ?? "-"} · Stand ${miss.plate ?? "-"} · Sporttrap sequence ${miss.target_type || "-"} · ${miss.target_label || "Unknown"}`
                   : `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Unknown"}`}
               </strong>
               <div className="small muted">
