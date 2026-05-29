@@ -35,6 +35,7 @@ body {
 
 body {
   letter-spacing: -0.01em;
+  overflow-x: hidden;
 }
 
 a {
@@ -482,14 +483,16 @@ button:disabled,
 }
 
 .chartWrap {
-  overflow-x: auto;
+  overflow: hidden;
   padding-bottom: 4px;
+  width: 100%;
 }
 
 .performanceChart {
+  display: block;
   width: 100%;
-  min-width: 460px;
-  height: 260px;
+  max-width: 100%;
+  height: auto;
   border: 1px solid var(--line);
   border-radius: 18px;
   background:
@@ -620,3 +623,11 @@ button:disabled,
     align-items: flex-start;
   }
 }
+
+.modeToggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+.modeToggle button { border: 1px solid var(--line); }
+.modeToggle .active { background: linear-gradient(135deg, var(--gold2), var(--gold)) !important; color: #17130a !important; }
+.schemeGrid { display: grid; gap: 12px; }
+.schemeEvent { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
+.actionCard { border-color: rgba(216, 165, 58, 0.42); }
+@media (max-width: 680px) { .heroCard, .sessionItem, .statListItem, .row, .summaryGrid { grid-template-columns: 1fr; } .heroActions { justify-content: stretch; } .btns .button, .btns button { width: 100%; } .sectionHeader, .groupHeader, .sessionTopline { flex-direction: column; align-items: flex-start; } .topNav { display: none; } }

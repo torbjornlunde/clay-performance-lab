@@ -54,31 +54,42 @@ function percentageFor(session: SessionRow, missCounts: Record<string, number>) 
 }
 
 function PerformanceChart({ points }: { points: ChartPoint[] }) {
-  const width = 720;
-  const height = 260;
-  const padding = 34;
+  const width = 360;
+  const height = 240;
+  const paddingX = 34;
+  const paddingTop = 28;
+  const paddingBottom = 42;
   const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
   const maxPercentage = Math.max(100, ...points.map((point) => point.percentage));
   const minPercentage = Math.min(0, ...points.map((point) => point.percentage));
   const range = Math.max(maxPercentage - minPercentage, 1);
-  const referenceY = padding + (maxPercentage - 100) * ((height - padding * 2) / range);
+  const chartHeight = height - paddingTop - paddingBottom;
+  const referenceY = paddingTop + (maxPercentage - 100) * (chartHeight / range);
+  const labelEvery = Math.max(1, Math.ceil(points.length / 4));
 
   return (
     <div className="chartWrap" role="img" aria-label="Connected line chart showing performance percentage over time">
       <svg className="performanceChart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-        <line x1={padding} x2={width - padding} y1={referenceY} y2={referenceY} className="chartReference" />
-        <text x={padding} y={referenceY - 8} className="chartText">
+        <line x1={paddingX} x2={width - paddingX} y1={referenceY} y2={referenceY} className="chartReference" />
+        <text x={paddingX} y={Math.max(referenceY - 8, 14)} className="chartText">
           100% winning score
         </text>
-        <line x1={padding} x2={padding} y1={padding} y2={height - padding} className="chartAxis" />
-        <line x1={padding} x2={width - padding} y1={height - padding} y2={height - padding} className="chartAxis" />
+        <line x1={paddingX} x2={paddingX} y1={paddingTop} y2={height - paddingBottom} className="chartAxis" />
+        <line x1={paddingX} x2={width - paddingX} y1={height - paddingBottom} y2={height - paddingBottom} className="chartAxis" />
         <path d={path} className="chartLine" />
-        {points.map((point) => (
+        {points.map((point, index) => (
           <g key={point.id}>
-            <circle cx={point.x} cy={point.y} r="6" className="chartPoint" />
-            <text x={point.x} y={Math.max(point.y - 12, 16)} textAnchor="middle" className="chartText chartPointLabel">
-              {point.percentage.toFixed(0)}%
-            </text>
+            <circle cx={point.x} cy={point.y} r="5" className="chartPoint" />
+            {(index % labelEvery === 0 || index === points.length - 1) && (
+              <>
+                <text x={point.x} y={Math.max(point.y - 10, 14)} textAnchor="middle" className="chartText chartPointLabel">
+                  {point.percentage.toFixed(0)}%
+                </text>
+                <text x={point.x} y={height - 14} textAnchor="middle" className="chartText chartDateLabel">
+                  {formatDate(point.date)}
+                </text>
+              </>
+            )}
           </g>
         ))}
       </svg>
@@ -130,16 +141,18 @@ export default function StatsPage() {
 
     if (scored.length === 0) return [];
 
-    const width = 720;
-    const height = 260;
-    const padding = 34;
+    const width = 360;
+    const height = 240;
+    const paddingX = 34;
+    const paddingTop = 28;
+    const paddingBottom = 42;
     const maxPercentage = Math.max(100, ...scored.map((item) => item.result.percentage));
     const minPercentage = Math.min(0, ...scored.map((item) => item.result.percentage));
     const range = Math.max(maxPercentage - minPercentage, 1);
 
     return scored.map((item, index) => {
-      const x = scored.length === 1 ? width / 2 : padding + index * ((width - padding * 2) / (scored.length - 1));
-      const y = padding + (maxPercentage - item.result.percentage) * ((height - padding * 2) / range);
+      const x = scored.length === 1 ? width / 2 : paddingX + index * ((width - paddingX * 2) / (scored.length - 1));
+      const y = paddingTop + (maxPercentage - item.result.percentage) * ((height - paddingTop - paddingBottom) / range);
       return {
         id: item.session.id,
         name: item.session.name,

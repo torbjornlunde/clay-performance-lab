@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { getTargetTypeForScheme } from "@/lib/fitasc/schemes";
+import { getCompakEvent, getMachineLabel, getPresentationLabel, Machine } from "@/lib/fitasc/compakSchemes";
 import { supabase } from "@/lib/supabase/client";
 
 type Session = {
@@ -32,6 +32,7 @@ type RecentMiss = {
   course_number: number | null;
   plate: number | null;
   target_number: number | null;
+  target_label: string | null;
   target_type: string | null;
   missed_target: string;
   where_miss: string | null;
@@ -57,7 +58,7 @@ const defaultDetail = (): MissDetail => ({
 });
 
 const detailSelect =
-  "id,course_number,plate,target_number,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
+  "id,course_number,plate,target_number,target_label,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
 
 export default function LogPage() {
   const params = useParams<{ id: string }>();
@@ -68,6 +69,10 @@ export default function LogPage() {
   const [courseNumber, setCourseNumber] = useState(1);
   const [plate, setPlate] = useState(1);
   const [targetNumber, setTargetNumber] = useState(1);
+  const [mode, setMode] = useState<"during" | "manual">("during");
+  const [manualMachine, setManualMachine] = useState<Machine>("Unknown");
+  const [manualPlate, setManualPlate] = useState("");
+  const [manualTargetNumber, setManualTargetNumber] = useState("");
   const [missedTarget, setMissedTarget] = useState("Single target");
   const [genericDetail, setGenericDetail] = useState<MissDetail>(defaultDetail);
   const [firstDetail, setFirstDetail] = useState<MissDetail>(defaultDetail);
@@ -86,7 +91,13 @@ export default function LogPage() {
   );
   const isCompak = session?.discipline === "Compak Sporting";
   const schemeMissing = Boolean(isCompak && current && !current.fitasc_scheme);
-  const targetType = isCompak && current?.fitasc_scheme ? getTargetTypeForScheme(current.fitasc_scheme, targetNumber) : "Unknown";
+  const calculatedEvent = isCompak && mode === "during" ? getCompakEvent(current?.fitasc_scheme ?? null, plate, targetNumber) : null;
+  const manualEvent =
+    isCompak && mode === "manual" && manualPlate && manualTargetNumber
+      ? getCompakEvent(current?.fitasc_scheme ?? null, Number(manualPlate), Number(manualTargetNumber))
+      : null;
+  const calculatedMachineLabel = calculatedEvent ? getMachineLabel(calculatedEvent) : "Unknown";
+  const targetType = calculatedEvent ? getPresentationLabel(calculatedEvent.presentation) : manualEvent ? getPresentationLabel(manualEvent.presentation) : "Unknown";
 
   useEffect(() => {
     if (targetType === "Single") setMissedTarget("Single target");
@@ -174,9 +185,9 @@ export default function LogPage() {
     const { error } = await supabase.from("misses").insert({
       session_id: session.id,
       course_number: isCompak ? courseNumber : null,
-      plate: isCompak ? plate : null,
-      target_number: isCompak ? targetNumber : null,
-      target_label: isCompak ? `Target ${targetNumber}` : null,
+      plate: isCompak ? (mode === "manual" ? (manualPlate ? Number(manualPlate) : null) : plate) : null,
+      target_number: isCompak ? (mode === "manual" ? (manualTargetNumber ? Number(manualTargetNumber) : null) : targetNumber) : null,
+      target_label: isCompak ? (mode === "manual" ? manualMachine : calculatedMachineLabel) : null,
       target_type: targetType,
       missed_target: missedTarget,
       where_miss: primaryDetail.whereMiss,
@@ -311,6 +322,10 @@ export default function LogPage() {
         <p className="small muted">{session.name}</p>
         {session.discipline === "Compak Sporting" && (
           <>
+            <div className="modeToggle" aria-label="Logging mode">
+              <button className={mode === "during" ? "active" : "secondary"} onClick={() => setMode("during")} type="button">During shooting</button>
+              <button className={mode === "manual" ? "active" : "secondary"} onClick={() => setMode("manual")} type="button">After shooting / manual</button>
+            </div>
             <div className="row">
               <div>
                 <label>Course</label>
@@ -322,32 +337,69 @@ export default function LogPage() {
                   ))}
                 </select>
               </div>
-              <div>
-                <label>Plate</label>
-                <select value={plate} onChange={(e) => setPlate(Number(e.target.value))}>
+              {mode === "during" ? (
+                <div>
+                  <label>Plate</label>
+                  <select value={plate} onChange={(e) => setPlate(Number(e.target.value))}>
+                    {[1, 2, 3, 4, 5].map((v) => (
+                      <option key={v} value={v}>Plate {v}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label>Machine</label>
+                  <select value={manualMachine} onChange={(e) => setManualMachine(e.target.value as Machine)}>
+                    {["A", "B", "C", "D", "E", "F", "Unknown"].map((machine) => (
+                      <option key={machine} value={machine}>{machine}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+            {mode === "during" ? (
+              <>
+                <label>Event / target number</label>
+                <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
                   {[1, 2, 3, 4, 5].map((v) => (
-                    <option key={v} value={v}>
-                      Plate {v}
-                    </option>
+                    <option key={v} value={v}>Target {v}</option>
                   ))}
                 </select>
-              </div>
-            </div>
-            <label>Target</label>
-            <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
-              {[1, 2, 3, 4, 5].map((v) => (
-                <option key={v} value={v}>
-                  Target {v}
-                </option>
-              ))}
-            </select>
-            <div className="notice small">
-              Detected target type: <strong>{targetType}</strong>
-            </div>
-            {schemeMissing && (
-              <div className="notice small">
-                No FITASC scheme set for this course yet. You can still log the miss, but target type may be unknown.
-              </div>
+                <div className="notice small">
+                  {calculatedMachineLabel === "Unknown" ? (
+                    <>Machine unknown for this scheme until exact FITASC data is imported. Target type: <strong>{targetType}</strong></>
+                  ) : targetType === "Single" ? (
+                    <>Calculated target: <strong>{calculatedMachineLabel}</strong> · {targetType}</>
+                  ) : (
+                    <>Calculated pair: <strong>{calculatedMachineLabel.replace("+", " + ")}</strong> · {targetType}</>
+                  )}
+                </div>
+                {schemeMissing && (
+                  <div className="notice small">
+                    No FITASC scheme set for this course yet. You can still log the miss, but target type may be unknown.
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="small muted">Use manual mode when you remember the target/machine but not the exact plate or event.</p>
+                <div className="row">
+                  <div>
+                    <label>Plate optional</label>
+                    <select value={manualPlate} onChange={(e) => setManualPlate(e.target.value)}>
+                      <option value="">Unknown</option>
+                      {[1, 2, 3, 4, 5].map((v) => <option key={v} value={v}>Plate {v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label>Event / target optional</label>
+                    <select value={manualTargetNumber} onChange={(e) => setManualTargetNumber(e.target.value)}>
+                      <option value="">Unknown</option>
+                      {[1, 2, 3, 4, 5].map((v) => <option key={v} value={v}>Target {v}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </>
             )}
           </>
         )}
@@ -386,7 +438,7 @@ export default function LogPage() {
                 Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · Target {miss.target_number ?? "-"}
               </strong>
               <div className="small muted">
-                Target type: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}
+                Machine: {miss.target_label || "-"} · Target type: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}
               </div>
               {miss.missed_target === "Both targets in pair" ? (
                 <>
