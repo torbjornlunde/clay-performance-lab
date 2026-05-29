@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getSchemeType, plateRotation } from "@/lib/fitasc/schemes";
+import { formatScore, getScoreSummary } from "@/lib/sessionScores";
 import { supabase } from "@/lib/supabase/client";
 
 export default function Page() {
@@ -11,7 +12,7 @@ export default function Page() {
   const router = useRouter();
   const [session, setSession] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
-  const [count, setCount] = useState(0);
+  const [misses, setMisses] = useState<any[]>([]);
 
   useEffect(() => {
     load();
@@ -29,10 +30,13 @@ export default function Page() {
       .select("*")
       .eq("session_id", params.id)
       .order("course_number");
-    const { count: missCount } = await supabase.from("misses").select("id", { count: "exact", head: true }).eq("session_id", params.id);
+    const { data: missData } = await supabase
+      .from("misses")
+      .select("missed_target,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment")
+      .eq("session_id", params.id);
     setSession(sessionData);
     setCourses(courseData || []);
-    setCount(missCount || 0);
+    setMisses(missData || []);
   }
 
   if (!session) {
@@ -43,6 +47,8 @@ export default function Page() {
     );
   }
 
+  const score = getScoreSummary({ total_targets: session.total_targets, own_score: session.own_score, misses });
+
   return (
     <main>
       <div className="card">
@@ -50,9 +56,32 @@ export default function Page() {
         <span className="pill">{session.discipline}</span>
         <span className="pill">{session.session_type}</span>
         {session.shooting_format && <span className="pill">{session.shooting_format}</span>}
+        {score.totalTargets !== null && (
+          <span className="pill">
+            Total targets <strong>{score.totalTargets}</strong>
+          </span>
+        )}
         <span className="pill">
-          Misses <strong>{count}</strong>
+          Registered misses <strong>{score.registeredMisses}</strong>
         </span>
+        {session.own_score !== null && session.own_score !== undefined && (
+          <span className="pill">
+            Official/manual score: <strong>{session.own_score}</strong>
+          </span>
+        )}
+        {score.calculatedScore !== null && (
+          <span className="pill">
+            Calculated score: <strong>{formatScore(score.calculatedScore, score.totalTargets)}</strong>
+          </span>
+        )}
+        {session.winning_score !== null && session.winning_score !== undefined && (
+          <span className="pill">
+            Winning score <strong>{session.winning_score}</strong>
+          </span>
+        )}
+        {score.manualDiffers && (
+          <p className="small notice">Manual score differs from logged misses. This can happen if not all misses were logged.</p>
+        )}
         <div className="btns">
           <Link href={`/sessions/${session.id}/log`} className="button">
             Log miss
