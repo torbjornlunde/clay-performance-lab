@@ -75,6 +75,9 @@ export default function AnalysisPage() {
           <strong>Target type:</strong> {analysis.formatted.byTargetType}
         </p>
         <p>
+          <strong>Target machine:</strong> {analysis.formatted.byTargetMachine}
+        </p>
+        <p>
           <strong>Miss row type:</strong> {analysis.formatted.byMissedTarget}
         </p>
         <p>
@@ -110,7 +113,7 @@ export default function AnalysisPage() {
                 Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · Target {miss.target_number ?? "-"}
               </strong>
               <div className="small muted">
-                {miss.target_type || "-"} · {miss.missed_target} · {miss.where_miss || "-"} · {miss.main_reason || "-"}
+                {miss.target_label || "Unknown"} · {miss.target_type || "-"} · {miss.missed_target} · {miss.where_miss || "-"} · {miss.main_reason || "-"}
               </div>
               {miss.missed_target === "Both targets in pair" && (
                 <>

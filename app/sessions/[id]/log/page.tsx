@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { getTargetTypeForScheme } from "@/lib/fitasc/schemes";
+import { getCompakEvent, getEventCountForScheme, getMachineLabel, getPresentationLabel } from "@/lib/fitasc/compakSchemes";
 import { supabase } from "@/lib/supabase/client";
 
 type Session = {
@@ -32,6 +32,7 @@ type RecentMiss = {
   course_number: number | null;
   plate: number | null;
   target_number: number | null;
+  target_label: string | null;
   target_type: string | null;
   missed_target: string;
   where_miss: string | null;
@@ -57,7 +58,7 @@ const defaultDetail = (): MissDetail => ({
 });
 
 const detailSelect =
-  "id,course_number,plate,target_number,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
+  "id,course_number,plate,target_number,target_label,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
 
 export default function LogPage() {
   const params = useParams<{ id: string }>();
@@ -86,11 +87,14 @@ export default function LogPage() {
   );
   const isCompak = session?.discipline === "Compak Sporting";
   const schemeMissing = Boolean(isCompak && current && !current.fitasc_scheme);
-  const targetType = isCompak && current?.fitasc_scheme ? getTargetTypeForScheme(current.fitasc_scheme, targetNumber) : "Unknown";
+  const compakEvent = isCompak ? getCompakEvent(current?.fitasc_scheme ?? null, plate, targetNumber) : null;
+  const targetType = compakEvent ? getPresentationLabel(compakEvent.presentation) : "Unknown";
+  const machineLabel = compakEvent ? getMachineLabel(compakEvent) : "Unknown";
+  const targetOptions = Array.from({ length: getEventCountForScheme(current?.fitasc_scheme ?? null) }, (_, i) => i + 1);
 
   useEffect(() => {
     if (targetType === "Single") setMissedTarget("Single target");
-    else if (targetType === "Report double" || targetType === "Simo double") setMissedTarget("Second target in pair");
+    else if (targetType === "Report pair" || targetType === "Simo pair") setMissedTarget("Second target in pair");
   }, [targetType]);
 
   async function load() {
@@ -176,7 +180,7 @@ export default function LogPage() {
       course_number: isCompak ? courseNumber : null,
       plate: isCompak ? plate : null,
       target_number: isCompak ? targetNumber : null,
-      target_label: isCompak ? `Target ${targetNumber}` : null,
+      target_label: isCompak ? machineLabel : null,
       target_type: targetType,
       missed_target: missedTarget,
       where_miss: primaryDetail.whereMiss,
@@ -335,14 +339,29 @@ export default function LogPage() {
             </div>
             <label>Target</label>
             <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
-              {[1, 2, 3, 4, 5].map((v) => (
+              {targetOptions.map((v) => (
                 <option key={v} value={v}>
                   Target {v}
                 </option>
               ))}
             </select>
             <div className="notice small">
-              Detected target type: <strong>{targetType}</strong>
+              {compakEvent?.isVerified && compakEvent.presentation === "single" && (
+                <>
+                  Calculated target: <strong>{machineLabel}</strong> · Single
+                </>
+              )}
+              {compakEvent?.isVerified && compakEvent.presentation === "report_pair" && (
+                <>
+                  Calculated pair: <strong>{machineLabel.replace("+", " + ")}</strong> · Report pair
+                </>
+              )}
+              {compakEvent?.isVerified && compakEvent.presentation === "simo_pair" && (
+                <>
+                  Calculated pair: <strong>{machineLabel.replace("+", " + ")}</strong> · Simo pair
+                </>
+              )}
+              {!compakEvent?.isVerified && <>Machine unknown for this scheme until exact FITASC data is imported.</>}
             </div>
             {schemeMissing && (
               <div className="notice small">
@@ -386,7 +405,7 @@ export default function LogPage() {
                 Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · Target {miss.target_number ?? "-"}
               </strong>
               <div className="small muted">
-                Target type: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}
+                Target: {miss.target_label || "-"} · Target type: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}
               </div>
               {miss.missed_target === "Both targets in pair" ? (
                 <>
