@@ -620,3 +620,82 @@ button:disabled,
     align-items: flex-start;
   }
 }
+
+.schemeGridWrap {
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.schemeGrid {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: separate;
+  border-spacing: 8px;
+}
+
+.schemeGrid th,
+.schemeGrid td {
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(10, 16, 24, 0.82);
+  padding: 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.schemeGrid th {
+  color: #ffe2a0;
+  font-size: 12px;
+}
+
+.schemeGrid td strong,
+.schemeGrid td span,
+.schemeGrid td em {
+  display: block;
+}
+
+.schemeGrid td strong {
+  color: var(--text);
+  font-size: 18px;
+  margin-bottom: 5px;
+}
+
+.schemeGrid td span,
+.schemeGrid td em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.schemeGrid td em.verified {
+  color: #c8ffd8;
+}
+
+.schemeGrid td em.unverified {
+  color: #ffd0c8;
+}
+
+.adminGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.checkRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: var(--text);
+}
+
+.checkRow input {
+  width: auto;
+  min-height: auto;
+}
+
+@media (max-width: 720px) {
+  .adminGrid {
+    grid-template-columns: 1fr;
+  }
+}

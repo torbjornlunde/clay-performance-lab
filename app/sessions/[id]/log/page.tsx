@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { getTargetTypeForScheme } from "@/lib/fitasc/schemes";
+import { FitascSchemeCell, formatMachineLabel, getTargetTypeForScheme, presentationToTargetType } from "@/lib/fitasc/schemes";
 import { supabase } from "@/lib/supabase/client";
 
 type Session = {
@@ -33,6 +33,7 @@ type RecentMiss = {
   plate: number | null;
   target_number: number | null;
   target_type: string | null;
+  target_label: string | null;
   missed_target: string;
   where_miss: string | null;
   main_reason: string | null;
@@ -57,7 +58,7 @@ const defaultDetail = (): MissDetail => ({
 });
 
 const detailSelect =
-  "id,course_number,plate,target_number,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
+  "id,course_number,plate,target_number,target_label,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
 
 export default function LogPage() {
   const params = useParams<{ id: string }>();
@@ -75,6 +76,8 @@ export default function LogPage() {
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [schemeCell, setSchemeCell] = useState<FitascSchemeCell | null>(null);
+  const [schemeLookupLoading, setSchemeLookupLoading] = useState(false);
 
   useEffect(() => {
     load();
@@ -86,12 +89,19 @@ export default function LogPage() {
   );
   const isCompak = session?.discipline === "Compak Sporting";
   const schemeMissing = Boolean(isCompak && current && !current.fitasc_scheme);
-  const targetType = isCompak && current?.fitasc_scheme ? getTargetTypeForScheme(current.fitasc_scheme, targetNumber) : "Unknown";
+  const fallbackTargetType = isCompak && current?.fitasc_scheme ? getTargetTypeForScheme(current.fitasc_scheme, targetNumber) : "Unknown";
+  const targetType = schemeCell ? presentationToTargetType(schemeCell.presentation) : fallbackTargetType;
+  const targetLabel = schemeCell ? formatMachineLabel(schemeCell) : "Unknown";
+  const targetLookupMissing = Boolean(isCompak && current?.fitasc_scheme && !schemeLookupLoading && !schemeCell);
 
   useEffect(() => {
     if (targetType === "Single") setMissedTarget("Single target");
     else if (targetType === "Report double" || targetType === "Simo double") setMissedTarget("Second target in pair");
   }, [targetType]);
+
+  useEffect(() => {
+    loadSchemeCell();
+  }, [isCompak, current?.fitasc_scheme, plate, targetNumber]);
 
   async function load() {
     const { data: u } = await supabase.auth.getUser();
@@ -119,6 +129,23 @@ export default function LogPage() {
       if (sessionData?.shooting_format === "Squad" && courseData[0].start_plate) setPlate(courseData[0].start_plate);
     }
     await loadRecentMisses();
+  }
+
+  async function loadSchemeCell() {
+    setSchemeCell(null);
+    if (!isCompak || !current?.fitasc_scheme) return;
+
+    setSchemeLookupLoading(true);
+    const { data, error } = await supabase
+      .from("fitasc_compak_schemes")
+      .select("id,scheme_number,plate_number,event_number,presentation,first_machine,second_machine,is_verified,source")
+      .eq("scheme_number", current.fitasc_scheme)
+      .eq("plate_number", plate)
+      .eq("event_number", targetNumber)
+      .maybeSingle<FitascSchemeCell>();
+    setSchemeLookupLoading(false);
+
+    if (!error && data) setSchemeCell(data);
   }
 
   async function loadRecentMisses() {
@@ -176,7 +203,7 @@ export default function LogPage() {
       course_number: isCompak ? courseNumber : null,
       plate: isCompak ? plate : null,
       target_number: isCompak ? targetNumber : null,
-      target_label: isCompak ? `Target ${targetNumber}` : null,
+      target_label: isCompak ? targetLabel : null,
       target_type: targetType,
       missed_target: missedTarget,
       where_miss: primaryDetail.whereMiss,
@@ -342,8 +369,12 @@ export default function LogPage() {
               ))}
             </select>
             <div className="notice small">
-              Detected target type: <strong>{targetType}</strong>
+              Detected target: <strong>{schemeLookupLoading ? "Loading..." : targetLabel}</strong> · Type: <strong>{targetType}</strong>
+              {schemeCell && <span> · {schemeCell.is_verified ? "Verified" : "Not verified"}</span>}
             </div>
+            {targetLookupMissing && (
+              <div className="notice small">Machine unknown for this scheme until exact FITASC data is imported.</div>
+            )}
             {schemeMissing && (
               <div className="notice small">
                 No FITASC scheme set for this course yet. You can still log the miss, but target type may be unknown.
@@ -386,7 +417,7 @@ export default function LogPage() {
                 Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · Target {miss.target_number ?? "-"}
               </strong>
               <div className="small muted">
-                Target type: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}
+                Target: {miss.target_label || "-"} · Target type: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}
               </div>
               {miss.missed_target === "Both targets in pair" ? (
                 <>
