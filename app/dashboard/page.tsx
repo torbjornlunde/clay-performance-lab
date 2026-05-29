@@ -164,6 +164,12 @@ export default function DashboardPage() {
           <Link href="/sessions/new" className="button">
             New session
           </Link>
+          <Link href="/results/new" className="button secondary">
+            Add competition result
+          </Link>
+          <Link href="/fitasc" className="button secondary">
+            FITASC schemes
+          </Link>
           <Link href="/stats" className="button secondary">
             Stats
           </Link>
@@ -173,6 +179,17 @@ export default function DashboardPage() {
           <button className="danger" onClick={logout}>
             Logout
           </button>
+        </div>
+      </div>
+
+      <div className="card actionCard">
+        <p className="eyebrow">Quick stats</p>
+        <h2>Add competition result</h2>
+        <p>Use this when you only want score statistics, without logging misses.</p>
+        <div className="btns">
+          <Link href="/results/new" className="button">
+            Add competition result
+          </Link>
         </div>
       </div>
 
