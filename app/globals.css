@@ -158,6 +158,36 @@ p {
     linear-gradient(180deg, rgba(21, 30, 42, 0.98), rgba(11, 17, 25, 0.98));
 }
 
+
+.dashboardHero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.dashboardHero h2 {
+  margin-bottom: 0;
+  max-width: 100%;
+  overflow-wrap: normal;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.dashboardHeroCopy,
+.dashboardHeroHelp {
+  max-width: 640px;
+  margin: 0;
+}
+
+.dashboardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+  max-width: 100%;
+}
+
 .authMain {
   max-width: 520px;
 }
@@ -516,10 +546,26 @@ button:disabled,
   filter: drop-shadow(0 4px 12px rgba(216, 165, 58, 0.2));
 }
 
+.chartPointLink {
+  cursor: pointer;
+  outline: none;
+}
+
+.chartPointHitArea {
+  fill: transparent;
+  stroke: transparent;
+}
+
 .chartPoint {
   fill: #091019;
   stroke: var(--gold2);
   stroke-width: 4;
+}
+
+.chartPointLink:focus .chartPoint,
+.chartPointLink:hover .chartPoint {
+  fill: rgba(216, 165, 58, 0.24);
+  stroke: #ffe2a0;
 }
 
 .chartText {
@@ -598,12 +644,15 @@ button:disabled,
   }
 
   .heroActions,
+  .dashboardActions,
   .stackedOnMobile {
     width: 100%;
   }
 
   .heroActions .button,
   .heroActions button,
+  .dashboardActions .button,
+  .dashboardActions button,
   .stackedOnMobile .button,
   .stackedOnMobile button {
     flex: 1 1 100%;

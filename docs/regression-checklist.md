@@ -29,3 +29,9 @@ Before merging any future PR:
 - [ ] FITASC schemes fit on mobile without horizontal page scrolling.
 - [ ] FITASC admin/import is not shown in normal user flow.
 - [ ] Production/main should be treated as source of truth.
+- [ ] Dashboard hero title does not wrap mid-word on desktop.
+- [ ] Dashboard hero buttons sit below text.
+- [ ] Dashboard/result list sorts newest first.
+- [ ] Stats chart sorts oldest left and newest right.
+- [ ] Stats chart uses 50% baseline when all plotted values are at or above 50%.
+- [ ] Stats chart points open session detail.

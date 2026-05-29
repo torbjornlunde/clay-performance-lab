@@ -67,6 +67,14 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
 }
 
+function sortableDate(session: Row) {
+  return new Date(session.competition_date || session.created_at).getTime();
+}
+
+function sortNewestFirst(a: Row, b: Row) {
+  return sortableDate(b) - sortableDate(a);
+}
+
 function SessionCard({ session, missCounts }: { session: Row; missCounts: Record<string, number> }) {
   const misses = missCountFor(session, missCounts);
   const percentage = performancePercentage(session, missCounts);
@@ -134,7 +142,7 @@ export default function DashboardPage() {
       return acc;
     }, {});
 
-    setSessions(data || []);
+    setSessions((data || []).slice().sort(sortNewestFirst));
     setMissCounts(counts);
     setLoading(false);
   }
@@ -145,9 +153,10 @@ export default function DashboardPage() {
   }
 
   const groups = useMemo<SessionGroup[]>(() => {
-    const competitions = sessions.filter((session) => session.session_type === "Competition" && !isResultOnly(session, missCounts));
-    const training = sessions.filter((session) => session.session_type !== "Competition" && !isResultOnly(session, missCounts));
-    const resultOnly = sessions.filter((session) => isResultOnly(session, missCounts));
+    const sortedSessions = sessions.slice().sort(sortNewestFirst);
+    const competitions = sortedSessions.filter((session) => session.session_type === "Competition" && !isResultOnly(session, missCounts));
+    const training = sortedSessions.filter((session) => session.session_type !== "Competition" && !isResultOnly(session, missCounts));
+    const resultOnly = sortedSessions.filter((session) => isResultOnly(session, missCounts));
     return [
       { title: "Competitions", description: "Competition shooting logs with courses, misses or scoring context.", sessions: competitions },
       { title: "Result only entries", description: "Result only score entries without logged courses or misses.", sessions: resultOnly },
@@ -157,14 +166,12 @@ export default function DashboardPage() {
 
   return (
     <main>
-      <div className="heroCard">
-        <div>
-          <p className="eyebrow">Shooter workspace</p>
-          <h2>Dashboard</h2>
-          <p>Create a shooting log, log missed targets, then review analysis and competition trends.</p>
-          <p className="small muted">Log misses and analyze target patterns. Track score vs winning score without logging misses with Result only.</p>
-        </div>
-        <div className="btns heroActions">
+      <div className="heroCard dashboardHero">
+        <p className="eyebrow">Shooter workspace</p>
+        <h2>Dashboard</h2>
+        <p className="dashboardHeroCopy">Create a shooting log, log missed targets, then review analysis and competition trends.</p>
+        <p className="small muted dashboardHeroHelp">Log misses and analyze target patterns. Track score vs winning score without logging misses with Result only.</p>
+        <div className="dashboardActions">
           <Link href="/sessions/new" className="button">
             New shooting log
           </Link>
