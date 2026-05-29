@@ -34,6 +34,8 @@ export default function Page() {
   const scoreUsed = typeof session.own_score === "number" ? session.own_score : calculatedScore;
   const percentage = typeof scoreUsed === "number" && typeof session.winning_score === "number" && session.winning_score > 0 ? (scoreUsed / session.winning_score) * 100 : null;
   const resultOnly = session.session_type === "Competition" && session.own_score !== null && session.winning_score !== null && courses.length === 0 && count === 0;
+  const isSporttrap = session.discipline === "Sporttrap";
+  const sporttrapStand = courses[0]?.shooter_number;
 
   return (
     <main>
@@ -43,7 +45,7 @@ export default function Page() {
         <span className="pill">{session.discipline}</span>
         <span className="pill">{session.session_type}</span>
         {resultOnly && <span className="pill">Result only</span>}
-        {session.shooting_format && <span className="pill">{session.shooting_format}</span>}
+        {session.shooting_format && !isSporttrap && <span className="pill">{session.shooting_format}</span>}
         <div className="summaryGrid">
           <div className="summaryStat"><span>Total targets</span><strong>{session.total_targets ?? "-"}</strong></div>
           <div className="summaryStat"><span>Registered misses</span><strong>{count}</strong></div>
@@ -59,11 +61,21 @@ export default function Page() {
           <Link href={`/sessions/${session.id}/log`} className="button">Log miss</Link>
           <Link href={`/sessions/${session.id}/analysis`} className="button secondary">Analysis</Link>
           <Link href={`/sessions/${session.id}/edit`} className="button secondary">Edit setup</Link>
-          <Link href={`/sessions/${session.id}/targets`} className="button secondary">Target definitions</Link>
+          {!isSporttrap && <Link href={`/sessions/${session.id}/targets`} className="button secondary">Target definitions</Link>}
           <Link href="/dashboard" className="button secondary">Dashboard</Link>
           {session.leirdue_result_url && <a href={session.leirdue_result_url} target="_blank" rel="noreferrer" className="button secondary">Open Leirdue.net result</a>}
         </div>
       </div>
+      {isSporttrap && (
+        <div className="card">
+          <h2>Sporttrap setup</h2>
+          <div className="subcard">
+            <strong>Fixed program</strong>
+            <div className="small muted">3 rounds / 5 stands / machines A-E</div>
+            <div className="small muted">Stand/shooter number: {sporttrapStand ?? "-"}</div>
+          </div>
+        </div>
+      )}
       {session.discipline === "Compak Sporting" && courses.length > 0 && (
         <div className="card"><h2>Courses</h2>{courses.map((course) => <div className="subcard" key={course.id}><strong>Course {course.course_number}</strong><div className="small muted">{course.fitasc_scheme ? `Scheme ${course.fitasc_scheme} — ${getSchemeType(course.fitasc_scheme)}` : "FITASC scheme not set yet"}</div>{session.shooting_format === "Squad" && course.start_plate && <div className="small muted">Shooter {course.shooter_number} · starts plate {course.start_plate} · rotation {plateRotation(course.start_plate).join(" → ")}</div>}</div>)}</div>
       )}

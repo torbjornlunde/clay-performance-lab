@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getExpectedPresentationRows, getMachineLabelFromRow, getPresentationLabel, type CompakSchemeRow } from "@/lib/fitasc/compakSchemes";
+import { getSporttrapEvent, getSporttrapMachineLabel, getSporttrapPresentationLabel } from "@/lib/sporttrap/program";
 import { supabase } from "@/lib/supabase/client";
 
 type Session = {
@@ -18,6 +19,7 @@ type Course = {
   course_number: number;
   fitasc_scheme: number | null;
   start_plate: number | null;
+  shooter_number: number | null;
 };
 
 type MissDetail = {
@@ -89,14 +91,26 @@ export default function LogPage() {
     [courses, courseNumber],
   );
   const isCompak = session?.discipline === "Compak Sporting";
+  const isSporttrap = session?.discipline === "Sporttrap";
   const schemeMissing = Boolean(isCompak && current && !current.fitasc_scheme);
   const expectedRows = current?.fitasc_scheme ? getExpectedPresentationRows(current.fitasc_scheme) : ["unknown"];
   const schemeRow = schemeRows.find((row) => row.scheme_number === current?.fitasc_scheme && row.plate_number === plate && row.event_number === targetNumber);
-  const targetType = schemeRow ? getPresentationLabel(schemeRow.presentation) : current?.fitasc_scheme ? getPresentationLabel(expectedRows[targetNumber - 1]) : "Unknown";
-  const targetLabel = showManualMachine ? manualMachine : getMachineLabelFromRow(schemeRow);
-  const calculatedText = schemeRow
-    ? `Calculated: ${getMachineLabelFromRow(schemeRow)} · ${getPresentationLabel(schemeRow.presentation)}`
-    : "Machine unavailable for this plate and target / pair selection.";
+  const sporttrapEvent = getSporttrapEvent(plate, targetNumber);
+  const sporttrapTargetType = getSporttrapPresentationLabel(sporttrapEvent.presentation);
+  const sporttrapTargetLabel = getSporttrapMachineLabel(sporttrapEvent);
+  const targetType = isSporttrap
+    ? sporttrapTargetType
+    : schemeRow
+      ? getPresentationLabel(schemeRow.presentation)
+      : current?.fitasc_scheme
+        ? getPresentationLabel(expectedRows[targetNumber - 1])
+        : "Unknown";
+  const targetLabel = isSporttrap ? sporttrapTargetLabel : showManualMachine ? manualMachine : getMachineLabelFromRow(schemeRow);
+  const calculatedText = isSporttrap
+    ? `Calculated: ${sporttrapTargetLabel} · ${sporttrapTargetType}`
+    : schemeRow
+      ? `Calculated: ${getMachineLabelFromRow(schemeRow)} · ${getPresentationLabel(schemeRow.presentation)}`
+      : "Machine unavailable for this plate and target / pair selection.";
 
   useEffect(() => {
     if (targetType === "Single") setMissedTarget("Single target");
@@ -117,7 +131,7 @@ export default function LogPage() {
       .single<Session>();
     const { data: courseData } = await supabase
       .from("session_courses")
-      .select("id,course_number,fitasc_scheme,start_plate")
+      .select("id,course_number,fitasc_scheme,start_plate,shooter_number")
       .eq("session_id", params.id)
       .order("course_number")
       .returns<Course[]>();
@@ -125,7 +139,7 @@ export default function LogPage() {
     setSession(sessionData);
     setCourses(courseData || []);
     const schemeNumbers = Array.from(new Set((courseData || []).map((course) => course.fitasc_scheme).filter(Boolean)));
-    if (schemeNumbers.length > 0) {
+    if (sessionData?.discipline === "Compak Sporting" && schemeNumbers.length > 0) {
       const { data: fitascRows } = await supabase
         .from("fitasc_compak_schemes")
         .select("scheme_number,plate_number,event_number,presentation,first_machine,second_machine,is_verified")
@@ -135,7 +149,8 @@ export default function LogPage() {
     }
     if (courseData?.[0]) {
       setCourseNumber(courseData[0].course_number);
-      if (sessionData?.shooting_format === "Squad" && courseData[0].start_plate) setPlate(courseData[0].start_plate);
+      if (sessionData?.discipline === "Sporttrap" && courseData[0].shooter_number) setPlate(courseData[0].shooter_number);
+      else if (sessionData?.shooting_format === "Squad" && courseData[0].start_plate) setPlate(courseData[0].start_plate);
     }
     await loadRecentMisses();
   }
@@ -192,10 +207,10 @@ export default function LogPage() {
     setSaving(true);
     const { error } = await supabase.from("misses").insert({
       session_id: session.id,
-      course_number: isCompak ? courseNumber : null,
-      plate: isCompak ? plate : null,
-      target_number: isCompak ? targetNumber : null,
-      target_label: isCompak ? targetLabel : null,
+      course_number: isCompak || isSporttrap ? courseNumber : null,
+      plate: isCompak || isSporttrap ? plate : null,
+      target_number: isCompak || isSporttrap ? targetNumber : null,
+      target_label: isCompak || isSporttrap ? targetLabel : null,
       target_type: targetType,
       missed_target: missedTarget,
       where_miss: primaryDetail.whereMiss,
@@ -328,6 +343,34 @@ export default function LogPage() {
       <div className="card">
         <h2>Log miss</h2>
         <p className="small muted">{session.name}</p>
+
+        {session.discipline === "Sporttrap" && (
+          <>
+            <div className="row">
+              <div>
+                <label>Stand / shooter number</label>
+                <select value={plate} onChange={(e) => setPlate(Number(e.target.value))}>
+                  {[1, 2, 3, 4, 5].map((v) => (
+                    <option key={v} value={v}>
+                      Stand {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label>Round</label>
+                <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
+                  {[1, 2, 3].map((v) => (
+                    <option key={v} value={v}>
+                      Round {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="notice small">{calculatedText}</div>
+          </>
+        )}
         {session.discipline === "Compak Sporting" && (
           <>
             <div className="row">
@@ -412,7 +455,9 @@ export default function LogPage() {
           recentMisses.map((miss) => (
             <div className="subcard" key={miss.id}>
               <strong>
-                Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · {miss.target_label || "Unknown"}
+                {isSporttrap
+                  ? `Stand ${miss.plate ?? "-"} · Round ${miss.target_number ?? "-"} · ${miss.target_label || "Unknown"}`
+                  : `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Unknown"}`}
               </strong>
               <div className="small muted">
                 Presentation: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}

@@ -29,6 +29,7 @@ export default function NewSessionPage() {
   const [format, setFormat] = useState("Inline");
   const [count, setCount] = useState(3);
   const [courses, setCourses] = useState<CourseSetup[]>(makeCourses(3, []));
+  const [sporttrapStand, setSporttrapStand] = useState(1);
   const [competitionDate, setCompetitionDate] = useState(new Date().toISOString().slice(0, 10));
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
   const [ownScore, setOwnScore] = useState("");
@@ -55,6 +56,7 @@ export default function NewSessionPage() {
     }
 
     const isCompak = discipline === "Compak Sporting";
+    const isSporttrap = discipline === "Sporttrap";
     const { data: session, error } = await supabase
       .from("sessions")
       .insert({
@@ -62,9 +64,9 @@ export default function NewSessionPage() {
         name: name.trim() || "Unnamed session",
         discipline,
         session_type: sessionType,
-        shooting_format: isCompak ? format : null,
-        course_count: isCompak ? count : null,
-        total_targets: isCompak ? count * 25 : null,
+        shooting_format: isCompak ? format : isSporttrap ? "Sporttrap" : null,
+        course_count: isCompak ? count : isSporttrap ? 1 : null,
+        total_targets: isCompak ? count * 25 : isSporttrap ? 25 : null,
         competition_date: competitionDate || null,
         own_score: ownScore === "" ? null : Number(ownScore),
         winning_score: winningScore === "" ? null : Number(winningScore),
@@ -79,14 +81,24 @@ export default function NewSessionPage() {
       return;
     }
 
-    if (isCompak) {
-      const rows = courses.map((course) => ({
-        session_id: session.id,
-        course_number: course.courseNumber,
-        fitasc_scheme: course.scheme,
-        shooter_number: format === "Squad" ? course.shooterNumber : null,
-        start_plate: format === "Squad" ? course.startPlate : null,
-      }));
+    if (isCompak || isSporttrap) {
+      const rows = isSporttrap
+        ? [
+            {
+              session_id: session.id,
+              course_number: 1,
+              fitasc_scheme: null,
+              shooter_number: sporttrapStand,
+              start_plate: null,
+            },
+          ]
+        : courses.map((course) => ({
+            session_id: session.id,
+            course_number: course.courseNumber,
+            fitasc_scheme: course.scheme,
+            shooter_number: format === "Squad" ? course.shooterNumber : null,
+            start_plate: format === "Squad" ? course.startPlate : null,
+          }));
       const { error: courseError } = await supabase.from("session_courses").insert(rows);
       if (courseError) {
         setErr(courseError.message);
@@ -120,6 +132,7 @@ export default function NewSessionPage() {
               <option>Compak Sporting</option>
               <option>Sporting</option>
               <option>FITASC Sporting</option>
+              <option>Sporttrap</option>
               <option>Leirduesti</option>
               <option>Trap</option>
               <option>Skeet</option>
@@ -148,6 +161,21 @@ export default function NewSessionPage() {
                 <input value={winningScore} onChange={(e) => setWinningScore(e.target.value)} type="number" min="0" inputMode="numeric" />
               </div>
             </div>
+          </div>
+        )}
+
+        {discipline === "Sporttrap" && (
+          <div className="subcard">
+            <h3>Sporttrap setup</h3>
+            <p className="small muted">Fixed program: 3 rounds / 5 stands / machines A-E. Total targets defaults to 25.</p>
+            <label>Shooter / stand number</label>
+            <select value={sporttrapStand} onChange={(e) => setSporttrapStand(Number(e.target.value))}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
           </div>
         )}
         {discipline === "Compak Sporting" && (

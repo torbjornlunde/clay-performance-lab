@@ -49,6 +49,7 @@ export default function EditSessionPage() {
   const schemes = useMemo(() => getSchemeOptions(), []);
   const [loaded, setLoaded] = useState(false);
   const [name, setName] = useState("");
+  const [discipline, setDiscipline] = useState("");
   const [sessionType, setSessionType] = useState("Training");
   const [format, setFormat] = useState("Inline");
   const [count, setCount] = useState(1);
@@ -99,6 +100,7 @@ export default function EditSessionPage() {
     }));
 
     setName(session.name);
+    setDiscipline(session.discipline);
     setSessionType(session.session_type);
     setFormat(session.shooting_format || "Inline");
     setCount(nextCount);
@@ -123,14 +125,19 @@ export default function EditSessionPage() {
     setErr("");
     setSaving(true);
 
+    const isCompak = discipline === "Compak Sporting";
+    const isSporttrap = discipline === "Sporttrap";
+
     const { error: sessionError } = await supabase
       .from("sessions")
       .update({
         name: name.trim() || "Unnamed session",
         session_type: sessionType,
-        shooting_format: format,
-        course_count: count,
-        total_targets: count * 25,
+        ...(isCompak
+          ? { shooting_format: format, course_count: count, total_targets: count * 25 }
+          : isSporttrap
+            ? { shooting_format: "Sporttrap", course_count: 1, total_targets: 25 }
+            : {}),
         competition_date: competitionDate || null,
         own_score: ownScore === "" ? null : Number(ownScore),
         winning_score: winningScore === "" ? null : Number(winningScore),
@@ -144,28 +151,31 @@ export default function EditSessionPage() {
       return;
     }
 
-    for (const course of courses) {
-      const row = {
-        session_id: params.id,
-        course_number: course.courseNumber,
-        fitasc_scheme: course.scheme,
-        shooter_number: format === "Squad" ? course.shooterNumber : null,
-        start_plate: format === "Squad" ? course.startPlate : null,
-      };
+    if (isCompak || isSporttrap) {
+      const rows = isSporttrap ? makeCourses(1, courses) : courses;
+      for (const course of rows) {
+        const row = {
+          session_id: params.id,
+          course_number: course.courseNumber,
+          fitasc_scheme: isSporttrap ? null : course.scheme,
+          shooter_number: isSporttrap ? course.shooterNumber : format === "Squad" ? course.shooterNumber : null,
+          start_plate: isSporttrap ? null : format === "Squad" ? course.startPlate : null,
+        };
 
-      if (course.id) {
-        const { error } = await supabase.from("session_courses").update(row).eq("id", course.id).eq("session_id", params.id);
-        if (error) {
-          setErr(error.message);
-          setSaving(false);
-          return;
-        }
-      } else {
-        const { data, error } = await supabase.from("session_courses").insert(row).select("id").single();
-        if (error || !data) {
-          setErr(error?.message || "Could not add course.");
-          setSaving(false);
-          return;
+        if (course.id) {
+          const { error } = await supabase.from("session_courses").update(row).eq("id", course.id).eq("session_id", params.id);
+          if (error) {
+            setErr(error.message);
+            setSaving(false);
+            return;
+          }
+        } else {
+          const { data, error } = await supabase.from("session_courses").insert(row).select("id").single();
+          if (error || !data) {
+            setErr(error?.message || "Could not add course.");
+            setSaving(false);
+            return;
+          }
         }
       }
     }
@@ -196,6 +206,7 @@ export default function EditSessionPage() {
           placeholder="Optional"
           type="url"
         />
+        <span className="pill">{discipline}</span>
         <div className="row">
           <div>
             <label>Session type</label>
@@ -204,13 +215,15 @@ export default function EditSessionPage() {
               <option>Competition</option>
             </select>
           </div>
-          <div>
-            <label>Shooting format</label>
-            <select value={format} onChange={(e) => setFormat(e.target.value)}>
-              <option>Inline</option>
-              <option>Squad</option>
-            </select>
-          </div>
+          {discipline === "Compak Sporting" && (
+            <div>
+              <label>Shooting format</label>
+              <select value={format} onChange={(e) => setFormat(e.target.value)}>
+                <option>Inline</option>
+                <option>Squad</option>
+              </select>
+            </div>
+          )}
         </div>
         {(sessionType === "Competition" || ownScore || winningScore) && (
           <div className="subcard">
@@ -228,16 +241,32 @@ export default function EditSessionPage() {
             </div>
           </div>
         )}
-        <label>Number of courses/layouts</label>
-        <select value={count} onChange={(e) => setCourseCount(Number(e.target.value))}>
-          {[1, 2, 3, 4, 5, 6, 8].map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <h3>Courses</h3>
-        {courses.map((course, i) => (
+        {discipline === "Sporttrap" && (
+          <div className="subcard">
+            <h3>Sporttrap setup</h3>
+            <p className="small muted">Fixed program: 3 rounds / 5 stands / machines A-E. Total targets defaults to 25.</p>
+            <label>Shooter / stand number</label>
+            <select value={courses[0]?.shooterNumber || 1} onChange={(e) => updateCourse(0, { shooterNumber: Number(e.target.value) })}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {discipline === "Compak Sporting" && (
+          <>
+            <label>Number of courses/layouts</label>
+            <select value={count} onChange={(e) => setCourseCount(Number(e.target.value))}>
+              {[1, 2, 3, 4, 5, 6, 8].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            <h3>Courses</h3>
+            {courses.map((course, i) => (
           <div className="subcard" key={course.courseNumber}>
             <h3>Course {course.courseNumber}</h3>
             <label>FITASC scheme</label>
@@ -279,7 +308,9 @@ export default function EditSessionPage() {
               </>
             )}
           </div>
-        ))}
+            ))}
+          </>
+        )}
         {err && <div className="error">{err}</div>}
         <div className="btns">
           <button onClick={save} disabled={saving}>

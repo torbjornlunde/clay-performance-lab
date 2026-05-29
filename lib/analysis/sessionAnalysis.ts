@@ -116,6 +116,7 @@ export function analyzeMisses(misses: MissForAnalysis[]) {
   const detailedMisses = expandMisses(misses);
   const byCourse = countBy(detailedMisses.map((miss) => miss.course_number));
   const byPlate = countBy(detailedMisses.map((miss) => miss.plate));
+  const byTargetNumber = countBy(detailedMisses.map((miss) => miss.target_number));
   const byTargetLabel = countBy(detailedMisses.map((miss) => miss.target_label));
   const byTargetType = countBy(detailedMisses.map((miss) => miss.target_type));
   const byMissedTarget = countBy(misses.map((miss) => miss.missed_target));
@@ -162,6 +163,7 @@ export function analyzeMisses(misses: MissForAnalysis[]) {
     formatted: {
       byCourse: fmt(byCourse),
       byPlate: fmt(byPlate),
+      byTargetNumber: fmt(byTargetNumber),
       byTargetLabel: fmt(byTargetLabel),
       byTargetType: fmt(byTargetType),
       byMissedTarget: fmt(byMissedTarget),

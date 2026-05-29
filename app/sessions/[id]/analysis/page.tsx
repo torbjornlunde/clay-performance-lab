@@ -48,6 +48,7 @@ export default function AnalysisPage() {
     return definition ? { ...miss, target_label: `${miss.target_label} – ${definition.direction?.toLowerCase()} ${definition.target_type?.toLowerCase()}` } : miss;
   });
   const analysis = analyzeMisses(enrichedMisses as MissForAnalysis[]);
+  const isSporttrap = session.discipline === "Sporttrap";
 
   return (
     <main>
@@ -60,7 +61,7 @@ export default function AnalysisPage() {
         <span className="pill">
           Miss rows <strong>{analysis.rowTotal}</strong>
         </span>
-        {session.shooting_format && <span className="pill">{session.shooting_format}</span>}
+        {session.shooting_format && !isSporttrap && <span className="pill">{session.shooting_format}</span>}
         <div className="btns">
           <Link className="button" href={`/sessions/${session.id}/log`}>
             Log more
@@ -76,7 +77,10 @@ export default function AnalysisPage() {
           <strong>Course:</strong> {analysis.formatted.byCourse}
         </p>
         <p>
-          <strong>Plate:</strong> {analysis.formatted.byPlate}
+          <strong>{isSporttrap ? "Stand" : "Plate"}:</strong> {analysis.formatted.byPlate}
+        </p>
+        <p>
+          <strong>{isSporttrap ? "Round" : "Target / pair"}:</strong> {analysis.formatted.byTargetNumber}
         </p>
         <p>
           <strong>Target/machine:</strong> {analysis.formatted.byTargetLabel}
@@ -117,7 +121,9 @@ export default function AnalysisPage() {
           misses.map((miss) => (
             <div className="subcard" key={miss.id}>
               <strong>
-                Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · {miss.target_label || "Unknown"}
+                {isSporttrap
+                  ? `Stand ${miss.plate ?? "-"} · Round ${miss.target_number ?? "-"} · ${miss.target_label || "Unknown"}`
+                  : `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Unknown"}`}
               </strong>
               <div className="small muted">
                 {miss.target_type || "-"} · {miss.missed_target} · {miss.where_miss || "-"} · {miss.main_reason || "-"}

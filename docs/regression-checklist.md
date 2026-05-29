@@ -35,3 +35,9 @@ Before merging any future PR:
 - [ ] Stats chart sorts oldest left and newest right.
 - [ ] Stats chart uses 50% baseline when all plotted values are at or above 50%.
 - [ ] Stats chart points open session detail.
+- [ ] Sporttrap can be selected as discipline.
+- [ ] Sporttrap setup does not ask for FITASC scheme.
+- [ ] Sporttrap Log Miss calculates Round 1 single correctly.
+- [ ] Sporttrap Log Miss calculates Round 2 report pair correctly.
+- [ ] Sporttrap Log Miss calculates Round 3 simo pair correctly.
+- [ ] Existing Compak/FITASC logging still works.
