@@ -30,6 +30,8 @@ export default function NewSessionPage() {
   const [count, setCount] = useState(3);
   const [courses, setCourses] = useState<CourseSetup[]>(makeCourses(3, []));
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
+  const [ownScore, setOwnScore] = useState("");
+  const [winningScore, setWinningScore] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -62,6 +64,8 @@ export default function NewSessionPage() {
         shooting_format: isCompak ? format : null,
         course_count: isCompak ? count : null,
         total_targets: isCompak ? count * 25 : null,
+        own_score: sessionType === "Competition" && ownScore ? Number(ownScore) : null,
+        winning_score: sessionType === "Competition" && winningScore ? Number(winningScore) : null,
         leirdue_result_url: leirdueResultUrl.trim() || null,
       })
       .select("id")
@@ -126,6 +130,22 @@ export default function NewSessionPage() {
             </select>
           </div>
         </div>
+        {sessionType === "Competition" && (
+          <div className="subcard">
+            <h3>Competition score</h3>
+            <p className="small muted">Own score is optional when you plan to log misses. Winning score powers percentage stats.</p>
+            <div className="row">
+              <div>
+                <label>Own score (optional manual override)</label>
+                <input value={ownScore} onChange={(e) => setOwnScore(e.target.value)} type="number" inputMode="numeric" min="0" />
+              </div>
+              <div>
+                <label>Winning score</label>
+                <input value={winningScore} onChange={(e) => setWinningScore(e.target.value)} type="number" inputMode="numeric" min="1" />
+              </div>
+            </div>
+          </div>
+        )}
         {discipline === "Compak Sporting" && (
           <>
             <div className="row">

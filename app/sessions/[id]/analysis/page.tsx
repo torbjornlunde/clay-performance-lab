@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { analyzeMisses, MissForAnalysis } from "@/lib/analysis/sessionAnalysis";
+import { formatScore, getScoreSummary } from "@/lib/sessionScores";
 import { supabase } from "@/lib/supabase/client";
 
 export default function AnalysisPage() {
@@ -24,7 +25,7 @@ export default function AnalysisPage() {
     }
     const { data: sessionData } = await supabase
       .from("sessions")
-      .select("id,name,discipline,shooting_format")
+      .select("id,name,discipline,shooting_format,total_targets,own_score,winning_score")
       .eq("id", params.id)
       .single();
     const { data: missData } = await supabase.from("misses").select("*").eq("session_id", params.id).order("created_at");
@@ -41,6 +42,7 @@ export default function AnalysisPage() {
   }
 
   const analysis = analyzeMisses(misses as MissForAnalysis[]);
+  const score = getScoreSummary({ total_targets: session.total_targets, own_score: session.own_score, misses });
 
   return (
     <main>
@@ -54,6 +56,24 @@ export default function AnalysisPage() {
           Miss rows <strong>{analysis.rowTotal}</strong>
         </span>
         {session.shooting_format && <span className="pill">{session.shooting_format}</span>}
+        {score.totalTargets !== null && (
+          <span className="pill">
+            Total targets <strong>{score.totalTargets}</strong>
+          </span>
+        )}
+        {score.calculatedScore !== null && (
+          <span className="pill">
+            Calculated score: <strong>{formatScore(score.calculatedScore, score.totalTargets)}</strong>
+          </span>
+        )}
+        {session.own_score !== null && session.own_score !== undefined && (
+          <span className="pill">
+            Official/manual score: <strong>{session.own_score}</strong>
+          </span>
+        )}
+        {score.manualDiffers && (
+          <p className="small notice">Manual score differs from logged misses. This can happen if not all misses were logged.</p>
+        )}
         <div className="btns">
           <Link className="button" href={`/sessions/${session.id}/log`}>
             Log more
