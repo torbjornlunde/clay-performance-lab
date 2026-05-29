@@ -14,6 +14,7 @@ type Row = {
   course_count: number | null;
   total_targets?: number | null;
   created_at: string;
+  competition_date?: string | null;
   own_score?: number | null;
   winning_score?: number | null;
   calculated_score?: number | null;
@@ -81,7 +82,7 @@ function SessionCard({ session, missCounts }: { session: Row; missCounts: Record
         <div className="small muted sessionMeta">
           <span>{session.discipline}</span>
           {session.shooting_format && <span>{session.shooting_format}</span>}
-          <span>{formatDate(session.created_at)}</span>
+          <span>{formatDate(session.competition_date || session.created_at)}</span>
         </div>
         <div className="metricsRow">
           {session.course_count ? (
@@ -159,10 +160,17 @@ export default function DashboardPage() {
           <p className="eyebrow">Shooter workspace</p>
           <h2>Dashboard</h2>
           <p>Create a session, log missed targets, then review analysis and competition trends.</p>
+          <p className="small muted">Use Add competition result when you only want score statistics, without logging misses.</p>
         </div>
         <div className="btns heroActions">
           <Link href="/sessions/new" className="button">
             New session
+          </Link>
+          <Link href="/results/new" className="button secondary">
+            Add competition result
+          </Link>
+          <Link href="/fitasc" className="button secondary">
+            FITASC schemes
           </Link>
           <Link href="/stats" className="button secondary">
             Stats

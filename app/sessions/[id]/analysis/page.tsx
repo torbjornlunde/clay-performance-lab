@@ -11,6 +11,7 @@ export default function AnalysisPage() {
   const router = useRouter();
   const [session, setSession] = useState<any>(null);
   const [misses, setMisses] = useState<any[]>([]);
+  const [definitions, setDefinitions] = useState<any[]>([]);
 
   useEffect(() => {
     load();
@@ -28,8 +29,10 @@ export default function AnalysisPage() {
       .eq("id", params.id)
       .single();
     const { data: missData } = await supabase.from("misses").select("*").eq("session_id", params.id).order("created_at");
+    const { data: definitionData } = await supabase.from("session_target_definitions").select("course_number,machine,target_type,direction").eq("session_id", params.id);
     setSession(sessionData);
     setMisses(missData || []);
+    setDefinitions(definitionData || []);
   }
 
   if (!session) {
@@ -40,7 +43,11 @@ export default function AnalysisPage() {
     );
   }
 
-  const analysis = analyzeMisses(misses as MissForAnalysis[]);
+  const enrichedMisses = misses.map((miss) => {
+    const definition = definitions.find((item) => item.course_number === miss.course_number && item.machine === miss.target_label);
+    return definition ? { ...miss, target_label: `${miss.target_label} – ${definition.direction?.toLowerCase()} ${definition.target_type?.toLowerCase()}` } : miss;
+  });
+  const analysis = analyzeMisses(enrichedMisses as MissForAnalysis[]);
 
   return (
     <main>
@@ -72,7 +79,10 @@ export default function AnalysisPage() {
           <strong>Plate:</strong> {analysis.formatted.byPlate}
         </p>
         <p>
-          <strong>Target type:</strong> {analysis.formatted.byTargetType}
+          <strong>Target/machine:</strong> {analysis.formatted.byTargetLabel}
+        </p>
+        <p>
+          <strong>Presentation:</strong> {analysis.formatted.byTargetType}
         </p>
         <p>
           <strong>Miss row type:</strong> {analysis.formatted.byMissedTarget}
@@ -107,7 +117,7 @@ export default function AnalysisPage() {
           misses.map((miss) => (
             <div className="subcard" key={miss.id}>
               <strong>
-                Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · Target {miss.target_number ?? "-"}
+                Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · {miss.target_label || "Unknown"}
               </strong>
               <div className="small muted">
                 {miss.target_type || "-"} · {miss.missed_target} · {miss.where_miss || "-"} · {miss.main_reason || "-"}

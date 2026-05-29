@@ -14,6 +14,9 @@ type Session = {
   shooting_format: string | null;
   course_count: number | null;
   leirdue_result_url: string | null;
+  competition_date: string | null;
+  own_score: number | null;
+  winning_score: number | null;
 };
 
 type CourseSetup = {
@@ -50,7 +53,10 @@ export default function EditSessionPage() {
   const [format, setFormat] = useState("Inline");
   const [count, setCount] = useState(1);
   const [courses, setCourses] = useState<CourseSetup[]>([]);
+  const [competitionDate, setCompetitionDate] = useState("");
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
+  const [ownScore, setOwnScore] = useState("");
+  const [winningScore, setWinningScore] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -67,7 +73,7 @@ export default function EditSessionPage() {
 
     const { data: session } = await supabase
       .from("sessions")
-      .select("id,name,discipline,session_type,shooting_format,course_count,leirdue_result_url")
+      .select("id,name,discipline,session_type,shooting_format,course_count,leirdue_result_url,competition_date,own_score,winning_score")
       .eq("id", params.id)
       .single<Session>();
     const { data: courseRows } = await supabase
@@ -97,7 +103,10 @@ export default function EditSessionPage() {
     setFormat(session.shooting_format || "Inline");
     setCount(nextCount);
     setCourses(makeCourses(nextCount, mappedCourses));
+    setCompetitionDate(session.competition_date || "");
     setLeirdueResultUrl(session.leirdue_result_url || "");
+    setOwnScore(session.own_score === null || session.own_score === undefined ? "" : String(session.own_score));
+    setWinningScore(session.winning_score === null || session.winning_score === undefined ? "" : String(session.winning_score));
     setLoaded(true);
   }
 
@@ -122,6 +131,9 @@ export default function EditSessionPage() {
         shooting_format: format,
         course_count: count,
         total_targets: count * 25,
+        competition_date: competitionDate || null,
+        own_score: ownScore === "" ? null : Number(ownScore),
+        winning_score: winningScore === "" ? null : Number(winningScore),
         leirdue_result_url: leirdueResultUrl.trim() || null,
       })
       .eq("id", params.id);
@@ -158,13 +170,6 @@ export default function EditSessionPage() {
       }
     }
 
-    const { error: deleteError } = await supabase.from("session_courses").delete().eq("session_id", params.id).gt("course_number", count);
-    if (deleteError) {
-      setErr(deleteError.message);
-      setSaving(false);
-      return;
-    }
-
     router.push(`/sessions/${params.id}`);
   }
 
@@ -182,6 +187,8 @@ export default function EditSessionPage() {
         <h2>Edit setup</h2>
         <label>Session name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Session name" />
+        <label>Date</label>
+        <input value={competitionDate} onChange={(e) => setCompetitionDate(e.target.value)} type="date" />
         <label>Leirdue.net result URL</label>
         <input
           value={leirdueResultUrl}
@@ -205,6 +212,22 @@ export default function EditSessionPage() {
             </select>
           </div>
         </div>
+        {(sessionType === "Competition" || ownScore || winningScore) && (
+          <div className="subcard">
+            <h3>Competition result</h3>
+            <p className="small muted">Own score is optional if you log all misses. Winning score is needed for performance percentage.</p>
+            <div className="row">
+              <div>
+                <label>Own score</label>
+                <input value={ownScore} onChange={(e) => setOwnScore(e.target.value)} type="number" min="0" inputMode="numeric" />
+              </div>
+              <div>
+                <label>Winning score</label>
+                <input value={winningScore} onChange={(e) => setWinningScore(e.target.value)} type="number" min="0" inputMode="numeric" />
+              </div>
+            </div>
+          </div>
+        )}
         <label>Number of courses/layouts</label>
         <select value={count} onChange={(e) => setCourseCount(Number(e.target.value))}>
           {[1, 2, 3, 4, 5, 6, 8].map((n) => (

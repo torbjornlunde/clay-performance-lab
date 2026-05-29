@@ -3,6 +3,7 @@ export type MissForAnalysis = {
   plate: number | null;
   target_number: number | null;
   target_type: string | null;
+  target_label?: string | null;
   missed_target: string;
   where_miss: string | null;
   main_reason: string | null;
@@ -22,6 +23,7 @@ type DetailedMiss = {
   plate: number | null;
   target_number: number | null;
   target_type: string | null;
+  target_label?: string | null;
   targetPosition: string;
   where_miss: string | null;
   main_reason: string | null;
@@ -60,6 +62,7 @@ function expandMisses(misses: MissForAnalysis[]) {
       plate: miss.plate,
       target_number: miss.target_number,
       target_type: miss.target_type,
+      target_label: miss.target_label,
     };
 
     if (miss.missed_target === "Both targets in pair" && hasFirst && hasSecond) {
@@ -113,6 +116,7 @@ export function analyzeMisses(misses: MissForAnalysis[]) {
   const detailedMisses = expandMisses(misses);
   const byCourse = countBy(detailedMisses.map((miss) => miss.course_number));
   const byPlate = countBy(detailedMisses.map((miss) => miss.plate));
+  const byTargetLabel = countBy(detailedMisses.map((miss) => miss.target_label));
   const byTargetType = countBy(detailedMisses.map((miss) => miss.target_type));
   const byMissedTarget = countBy(misses.map((miss) => miss.missed_target));
   const byTargetPosition = countBy(detailedMisses.map((miss) => miss.targetPosition));
@@ -158,6 +162,7 @@ export function analyzeMisses(misses: MissForAnalysis[]) {
     formatted: {
       byCourse: fmt(byCourse),
       byPlate: fmt(byPlate),
+      byTargetLabel: fmt(byTargetLabel),
       byTargetType: fmt(byTargetType),
       byMissedTarget: fmt(byMissedTarget),
       byTargetPosition: fmt(byTargetPosition),

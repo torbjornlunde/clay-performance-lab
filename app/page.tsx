@@ -1,2 +1,20 @@
 import Link from "next/link";
-export default function HomePage(){return <main><div className="card"><h2>Clay Performance Lab</h2><p>Mobile-first performance logging for clay target shooters.</p><div className="btns"><Link href="/login" className="button">Login</Link><Link href="/dashboard" className="button secondary">Dashboard</Link></div></div></main>}
+
+export default function HomePage() {
+  return (
+    <main>
+      <div className="heroCard publicHero">
+        <div>
+          <p className="eyebrow">Clay Performance Lab</p>
+          <h2>Mobile-first performance logging for clay target shooters.</h2>
+          <p>Log training and competition misses, save result-only scores, and review performance against winning scores.</p>
+        </div>
+        <div className="btns heroActions">
+          <Link href="/login" className="button">
+            Login / create account
+          </Link>
+        </div>
+      </div>
+    </main>
+  );
+}

@@ -14,6 +14,8 @@ type SessionRow = {
   course_count: number | null;
   total_targets?: number | null;
   created_at: string;
+  competition_date?: string | null;
+  leirdue_result_url?: string | null;
   own_score?: number | null;
   winning_score?: number | null;
   calculated_score?: number | null;
@@ -28,6 +30,8 @@ type ChartPoint = {
   percentage: number;
   score: number;
   winningScore: number;
+  discipline: string;
+  leirdueResultUrl: string | null;
   x: number;
   y: number;
 };
@@ -124,7 +128,7 @@ export default function StatsPage() {
 
   const chartPoints = useMemo<ChartPoint[]>(() => {
     const scored = sessions
-      .filter((session) => session.session_type === "Competition")
+      .filter((session) => session.session_type === "Competition" && isUsableNumber(session.winning_score) && session.winning_score > 0)
       .map((session) => ({ session, result: percentageFor(session, missCounts) }))
       .filter((item): item is { session: SessionRow; result: { score: number; percentage: number } } => item.result !== null);
 
@@ -143,10 +147,12 @@ export default function StatsPage() {
       return {
         id: item.session.id,
         name: item.session.name,
-        date: item.session.created_at,
+        date: item.session.competition_date || item.session.created_at,
         percentage: item.result.percentage,
         score: item.result.score,
         winningScore: item.session.winning_score || 0,
+        discipline: item.session.discipline,
+        leirdueResultUrl: item.session.leirdue_result_url || null,
         x,
         y,
       };
@@ -173,7 +179,10 @@ export default function StatsPage() {
           <Link href="/dashboard" className="button secondary">
             Dashboard
           </Link>
-          <Link href="/sessions/new" className="button">
+          <Link href="/results/new" className="button">
+            Add competition result
+          </Link>
+          <Link href="/sessions/new" className="button secondary">
             New session
           </Link>
         </div>
@@ -229,13 +238,17 @@ export default function StatsPage() {
             .slice()
             .reverse()
             .map((point) => (
-              <Link href={`/sessions/${point.id}`} className="statListItem" key={point.id}>
+              <div className="statListItem" key={point.id}>
                 <div>
                   <strong>{point.name}</strong>
-                  <div className="small muted">{formatDate(point.date)} · {point.score} / {point.winningScore}</div>
+                  <div className="small muted">{formatDate(point.date)} · {point.discipline} · Score used {point.score} / Winning {point.winningScore}</div>
+                  <div className="btns">
+                    <Link className="button secondary smallButton" href={`/sessions/${point.id}`}>Open session</Link>
+                    {point.leirdueResultUrl && <a className="button secondary smallButton" href={point.leirdueResultUrl} target="_blank" rel="noreferrer">Open Leirdue result</a>}
+                  </div>
                 </div>
                 <span className="statPercent">{point.percentage.toFixed(1)}%</span>
-              </Link>
+              </div>
             ))
         )}
       </div>

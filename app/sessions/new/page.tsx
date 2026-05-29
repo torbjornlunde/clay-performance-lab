@@ -29,7 +29,10 @@ export default function NewSessionPage() {
   const [format, setFormat] = useState("Inline");
   const [count, setCount] = useState(3);
   const [courses, setCourses] = useState<CourseSetup[]>(makeCourses(3, []));
+  const [competitionDate, setCompetitionDate] = useState(new Date().toISOString().slice(0, 10));
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
+  const [ownScore, setOwnScore] = useState("");
+  const [winningScore, setWinningScore] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -62,6 +65,9 @@ export default function NewSessionPage() {
         shooting_format: isCompak ? format : null,
         course_count: isCompak ? count : null,
         total_targets: isCompak ? count * 25 : null,
+        competition_date: competitionDate || null,
+        own_score: ownScore === "" ? null : Number(ownScore),
+        winning_score: winningScore === "" ? null : Number(winningScore),
         leirdue_result_url: leirdueResultUrl.trim() || null,
       })
       .select("id")
@@ -98,6 +104,8 @@ export default function NewSessionPage() {
         <h2>New session</h2>
         <label>Session name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Session name" />
+        <label>Date</label>
+        <input value={competitionDate} onChange={(e) => setCompetitionDate(e.target.value)} type="date" />
         <label>Leirdue.net result URL</label>
         <input
           value={leirdueResultUrl}
@@ -126,6 +134,22 @@ export default function NewSessionPage() {
             </select>
           </div>
         </div>
+        {(sessionType === "Competition" || ownScore || winningScore) && (
+          <div className="subcard">
+            <h3>Competition result</h3>
+            <p className="small muted">Own score is optional if you log all misses. Winning score is needed for performance percentage.</p>
+            <div className="row">
+              <div>
+                <label>Own score</label>
+                <input value={ownScore} onChange={(e) => setOwnScore(e.target.value)} type="number" min="0" inputMode="numeric" />
+              </div>
+              <div>
+                <label>Winning score</label>
+                <input value={winningScore} onChange={(e) => setWinningScore(e.target.value)} type="number" min="0" inputMode="numeric" />
+              </div>
+            </div>
+          </div>
+        )}
         {discipline === "Compak Sporting" && (
           <>
             <div className="row">

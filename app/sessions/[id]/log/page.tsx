@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { getTargetTypeForScheme } from "@/lib/fitasc/schemes";
+import { getExpectedPresentationRows, getMachineLabelFromRow, getPresentationLabel, type CompakSchemeRow } from "@/lib/fitasc/compakSchemes";
 import { supabase } from "@/lib/supabase/client";
 
 type Session = {
@@ -33,6 +33,7 @@ type RecentMiss = {
   plate: number | null;
   target_number: number | null;
   target_type: string | null;
+  target_label: string | null;
   missed_target: string;
   where_miss: string | null;
   main_reason: string | null;
@@ -57,7 +58,7 @@ const defaultDetail = (): MissDetail => ({
 });
 
 const detailSelect =
-  "id,course_number,plate,target_number,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
+  "id,course_number,plate,target_number,target_label,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
 
 export default function LogPage() {
   const params = useParams<{ id: string }>();
@@ -68,6 +69,9 @@ export default function LogPage() {
   const [courseNumber, setCourseNumber] = useState(1);
   const [plate, setPlate] = useState(1);
   const [targetNumber, setTargetNumber] = useState(1);
+  const [logMode, setLogMode] = useState("During shooting");
+  const [manualMachine, setManualMachine] = useState("Unknown");
+  const [schemeRows, setSchemeRows] = useState<CompakSchemeRow[]>([]);
   const [missedTarget, setMissedTarget] = useState("Single target");
   const [genericDetail, setGenericDetail] = useState<MissDetail>(defaultDetail);
   const [firstDetail, setFirstDetail] = useState<MissDetail>(defaultDetail);
@@ -86,11 +90,15 @@ export default function LogPage() {
   );
   const isCompak = session?.discipline === "Compak Sporting";
   const schemeMissing = Boolean(isCompak && current && !current.fitasc_scheme);
-  const targetType = isCompak && current?.fitasc_scheme ? getTargetTypeForScheme(current.fitasc_scheme, targetNumber) : "Unknown";
+  const expectedRows = current?.fitasc_scheme ? getExpectedPresentationRows(current.fitasc_scheme) : ["unknown"];
+  const schemeRow = schemeRows.find((row) => row.scheme_number === current?.fitasc_scheme && row.plate_number === plate && row.event_number === targetNumber);
+  const targetType = schemeRow ? getPresentationLabel(schemeRow.presentation) : current?.fitasc_scheme ? getPresentationLabel(expectedRows[targetNumber - 1]) : "Unknown";
+  const targetLabel = logMode === "After shooting / manual" ? manualMachine : getMachineLabelFromRow(schemeRow);
+  const calculatedText = schemeRow ? `Calculated: ${getMachineLabelFromRow(schemeRow)} · ${getPresentationLabel(schemeRow.presentation)}` : "Machine unknown for this scheme until exact FITASC data is imported.";
 
   useEffect(() => {
     if (targetType === "Single") setMissedTarget("Single target");
-    else if (targetType === "Report double" || targetType === "Simo double") setMissedTarget("Second target in pair");
+    else if (targetType === "Report pair" || targetType === "Simo pair") setMissedTarget("Second target in pair");
   }, [targetType]);
 
   async function load() {
@@ -114,6 +122,15 @@ export default function LogPage() {
 
     setSession(sessionData);
     setCourses(courseData || []);
+    const schemeNumbers = Array.from(new Set((courseData || []).map((course) => course.fitasc_scheme).filter(Boolean)));
+    if (schemeNumbers.length > 0) {
+      const { data: fitascRows } = await supabase
+        .from("fitasc_compak_schemes")
+        .select("scheme_number,plate_number,event_number,presentation,first_machine,second_machine,is_verified")
+        .in("scheme_number", schemeNumbers)
+        .returns<CompakSchemeRow[]>();
+      setSchemeRows(fitascRows || []);
+    }
     if (courseData?.[0]) {
       setCourseNumber(courseData[0].course_number);
       if (sessionData?.shooting_format === "Squad" && courseData[0].start_plate) setPlate(courseData[0].start_plate);
@@ -176,7 +193,7 @@ export default function LogPage() {
       course_number: isCompak ? courseNumber : null,
       plate: isCompak ? plate : null,
       target_number: isCompak ? targetNumber : null,
-      target_label: isCompak ? `Target ${targetNumber}` : null,
+      target_label: isCompak ? targetLabel : null,
       target_type: targetType,
       missed_target: missedTarget,
       where_miss: primaryDetail.whereMiss,
@@ -333,17 +350,32 @@ export default function LogPage() {
                 </select>
               </div>
             </div>
-            <label>Target</label>
-            <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
-              {[1, 2, 3, 4, 5].map((v) => (
-                <option key={v} value={v}>
-                  Target {v}
-                </option>
-              ))}
+            <label>Logging mode</label>
+            <select value={logMode} onChange={(e) => setLogMode(e.target.value)}>
+              <option>During shooting</option>
+              <option>After shooting / manual</option>
             </select>
-            <div className="notice small">
-              Detected target type: <strong>{targetType}</strong>
-            </div>
+            {logMode === "After shooting / manual" ? (
+              <>
+                <label>Machine</label>
+                <select value={manualMachine} onChange={(e) => setManualMachine(e.target.value)}>
+                  {["A", "B", "C", "D", "E", "F", "Unknown"].map((v) => <option key={v}>{v}</option>)}
+                </select>
+                <p className="small muted">Use manual mode when you remember the target/machine but not the exact plate.</p>
+              </>
+            ) : (
+              <>
+                <label>Visible row</label>
+                <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
+                  {expectedRows.map((_row, index) => {
+                    const row = schemeRows.find((item) => item.scheme_number === current?.fitasc_scheme && item.plate_number === plate && item.event_number === index + 1);
+                    const label = row ? `${getPresentationLabel(row.presentation)} ${getMachineLabelFromRow(row)}` : getPresentationLabel(expectedRows[index]);
+                    return <option key={index + 1} value={index + 1}>{label}</option>;
+                  })}
+                </select>
+                <div className="notice small">{calculatedText}</div>
+              </>
+            )}
             {schemeMissing && (
               <div className="notice small">
                 No FITASC scheme set for this course yet. You can still log the miss, but target type may be unknown.
@@ -383,10 +415,10 @@ export default function LogPage() {
           recentMisses.map((miss) => (
             <div className="subcard" key={miss.id}>
               <strong>
-                Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · Target {miss.target_number ?? "-"}
+                Course {miss.course_number ?? "-"} · Plate {miss.plate ?? "-"} · {miss.target_label || "Unknown"}
               </strong>
               <div className="small muted">
-                Target type: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}
+                Presentation: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}
               </div>
               {miss.missed_target === "Both targets in pair" ? (
                 <>

@@ -26,3 +26,80 @@ drop policy if exists "misses_select_own" on public.misses; create policy "misse
 drop policy if exists "misses_insert_own" on public.misses; create policy "misses_insert_own" on public.misses for insert with check (exists(select 1 from public.sessions s where s.id=misses.session_id and s.user_id=auth.uid()));
 drop policy if exists "misses_update_own" on public.misses; create policy "misses_update_own" on public.misses for update using (exists(select 1 from public.sessions s where s.id=misses.session_id and s.user_id=auth.uid()));
 drop policy if exists "misses_delete_own" on public.misses; create policy "misses_delete_own" on public.misses for delete using (exists(select 1 from public.sessions s where s.id=misses.session_id and s.user_id=auth.uid()));
+
+-- Additive v1.1 performance/result/FITASC reference data columns.
+alter table public.sessions add column if not exists competition_date date;
+alter table public.sessions add column if not exists own_score integer;
+alter table public.sessions add column if not exists winning_score integer;
+alter table public.sessions add column if not exists leirdue_result_url text;
+
+alter table public.misses add column if not exists target_label text;
+alter table public.misses add column if not exists first_where_miss text;
+alter table public.misses add column if not exists first_main_reason text;
+alter table public.misses add column if not exists first_target_read text;
+alter table public.misses add column if not exists first_comment text;
+alter table public.misses add column if not exists second_where_miss text;
+alter table public.misses add column if not exists second_main_reason text;
+alter table public.misses add column if not exists second_target_read text;
+alter table public.misses add column if not exists second_comment text;
+
+create table if not exists public.session_target_definitions(
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references public.sessions(id) on delete cascade,
+  course_number integer not null,
+  machine text not null,
+  target_type text,
+  direction text,
+  speed text,
+  distance text,
+  difficulty text,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'session_target_definitions_session_course_machine_key'
+  ) then
+    alter table public.session_target_definitions
+      add constraint session_target_definitions_session_course_machine_key unique (session_id, course_number, machine);
+  end if;
+end $$;
+
+alter table public.session_target_definitions enable row level security;
+drop policy if exists "target_definitions_select_own" on public.session_target_definitions;
+create policy "target_definitions_select_own" on public.session_target_definitions for select using (exists(select 1 from public.sessions s where s.id=session_target_definitions.session_id and s.user_id=auth.uid()));
+drop policy if exists "target_definitions_insert_own" on public.session_target_definitions;
+create policy "target_definitions_insert_own" on public.session_target_definitions for insert with check (exists(select 1 from public.sessions s where s.id=session_target_definitions.session_id and s.user_id=auth.uid()));
+drop policy if exists "target_definitions_update_own" on public.session_target_definitions;
+create policy "target_definitions_update_own" on public.session_target_definitions for update using (exists(select 1 from public.sessions s where s.id=session_target_definitions.session_id and s.user_id=auth.uid()));
+drop policy if exists "target_definitions_delete_own" on public.session_target_definitions;
+create policy "target_definitions_delete_own" on public.session_target_definitions for delete using (exists(select 1 from public.sessions s where s.id=session_target_definitions.session_id and s.user_id=auth.uid()));
+
+create table if not exists public.fitasc_compak_schemes(
+  id uuid primary key default gen_random_uuid(),
+  scheme_number integer not null,
+  plate_number integer not null,
+  event_number integer not null,
+  presentation text not null,
+  first_machine text,
+  second_machine text,
+  is_verified boolean not null default false,
+  source text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (scheme_number, plate_number, event_number)
+);
+
+alter table public.fitasc_compak_schemes enable row level security;
+drop policy if exists "fitasc_compak_schemes_select_reference" on public.fitasc_compak_schemes;
+create policy "fitasc_compak_schemes_select_reference" on public.fitasc_compak_schemes for select using (true);
+-- MVP admin page writes directly from the client. Restrict insert/update/delete to admin-only server code before public launch.
+drop policy if exists "fitasc_compak_schemes_insert_authenticated_mvp" on public.fitasc_compak_schemes;
+create policy "fitasc_compak_schemes_insert_authenticated_mvp" on public.fitasc_compak_schemes for insert to authenticated with check (true);
+drop policy if exists "fitasc_compak_schemes_update_authenticated_mvp" on public.fitasc_compak_schemes;
+create policy "fitasc_compak_schemes_update_authenticated_mvp" on public.fitasc_compak_schemes for update to authenticated using (true) with check (true);
+drop policy if exists "fitasc_compak_schemes_delete_authenticated_mvp" on public.fitasc_compak_schemes;
+create policy "fitasc_compak_schemes_delete_authenticated_mvp" on public.fitasc_compak_schemes for delete to authenticated using (true);
