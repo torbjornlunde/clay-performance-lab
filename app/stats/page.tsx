@@ -59,39 +59,41 @@ function percentageFor(session: SessionRow, missCounts: Record<string, number>) 
 
 function PerformanceChart({ points }: { points: ChartPoint[] }) {
   const width = 720;
-  const height = 260;
-  const padding = 34;
+  const height = 240;
+  const padding = 38;
   const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
   const maxPercentage = Math.max(100, ...points.map((point) => point.percentage));
   const minPercentage = Math.min(0, ...points.map((point) => point.percentage));
   const range = Math.max(maxPercentage - minPercentage, 1);
   const referenceY = padding + (maxPercentage - 100) * ((height - padding * 2) / range);
+  const labelEvery = points.length > 8 ? Math.ceil(points.length / 5) : 1;
+  const shouldShowLabel = (index: number) => index === 0 || index === points.length - 1 || index % labelEvery === 0;
 
   return (
     <div className="chartWrap" role="img" aria-label="Connected line chart showing performance percentage over time">
       <svg className="performanceChart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
         <line x1={padding} x2={width - padding} y1={referenceY} y2={referenceY} className="chartReference" />
-        <text x={padding} y={referenceY - 8} className="chartText">
-          100% winning score
+        <text x={padding} y={Math.max(referenceY - 8, 14)} className="chartText">
+          100%
         </text>
         <line x1={padding} x2={padding} y1={padding} y2={height - padding} className="chartAxis" />
         <line x1={padding} x2={width - padding} y1={height - padding} y2={height - padding} className="chartAxis" />
         <path d={path} className="chartLine" />
-        {points.map((point) => (
+        {points.map((point, index) => (
           <g key={point.id}>
-            <circle cx={point.x} cy={point.y} r="6" className="chartPoint" />
-            <text x={point.x} y={Math.max(point.y - 12, 16)} textAnchor="middle" className="chartText chartPointLabel">
-              {point.percentage.toFixed(0)}%
-            </text>
+            <circle cx={point.x} cy={point.y} r="5" className="chartPoint" />
+            {shouldShowLabel(index) && (
+              <text x={point.x} y={Math.max(point.y - 12, 16)} textAnchor="middle" className="chartText chartPointLabel">
+                {point.percentage.toFixed(0)}%
+              </text>
+            )}
           </g>
         ))}
       </svg>
       <div className="chartLegend">
-        {points.map((point) => (
-          <span key={point.id}>
-            {formatDate(point.date)} · {point.percentage.toFixed(1)}%
-          </span>
-        ))}
+        <span>{points.length} result{points.length === 1 ? "" : "s"}</span>
+        <span>First {formatDate(points[0].date)}</span>
+        <span>Latest {formatDate(points[points.length - 1].date)}</span>
       </div>
     </div>
   );
@@ -135,8 +137,8 @@ export default function StatsPage() {
     if (scored.length === 0) return [];
 
     const width = 720;
-    const height = 260;
-    const padding = 34;
+    const height = 240;
+    const padding = 38;
     const maxPercentage = Math.max(100, ...scored.map((item) => item.result.percentage));
     const minPercentage = Math.min(0, ...scored.map((item) => item.result.percentage));
     const range = Math.max(maxPercentage - minPercentage, 1);
@@ -173,60 +175,71 @@ export default function StatsPage() {
         <div>
           <p className="eyebrow">Competition stats</p>
           <h2>Performance trend</h2>
-          <p>Connected competition and result percentages over time, using your own score first and calculated score when available.</p>
+          <p>Competition and result only performance against the winning score.</p>
         </div>
         <div className="btns heroActions">
           <Link href="/dashboard" className="button secondary">
             Dashboard
           </Link>
           <Link href="/results/new" className="button">
-            Add competition result
+            Add result only
           </Link>
           <Link href="/sessions/new" className="button secondary">
-            New session
+            New shooting log
           </Link>
         </div>
       </div>
 
-      <div className="card">
+      <div className="card statsSummaryCard">
         <div className="sectionHeader">
           <div>
             <p className="eyebrow">Winning score = 100%</p>
+            <h2>Summary</h2>
+          </div>
+        </div>
+        {loading ? (
+          <p>Loading...</p>
+        ) : chartPoints.length === 0 ? (
+          <div className="emptyState">No competition stats yet. Add a result only entry or add winning score to a competition shooting log.</div>
+        ) : summary ? (
+          <div className="summaryGrid compactSummaryGrid">
+            <div className="summaryStat">
+              <span>Latest</span>
+              <strong>{summary.latest.toFixed(1)}%</strong>
+            </div>
+            <div className="summaryStat">
+              <span>Best</span>
+              <strong>{summary.best.toFixed(1)}%</strong>
+            </div>
+            <div className="summaryStat">
+              <span>Average</span>
+              <strong>{summary.average.toFixed(1)}%</strong>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="card statsChartCard">
+        <div className="sectionHeader">
+          <div>
+            <p className="eyebrow">Trend</p>
             <h2>Competition chart</h2>
           </div>
         </div>
         {loading ? (
           <p>Loading...</p>
         ) : chartPoints.length === 0 ? (
-          <div className="emptyState">No competition stats yet. Add a competition result or add winning score to a competition session.</div>
+          <p className="muted">Chart appears after scoring data is available.</p>
         ) : (
-          <>
-            {summary && (
-              <div className="summaryGrid">
-                <div className="summaryStat">
-                  <span>Latest</span>
-                  <strong>{summary.latest.toFixed(1)}%</strong>
-                </div>
-                <div className="summaryStat">
-                  <span>Best</span>
-                  <strong>{summary.best.toFixed(1)}%</strong>
-                </div>
-                <div className="summaryStat">
-                  <span>Average</span>
-                  <strong>{summary.average.toFixed(1)}%</strong>
-                </div>
-              </div>
-            )}
-            <PerformanceChart points={chartPoints} />
-          </>
+          <PerformanceChart points={chartPoints} />
         )}
       </div>
 
-      <div className="card">
+      <div className="card statsListCard">
         <div className="sectionHeader">
           <div>
-            <p className="eyebrow">Session details</p>
-            <h2>Per-session stats</h2>
+            <p className="eyebrow">Result list</p>
+            <h2>Scored results</h2>
           </div>
         </div>
         {loading ? (
@@ -243,7 +256,7 @@ export default function StatsPage() {
                   <strong>{point.name}</strong>
                   <div className="small muted">{formatDate(point.date)} · {point.discipline} · Score used {point.score} / Winning {point.winningScore}</div>
                   <div className="btns">
-                    <Link className="button secondary smallButton" href={`/sessions/${point.id}`}>Open session</Link>
+                    <Link className="button secondary smallButton" href={`/sessions/${point.id}`}>Open</Link>
                     {point.leirdueResultUrl && <a className="button secondary smallButton" href={point.leirdueResultUrl} target="_blank" rel="noreferrer">Open Leirdue result</a>}
                   </div>
                 </div>

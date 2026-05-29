@@ -149,9 +149,9 @@ export default function DashboardPage() {
     const training = sessions.filter((session) => session.session_type !== "Competition" && !isResultOnly(session, missCounts));
     const resultOnly = sessions.filter((session) => isResultOnly(session, missCounts));
     return [
-      { title: "Competitions", description: "Competition sessions with courses, misses or scoring context.", sessions: competitions },
-      { title: "Training", description: "Practice sessions for logging and reviewing missed-target patterns.", sessions: training },
-      { title: "Result-only entries", description: "Manual result entries without logged courses or misses.", sessions: resultOnly },
+      { title: "Competitions", description: "Competition shooting logs with courses, misses or scoring context.", sessions: competitions },
+      { title: "Result only entries", description: "Result only score entries without logged courses or misses.", sessions: resultOnly },
+      { title: "Training", description: "Training shooting logs for reviewing missed-target patterns.", sessions: training },
     ].filter((group) => group.sessions.length > 0);
   }, [sessions, missCounts]);
 
@@ -161,15 +161,15 @@ export default function DashboardPage() {
         <div>
           <p className="eyebrow">Shooter workspace</p>
           <h2>Dashboard</h2>
-          <p>Create a session, log missed targets, then review analysis and competition trends.</p>
-          <p className="small muted">Use Add competition result when you only want score statistics, without logging misses.</p>
+          <p>Create a shooting log, log missed targets, then review analysis and competition trends.</p>
+          <p className="small muted">Log misses and analyze target patterns. Track score vs winning score without logging misses with Result only.</p>
         </div>
         <div className="btns heroActions">
           <Link href="/sessions/new" className="button">
-            New session
+            New shooting log
           </Link>
           <Link href="/results/new" className="button secondary">
-            Add competition result
+            Add result only
           </Link>
           <Link href="/fitasc" className="button secondary">
             FITASC schemes
@@ -189,15 +189,15 @@ export default function DashboardPage() {
       <div className="card">
         <div className="sectionHeader">
           <div>
-            <p className="eyebrow">Session log</p>
-            <h2>Sessions</h2>
+            <p className="eyebrow">Shooting log</p>
+            <h2>Shooting logs and results</h2>
           </div>
           {!loading && sessions.length > 0 && <span className="pill"><strong>{sessions.length}</strong> total</span>}
         </div>
         {loading ? (
           <p>Loading...</p>
         ) : sessions.length === 0 ? (
-          <div className="emptyState">No sessions yet. Create your first training or competition session to start tracking.</div>
+          <div className="emptyState">No shooting logs or result only entries yet. Create your first training or competition log to start tracking.</div>
         ) : (
           groups.map((group) => (
             <section className="sessionGroup" key={group.title}>

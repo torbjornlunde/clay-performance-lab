@@ -20,10 +20,6 @@ export default function FitascPage() {
     load();
   }, [scheme]);
 
-  const visible = expectedRows.flatMap((_presentation, eventIndex) => [1, 2, 3, 4, 5].map((plate) => rows.find((row) => row.event_number === eventIndex + 1 && row.plate_number === plate))).filter(Boolean) as CompakSchemeRow[];
-  const verifiedCount = visible.filter((row) => row.is_verified).length;
-  const status = visible.length === 0 || verifiedCount === 0 ? "Not verified" : verifiedCount === expectedRows.length * 5 ? "Verified" : "Partly verified";
-
   return (
     <main>
       <div className="heroCard">
@@ -35,17 +31,11 @@ export default function FitascPage() {
 
       </div>
       <div className="card">
-        <div className="row">
-          <div>
-            <label>Scheme number</label>
-            <select value={scheme} onChange={(e) => setScheme(Number(e.target.value))}>
-              {getAllSchemeNumbers().map((number) => <option key={number} value={number}>Scheme {number}</option>)}
-            </select>
-          </div>
-          <div>
-            <label>Verification status</label>
-            <div className="notice">{status}</div>
-          </div>
+        <div className="schemePicker">
+          <label>Scheme number</label>
+          <select value={scheme} onChange={(e) => setScheme(Number(e.target.value))}>
+            {getAllSchemeNumbers().map((number) => <option key={number} value={number}>Scheme {number}</option>)}
+          </select>
         </div>
         {loading ? <p>Loading...</p> : (
           <div className="schemeOverview" aria-label={`Scheme ${scheme} plate overview`}>

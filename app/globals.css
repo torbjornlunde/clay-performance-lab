@@ -885,3 +885,113 @@ html, body {
     display: inline;
   }
 }
+
+.schemePicker {
+  max-width: 320px;
+  margin-bottom: 14px;
+}
+
+@media (min-width: 761px) {
+  .sessionItem {
+    grid-template-columns: minmax(0, 1fr) minmax(96px, 132px);
+    align-items: start;
+  }
+
+  .sessionActions {
+    max-width: 132px;
+    width: 132px;
+  }
+
+  .sessionActions .button {
+    max-width: none;
+  }
+}
+
+.statsSummaryCard,
+.statsChartCard,
+.statsListCard {
+  max-width: 860px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.compactSummaryGrid {
+  max-width: none;
+  margin: 4px 0 0;
+}
+
+.compactSummaryGrid .summaryStat {
+  border-radius: 15px;
+  padding: 11px 12px;
+}
+
+.compactSummaryGrid .summaryStat span {
+  margin-bottom: 4px;
+}
+
+.compactSummaryGrid .summaryStat strong {
+  font-size: clamp(18px, 3vw, 24px);
+}
+
+.statsChartCard .sectionHeader {
+  margin-bottom: 4px;
+}
+
+.statsChartCard .chartWrap {
+  max-width: 780px;
+}
+
+.statsChartCard .performanceChart {
+  display: block;
+  height: clamp(190px, 28vw, 260px);
+  max-height: 260px;
+}
+
+.statsListCard .statListItem {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.statsListCard .statListItem .btns {
+  margin-top: 10px;
+}
+
+@media (max-width: 760px) {
+  .sessionItem,
+  .statListItem,
+  .statsListCard .statListItem {
+    grid-template-columns: 1fr;
+  }
+
+  .sessionActions {
+    width: 100%;
+    max-width: none;
+    justify-content: stretch;
+    min-width: 0;
+  }
+
+  .sessionActions .button {
+    max-width: none;
+  }
+
+  .compactSummaryGrid {
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 7px;
+  }
+
+  .compactSummaryGrid .summaryStat {
+    padding: 9px 8px;
+  }
+
+  .compactSummaryGrid .summaryStat strong {
+    font-size: clamp(16px, 5vw, 20px);
+  }
+
+  .statsChartCard .performanceChart {
+    height: clamp(180px, 54vw, 220px);
+  }
+
+  .statsListCard .statPercent {
+    justify-self: start;
+  }
+}
