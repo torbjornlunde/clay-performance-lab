@@ -188,6 +188,103 @@ p {
   max-width: 100%;
 }
 
+.dashboardPrimaryActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: min(100%, 700px);
+  margin-top: 8px;
+}
+
+.dashboardActionCard,
+.compactAction {
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.dashboardActionCard:hover,
+.compactAction:hover {
+  transform: translateY(-1px);
+}
+
+.dashboardActionCard {
+  display: grid;
+  gap: 5px;
+  min-height: 98px;
+  padding: 16px;
+}
+
+.dashboardActionCard span,
+.compactAction span {
+  color: var(--text);
+  font-weight: 900;
+}
+
+.dashboardActionCard small,
+.compactAction small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.primaryAction {
+  background:
+    linear-gradient(135deg, rgba(245, 207, 106, 0.22), rgba(216, 165, 58, 0.08)),
+    rgba(26, 36, 49, 0.9);
+  border-color: var(--lineStrong);
+}
+
+.secondaryAction {
+  background: rgba(26, 36, 49, 0.72);
+}
+
+.moreActionsCard {
+  display: grid;
+  gap: 10px;
+}
+
+.compactSectionHeader {
+  margin-bottom: 0;
+}
+
+.compactSectionHeader h2 {
+  font-size: 20px;
+  margin-bottom: 0;
+}
+
+.moreActionsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 9px;
+}
+
+.compactAction {
+  display: grid;
+  gap: 3px;
+  justify-content: start;
+  align-content: center;
+  min-height: 58px;
+  padding: 11px 12px;
+  background: rgba(26, 36, 49, 0.72);
+  color: var(--text);
+  text-align: left;
+}
+
+button.compactAction {
+  width: 100%;
+}
+
+.dangerAction {
+  background: rgba(239, 118, 95, 0.12);
+  border-color: rgba(239, 118, 95, 0.38);
+}
+
+.dangerAction span {
+  color: #ffd0c8;
+}
+
 .authMain {
   max-width: 520px;
 }
@@ -647,6 +744,17 @@ button:disabled,
   .dashboardActions,
   .stackedOnMobile {
     width: 100%;
+  }
+
+  .dashboardPrimaryActions,
+  .moreActionsGrid {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .dashboardActionCard {
+    min-height: auto;
+    padding: 14px;
   }
 
   .heroActions .button,

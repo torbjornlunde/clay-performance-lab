@@ -383,55 +383,53 @@ export default function DashboardPage() {
         <p className="eyebrow">Shooter workspace</p>
         <h2>Dashboard</h2>
         <p className="dashboardHeroCopy">
-          Create shooting logs, capture result only entries, and review
-          competition trends.
+          Create shooting logs, add result-only entries, and review your
+          performance trends.
         </p>
-        <div className="dashboardHeroHelp">
-          <p className="small muted">
-            <strong>New shooting log:</strong> Log misses and analyze target
-            patterns.
-          </p>
-          <p className="small muted">
-            <strong>Add result only:</strong> Track score vs winning score
-            without logging misses.
-          </p>
-          <p className="small muted">
-            <strong>Import from Leirdue.net:</strong> Find old competition
-            results and review before saving.
-          </p>
+        <div className="dashboardPrimaryActions">
+          <Link href="/sessions/new" className="dashboardActionCard primaryAction">
+            <span>New shooting log</span>
+            <small>Log misses and analyze target patterns.</small>
+          </Link>
+          <Link href="/results/new" className="dashboardActionCard secondaryAction">
+            <span>Add result only</span>
+            <small>Track score vs winning score without logging misses.</small>
+          </Link>
         </div>
-        <div className="dashboardActions">
-          <Link href="/sessions/new" className="button">
-            New shooting log
+      </div>
+
+      <section className="card moreActionsCard" aria-labelledby="more-actions-heading">
+        <div className="sectionHeader compactSectionHeader">
+          <div>
+            <p className="eyebrow">Secondary tools</p>
+            <h2 id="more-actions-heading">More actions</h2>
+          </div>
+        </div>
+        <div className="moreActionsGrid">
+          <Link href="/import/leirdue" className="compactAction">
+            <span>Import from Leirdue.net</span>
+            <small>Find old competition results and review before saving.</small>
           </Link>
-          <Link href="/results/new" className="button secondary">
-            Add result only
-          </Link>
-          <Link href="/import/leirdue" className="button secondary">
-            Import from Leirdue.net
-          </Link>
-          <Link href="/fitasc" className="button secondary">
-            FITASC schemes
-          </Link>
-          <Link href="/stats" className="button secondary">
-            Stats
+          <Link href="/fitasc" className="compactAction">
+            <span>FITASC schemes</span>
           </Link>
           <button
-            className="secondary"
+            className="compactAction"
             onClick={exportMyData}
             disabled={exporting || loading}
           >
-            {exporting ? "Exporting..." : "Export my data"}
+            <span>{exporting ? "Exporting..." : "Export my data"}</span>
+            <small>Download your data as an Excel file.</small>
           </button>
-          <button className="secondary" onClick={load}>
-            Refresh
+          <button className="compactAction" onClick={load}>
+            <span>Refresh</span>
           </button>
-          <button className="danger" onClick={logout}>
-            Logout
+          <button className="compactAction dangerAction" onClick={logout}>
+            <span>Logout</span>
           </button>
         </div>
         {exportError && <div className="error">{exportError}</div>}
-      </div>
+      </section>
 
       <div className="card">
         <div className="sectionHeader">

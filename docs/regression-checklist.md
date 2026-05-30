@@ -1,123 +1,58 @@
 # Regression checklist
 
-Before merging any future PR:
+Use this checklist after each PR and before merging to keep the main user flows safe.
 
-- [ ] Public/login page does not show Dashboard button before login.
-- [ ] Login works with Enter key.
+## A. Auth / navigation
+
+- [ ] Public/login page does not show Dashboard before login.
+- [ ] Login works.
 - [ ] Dashboard opens after login.
-- [ ] Dashboard shows New shooting log for full miss logging.
-- [ ] Dashboard shows Add result only for score-only stats.
-- [ ] Dashboard shows FITASC schemes.
-- [ ] `/fitasc` opens.
-- [ ] FITASC scheme selector shows schemes 1-40.
-- [ ] FITASC viewer does not use Target/Event wording.
+- [ ] Logout works.
+
+## B. Dashboard
+
+- [ ] New shooting log opens.
+- [ ] Add result only opens.
+- [ ] Import from Leirdue.net opens.
+- [ ] FITASC schemes opens.
+- [ ] Stats opens.
+- [ ] Export my data downloads Excel or shows clear error.
+- [ ] Dashboard mobile layout has no horizontal scrolling.
+
+## C. Shooting logs
+
+- [ ] New shooting log can be created.
+- [ ] Edit setup opens old and new sessions.
 - [ ] Log Miss opens.
-- [ ] Log Miss shows calculated machine when scheme data exists.
-- [ ] Log Miss recent misses/delete works.
-- [ ] New shooting log works.
-- [ ] Edit setup works.
-- [ ] Target definitions save works.
-- [ ] Stats page opens without horizontal scrolling on mobile.
-- [ ] Result only entry works.
-- [ ] Dashboard desktop layout does not squeeze text beside buttons.
-- [ ] Dashboard main actions are clearly worded for Shooting log vs Result only.
-- [ ] FITASC viewer does not show verification status.
-- [ ] Dashboard section order is Competitions, Result only entries, Training.
-- [ ] Log Miss does not show unnecessary Logging mode toggle.
-- [ ] New shooting log date field is normal size.
-- [ ] Stats chart is responsive and proportionate.
-- [ ] FITASC schemes fit on mobile without horizontal page scrolling.
-- [ ] FITASC admin/import is not shown in normal user flow.
-- [ ] Production/main should be treated as source of truth.
-- [ ] Dashboard hero title does not wrap mid-word on desktop.
-- [ ] Dashboard hero buttons sit below text.
-- [ ] Dashboard/result list sorts newest first.
-- [ ] Stats chart sorts oldest left and newest right.
-- [ ] Stats chart uses 50% baseline when all plotted values are at or above 50%.
-- [ ] Stats chart points open session detail.
-- [ ] Kompakt leirduesti appears as discipline option.
-- [ ] Kompakt leirduesti setup uses Compak/compact setup, not ordinary Leirduesti post setup.
-- [ ] Kompakt leirduesti Log Miss uses compact course/plate/scheme logic.
-- [ ] Kompakt leirduesti Analysis works like Compak Sporting.
-- [ ] Kompakt leirduesti appears separately in dashboard/stats/export.
-- [ ] Existing Compak Sporting still works.
-- [ ] Existing ordinary Leirduesti still works.
-- [ ] Existing Sporttrap still works.
-- [ ] Sporttrap can be selected as discipline.
-- [ ] Sporttrap setup does not ask for FITASC scheme.
-- [ ] Sporttrap Log Miss calculates Round 1 single correctly.
-- [ ] Sporttrap Log Miss calculates Round 2 report pair correctly.
-- [ ] Sporttrap Log Miss calculates Round 3 simo pair correctly.
-- [ ] Shooting ground can be entered on New shooting log.
-- [ ] Shooting ground can be entered on Result only.
-- [ ] Shooting ground can be edited.
-- [ ] Shooting ground appears on Dashboard.
-- [ ] Shooting ground appears on Stats result cards.
-- [ ] Excel export includes Shooting ground.
-- [ ] Stats summary is compact.
-- [ ] Stats chart is compact and clickable.
-- [ ] Stats chart uses oldest-left/newest-right order.
-- [ ] Result list uses newest-first order.
-- [ ] By shooting ground summary appears when applicable.
-- [ ] Existing Compak/FITASC logging still works.
-- [ ] Log Miss keeps course/post/stand after saving.
-- [ ] Log Miss clears only comment fields after saving.
-- [ ] Log Miss recent misses still show after saving.
-- [ ] Log Miss recent miss delete still works.
-- [ ] Compak/FITASC Log Miss calculated machine still works.
-- [ ] Sporttrap Log Miss calculated sequence still works.
-- [ ] Leirduesti Log Miss post/situation logging still works.
-- [ ] Log Miss mobile layout is easy to tap with no horizontal scrolling.
-- [ ] Single targets do not ask which target was missed.
-- [ ] Pair targets ask First/Second/Both/Unknown.
-- [ ] FITASC pair options show machine labels.
-- [ ] Sporttrap pair options show machine labels.
-- [ ] Leirduesti no longer creates Repeated pair.
-- [ ] Analysis shows Main pattern.
-- [ ] Analysis gives short training recommendation.
-- [ ] Existing recent miss delete still works.
-- [ ] Existing Compak/Sporttrap/Leirduesti logging still works.
+- [ ] Save miss works.
+- [ ] Review misses opens.
+- [ ] Edit miss opens and saves.
+- [ ] Delete miss works.
 
-## Miss management and analysis polish
-- [ ] Review misses page opens.
-- [ ] All misses are listed.
-- [ ] Miss can be edited and saved.
-- [ ] Miss can be deleted from review page.
-- [ ] Recent misses still show.
-- [ ] Recent miss edit link works.
-- [ ] Single targets do not ask First/Second/Both.
-- [ ] Pair targets ask First/Second/Both/Unknown.
-- [ ] FITASC pair options show machine labels.
-- [ ] Sporttrap pair options show machine labels.
-- [ ] Leirduesti no longer creates Repeated pair.
-- [ ] Analysis shows Main pattern.
-- [ ] Analysis shows training recommendation.
-- [ ] Export still works.
+## D. Disciplines
 
-## Leirdue import v1
-- [ ] Leirdue import page opens.
-- [ ] Search has shooter name, year and discipline checkboxes.
-- [ ] Recommended/review/control sections display.
-- [ ] Candidate can be edited before saving.
-- [ ] Cup/control lists are not selected by default.
-- [ ] Selected candidates save as result-only sessions.
-- [ ] Saved results appear in Stats.
-- [ ] Duplicate Leirdue URL is not imported twice.
+- [ ] Compak Sporting works.
+- [ ] Kompakt leirduesti works.
+- [ ] Sporttrap works.
+- [ ] Leirduesti works.
+- [ ] Compak and Kompakt leirduesti use compact logic.
+- [ ] Leirduesti uses post logic.
+- [ ] Sporttrap uses 25-target series.
+
+## E. Must test after latest hotfix
+
+- [ ] Compak Sporting edit miss can change actual presentation.
+- [ ] Compak Sporting edit miss can switch order.
+- [ ] Kompakt leirduesti edit miss still works.
+- [ ] Analysis uses actual_presentation when available.
+- [ ] Target definitions copy to all courses works.
+- [ ] Speed and distance are preserved during target definition copy.
+- [ ] Export still works after new miss fields.
+
+## F. Leirdue import
+
+- [ ] Import page opens.
+- [ ] Search form has shooter name, year and discipline checkboxes.
+- [ ] No-candidates state is understandable.
 - [ ] Add result manually link works.
-- [ ] Existing logging and stats still work.
-- [ ] Manual validation case: Torbjørn Lunde, 2026 should include direct daily Compak/Kompakt/Leirduesti candidates and keep XXL/Blaser cup, uttak/prosent, finale/shoot-off, and weekend-combined control lists unselected.
-
-## Live training logging usability
-- [ ] Pair order can be switched in Log Miss.
-- [ ] First/Second labels update when order is reversed.
-- [ ] Simo pair can be overridden to Report pair.
-- [ ] Edit miss actual presentation works for Compak Sporting.
-- [ ] Edit miss actual presentation works for Kompakt leirduesti.
-- [ ] Edit miss reversed order works for Compak Sporting.
-- [ ] Analysis uses actual_presentation over target_type and base_presentation.
-- [ ] Singles do not ask First/Second/Both.
-- [ ] Target definitions Copy to all courses works.
-- [ ] Target definitions Copy from course to course works.
-- [ ] Speed and distance are preserved when copying target definitions.
-- [ ] Recent misses still edit/delete correctly.
-- [ ] Export still works.
+- [ ] Candidate review/save should be tested when parser returns candidates.
