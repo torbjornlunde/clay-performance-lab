@@ -93,3 +93,16 @@ Before merging any future PR:
 - [ ] Analysis shows Main pattern.
 - [ ] Analysis shows training recommendation.
 - [ ] Export still works.
+
+## Leirdue import v1
+- [ ] Leirdue import page opens.
+- [ ] Search has shooter name, year and discipline checkboxes.
+- [ ] Recommended/review/control sections display.
+- [ ] Candidate can be edited before saving.
+- [ ] Cup/control lists are not selected by default.
+- [ ] Selected candidates save as result-only sessions.
+- [ ] Saved results appear in Stats.
+- [ ] Duplicate Leirdue URL is not imported twice.
+- [ ] Add result manually link works.
+- [ ] Existing logging and stats still work.
+- [ ] Manual validation case: Torbjørn Lunde, 2026 should include direct daily Compak/Kompakt/Leirduesti candidates and keep XXL/Blaser cup, uttak/prosent, finale/shoot-off, and weekend-combined control lists unselected.

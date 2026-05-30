@@ -287,6 +287,7 @@ export default function DashboardPage() {
         <div className="dashboardHeroHelp">
           <p className="small muted"><strong>New shooting log:</strong> Log misses and analyze target patterns.</p>
           <p className="small muted"><strong>Add result only:</strong> Track score vs winning score without logging misses.</p>
+          <p className="small muted"><strong>Import from Leirdue.net:</strong> Find old competition results and review before saving.</p>
         </div>
         <div className="dashboardActions">
           <Link href="/sessions/new" className="button">
@@ -294,6 +295,9 @@ export default function DashboardPage() {
           </Link>
           <Link href="/results/new" className="button secondary">
             Add result only
+          </Link>
+          <Link href="/import/leirdue" className="button secondary">
+            Import from Leirdue.net
           </Link>
           <Link href="/fitasc" className="button secondary">
             FITASC schemes
