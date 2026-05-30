@@ -13,11 +13,12 @@ type Session = {
   discipline: string;
   shooting_format: string | null;
   total_targets: number | null;
+  course_count: number | null;
   sporttrap_series_count: number | null;
 };
 
 type Course = {
-  id: string;
+  id?: string;
   course_number: number;
   fitasc_scheme: number | null;
   start_plate: number | null;
@@ -61,6 +62,8 @@ const defaultDetail = (): MissDetail => ({
   comment: "",
 });
 
+const LEIRDUESTI_TARGETS_PER_POST = 5;
+
 const detailSelect =
   "id,course_number,plate,target_number,target_label,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
 
@@ -95,6 +98,7 @@ export default function LogPage() {
   );
   const isCompak = session?.discipline === "Compak Sporting";
   const isSporttrap = session?.discipline === "Sporttrap";
+  const isLeirduesti = session?.discipline === "Leirduesti";
   const schemeMissing = Boolean(isCompak && current && !current.fitasc_scheme);
   const expectedRows = current?.fitasc_scheme ? getExpectedPresentationRows(current.fitasc_scheme) : ["unknown"];
   const schemeRow = schemeRows.find((row) => row.scheme_number === current?.fitasc_scheme && row.plate_number === plate && row.event_number === targetNumber);
@@ -104,15 +108,19 @@ export default function LogPage() {
   const sporttrapTargetLabel = getSporttrapMachineLabel(sporttrapEvent);
   const targetType = isSporttrap
     ? sporttrapTargetType
-    : schemeRow
+    : isLeirduesti
+      ? "Post target"
+      : schemeRow
       ? getPresentationLabel(schemeRow.presentation)
       : current?.fitasc_scheme
         ? getPresentationLabel(expectedRows[targetNumber - 1])
         : "Unknown";
-  const targetLabel = isSporttrap ? sporttrapTargetLabel : showManualMachine ? manualMachine : getMachineLabelFromRow(schemeRow);
+  const targetLabel = isSporttrap ? sporttrapTargetLabel : isLeirduesti ? `Post ${courseNumber}` : showManualMachine ? manualMachine : getMachineLabelFromRow(schemeRow);
   const calculatedText = isSporttrap
     ? `Sporttrap sequence: ${sporttrapTargetType} · ${sporttrapTargetLabel}`
-    : schemeRow
+    : isLeirduesti
+      ? `Leirduesti post ${courseNumber} · Target ${targetNumber}`
+      : schemeRow
       ? `Calculated: ${getMachineLabelFromRow(schemeRow)} · ${getPresentationLabel(schemeRow.presentation)}`
       : "Machine unavailable for this plate and target / pair selection.";
 
@@ -130,7 +138,7 @@ export default function LogPage() {
 
     const { data: sessionData } = await supabase
       .from("sessions")
-      .select("id,name,discipline,shooting_format,total_targets,sporttrap_series_count")
+      .select("id,name,discipline,shooting_format,total_targets,course_count,sporttrap_series_count")
       .eq("id", params.id)
       .single<Session>();
     const { data: courseData } = await supabase
@@ -141,7 +149,11 @@ export default function LogPage() {
       .returns<Course[]>();
 
     setSession(sessionData);
-    setCourses(courseData || []);
+    const loadedCourses = courseData || [];
+    const displayCourses = sessionData?.discipline === "Leirduesti" && loadedCourses.length === 0
+      ? Array.from({ length: sessionData.course_count || 8 }, (_, index) => ({ course_number: index + 1, fitasc_scheme: null, start_plate: null, shooter_number: null }))
+      : loadedCourses;
+    setCourses(displayCourses);
     const schemeNumbers = Array.from(new Set((courseData || []).map((course) => course.fitasc_scheme).filter(Boolean)));
     if (sessionData?.discipline === "Compak Sporting" && schemeNumbers.length > 0) {
       const { data: fitascRows } = await supabase
@@ -151,10 +163,10 @@ export default function LogPage() {
         .returns<CompakSchemeRow[]>();
       setSchemeRows(fitascRows || []);
     }
-    if (courseData?.[0]) {
-      setCourseNumber(courseData[0].course_number);
-      if (sessionData?.discipline === "Sporttrap" && courseData[0].shooter_number) setPlate(courseData[0].shooter_number);
-      else if (sessionData?.shooting_format === "Squad" && courseData[0].start_plate) setPlate(courseData[0].start_plate);
+    if (displayCourses?.[0]) {
+      setCourseNumber(displayCourses[0].course_number);
+      if (sessionData?.discipline === "Sporttrap" && displayCourses[0].shooter_number) setPlate(displayCourses[0].shooter_number);
+      else if (sessionData?.shooting_format === "Squad" && displayCourses[0].start_plate) setPlate(displayCourses[0].start_plate);
     }
     await loadRecentMisses();
   }
@@ -211,10 +223,10 @@ export default function LogPage() {
     setSaving(true);
     const { error } = await supabase.from("misses").insert({
       session_id: session.id,
-      course_number: isSporttrap ? seriesNumber : isCompak ? courseNumber : null,
+      course_number: isSporttrap ? seriesNumber : isCompak || isLeirduesti ? courseNumber : null,
       plate: isCompak || isSporttrap ? plate : null,
-      target_number: isCompak || isSporttrap ? targetNumber : null,
-      target_label: isCompak || isSporttrap ? targetLabel : null,
+      target_number: isCompak || isSporttrap || isLeirduesti ? targetNumber : null,
+      target_label: isCompak || isSporttrap || isLeirduesti ? targetLabel : null,
       target_type: targetType,
       missed_target: missedTarget,
       where_miss: primaryDetail.whereMiss,
@@ -390,6 +402,33 @@ export default function LogPage() {
             <div className="notice small">{calculatedText}</div>
           </>
         )}
+        {session.discipline === "Leirduesti" && (
+          <>
+            <div className="row">
+              <div>
+                <label>Post</label>
+                <select value={courseNumber} onChange={(e) => changeCourse(Number(e.target.value))}>
+                  {courses.map((course) => (
+                    <option key={course.id || course.course_number} value={course.course_number}>
+                      Post {course.course_number}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label>Target on post</label>
+                <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
+                  {Array.from({ length: LEIRDUESTI_TARGETS_PER_POST }, (_, index) => index + 1).map((v) => (
+                    <option key={v} value={v}>
+                      Target {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="notice small">{calculatedText}</div>
+          </>
+        )}
         {session.discipline === "Compak Sporting" && (
           <>
             <div className="row">
@@ -397,7 +436,7 @@ export default function LogPage() {
                 <label>Course</label>
                 <select value={courseNumber} onChange={(e) => changeCourse(Number(e.target.value))}>
                   {courses.map((course) => (
-                    <option key={course.id} value={course.course_number}>
+                    <option key={course.id || course.course_number} value={course.course_number}>
                       Course {course.course_number} — {course.fitasc_scheme ? `Scheme ${course.fitasc_scheme}` : "Scheme unknown"}
                     </option>
                   ))}
@@ -476,7 +515,9 @@ export default function LogPage() {
               <strong>
                 {isSporttrap
                   ? `Series ${miss.course_number ?? "-"} · Stand ${miss.plate ?? "-"} · Sporttrap sequence ${miss.target_type || "-"} · ${miss.target_label || "Unknown"}`
-                  : `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Unknown"}`}
+                  : isLeirduesti
+                    ? `Post ${miss.course_number ?? "-"} · Target ${miss.target_number ?? "-"}`
+                    : `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Unknown"}`}
               </strong>
               <div className="small muted">
                 Presentation: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}

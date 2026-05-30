@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { defaultStartPlateForShooter, getSchemeOptions, plateRotation } from "@/lib/fitasc/schemes";
@@ -47,10 +47,12 @@ function makeCourses(count: number, old: CourseSetup[]) {
 }
 
 export default function EditSessionPage() {
-  const params = useParams<{ id: string }>();
+  const params = useParams();
   const router = useRouter();
   const schemes = useMemo(() => getSchemeOptions(), []);
+  const sessionId = typeof params?.id === "string" ? params.id : "";
   const [loaded, setLoaded] = useState(false);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const [name, setName] = useState("");
   const [discipline, setDiscipline] = useState("");
   const [sessionType, setSessionType] = useState("Training");
@@ -58,6 +60,7 @@ export default function EditSessionPage() {
   const [count, setCount] = useState(1);
   const [courses, setCourses] = useState<CourseSetup[]>([]);
   const [sporttrapSeriesCount, setSporttrapSeriesCount] = useState(1);
+  const [leirduestiPostCount, setLeirduestiPostCount] = useState(8);
   const [competitionDate, setCompetitionDate] = useState("");
   const [shootingGround, setShootingGround] = useState("");
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
@@ -66,37 +69,62 @@ export default function EditSessionPage() {
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    load();
-  }, []);
+  const load = useCallback(async () => {
+    setLoaded(false);
+    setSessionLoaded(false);
+    setErr("");
 
-  async function load() {
-    const { data: u } = await supabase.auth.getUser();
+    if (!sessionId) {
+      setErr("Invalid session id in route.");
+      setLoaded(true);
+      return;
+    }
+
+    const { data: u, error: authError } = await supabase.auth.getUser();
+    if (authError) {
+      setErr(authError.message);
+      setLoaded(true);
+      return;
+    }
     if (!u.user) {
       router.push("/login");
       return;
     }
 
-    const { data: session } = await supabase
+    const { data: session, error: sessionError } = await supabase
       .from("sessions")
       .select("id,name,discipline,session_type,shooting_format,course_count,total_targets,sporttrap_series_count,leirdue_result_url,shooting_ground,competition_date,own_score,winning_score")
-      .eq("id", params.id)
-      .single<Session>();
-    const { data: courseRows } = await supabase
+      .eq("id", sessionId)
+      .maybeSingle<Session>();
+
+    if (sessionError) {
+      setErr(sessionError.message);
+      setLoaded(true);
+      return;
+    }
+
+    if (!session) {
+      setErr("Session not found, or your account does not have access to it. If this session exists, Supabase row-level security may be blocking access.");
+      setLoaded(true);
+      return;
+    }
+
+    const { data: courseRows, error: courseError } = await supabase
       .from("session_courses")
       .select("id,course_number,fitasc_scheme,shooter_number,start_plate")
-      .eq("session_id", params.id)
+      .eq("session_id", sessionId)
       .order("course_number")
       .returns<CourseRow[]>();
 
-    if (!session) {
-      setErr("Session not found.");
+    if (courseError) {
+      setErr(courseError.message);
       setLoaded(true);
       return;
     }
 
     const sporttrapSeries = session.sporttrap_series_count || (session.discipline === "Sporttrap" && session.total_targets ? Math.max(Math.round(session.total_targets / 25), 1) : 1);
-    const nextCount = session.discipline === "Sporttrap" ? 1 : session.course_count || Math.max(courseRows?.length || 0, 1);
+    const isLeirduesti = session.discipline === "Leirduesti";
+    const nextCount = session.discipline === "Sporttrap" ? 1 : session.course_count || Math.max(courseRows?.length || 0, isLeirduesti ? 8 : 1);
     const mappedCourses = (courseRows || []).map((course) => ({
       id: course.id,
       courseNumber: course.course_number,
@@ -105,22 +133,34 @@ export default function EditSessionPage() {
       startPlate: course.start_plate || defaultStartPlateForShooter(course.shooter_number || 1),
     }));
 
-    setName(session.name);
-    setDiscipline(session.discipline);
-    setSessionType(session.session_type);
+    setName(session.name || "");
+    setDiscipline(session.discipline || "Other");
+    setSessionType(session.session_type || "Training");
     setFormat(session.shooting_format || "Inline");
     setCount(nextCount);
+    setLeirduestiPostCount(nextCount);
     setCourses(makeCourses(nextCount, mappedCourses));
     setSporttrapSeriesCount(sporttrapSeries);
-    setCompetitionDate(session.competition_date || "");
+    setCompetitionDate((session.competition_date || "").slice(0, 10));
     setShootingGround(session.shooting_ground || "");
     setLeirdueResultUrl(session.leirdue_result_url || "");
     setOwnScore(session.own_score === null || session.own_score === undefined ? "" : String(session.own_score));
     setWinningScore(session.winning_score === null || session.winning_score === undefined ? "" : String(session.winning_score));
+    setSessionLoaded(true);
     setLoaded(true);
-  }
+  }, [router, sessionId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   function setCourseCount(n: number) {
+    setCount(n);
+    setCourses((c) => makeCourses(n, c));
+  }
+
+  function setPostCount(n: number) {
+    setLeirduestiPostCount(n);
     setCount(n);
     setCourses((c) => makeCourses(n, c));
   }
@@ -133,8 +173,15 @@ export default function EditSessionPage() {
     setErr("");
     setSaving(true);
 
-    const isCompak = discipline === "Compak Sporting";
+    if (!sessionLoaded || !sessionId) {
+      setErr("Session has not loaded yet.");
+      setSaving(false);
+      return;
+    }
+
     const isSporttrap = discipline === "Sporttrap";
+    const isCompak = discipline === "Compak Sporting";
+    const isLeirduesti = discipline === "Leirduesti";
 
     const { error: sessionError } = await supabase
       .from("sessions")
@@ -145,14 +192,16 @@ export default function EditSessionPage() {
           ? { shooting_format: format, course_count: count, total_targets: count * 25 }
           : isSporttrap
             ? { shooting_format: "Sporttrap", course_count: 1, sporttrap_series_count: sporttrapSeriesCount, total_targets: sporttrapSeriesCount * 25 }
-            : {}),
+            : isLeirduesti
+              ? { shooting_format: "Post-based", course_count: leirduestiPostCount, total_targets: leirduestiPostCount * 5 }
+              : {}),
         competition_date: competitionDate || null,
         shooting_ground: shootingGround.trim() || null,
         own_score: ownScore === "" ? null : Number(ownScore),
         winning_score: winningScore === "" ? null : Number(winningScore),
         leirdue_result_url: leirdueResultUrl.trim() || null,
       })
-      .eq("id", params.id);
+      .eq("id", sessionId);
 
     if (sessionError) {
       setErr(sessionError.message);
@@ -160,19 +209,19 @@ export default function EditSessionPage() {
       return;
     }
 
-    if (isCompak || isSporttrap) {
-      const rows = isSporttrap ? makeCourses(1, courses) : courses;
+    if (isCompak || isSporttrap || isLeirduesti) {
+      const rows = isSporttrap ? makeCourses(1, courses) : isLeirduesti ? makeCourses(leirduestiPostCount, courses) : courses;
       for (const course of rows) {
         const row = {
-          session_id: params.id,
+          session_id: sessionId,
           course_number: course.courseNumber,
-          fitasc_scheme: isSporttrap ? null : course.scheme,
-          shooter_number: isSporttrap ? course.shooterNumber : format === "Squad" ? course.shooterNumber : null,
-          start_plate: isSporttrap ? null : format === "Squad" ? course.startPlate : null,
+          fitasc_scheme: isCompak ? course.scheme : null,
+          shooter_number: isSporttrap ? course.shooterNumber : null,
+          start_plate: isCompak && format === "Squad" ? course.startPlate : null,
         };
 
         if (course.id) {
-          const { error } = await supabase.from("session_courses").update(row).eq("id", course.id).eq("session_id", params.id);
+          const { error } = await supabase.from("session_courses").update(row).eq("id", course.id).eq("session_id", sessionId);
           if (error) {
             setErr(error.message);
             setSaving(false);
@@ -189,13 +238,29 @@ export default function EditSessionPage() {
       }
     }
 
-    router.push(`/sessions/${params.id}`);
+    router.push(`/sessions/${sessionId}`);
   }
 
   if (!loaded) {
     return (
       <main>
         <div className="card">Loading...</div>
+      </main>
+    );
+  }
+
+  if (!sessionLoaded) {
+    return (
+      <main>
+        <div className="card">
+          <h2>Edit setup</h2>
+          {err && <div className="error">{err}</div>}
+          <div className="btns">
+            <Link className="button secondary" href="/dashboard">
+              Dashboard
+            </Link>
+          </div>
+        </div>
       </main>
     );
   }
@@ -330,12 +395,26 @@ export default function EditSessionPage() {
             ))}
           </>
         )}
+        {discipline === "Leirduesti" && (
+          <div className="subcard">
+            <h3>Leirduesti setup</h3>
+            <p className="small muted">Ordinary Leirduesti is logged by post. Each post has five missable target opportunities.</p>
+            <label>Number of posts</label>
+            <select value={leirduestiPostCount} onChange={(e) => setPostCount(Number(e.target.value))}>
+              {[4, 5, 6, 7, 8, 10, 12].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {err && <div className="error">{err}</div>}
         <div className="btns">
-          <button onClick={save} disabled={saving}>
+          <button onClick={save} disabled={saving || !sessionLoaded || !loaded}>
             {saving ? "Saving..." : "Save setup"}
           </button>
-          <Link className="button secondary" href={`/sessions/${params.id}`}>
+          <Link className="button secondary" href={sessionId ? `/sessions/${sessionId}` : "/dashboard"}>
             Cancel
           </Link>
         </div>

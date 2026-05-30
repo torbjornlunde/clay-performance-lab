@@ -49,6 +49,7 @@ export default function AnalysisPage() {
   });
   const analysis = analyzeMisses(enrichedMisses as MissForAnalysis[]);
   const isSporttrap = session.discipline === "Sporttrap";
+  const isLeirduesti = session.discipline === "Leirduesti";
 
   return (
     <main>
@@ -74,13 +75,13 @@ export default function AnalysisPage() {
       <div className="card">
         <h2>Patterns</h2>
         <p>
-          <strong>{isSporttrap ? "Series" : "Course"}:</strong> {analysis.formatted.byCourse}
+          <strong>{isSporttrap ? "Series" : isLeirduesti ? "Post" : "Course"}:</strong> {analysis.formatted.byCourse}
         </p>
         <p>
-          <strong>{isSporttrap ? "Stand" : "Plate"}:</strong> {analysis.formatted.byPlate}
+          <strong>{isSporttrap ? "Stand" : isLeirduesti ? "Post detail" : "Plate"}:</strong> {analysis.formatted.byPlate}
         </p>
         <p>
-          <strong>{isSporttrap ? "Sporttrap sequence" : "Target / pair"}:</strong> {analysis.formatted.byTargetNumber}
+          <strong>{isSporttrap ? "Sporttrap sequence" : isLeirduesti ? "Target on post" : "Target / pair"}:</strong> {analysis.formatted.byTargetNumber}
         </p>
         <p>
           <strong>Target/machine:</strong> {analysis.formatted.byTargetLabel}
@@ -123,7 +124,9 @@ export default function AnalysisPage() {
               <strong>
                 {isSporttrap
                   ? `Series ${miss.course_number ?? "-"} · Stand ${miss.plate ?? "-"} · Sporttrap sequence ${miss.target_type || "-"} · ${miss.target_label || "Unknown"}`
-                  : `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Unknown"}`}
+                  : isLeirduesti
+                    ? `Post ${miss.course_number ?? "-"} · Target ${miss.target_number ?? "-"}`
+                    : `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Unknown"}`}
               </strong>
               <div className="small muted">
                 {miss.target_type || "-"} · {miss.missed_target} · {miss.where_miss || "-"} · {miss.main_reason || "-"}

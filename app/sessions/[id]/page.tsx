@@ -31,6 +31,7 @@ export default function Page() {
   if (!session) return <main><div className="card">Loading...</div></main>;
 
   const isSporttrap = session.discipline === "Sporttrap";
+  const isLeirduesti = session.discipline === "Leirduesti";
   const sporttrapSeriesCount = isSporttrap ? session.sporttrap_series_count || (session.total_targets ? Math.max(Math.round(session.total_targets / 25), 1) : 1) : null;
   const totalTargets = isSporttrap && sporttrapSeriesCount ? sporttrapSeriesCount * 25 : session.total_targets;
   const calculatedScore = typeof totalTargets === "number" ? Math.max(totalTargets - count, 0) : null;
@@ -64,7 +65,7 @@ export default function Page() {
           <Link href={`/sessions/${session.id}/log`} className="button">Log miss</Link>
           <Link href={`/sessions/${session.id}/analysis`} className="button secondary">Analysis</Link>
           <Link href={`/sessions/${session.id}/edit`} className="button secondary">Edit setup</Link>
-          {!isSporttrap && <Link href={`/sessions/${session.id}/targets`} className="button secondary">Target definitions</Link>}
+          {session.discipline === "Compak Sporting" && <Link href={`/sessions/${session.id}/targets`} className="button secondary">Target definitions</Link>}
           <Link href="/dashboard" className="button secondary">Dashboard</Link>
           {session.leirdue_result_url && <a href={session.leirdue_result_url} target="_blank" rel="noreferrer" className="button secondary">Open Leirdue.net result</a>}
         </div>
@@ -77,6 +78,16 @@ export default function Page() {
             <div className="small muted">Number of 25-target series: {sporttrapSeriesCount ?? "-"}</div>
             <div className="small muted">Total targets: {totalTargets ?? "-"}</div>
             <div className="small muted">Stand/shooter number: {sporttrapStand ?? "-"}</div>
+          </div>
+        </div>
+      )}
+      {isLeirduesti && (
+        <div className="card">
+          <h2>Leirduesti setup</h2>
+          <div className="subcard">
+            <strong>Post-based</strong>
+            <div className="small muted">Posts: {session.course_count ?? (courses.length || "-")}</div>
+            <div className="small muted">Total targets: {totalTargets ?? "-"}</div>
           </div>
         </div>
       )}

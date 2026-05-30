@@ -12,6 +12,14 @@ type CourseSetup = {
   startPlate: number;
 };
 
+type SessionCourseInsert = {
+  session_id: string;
+  course_number: number;
+  fitasc_scheme: number | null;
+  shooter_number: number | null;
+  start_plate: number | null;
+};
+
 function makeCourses(count: number, old: CourseSetup[]) {
   return Array.from({ length: count }, (_, i) =>
     old[i]
@@ -31,6 +39,7 @@ export default function NewSessionPage() {
   const [courses, setCourses] = useState<CourseSetup[]>(makeCourses(3, []));
   const [sporttrapStand, setSporttrapStand] = useState(1);
   const [sporttrapSeriesCount, setSporttrapSeriesCount] = useState(1);
+  const [leirduestiPostCount, setLeirduestiPostCount] = useState(8);
   const [competitionDate, setCompetitionDate] = useState(new Date().toISOString().slice(0, 10));
   const [shootingGround, setShootingGround] = useState("");
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
@@ -48,6 +57,12 @@ export default function NewSessionPage() {
     setCourses((c) => c.map((x, idx) => (idx === i ? { ...x, ...update } : x)));
   }
 
+  function setPostCount(n: number) {
+    setLeirduestiPostCount(n);
+    setCount(n);
+    setCourses((c) => makeCourses(n, c));
+  }
+
   async function save() {
     setErr("");
     setSaving(true);
@@ -59,6 +74,7 @@ export default function NewSessionPage() {
 
     const isCompak = discipline === "Compak Sporting";
     const isSporttrap = discipline === "Sporttrap";
+    const isLeirduesti = discipline === "Leirduesti";
     const { data: session, error } = await supabase
       .from("sessions")
       .insert({
@@ -66,10 +82,10 @@ export default function NewSessionPage() {
         name: name.trim() || "Unnamed session",
         discipline,
         session_type: sessionType,
-        shooting_format: isCompak ? format : isSporttrap ? "Sporttrap" : null,
-        course_count: isCompak ? count : isSporttrap ? 1 : null,
+        shooting_format: isCompak ? format : isSporttrap ? "Sporttrap" : isLeirduesti ? "Post-based" : null,
+        course_count: isCompak ? count : isSporttrap ? 1 : isLeirduesti ? leirduestiPostCount : null,
         sporttrap_series_count: isSporttrap ? sporttrapSeriesCount : null,
-        total_targets: isCompak ? count * 25 : isSporttrap ? sporttrapSeriesCount * 25 : null,
+        total_targets: isCompak ? count * 25 : isSporttrap ? sporttrapSeriesCount * 25 : isLeirduesti ? leirduestiPostCount * 5 : null,
         competition_date: competitionDate || null,
         shooting_ground: shootingGround.trim() || null,
         own_score: ownScore === "" ? null : Number(ownScore),
@@ -85,8 +101,8 @@ export default function NewSessionPage() {
       return;
     }
 
-    if (isCompak || isSporttrap) {
-      const rows = isSporttrap
+    if (isCompak || isSporttrap || isLeirduesti) {
+      const rows: SessionCourseInsert[] = isSporttrap
         ? [
             {
               session_id: session.id,
@@ -96,12 +112,12 @@ export default function NewSessionPage() {
               start_plate: null,
             },
           ]
-        : courses.map((course) => ({
+        : (isLeirduesti ? makeCourses(leirduestiPostCount, courses) : courses).map((course) => ({
             session_id: session.id,
             course_number: course.courseNumber,
-            fitasc_scheme: course.scheme,
-            shooter_number: format === "Squad" ? course.shooterNumber : null,
-            start_plate: format === "Squad" ? course.startPlate : null,
+            fitasc_scheme: isCompak ? course.scheme : null,
+            shooter_number: null,
+            start_plate: isCompak && format === "Squad" ? course.startPlate : null,
           }));
       const { error: courseError } = await supabase.from("session_courses").insert(rows);
       if (courseError) {
@@ -185,6 +201,20 @@ export default function NewSessionPage() {
             <label>Shooter / stand number</label>
             <select value={sporttrapStand} onChange={(e) => setSporttrapStand(Number(e.target.value))}>
               {[1, 2, 3, 4, 5].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {discipline === "Leirduesti" && (
+          <div className="subcard">
+            <h3>Leirduesti setup</h3>
+            <p className="small muted">Ordinary Leirduesti is logged by post. Total targets: {leirduestiPostCount * 5}.</p>
+            <label>Number of posts</label>
+            <select value={leirduestiPostCount} onChange={(e) => setPostCount(Number(e.target.value))}>
+              {[4, 5, 6, 7, 8, 10, 12].map((n) => (
                 <option key={n} value={n}>
                   {n}
                 </option>
