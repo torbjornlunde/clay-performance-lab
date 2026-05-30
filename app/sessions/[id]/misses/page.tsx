@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { normalizeLeirduestiLabel, shortMissedTarget } from "@/lib/misses/labels";
 import { supabase } from "@/lib/supabase/client";
 
@@ -37,7 +38,7 @@ function value(text: string | number | null | undefined) {
 function labelFor(session: Session, miss: Miss) {
   const targetType = normalizeLeirduestiLabel(miss.target_type) || "Unknown";
   if (session.discipline === "Sporttrap") return `Series ${value(miss.course_number)} · Stand ${value(miss.plate)} · ${targetType} · ${value(miss.target_label)}`;
-  if (session.discipline === "Leirduesti") return `Post ${value(miss.course_number)} · ${targetType} · Pair / sequence ${value(miss.target_number)}`;
+  if (isOrdinaryLeirduesti(session.discipline)) return `Post ${value(miss.course_number)} · ${targetType} · Pair / sequence ${value(miss.target_number)}`;
   return `Course ${value(miss.course_number)} · Plate ${value(miss.plate)} · ${value(miss.target_label)}`;
 }
 
@@ -81,7 +82,7 @@ export default function MissesPage() {
   if (!session) return <main><div className="card"><h2>Session not found</h2><Link className="button secondary" href="/dashboard">Dashboard</Link></div></main>;
 
   const isSporttrap = session.discipline === "Sporttrap";
-  const isLeirduesti = session.discipline === "Leirduesti";
+  const isLeirduesti = isOrdinaryLeirduesti(session.discipline);
 
   return (
     <main>

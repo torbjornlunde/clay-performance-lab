@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { getExpectedPresentationRows, getMachineLabelFromRow, getPresentationLabel, type CompakSchemeRow } from "@/lib/fitasc/compakSchemes";
 import { normalizeLeirduestiLabel, leirduestiSituationOptions } from "@/lib/misses/labels";
 import { getSporttrapEvent, getSporttrapMachineLabel, getSporttrapPresentationLabel } from "@/lib/sporttrap/program";
@@ -50,9 +51,9 @@ export default function EditMissPage() {
 
   useEffect(() => { load(); }, []);
 
-  const isCompak = session?.discipline === "Compak Sporting";
+  const isCompak = isCompactDiscipline(session?.discipline);
   const isSporttrap = session?.discipline === "Sporttrap";
-  const isLeirduesti = session?.discipline === "Leirduesti";
+  const isLeirduesti = isOrdinaryLeirduesti(session?.discipline);
   const current = useMemo(() => courses.find((course) => course.course_number === courseNumber) || courses[0], [courses, courseNumber]);
   const expectedRows = current?.fitasc_scheme ? getExpectedPresentationRows(current.fitasc_scheme) : ["unknown"];
   const schemeRow = schemeRows.find((row) => row.scheme_number === current?.fitasc_scheme && row.plate_number === plate && row.event_number === targetNumber);
@@ -86,9 +87,9 @@ export default function EditMissPage() {
     const { data: missData } = await supabase.from("misses").select("*").eq("id", params.missId).maybeSingle<Miss>();
     if (!sessionData || !missData || missData.session_id !== params.id) { setError("Miss or session not found."); setLoaded(true); return; }
     const { data: courseData } = await supabase.from("session_courses").select("course_number,fitasc_scheme,start_plate,shooter_number").eq("session_id", params.id).order("course_number").returns<Course[]>();
-    const displayCourses = sessionData.discipline === "Leirduesti" && (!courseData || courseData.length === 0) ? Array.from({ length: sessionData.course_count || 5 }, (_, index) => ({ course_number: index + 1, fitasc_scheme: null, start_plate: null, shooter_number: null })) : courseData || [];
+    const displayCourses = isOrdinaryLeirduesti(sessionData.discipline) && (!courseData || courseData.length === 0) ? Array.from({ length: sessionData.course_count || 5 }, (_, index) => ({ course_number: index + 1, fitasc_scheme: null, start_plate: null, shooter_number: null })) : courseData || [];
     const schemeNumbers = Array.from(new Set((courseData || []).map((course) => course.fitasc_scheme).filter((value): value is number => Boolean(value))));
-    if (sessionData.discipline === "Compak Sporting" && schemeNumbers.length) {
+    if (isCompactDiscipline(sessionData.discipline) && schemeNumbers.length) {
       const { data: rows } = await supabase.from("fitasc_compak_schemes").select("scheme_number,plate_number,event_number,presentation,first_machine,second_machine,is_verified").in("scheme_number", schemeNumbers).returns<CompakSchemeRow[]>();
       setSchemeRows(rows || []);
     }

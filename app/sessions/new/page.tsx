@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { DISCIPLINE_OPTIONS, isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { defaultStartPlateForShooter, getSchemeOptions, plateRotation } from "@/lib/fitasc/schemes";
 import { supabase } from "@/lib/supabase/client";
 
@@ -74,9 +75,9 @@ export default function NewSessionPage() {
       return;
     }
 
-    const isCompak = discipline === "Compak Sporting";
+    const isCompak = isCompactDiscipline(discipline);
     const isSporttrap = discipline === "Sporttrap";
-    const isLeirduesti = discipline === "Leirduesti";
+    const isLeirduesti = isOrdinaryLeirduesti(discipline);
     const targetsPerPostNumber = Number(targetsPerPost) || 10;
     const { data: session, error } = await supabase
       .from("sessions")
@@ -122,7 +123,7 @@ export default function NewSessionPage() {
             session_id: session.id,
             course_number: course.courseNumber,
             fitasc_scheme: isCompak ? course.scheme : null,
-            shooter_number: null,
+            shooter_number: isCompak && format === "Squad" ? course.shooterNumber : null,
             start_plate: isCompak && format === "Squad" ? course.startPlate : null,
           }));
       const { error: courseError } = await supabase.from("session_courses").insert(rows);
@@ -157,14 +158,9 @@ export default function NewSessionPage() {
           <div>
             <label>Discipline</label>
             <select value={discipline} onChange={(e) => setDiscipline(e.target.value)}>
-              <option>Compak Sporting</option>
-              <option>Sporting</option>
-              <option>FITASC Sporting</option>
-              <option>Sporttrap</option>
-              <option>Leirduesti</option>
-              <option>Trap</option>
-              <option>Skeet</option>
-              <option>Other</option>
+              {DISCIPLINE_OPTIONS.map((option) => (
+                <option key={option}>{option}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -214,7 +210,7 @@ export default function NewSessionPage() {
             </select>
           </div>
         )}
-        {discipline === "Leirduesti" && (
+        {isOrdinaryLeirduesti(discipline) && (
           <div className="subcard">
             <h3>Leirduesti setup</h3>
             <p className="small muted">Standard leirduesti is often 5 pairs per post, normally 10 targets, but this can be adjusted. Total targets: {leirduestiPostCount * (Number(targetsPerPost) || 0)}.</p>
@@ -242,7 +238,7 @@ export default function NewSessionPage() {
             </select>
           </div>
         )}
-        {discipline === "Compak Sporting" && (
+        {isCompactDiscipline(discipline) && (
           <>
             <div className="row">
               <div>

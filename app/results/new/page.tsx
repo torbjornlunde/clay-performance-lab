@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
 
 export default function NewResultPage() {
@@ -71,13 +72,9 @@ export default function NewResultPage() {
           <div>
             <label>Discipline</label>
             <select value={discipline} onChange={(e) => setDiscipline(e.target.value)}>
-              <option>Compak Sporting</option>
-              <option>Sporting</option>
-              <option>FITASC Sporting</option>
-              <option>Leirduesti</option>
-              <option>Trap</option>
-              <option>Skeet</option>
-              <option>Other</option>
+              {DISCIPLINE_OPTIONS.map((option) => (
+                <option key={option}>{option}</option>
+              ))}
             </select>
           </div>
         </div>

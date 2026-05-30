@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { analyzeMisses, MissForAnalysis } from "@/lib/analysis/sessionAnalysis";
+import { isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { normalizeLeirduestiLabel, shortMissedTarget } from "@/lib/misses/labels";
 import { supabase } from "@/lib/supabase/client";
 
@@ -50,8 +51,8 @@ export default function AnalysisPage() {
   });
   const analysis = analyzeMisses(enrichedMisses as MissForAnalysis[]);
   const isSporttrap = session.discipline === "Sporttrap";
-  const isLeirduesti = session.discipline === "Leirduesti";
-  const isCompak = session.discipline === "Compak Sporting";
+  const isLeirduesti = isOrdinaryLeirduesti(session.discipline);
+  const isCompak = isCompactDiscipline(session.discipline);
 
   return (
     <main>
@@ -81,7 +82,7 @@ export default function AnalysisPage() {
         ))}
       </div>
       <div className="card">
-        <h2>{isSporttrap ? "Sporttrap patterns" : isLeirduesti ? "Leirduesti patterns" : isCompak ? "Compak/FITASC patterns" : "Patterns"}</h2>
+        <h2>{isSporttrap ? "Sporttrap patterns" : isLeirduesti ? "Leirduesti patterns" : isCompak ? `${session.discipline} patterns` : "Patterns"}</h2>
         {isSporttrap ? (
           <>
             <p><strong>Misses by target label:</strong> {analysis.formatted.byTargetLabel}</p>

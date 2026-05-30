@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { getSchemeType, plateRotation } from "@/lib/fitasc/schemes";
 import { supabase } from "@/lib/supabase/client";
 
@@ -31,7 +32,8 @@ export default function Page() {
   if (!session) return <main><div className="card">Loading...</div></main>;
 
   const isSporttrap = session.discipline === "Sporttrap";
-  const isLeirduesti = session.discipline === "Leirduesti";
+  const isLeirduesti = isOrdinaryLeirduesti(session.discipline);
+  const isCompact = isCompactDiscipline(session.discipline);
   const sporttrapSeriesCount = isSporttrap ? session.sporttrap_series_count || (session.total_targets ? Math.max(Math.round(session.total_targets / 25), 1) : 1) : null;
   const leirduestiPostCount = isLeirduesti ? session.post_count || session.course_count || (courses.length || null) : null;
   const leirduestiTargetsPerPost = isLeirduesti
@@ -74,7 +76,7 @@ export default function Page() {
           <Link href={`/sessions/${session.id}/misses`} className="button secondary">Review misses</Link>
           <Link href={`/sessions/${session.id}/analysis`} className="button secondary">Analysis</Link>
           <Link href={`/sessions/${session.id}/edit`} className="button secondary">Edit setup</Link>
-          {session.discipline === "Compak Sporting" && <Link href={`/sessions/${session.id}/targets`} className="button secondary">Target definitions</Link>}
+          {isCompact && <Link href={`/sessions/${session.id}/targets`} className="button secondary">Target definitions</Link>}
           <Link href="/dashboard" className="button secondary">Dashboard</Link>
           {session.leirdue_result_url && <a href={session.leirdue_result_url} target="_blank" rel="noreferrer" className="button secondary">Open Leirdue.net result</a>}
         </div>
@@ -101,8 +103,22 @@ export default function Page() {
           </div>
         </div>
       )}
-      {session.discipline === "Compak Sporting" && courses.length > 0 && (
-        <div className="card"><h2>Courses</h2>{courses.map((course) => <div className="subcard" key={course.id}><strong>Course {course.course_number}</strong><div className="small muted">{course.fitasc_scheme ? `Scheme ${course.fitasc_scheme} — ${getSchemeType(course.fitasc_scheme)}` : "FITASC scheme not set yet"}</div>{session.shooting_format === "Squad" && course.start_plate && <div className="small muted">Shooter {course.shooter_number} · starts plate {course.start_plate} · rotation {plateRotation(course.start_plate).join(" → ")}</div>}</div>)}</div>
+      {isCompact && courses.length > 0 && (
+        <div className="card">
+          <h2>Compact setup</h2>
+          <div className="subcard">
+            <strong>{session.discipline}</strong>
+            <div className="small muted">Number of courses/layouts: {session.course_count || courses.length}</div>
+            <div className="small muted">Total targets: {totalTargets ?? "-"}</div>
+          </div>
+          {courses.map((course) => (
+            <div className="subcard" key={course.id}>
+              <strong>Course {course.course_number}</strong>
+              <div className="small muted">{course.fitasc_scheme ? `Scheme ${course.fitasc_scheme} — ${getSchemeType(course.fitasc_scheme)}` : "FITASC scheme not set yet"}</div>
+              {session.shooting_format === "Squad" && course.start_plate && <div className="small muted">Shooter {course.shooter_number} · starts plate {course.start_plate} · rotation {plateRotation(course.start_plate).join(" → ")}</div>}
+            </div>
+          ))}
+        </div>
       )}
     </main>
   );

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { DISCIPLINE_OPTIONS, isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { defaultStartPlateForShooter, getSchemeOptions, plateRotation } from "@/lib/fitasc/schemes";
 import { supabase } from "@/lib/supabase/client";
 
@@ -136,7 +137,7 @@ export default function EditSessionPage() {
     }
 
     const sporttrapSeries = session.sporttrap_series_count || (session.discipline === "Sporttrap" && session.total_targets ? Math.max(Math.round(session.total_targets / 25), 1) : 1);
-    const isLeirduesti = session.discipline === "Leirduesti";
+    const isLeirduesti = isOrdinaryLeirduesti(session.discipline);
     const leirduestiPosts = session.post_count || session.course_count || Math.max(courseRows?.length || 0, 5);
     const leirduestiTargetsPerPost = session.targets_per_post || (session.total_targets && leirduestiPosts ? Math.max(Math.round(session.total_targets / leirduestiPosts), 1) : 10);
     const nextCount = session.discipline === "Sporttrap" ? 1 : isLeirduesti ? leirduestiPosts : session.course_count || Math.max(courseRows?.length || 0, 1);
@@ -197,29 +198,23 @@ export default function EditSessionPage() {
     }
 
     const isSporttrap = discipline === "Sporttrap";
-    const isCompak = discipline === "Compak Sporting";
-    const isLeirduesti = discipline === "Leirduesti";
+    const isCompak = isCompactDiscipline(discipline);
+    const isLeirduesti = isOrdinaryLeirduesti(discipline);
     const targetsPerPostNumber = Number(targetsPerPost) || 10;
 
     const { error: sessionError } = await supabase
       .from("sessions")
       .update({
         name: name.trim() || "Unnamed session",
+        discipline,
         session_type: sessionType,
-        ...(isCompak
-          ? { shooting_format: format, course_count: count, total_targets: count * 25 }
-          : isSporttrap
-            ? { shooting_format: "Sporttrap", course_count: 1, sporttrap_series_count: sporttrapSeriesCount, total_targets: sporttrapSeriesCount * 25 }
-            : isLeirduesti
-              ? {
-                  shooting_format: "Post-based",
-                  course_count: leirduestiPostCount,
-                  post_count: leirduestiPostCount,
-                  targets_per_post: targetsPerPostNumber,
-                  default_post_format: defaultPostFormat,
-                  total_targets: leirduestiPostCount * targetsPerPostNumber,
-                }
-              : {}),
+        shooting_format: isCompak ? format : isSporttrap ? "Sporttrap" : isLeirduesti ? "Post-based" : null,
+        course_count: isCompak ? count : isSporttrap ? 1 : isLeirduesti ? leirduestiPostCount : null,
+        sporttrap_series_count: isSporttrap ? sporttrapSeriesCount : null,
+        total_targets: isCompak ? count * 25 : isSporttrap ? sporttrapSeriesCount * 25 : isLeirduesti ? leirduestiPostCount * targetsPerPostNumber : null,
+        post_count: isLeirduesti ? leirduestiPostCount : null,
+        targets_per_post: isLeirduesti ? targetsPerPostNumber : null,
+        default_post_format: isLeirduesti ? defaultPostFormat : null,
         competition_date: competitionDate || null,
         shooting_ground: shootingGround.trim() || null,
         own_score: ownScore === "" ? null : Number(ownScore),
@@ -241,7 +236,7 @@ export default function EditSessionPage() {
           session_id: sessionId,
           course_number: course.courseNumber,
           fitasc_scheme: isCompak ? course.scheme : null,
-          shooter_number: isSporttrap ? course.shooterNumber : null,
+          shooter_number: isSporttrap || (isCompak && format === "Squad") ? course.shooterNumber : null,
           start_plate: isCompak && format === "Squad" ? course.startPlate : null,
         };
 
@@ -307,8 +302,15 @@ export default function EditSessionPage() {
           placeholder="Optional"
           type="url"
         />
-        <span className="pill">{discipline}</span>
         <div className="row">
+          <div>
+            <label>Discipline</label>
+            <select value={discipline} onChange={(e) => setDiscipline(e.target.value)}>
+              {DISCIPLINE_OPTIONS.map((option) => (
+                <option key={option}>{option}</option>
+              ))}
+            </select>
+          </div>
           <div>
             <label>Session type</label>
             <select value={sessionType} onChange={(e) => setSessionType(e.target.value)}>
@@ -316,7 +318,7 @@ export default function EditSessionPage() {
               <option>Competition</option>
             </select>
           </div>
-          {discipline === "Compak Sporting" && (
+          {isCompactDiscipline(discipline) && (
             <div>
               <label>Shooting format</label>
               <select value={format} onChange={(e) => setFormat(e.target.value)}>
@@ -364,7 +366,7 @@ export default function EditSessionPage() {
             </select>
           </div>
         )}
-        {discipline === "Compak Sporting" && (
+        {isCompactDiscipline(discipline) && (
           <>
             <label>Number of courses/layouts</label>
             <select value={count} onChange={(e) => setCourseCount(Number(e.target.value))}>
@@ -420,7 +422,7 @@ export default function EditSessionPage() {
             ))}
           </>
         )}
-        {discipline === "Leirduesti" && (
+        {isOrdinaryLeirduesti(discipline) && (
           <div className="subcard">
             <h3>Leirduesti setup</h3>
             <p className="small muted">Standard leirduesti is often 5 pairs per post, normally 10 targets, but this can be adjusted. Total targets: {leirduestiPostCount * (Number(targetsPerPost) || 0)}.</p>

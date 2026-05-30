@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ExportCourse, ExportMiss, ExportTargetDefinition } from "@/lib/export/exportUserData";
+import { isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
 
 type Row = {
@@ -89,7 +90,7 @@ function SessionCard({ session, missCounts }: { session: Row; missCounts: Record
   const percentage = performancePercentage(session, missCounts);
   const label = typeLabel(session, missCounts);
   const isSporttrap = session.discipline === "Sporttrap";
-  const isLeirduesti = session.discipline === "Leirduesti";
+  const isLeirduesti = isOrdinaryLeirduesti(session.discipline);
   const sporttrapSeriesCount = isSporttrap ? session.sporttrap_series_count || (session.total_targets ? Math.max(Math.round(session.total_targets / 25), 1) : 1) : null;
   const leirduestiPostCount = isLeirduesti ? session.post_count || session.course_count : null;
   const leirduestiTargetsPerPost = isLeirduesti

@@ -35,6 +35,14 @@ Before merging any future PR:
 - [ ] Stats chart sorts oldest left and newest right.
 - [ ] Stats chart uses 50% baseline when all plotted values are at or above 50%.
 - [ ] Stats chart points open session detail.
+- [ ] Kompakt leirduesti appears as discipline option.
+- [ ] Kompakt leirduesti setup uses Compak/compact setup, not ordinary Leirduesti post setup.
+- [ ] Kompakt leirduesti Log Miss uses compact course/plate/scheme logic.
+- [ ] Kompakt leirduesti Analysis works like Compak Sporting.
+- [ ] Kompakt leirduesti appears separately in dashboard/stats/export.
+- [ ] Existing Compak Sporting still works.
+- [ ] Existing ordinary Leirduesti still works.
+- [ ] Existing Sporttrap still works.
 - [ ] Sporttrap can be selected as discipline.
 - [ ] Sporttrap setup does not ask for FITASC scheme.
 - [ ] Sporttrap Log Miss calculates Round 1 single correctly.
