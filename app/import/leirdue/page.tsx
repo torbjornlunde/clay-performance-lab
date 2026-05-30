@@ -146,6 +146,8 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         <span className="metricChip"><strong>{debug.candidatesWithWinningScore}</strong> winning score</span>
         <span className="metricChip"><strong>{debug.candidatesWithTotalTargets}</strong> total targets</span>
         <span className="metricChip"><strong>{debug.candidatesWithShootingGround}</strong> shooting ground</span>
+        <span className="metricChip"><strong>{debug.recommendedWithShootingGround}</strong> recommended ground</span>
+        <span className="metricChip"><strong>{debug.recommendedWithCompleteScore}</strong> recommended complete score</span>
       </div>
       {candidatesFound === 0 ? <p className="small muted">No candidates found. Try broader filters or add result manually.</p> : null}
       {recentStatuses.length > 0 ? (
@@ -168,7 +170,7 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
           <ul className="small muted">
             {debug.candidateDebugRows.slice(0, 20).map((item) => (
               <li key={`${item.url}-${item.date}-${item.ownScore}`}>
-                {item.date || "no date"} — {item.name} — {item.discipline} — {item.ownScore ?? "?"}/{item.totalTargets ?? "?"} winner {item.winningScore ?? "?"} — {item.category}/{item.confidence} — {item.importRecommended ? "recommended" : "not checked"} — {item.url} — {item.reason}
+                {item.date || "no date"} — {item.name} — {item.discipline} — {item.shootingGround || "unknown ground"} ({item.shootingGroundSource}) — {item.ownScore ?? "?"}/{item.totalTargets ?? "?"} winner {item.winningScore ?? "?"} — {item.category}/{item.confidence} — {item.importRecommended ? "recommended" : "not checked"} — {item.url} — {item.reason}
               </li>
             ))}
           </ul>

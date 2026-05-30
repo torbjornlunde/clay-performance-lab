@@ -35,6 +35,7 @@ type RawCandidate = Omit<LeirdueCandidate, "category" | "confidence" | "importRe
   listTitle: string;
   notes: string[];
   validationSource: boolean;
+  shootingGroundSource: "organizer field" | "event text" | "known-club match" | "inferred" | "unknown";
 };
 
 function emptyDebug(): LeirdueSearchDebug {
@@ -62,6 +63,8 @@ function emptyDebug(): LeirdueSearchDebug {
     candidatesWithWinningScore: 0,
     candidatesWithTotalTargets: 0,
     candidatesWithShootingGround: 0,
+    recommendedWithShootingGround: 0,
+    recommendedWithCompleteScore: 0,
     candidateDebugRows: [],
     pagesInspected: 0,
     shooterPagesFound: 0,
@@ -165,7 +168,9 @@ async function fetchLeirdue(url: string, debug: LeirdueSearchDebug) {
     if (!debug.firstUsefulSnippet) debug.firstUsefulSnippet = usefulSnippet(stripTags(html));
     return html;
   } catch (error) {
-    const note = error instanceof Error ? error.message : FETCH_ERROR_MESSAGE;
+    const cause = error instanceof Error && "cause" in error ? error.cause : null;
+    const causeMessage = typeof cause === "object" && cause && "message" in cause && typeof cause.message === "string" ? ` (${cause.message})` : "";
+    const note = error instanceof Error ? `${error.message}${causeMessage}` : FETCH_ERROR_MESSAGE;
     debug.fetchedUrls.push({ url, status, ok: false, note });
     debug.rejectedReasons.push(`${url}: ${note}`);
     return null;
@@ -214,7 +219,7 @@ function controlFlags(text: string) {
   const normalized = normalizeText(text);
   const flags: string[] = [];
   if (/\b(?:xxl\s+cup|blaser\s+cup|cup)\s+sammenlagt\b/.test(normalized) || /\bsammenlagt\s+(?:cup|xxl\s+cup|blaser\s+cup)\b/.test(normalized)) flags.push("cup/ranking/prosent/uttak");
-  if (normalized.includes("prosent") || normalized.includes("uttak") || normalized.includes("ranking") || /\brank\b/.test(normalized)) flags.push("cup/ranking/prosent/uttak");
+  if (normalized.includes("prosent") || normalized.includes("uttaksliste") || /\buttak\s+liste\b/.test(normalized) || normalized.includes("ranking") || /\brank\b/.test(normalized)) flags.push("cup/ranking/prosent/uttak");
   if (normalized.includes("påmelding") || normalized.includes("pamelding") || normalized.includes("deltakerliste") || normalized.includes("deltagarliste") || normalized.includes("participant")) flags.push("registration/participant");
   if (normalized.includes("lagliste") || normalized.includes("lag list") || normalized.includes("team list") || normalized.includes("lister lag")) flags.push("team/lag list");
   if (normalized.includes("finale only") || normalized.includes("final-only") || normalized.includes("shoot-off") || normalized.includes("shootoff")) flags.push("finale/shoot-off only");
@@ -320,9 +325,11 @@ function extractLikelyTotalTargets(text: string, score?: number | null, seriesSc
     if ([50, 75, 100, 150, 200].includes(inferred)) return inferred;
   }
 
-  const standalone = Array.from(normalized.matchAll(/\b(50|75|100|125|150|175|200)\b/g)).map((match) => Number(match[1]));
-  const plausible = standalone.filter((total) => !score || total >= score);
-  if (plausible.length > 0) return plausible[0];
+  if (normalized.length < 220) {
+    const standalone = Array.from(normalized.matchAll(/\b(50|75|100|125|150|175|200)\b/g)).map((match) => Number(match[1]));
+    const plausible = standalone.filter((total) => !score || total >= score);
+    if (plausible.length > 0) return plausible[0];
+  }
   return null;
 }
 
@@ -333,11 +340,38 @@ function extractTitle(lines: string[], html: string, year: number) {
   return htmlTitle && !/^leirdue\.net$/i.test(htmlTitle) ? htmlTitle : "Leirdue result";
 }
 
+function meaningfulLabel(value: string) {
+  const cleaned = cleanShootingGround(value).replace(/debug validation url for torbjørn lunde 2026/i, "").replace(/\s+/g, " ").trim();
+  if (!cleaned || /^leirdue result$/i.test(cleaned) || /^result list$/i.test(cleaned)) return null;
+  if (/^(resultater|resultatliste|sammenlagt|klassedelt)$/i.test(cleaned)) return null;
+  return cleaned;
+}
+
+function candidateNameFrom(title: string, listTitle: string, discipline: string) {
+  const titleName = meaningfulLabel(title);
+  const listName = meaningfulLabel(listTitle);
+  if (titleName && !/^leirdue\.net$/i.test(titleName)) return titleName;
+  if (listName) return listName;
+  return discipline !== "Other" ? `Leirdue ${discipline} result` : "Leirdue result";
+}
+
 function cleanShootingGround(value: string) {
-  return value
+  return decodeEntities(value)
     .replace(/\b(?:resultater|påmelding|deltakerliste|sammenlagt|klassedelt|skyting|stevne)\b.*$/i, "")
     .replace(/^[\s:–-]+|[\s:–-]+$/g, "")
     .trim();
+}
+
+function normalizeKnownShootingGround(value: string) {
+  const normalized = normalizeText(value);
+  if (/\bbergen\s+l\.?\s*k\.?\b/.test(normalized)) return "Bergen L.K.";
+  if (normalized.includes("kismul") || /\bbergens?\s+j\.?\s*f\.?\s*f?\.?\b/.test(normalized)) return "Bergens J.F. / Kismul";
+  if (/\bos\s+j\.?\s*f\.?\s*l\.?\b/.test(normalized)) return "Os J.F.L.";
+  if (/\bjæren\s+j\.?\s*f\.?\s*l\.?\b/.test(value.toLowerCase()) || /\bjaeren\s+j\.?\s*f\.?\s*l\.?\b/.test(normalized)) return "Jæren J.F.L.";
+  if (/\bstavanger\s+og\s+rogaland\s+j\.?\s*f\.?\s*f\.?\b/.test(normalized)) return "Stavanger og Rogaland J.F.F.";
+  if (/\bteam\s+sørvest\b/i.test(value) || /\bteam\s+sorvest\b/.test(normalized)) return "Team Sørvest";
+  if (/\bkarmøy\s+j\.?\s*f\.?\s*n\.?\s*f\.?\b/i.test(value) || /\bkarmoy\s+j\.?\s*f\.?\s*n\.?\s*f\.?\b/.test(normalized)) return "Karmøy J.F.N.F.";
+  return null;
 }
 
 function invalidShootingGround(value: string) {
@@ -345,39 +379,64 @@ function invalidShootingGround(value: string) {
   return (
     !normalized ||
     normalized.length < 3 ||
-    ["vestlandet", "ostlandet", "østlandet", "sorlandet", "sørlandet", "nord norge", "leirdue.net", "norges skytterforbund", "njff"].includes(normalized) ||
+    ["vestlandet", "ostlandet", "østlandet", "sorlandet", "sørlandet", "nord norge", "nord-norge", "leirdue.net", "norges skytterforbund", "njff", "ranking", "programvare"].includes(normalized) ||
     normalized.includes("logg inn") ||
     normalized.includes("terminliste") ||
     normalized.includes("resultater") ||
     normalized.includes("påmelding") ||
     normalized.includes("pamelding") ||
-    (normalized.includes("cup") && !/\b(j\.f|l\.k|jff|jfl|lk|team)\b/.test(normalized))
+    normalized.includes("deltaker") ||
+    normalized.includes("programvare") ||
+    (normalized.includes("cup") && !/\b(j\.?f|l\.?k|jff|jfl|lk|team)\b/.test(normalized))
   );
+}
+
+function knownShootingGroundMatch(text: string) {
+  const knownPatterns = [
+    /\bBergen\s+L\.?\s*K\.?\b/i,
+    /\bBergens?\s+J\.?\s*F\.?\s*F?\.?\b/i,
+    /\bKismul\b/i,
+    /\bOs\s+J\.?\s*F\.?\s*L\.?\b/i,
+    /\bJæren\s+J\.?\s*F\.?\s*L\.?\b/i,
+    /\bJaeren\s+J\.?\s*F\.?\s*L\.?\b/i,
+    /\bStavanger\s+og\s+Rogaland\s+J\.?\s*F\.?\s*F\.?\b/i,
+    /\bTeam\s+Sørvest\b/i,
+    /\bTeam\s+Sorvest\b/i,
+    /\bKarmøy\s+J\.?\s*F\.?\s*N\.?\s*F\.?\b/i,
+    /\bKarmoy\s+J\.?\s*F\.?\s*N\.?\s*F\.?\b/i,
+  ];
+  for (const pattern of knownPatterns) {
+    const match = text.match(pattern);
+    if (!match?.[0]) continue;
+    const normalized = normalizeKnownShootingGround(match[0]) || cleanShootingGround(match[0]);
+    if (!invalidShootingGround(normalized)) return normalized;
+  }
+  return null;
 }
 
 function extractShootingGround(title: string, text: string) {
   const combined = `${title}\n${text}`;
   const organizerPatterns = [
-    /(?:stevnearrangør|arrangør|arrangor|arranger(?:t av)?|arrangørklubb|klubb|forening|skytebane|bane|sted)\s*:?\s*([^|·\n\r]{3,80})/i,
-    /\b(Bergens?\s+J\.F\.\s*\/\s*Kismul)\b/i,
-    /\b(Team\s+Sørvest)\b/i,
-    /\b(Stavanger\s+og\s+Rogaland\s+J\.F\.F\.)\b/i,
-    /\b([A-ZÆØÅ][\wÆØÅæøå.&\-/ ]{1,45}\s(?:J\.F\.L\.|J\.F\.F\.|J\.F\.N\.F\.|L\.K\.|JFF|JFL|LK))\b/,
+    /(?:stevnearrangør|arrangør|arrangor|arranger(?:t av)?|arrangørklubb|klubb|forening)\s*:?\s*([^|·\n\r]{3,80})/i,
+    /(?:skytebane|bane|sted)\s*:?\s*([^|·\n\r]{3,80})/i,
   ];
   for (const pattern of organizerPatterns) {
     const match = combined.match(pattern);
     if (match?.[1]) {
-      const ground = cleanShootingGround(match[1]);
-      if (!invalidShootingGround(ground)) return { value: ground, source: "organizer field" };
+      const ground = normalizeKnownShootingGround(match[1]) || cleanShootingGround(match[1]);
+      if (!invalidShootingGround(ground)) return { value: ground, source: "organizer field" as const };
     }
   }
 
-  const beforeDate = title.split(/\b\d{1,2}\./)[0]?.trim() || title;
-  const titleParts = beforeDate.split(/\s+-\s+|\s+–\s+/).map((part) => cleanShootingGround(part)).filter(Boolean);
-  const maybeGround = titleParts.reverse().find((part) => !invalidShootingGround(part) && !/^(\d+\s*(sk|skudd|duer)|lørdag|søndag|saturday|sunday)$/i.test(part));
-  if (maybeGround) return { value: maybeGround, source: "event title" };
+  const known = knownShootingGroundMatch(combined);
+  if (known) return { value: known, source: "known-club match" as const };
 
-  return { value: null, source: "unknown" };
+  const beforeDate = title.split(/\b\d{1,2}\./)[0]?.trim() || title;
+  const titleParts = beforeDate.split(/\s+-\s+|\s+–\s+|\s+\/\s+/).map((part) => normalizeKnownShootingGround(part) || cleanShootingGround(part)).filter(Boolean);
+  const maybeGround = titleParts.reverse().find((part) => !invalidShootingGround(part) && !/^(\d+\s*(sk|skudd|duer)|lørdag|søndag|saturday|sunday)$/i.test(part));
+  if (maybeGround) return { value: maybeGround, source: "event text" as const };
+
+  return { value: null, source: "unknown" as const };
 }
 
 function extractScoreNumbers(line: string) {
@@ -556,7 +615,7 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[]): Leird
     if (!selectedDiscipline) notes.push("Category reason: parsed discipline is not selected.");
   }
 
-  notes.push(`Candidate debug: category=${category}; confidence=${confidence}; candidatePriority=${candidatePriority}; controlFlags=${Array.from(new Set(flags)).join(", ") || "none"}; directResultFlags=${directFlags.join(", ") || "none"}; listTitle=${raw.listTitle}; ownScore=${raw.ownScore ?? "unknown"}; winningScore=${raw.winningScore ?? "unknown"}; totalTargets=${raw.totalTargets ?? "unknown"}.`);
+  notes.push(`Candidate debug: category=${category}; confidence=${confidence}; candidatePriority=${candidatePriority}; controlFlags=${Array.from(new Set(flags)).join(", ") || "none"}; directResultFlags=${directFlags.join(", ") || "none"}; listTitle=${raw.listTitle}; shootingGroundSource=${raw.shootingGroundSource}; ownScore=${raw.ownScore ?? "unknown"}; winningScore=${raw.winningScore ?? "unknown"}; totalTargets=${raw.totalTargets ?? "unknown"}.`);
   notes.push(category === "recommended" ? "Import recommendation: checked by default." : "Import recommendation: not checked by default.");
 
   return {
@@ -591,36 +650,40 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
   if (debug.firstShooterMatchUrls.length < 10) debug.firstShooterMatchUrls.push(page.url);
   debug.firstUsefulSnippet ||= usefulSnippet(pageText, input.shooterName);
   const title = extractTitle(lines, page.html, input.year);
-  const context = `${title}\n${page.label}\n${pageText}`;
   const validationSource = page.label.includes("Debug validation URL");
-  const discipline = classifyDiscipline(context, input.disciplines);
-  const initialTotalTargets = extractLikelyTotalTargets(context);
-  const parsed = parseScoresFromLines(lines, page.html, input.shooterName, pageText, input.year, initialTotalTargets);
-  const totalTargets = initialTotalTargets || extractLikelyTotalTargets(context, parsed.ownScore, parsed.seriesScores);
-  const snippet = findShooterSnippet(lines, input.shooterName);
   const listTitle = `${page.label} ${title}`.trim();
-  const notes = [...discipline.notes, ...parsed.notes, `Source liste_id URL: ${page.url}.`, `List title/type: ${listTitle} / ${classifyListType(listTitle)}.`];
+  const context = `${title}\n${page.label}\n${pageText}`;
+  const discipline = classifyDiscipline(context, input.disciplines);
+  const initialTotalTargets = extractLikelyTotalTargets(listTitle) || extractLikelyTotalTargets(title);
+  const parsed = parseScoresFromLines(lines, page.html, input.shooterName, pageText, input.year, initialTotalTargets);
+  const totalTargets = initialTotalTargets || extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) || extractLikelyTotalTargets(title, parsed.ownScore, parsed.seriesScores) || extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores);
+  const snippet = findShooterSnippet(lines, input.shooterName);
+  const listType = classifyListType(listTitle);
+  const notes = [...discipline.notes, ...parsed.notes, `Source liste_id URL: ${page.url}.`, `List title/type: ${listTitle} / ${listType}.`];
   const shootingGroundResult = extractShootingGround(title, pageText);
   const shootingGround = shootingGroundResult.value;
   if (shootingGround) notes.push(`Shooting ground inferred from ${shootingGroundResult.source}: ${shootingGround}.`);
+  else notes.push("Shooting ground could not be inferred from organizer field, event text, or known-club match.");
   if (validationSource) notes.push("Found through validation URL.");
+  if (isFutureDate(parseDate(context, input.year))) notes.push("Future event / participant list, not imported.");
   if (snippet) notes.push(`Raw snippet: ${snippet}`);
   if (parsed.scoreLine && totalTargets === null) notes.push(`Score row parsed, but total targets could not be inferred from title/list text: ${parsed.scoreLine}`);
 
   const raw: RawCandidate = {
     date: parseDate(context, input.year),
-    name: title,
+    name: candidateNameFrom(title, page.label, discipline.discipline),
     shootingGround,
     discipline: discipline.discipline,
     ownScore: parsed.ownScore,
     totalTargets,
     winningScore: parsed.winningScore,
     leirdueUrl: page.url,
-    listType: classifyListType(listTitle),
+    listType,
     sourceText: pageText,
     listTitle,
     notes,
     validationSource,
+    shootingGroundSource: shootingGroundResult.source,
   };
   const candidate = buildCandidate(raw, input.disciplines);
   debug.candidateRowsCreated += 1;
@@ -862,6 +925,8 @@ function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: Leirdu
   debug.candidatesWithWinningScore = 0;
   debug.candidatesWithTotalTargets = 0;
   debug.candidatesWithShootingGround = 0;
+  debug.recommendedWithShootingGround = 0;
+  debug.recommendedWithCompleteScore = 0;
   debug.candidateDebugRows = [];
   if (candidates.length > 0 && candidates.every((candidate) => candidate.category === "control")) debug.candidateReasons.push("All candidates classified as control. Check list classification rules.");
   for (const candidate of candidates) {
@@ -871,12 +936,17 @@ function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: Leirdu
     if (candidate.winningScore !== null) debug.candidatesWithWinningScore += 1;
     if (candidate.totalTargets !== null) debug.candidatesWithTotalTargets += 1;
     if (candidate.shootingGround) debug.candidatesWithShootingGround += 1;
+    if (candidate.category === "recommended" && candidate.shootingGround) debug.recommendedWithShootingGround += 1;
+    if (candidate.category === "recommended" && candidate.ownScore !== null && candidate.winningScore !== null && candidate.totalTargets !== null) debug.recommendedWithCompleteScore += 1;
     const reason = candidate.notes.match(/Candidate debug: ([^.]+)/)?.[1] || candidate.notes.slice(0, 240);
+    const shootingGroundSource = candidate.notes.match(/shootingGroundSource=([^;]+)/)?.[1] || "unknown";
     debug.candidateDebugRows.push({
       url: candidate.leirdueUrl,
       name: candidate.name,
       date: candidate.date,
       discipline: candidate.discipline,
+      shootingGround: candidate.shootingGround,
+      shootingGroundSource,
       ownScore: candidate.ownScore,
       totalTargets: candidate.totalTargets,
       winningScore: candidate.winningScore,
@@ -892,7 +962,8 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   const debug = emptyDebug();
   const pages = await discoverPages(input, debug);
   const candidates = pages.flatMap((page) => extractCandidatesFromPage(page, input, debug));
-  const sorted = dedupeCandidates(candidates, debug).sort((a, b) => (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99"));
+  const categoryOrder: Record<LeirdueCategory, number> = { recommended: 0, review: 1, control: 2 };
+  const sorted = dedupeCandidates(candidates, debug).sort((a, b) => categoryOrder[a.category] - categoryOrder[b.category] || (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99") || candidateQuality(b) - candidateQuality(a));
   debug.candidateRowsCreated = sorted.length;
   updateCandidateDebugStats(debug, sorted);
   if (sorted.length === 0 && debug.fetchedUrls.length === 0) debug.rejectedReasons.push("No Leirdue pages could be fetched.");
