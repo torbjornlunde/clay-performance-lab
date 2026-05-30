@@ -78,7 +78,7 @@ function isUsableNumber(value: unknown): value is number {
 
 
 function cleanExportLabel(value?: string | null) {
-  return value?.replace(/equal pair/gi, "Repeated pair") || null;
+  return value?.replace(/equal pair/gi, "Report pair").replace(/repeated pair/gi, "Report pair") || null;
 }
 
 function formatDateOnly(value?: string | null) {

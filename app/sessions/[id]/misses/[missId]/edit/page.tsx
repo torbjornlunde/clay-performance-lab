@@ -1,0 +1,149 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { getExpectedPresentationRows, getMachineLabelFromRow, getPresentationLabel, type CompakSchemeRow } from "@/lib/fitasc/compakSchemes";
+import { normalizeLeirduestiLabel, leirduestiSituationOptions } from "@/lib/misses/labels";
+import { getSporttrapEvent, getSporttrapMachineLabel, getSporttrapPresentationLabel } from "@/lib/sporttrap/program";
+import { supabase } from "@/lib/supabase/client";
+
+type Session = { id: string; name: string; discipline: string; shooting_format: string | null; total_targets: number | null; course_count: number | null; sporttrap_series_count?: number | null; targets_per_post?: number | null };
+type Course = { course_number: number; fitasc_scheme: number | null; start_plate: number | null; shooter_number: number | null };
+type Miss = {
+  id: string; session_id: string; course_number: number | null; plate: number | null; target_number: number | null; target_label: string | null; target_type: string | null; missed_target: string | null; where_miss: string | null; main_reason: string | null; target_read: string | null; comment: string | null; first_where_miss: string | null; first_main_reason: string | null; first_target_read: string | null; first_comment: string | null; second_where_miss: string | null; second_main_reason: string | null; second_target_read: string | null; second_comment: string | null;
+};
+type Detail = { whereMiss: string; mainReason: string; targetRead: string; comment: string };
+
+const whereMissOptions = ["Behind", "In front", "Over", "Under", "Not sure"];
+const reasonOptions = ["Technical", "Tactical", "Mental", "Fatigue", "Target difficulty", "Wind/weather", "Unknown"];
+const readOptions = ["Normal", "Looked faster than expected", "Looked slower than expected", "Wind affected", "Poor visibility", "Unknown"];
+const missedTargetOptions = ["Single target", "First target in pair", "Second target in pair", "Both targets in pair", "Unknown"];
+const emptyDetail = (): Detail => ({ whereMiss: "Behind", mainReason: "Technical", targetRead: "Normal", comment: "" });
+
+function detailFrom(miss: Miss | null, prefix?: "first" | "second"): Detail {
+  if (!miss) return emptyDetail();
+  if (prefix === "first") return { whereMiss: miss.first_where_miss || miss.where_miss || "Behind", mainReason: miss.first_main_reason || miss.main_reason || "Technical", targetRead: miss.first_target_read || miss.target_read || "Normal", comment: miss.first_comment || "" };
+  if (prefix === "second") return { whereMiss: miss.second_where_miss || miss.where_miss || "Behind", mainReason: miss.second_main_reason || miss.main_reason || "Technical", targetRead: miss.second_target_read || miss.target_read || "Normal", comment: miss.second_comment || "" };
+  return { whereMiss: miss.where_miss || "Behind", mainReason: miss.main_reason || "Technical", targetRead: miss.target_read || "Normal", comment: miss.comment || "" };
+}
+
+export default function EditMissPage() {
+  const params = useParams<{ id: string; missId: string }>();
+  const router = useRouter();
+  const [session, setSession] = useState<Session | null>(null);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [schemeRows, setSchemeRows] = useState<CompakSchemeRow[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [courseNumber, setCourseNumber] = useState(1);
+  const [seriesNumber, setSeriesNumber] = useState(1);
+  const [plate, setPlate] = useState(1);
+  const [targetNumber, setTargetNumber] = useState(1);
+  const [targetLabel, setTargetLabel] = useState("");
+  const [targetType, setTargetType] = useState("Unknown");
+  const [missedTarget, setMissedTarget] = useState("Single target");
+  const [genericDetail, setGenericDetail] = useState<Detail>(emptyDetail);
+  const [firstDetail, setFirstDetail] = useState<Detail>(emptyDetail);
+  const [secondDetail, setSecondDetail] = useState<Detail>(emptyDetail);
+
+  useEffect(() => { load(); }, []);
+
+  const isCompak = session?.discipline === "Compak Sporting";
+  const isSporttrap = session?.discipline === "Sporttrap";
+  const isLeirduesti = session?.discipline === "Leirduesti";
+  const current = useMemo(() => courses.find((course) => course.course_number === courseNumber) || courses[0], [courses, courseNumber]);
+  const expectedRows = current?.fitasc_scheme ? getExpectedPresentationRows(current.fitasc_scheme) : ["unknown"];
+  const schemeRow = schemeRows.find((row) => row.scheme_number === current?.fitasc_scheme && row.plate_number === plate && row.event_number === targetNumber);
+  const sporttrapSeriesCount = session?.sporttrap_series_count || (session?.total_targets ? Math.max(Math.round(session.total_targets / 25), 1) : 1);
+  const leirduestiTargetsPerPost = session?.targets_per_post || (session?.total_targets && session?.course_count ? Math.max(Math.round(session.total_targets / session.course_count), 1) : 10);
+
+  useEffect(() => {
+    if (!session) return;
+    if (isSporttrap) {
+      const event = getSporttrapEvent(plate, targetNumber);
+      setTargetType(getSporttrapPresentationLabel(event.presentation));
+      setTargetLabel(getSporttrapMachineLabel(event));
+    } else if (isCompak && schemeRow) {
+      setTargetType(getPresentationLabel(schemeRow.presentation));
+      setTargetLabel(getMachineLabelFromRow(schemeRow));
+    } else if (isLeirduesti) {
+      setTargetType((value) => normalizeLeirduestiLabel(value) || "Report pair");
+      setTargetLabel(`Post ${courseNumber}`);
+    }
+  }, [session, isSporttrap, isCompak, isLeirduesti, plate, targetNumber, schemeRow, courseNumber]);
+
+  useEffect(() => {
+    if (targetType === "Single") setMissedTarget("Single target");
+    if (targetType !== "Single" && missedTarget === "Single target") setMissedTarget("Second target in pair");
+  }, [targetType, missedTarget]);
+
+  async function load() {
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) { router.push("/login"); return; }
+    const { data: sessionData } = await supabase.from("sessions").select("id,name,discipline,shooting_format,total_targets,course_count,sporttrap_series_count,targets_per_post").eq("id", params.id).maybeSingle<Session>();
+    const { data: missData } = await supabase.from("misses").select("*").eq("id", params.missId).maybeSingle<Miss>();
+    if (!sessionData || !missData || missData.session_id !== params.id) { setError("Miss or session not found."); setLoaded(true); return; }
+    const { data: courseData } = await supabase.from("session_courses").select("course_number,fitasc_scheme,start_plate,shooter_number").eq("session_id", params.id).order("course_number").returns<Course[]>();
+    const displayCourses = sessionData.discipline === "Leirduesti" && (!courseData || courseData.length === 0) ? Array.from({ length: sessionData.course_count || 5 }, (_, index) => ({ course_number: index + 1, fitasc_scheme: null, start_plate: null, shooter_number: null })) : courseData || [];
+    const schemeNumbers = Array.from(new Set((courseData || []).map((course) => course.fitasc_scheme).filter((value): value is number => Boolean(value))));
+    if (sessionData.discipline === "Compak Sporting" && schemeNumbers.length) {
+      const { data: rows } = await supabase.from("fitasc_compak_schemes").select("scheme_number,plate_number,event_number,presentation,first_machine,second_machine,is_verified").in("scheme_number", schemeNumbers).returns<CompakSchemeRow[]>();
+      setSchemeRows(rows || []);
+    }
+    setSession(sessionData); setCourses(displayCourses);
+    setCourseNumber(missData.course_number || 1); setSeriesNumber(missData.course_number || 1); setPlate(missData.plate || 1); setTargetNumber(missData.target_number || 1);
+    setTargetLabel(missData.target_label || ""); setTargetType(normalizeLeirduestiLabel(missData.target_type) || "Unknown"); setMissedTarget(missData.missed_target || "Unknown");
+    setGenericDetail(detailFrom(missData)); setFirstDetail(detailFrom(missData, "first")); setSecondDetail(detailFrom(missData, "second")); setLoaded(true);
+  }
+
+  function updateDetail(kind: "generic" | "first" | "second", update: Partial<Detail>) {
+    const setter = kind === "first" ? setFirstDetail : kind === "second" ? setSecondDetail : setGenericDetail;
+    setter((detail) => ({ ...detail, ...update }));
+  }
+
+  function renderDetail(kind: "generic" | "first" | "second", title?: string) {
+    const detail = kind === "first" ? firstDetail : kind === "second" ? secondDetail : genericDetail;
+    return <div className="subcard"><h3>{title || "Miss detail"}</h3><label>Where miss</label><select value={detail.whereMiss} onChange={(e) => updateDetail(kind, { whereMiss: e.target.value })}>{whereMissOptions.map((option) => <option key={option}>{option}</option>)}</select><label>Main reason</label><select value={detail.mainReason} onChange={(e) => updateDetail(kind, { mainReason: e.target.value })}>{reasonOptions.map((option) => <option key={option}>{option}</option>)}</select><label>Target read</label><select value={detail.targetRead} onChange={(e) => updateDetail(kind, { targetRead: e.target.value })}>{readOptions.map((option) => <option key={option}>{option}</option>)}</select><label>Comment</label><textarea value={detail.comment} onChange={(e) => updateDetail(kind, { comment: e.target.value })} /></div>;
+  }
+
+  async function save() {
+    if (!session) return;
+    setSaving(true); setError("");
+    const isFirst = missedTarget === "First target in pair";
+    const isSecond = missedTarget === "Second target in pair";
+    const isBoth = missedTarget === "Both targets in pair";
+    const primary = isFirst ? firstDetail : isSecond ? secondDetail : genericDetail;
+    const { error: updateError } = await supabase.from("misses").update({
+      course_number: isSporttrap ? seriesNumber : courseNumber,
+      plate: isCompak || isSporttrap ? plate : null,
+      target_number: targetNumber,
+      target_label: targetLabel || null,
+      target_type: normalizeLeirduestiLabel(targetType) || "Unknown",
+      missed_target: targetType === "Single" ? "Single target" : missedTarget,
+      where_miss: primary.whereMiss,
+      main_reason: primary.mainReason,
+      target_read: primary.targetRead,
+      comment: primary.comment.trim() || null,
+      first_where_miss: isFirst || isBoth ? firstDetail.whereMiss : null,
+      first_main_reason: isFirst || isBoth ? firstDetail.mainReason : null,
+      first_target_read: isFirst || isBoth ? firstDetail.targetRead : null,
+      first_comment: isFirst || isBoth ? firstDetail.comment.trim() || null : null,
+      second_where_miss: isSecond || isBoth ? secondDetail.whereMiss : null,
+      second_main_reason: isSecond || isBoth ? secondDetail.mainReason : null,
+      second_target_read: isSecond || isBoth ? secondDetail.targetRead : null,
+      second_comment: isSecond || isBoth ? secondDetail.comment.trim() || null : null,
+    }).eq("id", params.missId).eq("session_id", params.id);
+    setSaving(false);
+    if (updateError) { setError(updateError.message); return; }
+    router.push(`/sessions/${params.id}/misses`);
+  }
+
+  if (!loaded) return <main><div className="card">Loading miss...</div></main>;
+  if (error && !session) return <main><div className="card"><h2>{error}</h2><Link className="button secondary" href={`/sessions/${params.id}/misses`}>Back</Link></div></main>;
+
+  const pairTarget = targetType !== "Single";
+
+  return <main><div className="card"><h2>Edit miss</h2><p className="small muted">{session?.name} · {session?.discipline}</p>{error && <div className="error">{error}</div>}</div><div className="card"><div className="row">{isSporttrap ? <><div><label>Series</label><select value={seriesNumber} onChange={(e) => setSeriesNumber(Number(e.target.value))}>{Array.from({ length: sporttrapSeriesCount }, (_, index) => index + 1).map((n) => <option key={n}>{n}</option>)}</select></div><div><label>Stand</label><select value={plate} onChange={(e) => setPlate(Number(e.target.value))}>{[1,2,3,4,5].map((n) => <option key={n}>{n}</option>)}</select></div></> : <div><label>{isLeirduesti ? "Post" : "Course"}</label><select value={courseNumber} onChange={(e) => setCourseNumber(Number(e.target.value))}>{courses.map((course) => <option key={course.course_number} value={course.course_number}>{course.course_number}</option>)}</select></div>}{isCompak && <div><label>Plate</label><select value={plate} onChange={(e) => setPlate(Number(e.target.value))}>{[1,2,3,4,5].map((n) => <option key={n}>{n}</option>)}</select></div>}</div><label>{isLeirduesti ? "Pair / sequence" : isSporttrap ? "Sequence" : "Target / pair"}</label><select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>{(isLeirduesti ? Array.from({ length: leirduestiTargetsPerPost }, (_, i) => i + 1) : isCompak ? expectedRows.map((_, i) => i + 1) : [1,2,3,4,5]).map((n) => <option key={n} value={n}>{n}</option>)}</select><label>{isLeirduesti ? "Situation" : "Presentation / target type"}</label>{isLeirduesti ? <select value={targetType} onChange={(e) => setTargetType(e.target.value)}>{leirduestiSituationOptions.map((option) => <option key={option}>{option}</option>)}</select> : <input value={targetType} onChange={(e) => setTargetType(e.target.value)} />}<label>Target / machine label</label><input value={targetLabel} onChange={(e) => setTargetLabel(e.target.value)} /><p className="small muted">Calculated labels are refreshed when course, plate, stand or sequence changes. You can still correct the label manually.</p>{pairTarget && <><label>Missed target</label><select value={missedTarget} onChange={(e) => setMissedTarget(e.target.value)}>{missedTargetOptions.filter((option) => option !== "Single target").map((option) => <option key={option}>{option}</option>)}</select></>}</div><div className="card">{!pairTarget ? renderDetail("generic") : missedTarget === "Both targets in pair" ? <>{renderDetail("first", "First target detail")}{renderDetail("second", "Second target detail")}</> : missedTarget === "First target in pair" ? renderDetail("first", "First target detail") : missedTarget === "Second target in pair" ? renderDetail("second", "Second target detail") : renderDetail("generic")}<div className="btns"><button onClick={save} disabled={saving}>{saving ? "Saving..." : "Save correction"}</button><Link className="button secondary" href={`/sessions/${params.id}/misses`}>Cancel</Link></div></div></main>;
+}

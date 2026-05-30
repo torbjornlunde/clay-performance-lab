@@ -65,7 +65,7 @@ export default function EditSessionPage() {
   const [sporttrapSeriesCount, setSporttrapSeriesCount] = useState(1);
   const [leirduestiPostCount, setLeirduestiPostCount] = useState(5);
   const [targetsPerPost, setTargetsPerPost] = useState("10");
-  const [defaultPostFormat, setDefaultPostFormat] = useState("5 repeated pairs");
+  const [defaultPostFormat, setDefaultPostFormat] = useState("5 pairs");
   const [competitionDate, setCompetitionDate] = useState("");
   const [shootingGround, setShootingGround] = useState("");
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
@@ -155,7 +155,7 @@ export default function EditSessionPage() {
     setCount(nextCount);
     setLeirduestiPostCount(isLeirduesti ? leirduestiPosts : nextCount);
     setTargetsPerPost(String(leirduestiTargetsPerPost));
-    setDefaultPostFormat((session.default_post_format || "5 repeated pairs").replace(/equal pairs/gi, "repeated pairs"));
+    setDefaultPostFormat((session.default_post_format || "5 pairs").replace(/equal pairs/gi, "report pairs").replace(/repeated pairs/gi, "pairs"));
     setCourses(makeCourses(nextCount, mappedCourses));
     setSporttrapSeriesCount(sporttrapSeries);
     setCompetitionDate((session.competition_date || "").slice(0, 10));
@@ -423,7 +423,7 @@ export default function EditSessionPage() {
         {discipline === "Leirduesti" && (
           <div className="subcard">
             <h3>Leirduesti setup</h3>
-            <p className="small muted">Default: 10 targets per post, normally 5 pairs. Total targets: {leirduestiPostCount * (Number(targetsPerPost) || 0)}.</p>
+            <p className="small muted">Standard leirduesti is often 5 pairs per post, normally 10 targets, but this can be adjusted. Total targets: {leirduestiPostCount * (Number(targetsPerPost) || 0)}.</p>
             <div className="row">
               <div>
                 <label>Number of posts</label>
@@ -442,7 +442,7 @@ export default function EditSessionPage() {
             </div>
             <label>Default post format</label>
             <select value={defaultPostFormat} onChange={(e) => setDefaultPostFormat(e.target.value)}>
-              <option>5 repeated pairs</option>
+              <option>5 pairs</option>
               <option>2 singles + 2 report pairs + 1 simo pair</option>
               <option>Custom / unknown</option>
             </select>

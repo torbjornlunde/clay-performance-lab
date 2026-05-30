@@ -71,6 +71,7 @@ export default function Page() {
         )}
         <div className="btns">
           <Link href={`/sessions/${session.id}/log`} className="button">Log miss</Link>
+          <Link href={`/sessions/${session.id}/misses`} className="button secondary">Review misses</Link>
           <Link href={`/sessions/${session.id}/analysis`} className="button secondary">Analysis</Link>
           <Link href={`/sessions/${session.id}/edit`} className="button secondary">Edit setup</Link>
           {session.discipline === "Compak Sporting" && <Link href={`/sessions/${session.id}/targets`} className="button secondary">Target definitions</Link>}

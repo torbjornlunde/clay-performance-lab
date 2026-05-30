@@ -1336,3 +1336,69 @@ html, body {
     min-width: 96px;
   }
 }
+
+.missReviewList {
+  display: grid;
+  gap: 1rem;
+}
+
+.missReviewCard {
+  overflow-wrap: anywhere;
+}
+
+.missReviewHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.missReviewGrid {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-top: 1rem;
+}
+
+.missReviewRow {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 0.75rem;
+}
+
+.missReviewRow span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.78rem;
+  margin-bottom: 0.2rem;
+}
+
+.missReviewRow strong {
+  font-size: 0.95rem;
+}
+
+.recentMissActions {
+  align-items: stretch;
+  flex-direction: column;
+  min-width: 92px;
+}
+
+@media (max-width: 640px) {
+  .missReviewHeader {
+    flex-direction: column;
+  }
+
+  .missReviewHeader .btns,
+  .recentMissActions {
+    flex-direction: row;
+    width: 100%;
+  }
+
+  .missReviewHeader .button,
+  .missReviewHeader button,
+  .recentMissActions .button,
+  .recentMissActions button {
+    flex: 1;
+  }
+}

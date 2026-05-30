@@ -31,7 +31,7 @@ type DetailedMiss = {
 
 function normalizeLabel(value: string | null | undefined) {
   if (!value) return value;
-  return value.replace(/equal pair/gi, "Repeated pair");
+  return value.replace(/equal pair/gi, "Report pair").replace(/repeated pair/gi, "Report pair");
 }
 
 function normalizeMissedTarget(value: string | null | undefined) {
@@ -142,6 +142,8 @@ function buildMainPattern(args: {
   byTargetLabel: Record<string, number>;
   byReason: Record<string, number>;
   byWhere: Record<string, number>;
+  byCourse: Record<string, number>;
+  byPlate: Record<string, number>;
 }) {
   if (!args.total) return ["No misses registered yet."];
 
@@ -153,8 +155,10 @@ function buildMainPattern(args: {
       if (key === "Single") return "Most misses are on single targets.";
       return `Most misses are logged as ${key}.`;
     }),
-    dominantMessage(args.byTargetType, args.total, (key) => key === "Repeated pair" ? "Most misses are connected to repeated pairs on Leirduesti posts." : `Most misses are connected to ${key}.`),
+    dominantMessage(args.byTargetType, args.total, (key) => `Most misses are connected to ${key.toLowerCase()}.`),
     dominantMessage(args.byTargetLabel, args.total, (key) => `Most misses are on machine/target ${key}.`),
+    dominantMessage(args.byCourse, args.total, (key) => `Most misses are on course/post ${key}.`),
+    dominantMessage(args.byPlate, args.total, (key) => `Most misses are on plate/stand ${key}.`),
     dominantMessage(args.byReason, args.total, (key) => `Most misses are caused by ${key}.`),
     dominantMessage(args.byWhere, args.total, (key) => `Most misses are ${key.toLowerCase()}.`),
   ].filter((message): message is string => Boolean(message));
@@ -167,14 +171,15 @@ function buildRecommendation(byTargetPosition: Record<string, number>, byTargetT
   const targetType = topKey(byTargetType);
   const reason = topKey(byReason);
 
-  if (position === "Second") return ["Train transition and second-target pickup. Commit to first break point and visual pickup before calling."];
+  if (position === "Second") return ["Train transition and second-target pickup. Commit to the first break point and the second pickup point before calling."];
   if (position === "First") return ["Work on setup, hold point and visual pickup before the first shot."];
   if (targetType === "Single" || position === "Single") return ["Review hold point, line and timing on single targets."];
   if (reason === "Technical") return ["Focus on movement, line and follow-through."];
   if (reason === "Tactical") return ["Plan hold point, break point and transition before calling."];
-  if (["Mental", "Fatigue"].includes(reason)) return ["Use reset routine and simplify decisions between stands/posts."];
+  if (reason === "Mental") return ["Use a reset routine and simplify decisions before calling."];
+  if (reason === "Fatigue") return ["Watch energy management and concentration late in the session."];
   if (reason === "Wind/weather") return ["Note wind direction and adjust hold/break point earlier."];
-  return ["Register more misses before drawing strong conclusions."];
+  return ["Log more misses before drawing strong conclusions."];
 }
 
 export function analyzeMisses(misses: MissForAnalysis[]) {
@@ -196,7 +201,7 @@ export function analyzeMisses(misses: MissForAnalysis[]) {
   const byReason = countBy(detailedMisses.map((miss) => miss.main_reason));
   const total = detailedMisses.length;
   const rowTotal = misses.length;
-  const mainPattern = buildMainPattern({ total, byMissedTarget, byTargetType, byTargetLabel, byReason, byWhere });
+  const mainPattern = buildMainPattern({ total, byMissedTarget, byTargetType, byTargetLabel, byReason, byWhere, byCourse, byPlate });
   const recommendation = buildRecommendation(byTargetPosition, byTargetType, byReason);
 
   return {

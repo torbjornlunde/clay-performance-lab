@@ -64,8 +64,24 @@ Before merging any future PR:
 - [ ] Pair targets ask First/Second/Both/Unknown.
 - [ ] FITASC pair options show machine labels.
 - [ ] Sporttrap pair options show machine labels.
-- [ ] Leirduesti uses Repeated pair, not Equal pair.
+- [ ] Leirduesti no longer creates Repeated pair.
 - [ ] Analysis shows Main pattern.
 - [ ] Analysis gives short training recommendation.
 - [ ] Existing recent miss delete still works.
 - [ ] Existing Compak/Sporttrap/Leirduesti logging still works.
+
+## Miss management and analysis polish
+- [ ] Review misses page opens.
+- [ ] All misses are listed.
+- [ ] Miss can be edited and saved.
+- [ ] Miss can be deleted from review page.
+- [ ] Recent misses still show.
+- [ ] Recent miss edit link works.
+- [ ] Single targets do not ask First/Second/Both.
+- [ ] Pair targets ask First/Second/Both/Unknown.
+- [ ] FITASC pair options show machine labels.
+- [ ] Sporttrap pair options show machine labels.
+- [ ] Leirduesti no longer creates Repeated pair.
+- [ ] Analysis shows Main pattern.
+- [ ] Analysis shows training recommendation.
+- [ ] Export still works.

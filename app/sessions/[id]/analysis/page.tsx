@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { analyzeMisses, MissForAnalysis } from "@/lib/analysis/sessionAnalysis";
+import { normalizeLeirduestiLabel, shortMissedTarget } from "@/lib/misses/labels";
 import { supabase } from "@/lib/supabase/client";
 
 export default function AnalysisPage() {
@@ -125,11 +126,11 @@ export default function AnalysisPage() {
                 {isSporttrap
                   ? `Series ${miss.course_number ?? "-"} · Stand ${miss.plate ?? "-"} · Sporttrap sequence ${miss.target_type || "-"} · ${miss.target_label || "Unknown"}`
                   : isLeirduesti
-                    ? `Post ${miss.course_number ?? "-"} · ${(miss.target_type || "Situation unknown").replace(/Equal pair/gi, "Repeated pair")} · Pair / sequence ${miss.target_number ?? "-"}`
+                    ? `Post ${miss.course_number ?? "-"} · ${normalizeLeirduestiLabel(miss.target_type) || "Situation unknown"} · Pair / sequence ${miss.target_number ?? "-"}`
                     : `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Unknown"}`}
               </strong>
               <div className="small muted">
-                {(miss.target_type || "-").replace(/Equal pair/gi, "Repeated pair")} · {miss.missed_target === "Single target" ? "Single" : miss.missed_target === "First target in pair" ? "First" : miss.missed_target === "Second target in pair" ? "Second" : miss.missed_target === "Both targets in pair" ? "Both" : miss.missed_target} · {miss.where_miss || "-"} · {miss.main_reason || "-"}
+                {normalizeLeirduestiLabel(miss.target_type) || "-"} · {shortMissedTarget(miss.missed_target)} · {miss.where_miss || "-"} · {miss.main_reason || "-"}
               </div>
               {miss.missed_target === "Both targets in pair" && (
                 <>

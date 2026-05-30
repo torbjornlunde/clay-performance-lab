@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { getExpectedPresentationRows, getMachineLabelFromRow, getPresentationLabel, type CompakSchemeRow } from "@/lib/fitasc/compakSchemes";
 import { getSporttrapEvent, getSporttrapMachineLabel, getSporttrapPresentationLabel } from "@/lib/sporttrap/program";
 import { supabase } from "@/lib/supabase/client";
+import { defaultLeirduestiSituation, leirduestiSituationOptions, normalizeLeirduestiLabel } from "@/lib/misses/labels";
 
 type Session = {
   id: string;
@@ -76,18 +77,6 @@ const pairMissedTargetOptions = [
 
 const whereMissOptions = ["Behind", "In front", "Over", "Under", "Not sure"];
 const reasonOptions = ["Technical", "Tactical", "Mental", "Fatigue", "Target difficulty", "Wind/weather", "Unknown"];
-const leirduestiSituationOptions = ["Repeated pair", "Report pair", "Simo pair", "Single", "Reversed report pair", "Unknown"];
-
-function normalizeLeirduestiLabel(value?: string | null) {
-  return value?.replace(/equal pair/gi, "Repeated pair") || value || "";
-}
-
-function defaultLeirduestiSituation(defaultPostFormat?: string | null) {
-  const normalizedFormat = normalizeLeirduestiLabel(defaultPostFormat).toLowerCase();
-  if (normalizedFormat.includes("single")) return "Single";
-  if (normalizedFormat.includes("unknown")) return "Unknown";
-  return "Repeated pair";
-}
 
 export default function LogPage() {
   const params = useParams<{ id: string }>();
@@ -99,7 +88,7 @@ export default function LogPage() {
   const [seriesNumber, setSeriesNumber] = useState(1);
   const [plate, setPlate] = useState(1);
   const [targetNumber, setTargetNumber] = useState(1);
-  const [leirduestiSituation, setLeirduestiSituation] = useState("Repeated pair");
+  const [leirduestiSituation, setLeirduestiSituation] = useState("Report pair");
   const [showManualMachine, setShowManualMachine] = useState(false);
   const [manualMachine, setManualMachine] = useState("Unknown");
   const [schemeRows, setSchemeRows] = useState<CompakSchemeRow[]>([]);
@@ -643,6 +632,7 @@ export default function LogPage() {
       <div className="card recentMissCard">
         <h2>Recent misses</h2>
         <p className="small muted">Last 5 registered misses for this session.</p>
+        <div className="btns compactActions"><Link className="button secondary" href={`/sessions/${params.id}/misses`}>Review misses</Link></div>
         {recentMisses.length === 0 ? (
           <p>No misses registered yet.</p>
         ) : (
@@ -670,9 +660,12 @@ export default function LogPage() {
                     </>
                   )}
                 </div>
-                <button className="danger smallButton recentDeleteButton" onClick={() => deleteMiss(miss.id)} disabled={deletingId === miss.id}>
-                  {deletingId === miss.id ? "Deleting..." : "Delete"}
-                </button>
+                <div className="btns compactActions recentMissActions">
+                  <Link className="button secondary smallButton" href={`/sessions/${params.id}/misses/${miss.id}/edit`}>Edit</Link>
+                  <button className="danger smallButton recentDeleteButton" onClick={() => deleteMiss(miss.id)} disabled={deletingId === miss.id}>
+                    {deletingId === miss.id ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
