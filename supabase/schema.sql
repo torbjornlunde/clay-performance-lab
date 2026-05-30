@@ -32,7 +32,11 @@ drop policy if exists "misses_delete_own" on public.misses; create policy "misse
 alter table public.sessions add column if not exists competition_date date;
 alter table public.sessions add column if not exists own_score integer;
 alter table public.sessions add column if not exists winning_score integer;
-alter table public.sessions add column if not exists sporttrap_series_count integer;
+alter table public.sessions
+add column if not exists sporttrap_series_count integer,
+add column if not exists post_count integer,
+add column if not exists targets_per_post integer,
+add column if not exists default_post_format text;
 alter table public.sessions add column if not exists leirdue_result_url text;
 
 alter table public.misses add column if not exists target_label text;

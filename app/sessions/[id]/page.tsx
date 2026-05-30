@@ -33,7 +33,15 @@ export default function Page() {
   const isSporttrap = session.discipline === "Sporttrap";
   const isLeirduesti = session.discipline === "Leirduesti";
   const sporttrapSeriesCount = isSporttrap ? session.sporttrap_series_count || (session.total_targets ? Math.max(Math.round(session.total_targets / 25), 1) : 1) : null;
-  const totalTargets = isSporttrap && sporttrapSeriesCount ? sporttrapSeriesCount * 25 : session.total_targets;
+  const leirduestiPostCount = isLeirduesti ? session.post_count || session.course_count || (courses.length || null) : null;
+  const leirduestiTargetsPerPost = isLeirduesti
+    ? session.targets_per_post || (session.total_targets && leirduestiPostCount ? Math.max(Math.round(session.total_targets / leirduestiPostCount), 1) : 10)
+    : null;
+  const totalTargets = isSporttrap && sporttrapSeriesCount
+    ? sporttrapSeriesCount * 25
+    : isLeirduesti && leirduestiPostCount && leirduestiTargetsPerPost
+      ? leirduestiPostCount * leirduestiTargetsPerPost
+      : session.total_targets;
   const calculatedScore = typeof totalTargets === "number" ? Math.max(totalTargets - count, 0) : null;
   const scoreUsed = typeof session.own_score === "number" ? session.own_score : calculatedScore;
   const percentage = typeof scoreUsed === "number" && typeof session.winning_score === "number" && session.winning_score > 0 ? (scoreUsed / session.winning_score) * 100 : null;
@@ -86,7 +94,8 @@ export default function Page() {
           <h2>Leirduesti setup</h2>
           <div className="subcard">
             <strong>Post-based</strong>
-            <div className="small muted">Posts: {session.course_count ?? (courses.length || "-")}</div>
+            <div className="small muted">Number of posts: {leirduestiPostCount ?? "-"}</div>
+            <div className="small muted">Targets per post: {leirduestiTargetsPerPost ?? "-"}</div>
             <div className="small muted">Total targets: {totalTargets ?? "-"}</div>
           </div>
         </div>

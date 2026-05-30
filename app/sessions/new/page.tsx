@@ -39,7 +39,9 @@ export default function NewSessionPage() {
   const [courses, setCourses] = useState<CourseSetup[]>(makeCourses(3, []));
   const [sporttrapStand, setSporttrapStand] = useState(1);
   const [sporttrapSeriesCount, setSporttrapSeriesCount] = useState(1);
-  const [leirduestiPostCount, setLeirduestiPostCount] = useState(8);
+  const [leirduestiPostCount, setLeirduestiPostCount] = useState(5);
+  const [targetsPerPost, setTargetsPerPost] = useState("10");
+  const [defaultPostFormat, setDefaultPostFormat] = useState("5 equal pairs");
   const [competitionDate, setCompetitionDate] = useState(new Date().toISOString().slice(0, 10));
   const [shootingGround, setShootingGround] = useState("");
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
@@ -75,6 +77,7 @@ export default function NewSessionPage() {
     const isCompak = discipline === "Compak Sporting";
     const isSporttrap = discipline === "Sporttrap";
     const isLeirduesti = discipline === "Leirduesti";
+    const targetsPerPostNumber = Number(targetsPerPost) || 10;
     const { data: session, error } = await supabase
       .from("sessions")
       .insert({
@@ -85,7 +88,10 @@ export default function NewSessionPage() {
         shooting_format: isCompak ? format : isSporttrap ? "Sporttrap" : isLeirduesti ? "Post-based" : null,
         course_count: isCompak ? count : isSporttrap ? 1 : isLeirduesti ? leirduestiPostCount : null,
         sporttrap_series_count: isSporttrap ? sporttrapSeriesCount : null,
-        total_targets: isCompak ? count * 25 : isSporttrap ? sporttrapSeriesCount * 25 : isLeirduesti ? leirduestiPostCount * 5 : null,
+        total_targets: isCompak ? count * 25 : isSporttrap ? sporttrapSeriesCount * 25 : isLeirduesti ? leirduestiPostCount * targetsPerPostNumber : null,
+        post_count: isLeirduesti ? leirduestiPostCount : null,
+        targets_per_post: isLeirduesti ? targetsPerPostNumber : null,
+        default_post_format: isLeirduesti ? defaultPostFormat : null,
         competition_date: competitionDate || null,
         shooting_ground: shootingGround.trim() || null,
         own_score: ownScore === "" ? null : Number(ownScore),
@@ -211,14 +217,28 @@ export default function NewSessionPage() {
         {discipline === "Leirduesti" && (
           <div className="subcard">
             <h3>Leirduesti setup</h3>
-            <p className="small muted">Ordinary Leirduesti is logged by post. Total targets: {leirduestiPostCount * 5}.</p>
-            <label>Number of posts</label>
-            <select value={leirduestiPostCount} onChange={(e) => setPostCount(Number(e.target.value))}>
-              {[4, 5, 6, 7, 8, 10, 12].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
+            <p className="small muted">Default: 10 targets per post, normally 5 pairs. Total targets: {leirduestiPostCount * (Number(targetsPerPost) || 0)}.</p>
+            <div className="row">
+              <div>
+                <label>Number of posts</label>
+                <select value={leirduestiPostCount} onChange={(e) => setPostCount(Number(e.target.value))}>
+                  {[4, 5, 6, 7, 8, 10, 12].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label>Targets per post</label>
+                <input value={targetsPerPost} onChange={(e) => setTargetsPerPost(e.target.value)} type="number" min="1" inputMode="numeric" />
+              </div>
+            </div>
+            <label>Default post format</label>
+            <select value={defaultPostFormat} onChange={(e) => setDefaultPostFormat(e.target.value)}>
+              <option>5 equal pairs</option>
+              <option>2 singles + 2 report pairs + 1 simo pair</option>
+              <option>Custom / unknown</option>
             </select>
           </div>
         )}

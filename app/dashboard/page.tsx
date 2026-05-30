@@ -14,6 +14,9 @@ type Row = {
   shooting_format: string | null;
   course_count: number | null;
   total_targets?: number | null;
+  sporttrap_series_count?: number | null;
+  post_count?: number | null;
+  targets_per_post?: number | null;
   created_at: string;
   competition_date?: string | null;
   own_score?: number | null;
@@ -85,6 +88,18 @@ function SessionCard({ session, missCounts }: { session: Row; missCounts: Record
   const misses = missCountFor(session, missCounts);
   const percentage = performancePercentage(session, missCounts);
   const label = typeLabel(session, missCounts);
+  const isSporttrap = session.discipline === "Sporttrap";
+  const isLeirduesti = session.discipline === "Leirduesti";
+  const sporttrapSeriesCount = isSporttrap ? session.sporttrap_series_count || (session.total_targets ? Math.max(Math.round(session.total_targets / 25), 1) : 1) : null;
+  const leirduestiPostCount = isLeirduesti ? session.post_count || session.course_count : null;
+  const leirduestiTargetsPerPost = isLeirduesti
+    ? session.targets_per_post || (session.total_targets && leirduestiPostCount ? Math.max(Math.round(session.total_targets / leirduestiPostCount), 1) : 10)
+    : null;
+  const displayedTotalTargets = isSporttrap && sporttrapSeriesCount
+    ? sporttrapSeriesCount * 25
+    : isLeirduesti && leirduestiPostCount && leirduestiTargetsPerPost
+      ? leirduestiPostCount * leirduestiTargetsPerPost
+      : session.total_targets;
 
   return (
     <article className="sessionItem">
@@ -100,9 +115,27 @@ function SessionCard({ session, missCounts }: { session: Row; missCounts: Record
           {session.shooting_format && <span>{session.shooting_format}</span>}
         </div>
         <div className="metricsRow">
-          {session.course_count ? (
+          {isSporttrap && sporttrapSeriesCount ? (
+            <span className="metricChip">
+              <strong>{sporttrapSeriesCount}</strong> 25-target series
+            </span>
+          ) : isLeirduesti && leirduestiPostCount ? (
+            <span className="metricChip">
+              <strong>{leirduestiPostCount}</strong> posts
+            </span>
+          ) : session.course_count ? (
             <span className="metricChip">
               <strong>{session.course_count}</strong> courses
+            </span>
+          ) : null}
+          {isLeirduesti && leirduestiTargetsPerPost ? (
+            <span className="metricChip">
+              <strong>{leirduestiTargetsPerPost}</strong> targets per post
+            </span>
+          ) : null}
+          {displayedTotalTargets ? (
+            <span className="metricChip">
+              <strong>{displayedTotalTargets}</strong> total targets
             </span>
           ) : null}
           <span className="metricChip">

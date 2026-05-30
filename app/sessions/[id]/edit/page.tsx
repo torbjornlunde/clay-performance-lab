@@ -14,7 +14,10 @@ type Session = {
   shooting_format: string | null;
   course_count: number | null;
   total_targets: number | null;
-  sporttrap_series_count: number | null;
+  sporttrap_series_count?: number | null;
+  post_count?: number | null;
+  targets_per_post?: number | null;
+  default_post_format?: string | null;
   leirdue_result_url: string | null;
   shooting_ground: string | null;
   competition_date: string | null;
@@ -60,7 +63,9 @@ export default function EditSessionPage() {
   const [count, setCount] = useState(1);
   const [courses, setCourses] = useState<CourseSetup[]>([]);
   const [sporttrapSeriesCount, setSporttrapSeriesCount] = useState(1);
-  const [leirduestiPostCount, setLeirduestiPostCount] = useState(8);
+  const [leirduestiPostCount, setLeirduestiPostCount] = useState(5);
+  const [targetsPerPost, setTargetsPerPost] = useState("10");
+  const [defaultPostFormat, setDefaultPostFormat] = useState("5 equal pairs");
   const [competitionDate, setCompetitionDate] = useState("");
   const [shootingGround, setShootingGround] = useState("");
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
@@ -91,9 +96,9 @@ export default function EditSessionPage() {
       return;
     }
 
-    const { data: session, error: sessionError } = await supabase
+    const { data: baseSession, error: sessionError } = await supabase
       .from("sessions")
-      .select("id,name,discipline,session_type,shooting_format,course_count,total_targets,sporttrap_series_count,leirdue_result_url,shooting_ground,competition_date,own_score,winning_score")
+      .select("id,name,discipline,session_type,shooting_format,course_count,total_targets,leirdue_result_url,shooting_ground,competition_date,own_score,winning_score")
       .eq("id", sessionId)
       .maybeSingle<Session>();
 
@@ -103,11 +108,19 @@ export default function EditSessionPage() {
       return;
     }
 
-    if (!session) {
-      setErr("Session not found, or your account does not have access to it. If this session exists, Supabase row-level security may be blocking access.");
+    if (!baseSession) {
+      setErr("Session not found");
       setLoaded(true);
       return;
     }
+
+    const { data: optionalSession } = await supabase
+      .from("sessions")
+      .select("sporttrap_series_count,post_count,targets_per_post,default_post_format")
+      .eq("id", sessionId)
+      .maybeSingle<Pick<Session, "sporttrap_series_count" | "post_count" | "targets_per_post" | "default_post_format">>();
+
+    const session: Session = { ...baseSession, ...(optionalSession || {}) };
 
     const { data: courseRows, error: courseError } = await supabase
       .from("session_courses")
@@ -124,7 +137,9 @@ export default function EditSessionPage() {
 
     const sporttrapSeries = session.sporttrap_series_count || (session.discipline === "Sporttrap" && session.total_targets ? Math.max(Math.round(session.total_targets / 25), 1) : 1);
     const isLeirduesti = session.discipline === "Leirduesti";
-    const nextCount = session.discipline === "Sporttrap" ? 1 : session.course_count || Math.max(courseRows?.length || 0, isLeirduesti ? 8 : 1);
+    const leirduestiPosts = session.post_count || session.course_count || Math.max(courseRows?.length || 0, 5);
+    const leirduestiTargetsPerPost = session.targets_per_post || (session.total_targets && leirduestiPosts ? Math.max(Math.round(session.total_targets / leirduestiPosts), 1) : 10);
+    const nextCount = session.discipline === "Sporttrap" ? 1 : isLeirduesti ? leirduestiPosts : session.course_count || Math.max(courseRows?.length || 0, 1);
     const mappedCourses = (courseRows || []).map((course) => ({
       id: course.id,
       courseNumber: course.course_number,
@@ -138,7 +153,9 @@ export default function EditSessionPage() {
     setSessionType(session.session_type || "Training");
     setFormat(session.shooting_format || "Inline");
     setCount(nextCount);
-    setLeirduestiPostCount(nextCount);
+    setLeirduestiPostCount(isLeirduesti ? leirduestiPosts : nextCount);
+    setTargetsPerPost(String(leirduestiTargetsPerPost));
+    setDefaultPostFormat(session.default_post_format || "5 equal pairs");
     setCourses(makeCourses(nextCount, mappedCourses));
     setSporttrapSeriesCount(sporttrapSeries);
     setCompetitionDate((session.competition_date || "").slice(0, 10));
@@ -182,6 +199,7 @@ export default function EditSessionPage() {
     const isSporttrap = discipline === "Sporttrap";
     const isCompak = discipline === "Compak Sporting";
     const isLeirduesti = discipline === "Leirduesti";
+    const targetsPerPostNumber = Number(targetsPerPost) || 10;
 
     const { error: sessionError } = await supabase
       .from("sessions")
@@ -193,7 +211,14 @@ export default function EditSessionPage() {
           : isSporttrap
             ? { shooting_format: "Sporttrap", course_count: 1, sporttrap_series_count: sporttrapSeriesCount, total_targets: sporttrapSeriesCount * 25 }
             : isLeirduesti
-              ? { shooting_format: "Post-based", course_count: leirduestiPostCount, total_targets: leirduestiPostCount * 5 }
+              ? {
+                  shooting_format: "Post-based",
+                  course_count: leirduestiPostCount,
+                  post_count: leirduestiPostCount,
+                  targets_per_post: targetsPerPostNumber,
+                  default_post_format: defaultPostFormat,
+                  total_targets: leirduestiPostCount * targetsPerPostNumber,
+                }
               : {}),
         competition_date: competitionDate || null,
         shooting_ground: shootingGround.trim() || null,
@@ -398,14 +423,28 @@ export default function EditSessionPage() {
         {discipline === "Leirduesti" && (
           <div className="subcard">
             <h3>Leirduesti setup</h3>
-            <p className="small muted">Ordinary Leirduesti is logged by post. Each post has five missable target opportunities.</p>
-            <label>Number of posts</label>
-            <select value={leirduestiPostCount} onChange={(e) => setPostCount(Number(e.target.value))}>
-              {[4, 5, 6, 7, 8, 10, 12].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
+            <p className="small muted">Default: 10 targets per post, normally 5 pairs. Total targets: {leirduestiPostCount * (Number(targetsPerPost) || 0)}.</p>
+            <div className="row">
+              <div>
+                <label>Number of posts</label>
+                <select value={leirduestiPostCount} onChange={(e) => setPostCount(Number(e.target.value))}>
+                  {[4, 5, 6, 7, 8, 10, 12].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label>Targets per post</label>
+                <input value={targetsPerPost} onChange={(e) => setTargetsPerPost(e.target.value)} type="number" min="1" inputMode="numeric" />
+              </div>
+            </div>
+            <label>Default post format</label>
+            <select value={defaultPostFormat} onChange={(e) => setDefaultPostFormat(e.target.value)}>
+              <option>5 equal pairs</option>
+              <option>2 singles + 2 report pairs + 1 simo pair</option>
+              <option>Custom / unknown</option>
             </select>
           </div>
         )}

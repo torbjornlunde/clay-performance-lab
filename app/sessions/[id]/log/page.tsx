@@ -14,7 +14,8 @@ type Session = {
   shooting_format: string | null;
   total_targets: number | null;
   course_count: number | null;
-  sporttrap_series_count: number | null;
+  sporttrap_series_count?: number | null;
+  targets_per_post?: number | null;
 };
 
 type Course = {
@@ -62,8 +63,6 @@ const defaultDetail = (): MissDetail => ({
   comment: "",
 });
 
-const LEIRDUESTI_TARGETS_PER_POST = 5;
-
 const detailSelect =
   "id,course_number,plate,target_number,target_label,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
 
@@ -103,6 +102,7 @@ export default function LogPage() {
   const expectedRows = current?.fitasc_scheme ? getExpectedPresentationRows(current.fitasc_scheme) : ["unknown"];
   const schemeRow = schemeRows.find((row) => row.scheme_number === current?.fitasc_scheme && row.plate_number === plate && row.event_number === targetNumber);
   const sporttrapSeriesCount = isSporttrap ? session?.sporttrap_series_count || (session?.total_targets ? Math.max(Math.round(session.total_targets / 25), 1) : 1) : 1;
+  const leirduestiTargetsPerPost = isLeirduesti ? session?.targets_per_post || (session?.total_targets && session?.course_count ? Math.max(Math.round(session.total_targets / session.course_count), 1) : 10) : 10;
   const sporttrapEvent = getSporttrapEvent(plate, targetNumber);
   const sporttrapTargetType = getSporttrapPresentationLabel(sporttrapEvent.presentation);
   const sporttrapTargetLabel = getSporttrapMachineLabel(sporttrapEvent);
@@ -138,9 +138,15 @@ export default function LogPage() {
 
     const { data: sessionData } = await supabase
       .from("sessions")
-      .select("id,name,discipline,shooting_format,total_targets,course_count,sporttrap_series_count")
+      .select("id,name,discipline,shooting_format,total_targets,course_count")
       .eq("id", params.id)
       .single<Session>();
+    const { data: optionalSession } = await supabase
+      .from("sessions")
+      .select("sporttrap_series_count,targets_per_post")
+      .eq("id", params.id)
+      .maybeSingle<Pick<Session, "sporttrap_series_count" | "targets_per_post">>();
+    const sessionWithOptional = sessionData ? { ...sessionData, ...(optionalSession || {}) } : null;
     const { data: courseData } = await supabase
       .from("session_courses")
       .select("id,course_number,fitasc_scheme,start_plate,shooter_number")
@@ -148,14 +154,14 @@ export default function LogPage() {
       .order("course_number")
       .returns<Course[]>();
 
-    setSession(sessionData);
+    setSession(sessionWithOptional);
     const loadedCourses = courseData || [];
-    const displayCourses = sessionData?.discipline === "Leirduesti" && loadedCourses.length === 0
-      ? Array.from({ length: sessionData.course_count || 8 }, (_, index) => ({ course_number: index + 1, fitasc_scheme: null, start_plate: null, shooter_number: null }))
+    const displayCourses = sessionWithOptional?.discipline === "Leirduesti" && loadedCourses.length === 0
+      ? Array.from({ length: sessionWithOptional.course_count || 5 }, (_, index) => ({ course_number: index + 1, fitasc_scheme: null, start_plate: null, shooter_number: null }))
       : loadedCourses;
     setCourses(displayCourses);
     const schemeNumbers = Array.from(new Set((courseData || []).map((course) => course.fitasc_scheme).filter(Boolean)));
-    if (sessionData?.discipline === "Compak Sporting" && schemeNumbers.length > 0) {
+    if (sessionWithOptional?.discipline === "Compak Sporting" && schemeNumbers.length > 0) {
       const { data: fitascRows } = await supabase
         .from("fitasc_compak_schemes")
         .select("scheme_number,plate_number,event_number,presentation,first_machine,second_machine,is_verified")
@@ -165,8 +171,8 @@ export default function LogPage() {
     }
     if (displayCourses?.[0]) {
       setCourseNumber(displayCourses[0].course_number);
-      if (sessionData?.discipline === "Sporttrap" && displayCourses[0].shooter_number) setPlate(displayCourses[0].shooter_number);
-      else if (sessionData?.shooting_format === "Squad" && displayCourses[0].start_plate) setPlate(displayCourses[0].start_plate);
+      if (sessionWithOptional?.discipline === "Sporttrap" && displayCourses[0].shooter_number) setPlate(displayCourses[0].shooter_number);
+      else if (sessionWithOptional?.shooting_format === "Squad" && displayCourses[0].start_plate) setPlate(displayCourses[0].start_plate);
     }
     await loadRecentMisses();
   }
@@ -418,7 +424,7 @@ export default function LogPage() {
               <div>
                 <label>Target on post</label>
                 <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
-                  {Array.from({ length: LEIRDUESTI_TARGETS_PER_POST }, (_, index) => index + 1).map((v) => (
+                  {Array.from({ length: leirduestiTargetsPerPost }, (_, index) => index + 1).map((v) => (
                     <option key={v} value={v}>
                       Target {v}
                     </option>
