@@ -52,3 +52,11 @@ Before merging any future PR:
 - [ ] Result list uses newest-first order.
 - [ ] By shooting ground summary appears when applicable.
 - [ ] Existing Compak/FITASC logging still works.
+- [ ] Log Miss keeps course/post/stand after saving.
+- [ ] Log Miss clears only comment fields after saving.
+- [ ] Log Miss recent misses still show after saving.
+- [ ] Log Miss recent miss delete still works.
+- [ ] Compak/FITASC Log Miss calculated machine still works.
+- [ ] Sporttrap Log Miss calculated sequence still works.
+- [ ] Leirduesti Log Miss post/situation logging still works.
+- [ ] Log Miss mobile layout is easy to tap with no horizontal scrolling.

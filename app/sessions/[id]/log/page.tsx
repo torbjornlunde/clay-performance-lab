@@ -16,6 +16,7 @@ type Session = {
   course_count: number | null;
   sporttrap_series_count?: number | null;
   targets_per_post?: number | null;
+  default_post_format?: string | null;
 };
 
 type Course = {
@@ -66,6 +67,24 @@ const defaultDetail = (): MissDetail => ({
 const detailSelect =
   "id,course_number,plate,target_number,target_label,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
 
+const missedTargetOptions = [
+  { label: "Single", value: "Single target" },
+  { label: "First", value: "First target in pair" },
+  { label: "Second", value: "Second target in pair" },
+  { label: "Both", value: "Both targets in pair" },
+  { label: "Unknown", value: "Unknown" },
+];
+
+const whereMissOptions = ["Behind", "In front", "Over", "Under", "Not sure"];
+const reasonOptions = ["Technical", "Tactical", "Mental", "Fatigue", "Target difficulty", "Wind/weather", "Unknown"];
+const leirduestiSituationOptions = ["Equal pair", "Report pair", "Simo pair", "Single", "Reversed report pair", "Unknown"];
+
+function defaultLeirduestiSituation(defaultPostFormat?: string | null) {
+  if (defaultPostFormat?.toLowerCase().includes("single")) return "Single";
+  if (defaultPostFormat?.toLowerCase().includes("unknown")) return "Unknown";
+  return "Equal pair";
+}
+
 export default function LogPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -76,6 +95,7 @@ export default function LogPage() {
   const [seriesNumber, setSeriesNumber] = useState(1);
   const [plate, setPlate] = useState(1);
   const [targetNumber, setTargetNumber] = useState(1);
+  const [leirduestiSituation, setLeirduestiSituation] = useState("Equal pair");
   const [showManualMachine, setShowManualMachine] = useState(false);
   const [manualMachine, setManualMachine] = useState("Unknown");
   const [schemeRows, setSchemeRows] = useState<CompakSchemeRow[]>([]);
@@ -106,10 +126,11 @@ export default function LogPage() {
   const sporttrapEvent = getSporttrapEvent(plate, targetNumber);
   const sporttrapTargetType = getSporttrapPresentationLabel(sporttrapEvent.presentation);
   const sporttrapTargetLabel = getSporttrapMachineLabel(sporttrapEvent);
+  const sporttrapSequenceText = `${sporttrapTargetType} ${sporttrapTargetLabel}`;
   const targetType = isSporttrap
     ? sporttrapTargetType
     : isLeirduesti
-      ? "Post target"
+      ? leirduestiSituation
       : schemeRow
       ? getPresentationLabel(schemeRow.presentation)
       : current?.fitasc_scheme
@@ -117,9 +138,9 @@ export default function LogPage() {
         : "Unknown";
   const targetLabel = isSporttrap ? sporttrapTargetLabel : isLeirduesti ? `Post ${courseNumber}` : showManualMachine ? manualMachine : getMachineLabelFromRow(schemeRow);
   const calculatedText = isSporttrap
-    ? `Sporttrap sequence: ${sporttrapTargetType} · ${sporttrapTargetLabel}`
+    ? `Calculated: ${sporttrapSequenceText}`
     : isLeirduesti
-      ? `Leirduesti post ${courseNumber} · Target ${targetNumber}`
+      ? `Post ${courseNumber} · ${leirduestiSituation} · Pair / sequence ${targetNumber}`
       : schemeRow
       ? `Calculated: ${getMachineLabelFromRow(schemeRow)} · ${getPresentationLabel(schemeRow.presentation)}`
       : "Machine unavailable for this plate and target / pair selection.";
@@ -143,9 +164,9 @@ export default function LogPage() {
       .single<Session>();
     const { data: optionalSession } = await supabase
       .from("sessions")
-      .select("sporttrap_series_count,targets_per_post")
+      .select("sporttrap_series_count,targets_per_post,default_post_format")
       .eq("id", params.id)
-      .maybeSingle<Pick<Session, "sporttrap_series_count" | "targets_per_post">>();
+      .maybeSingle<Pick<Session, "sporttrap_series_count" | "targets_per_post" | "default_post_format">>();
     const sessionWithOptional = sessionData ? { ...sessionData, ...(optionalSession || {}) } : null;
     const { data: courseData } = await supabase
       .from("session_courses")
@@ -155,6 +176,7 @@ export default function LogPage() {
       .returns<Course[]>();
 
     setSession(sessionWithOptional);
+    if (sessionWithOptional?.discipline === "Leirduesti") setLeirduestiSituation(defaultLeirduestiSituation(sessionWithOptional.default_post_format));
     const loadedCourses = courseData || [];
     const displayCourses = sessionWithOptional?.discipline === "Leirduesti" && loadedCourses.length === 0
       ? Array.from({ length: sessionWithOptional.course_count || 5 }, (_, index) => ({ course_number: index + 1, fitasc_scheme: null, start_plate: null, shooter_number: null }))
@@ -255,9 +277,9 @@ export default function LogPage() {
       return;
     }
 
-    setGenericDetail(defaultDetail());
-    setFirstDetail(defaultDetail());
-    setSecondDetail(defaultDetail());
+    setGenericDetail((detail) => ({ ...detail, comment: "" }));
+    setFirstDetail((detail) => ({ ...detail, comment: "" }));
+    setSecondDetail((detail) => ({ ...detail, comment: "" }));
     setMsg("Miss saved");
     await loadRecentMisses();
   }
@@ -276,46 +298,50 @@ export default function LogPage() {
     await loadRecentMisses();
   }
 
+  function renderButtonGroup(options: string[], value: string, onChange: (nextValue: string) => void, compact = false) {
+    return (
+      <div className={compact ? "quickButtonGrid compactQuickGrid" : "quickButtonGrid"}>
+        {options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={value === option ? "quickButton selected" : "quickButton"}
+            onClick={() => onChange(option)}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   function renderDetailFields(kind: "generic" | "first" | "second", label?: string) {
     const detail = kind === "first" ? firstDetail : kind === "second" ? secondDetail : genericDetail;
     return (
-      <div className="subcard">
+      <div className="logDetailBlock">
         {label && <h3>{label}</h3>}
-        <div className="row">
-          <div>
-            <label>Where was the miss?</label>
-            <select value={detail.whereMiss} onChange={(e) => updateDetail(kind, { whereMiss: e.target.value })}>
-              <option>Behind</option>
-              <option>In front</option>
-              <option>Over</option>
-              <option>Under</option>
-              <option>Not sure</option>
-            </select>
-          </div>
-          <div>
-            <label>Main reason</label>
-            <select value={detail.mainReason} onChange={(e) => updateDetail(kind, { mainReason: e.target.value })}>
-              <option>Technical</option>
-              <option>Tactical</option>
-              <option>Mental</option>
-              <option>Fatigue</option>
-              <option>Target difficulty</option>
-              <option>Weather/wind</option>
-              <option>Unknown</option>
-            </select>
-          </div>
+        <div className="fieldBlock">
+          <label>Where miss</label>
+          {renderButtonGroup(whereMissOptions, detail.whereMiss, (whereMiss) => updateDetail(kind, { whereMiss }))}
         </div>
-        <label>Target read</label>
-        <select value={detail.targetRead} onChange={(e) => updateDetail(kind, { targetRead: e.target.value })}>
-          <option>Normal</option>
-          <option>Looked faster than expected</option>
-          <option>Looked slower than expected</option>
-          <option>Wind affected</option>
-          <option>Poor visibility</option>
-          <option>Unknown</option>
-        </select>
-        <label>Short comment</label>
-        <textarea value={detail.comment} onChange={(e) => updateDetail(kind, { comment: e.target.value })} />
+        <div className="fieldBlock">
+          <label>Main reason</label>
+          {renderButtonGroup(reasonOptions, detail.mainReason, (mainReason) => updateDetail(kind, { mainReason }), true)}
+        </div>
+        <details className="optionalDetails">
+          <summary>Target read and comment</summary>
+          <label>Target read</label>
+          <select value={detail.targetRead} onChange={(e) => updateDetail(kind, { targetRead: e.target.value })}>
+            <option>Normal</option>
+            <option>Looked faster than expected</option>
+            <option>Looked slower than expected</option>
+            <option>Wind affected</option>
+            <option>Poor visibility</option>
+            <option>Unknown</option>
+          </select>
+          <label>Short comment</label>
+          <textarea value={detail.comment} onChange={(e) => updateDetail(kind, { comment: e.target.value })} placeholder="Optional note" />
+        </details>
       </div>
     );
   }
@@ -334,6 +360,12 @@ export default function LogPage() {
     return renderDetailFields("generic");
   }
 
+  function recentLocation(miss: RecentMiss) {
+    if (isSporttrap) return `Series ${miss.course_number ?? "-"} · Stand ${miss.plate ?? "-"} · ${miss.target_type || "Sequence"} ${miss.target_label || ""}`.trim();
+    if (isLeirduesti) return `Post ${miss.course_number ?? "-"} · ${miss.target_type || "Situation unknown"}`;
+    return `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Machine unknown"}`;
+  }
+
   function renderRecentDetail(miss: RecentMiss, target: "first" | "second") {
     const prefix = target === "first" ? "first" : "second";
     const where = target === "first" ? miss.first_where_miss : miss.second_where_miss;
@@ -342,11 +374,11 @@ export default function LogPage() {
     const comment = target === "first" ? miss.first_comment : miss.second_comment;
 
     return (
-      <div className="subcard" key={`${miss.id}-${prefix}`}>
-        <strong>{target === "first" ? "First target" : "Second target"}</strong>
-        <div className="small muted">
-          Where miss: {where || "-"} · Main reason: {reason || "-"} · Read: {read || "-"}
-        </div>
+      <div className="recentDetailLine" key={`${miss.id}-${prefix}`}>
+        <strong>{target === "first" ? "First" : "Second"}</strong>
+        <span>{where || "-"}</span>
+        <span>{reason || "-"}</span>
+        <span>{read || "-"}</span>
         {comment && <p>{comment}</p>}
       </div>
     );
@@ -362,192 +394,245 @@ export default function LogPage() {
 
   return (
     <main>
-      <div className="card">
-        <h2>Log miss</h2>
-        <p className="small muted">{session.name}</p>
+      <div className="card logMissCard">
+        <div className="sectionHeader">
+          <div>
+            <p className="eyebrow">Fast logging</p>
+            <h2>Log miss</h2>
+            <p className="small muted">{session.name}</p>
+          </div>
+          <span className="badge badgeGold">{session.discipline}</span>
+        </div>
 
-        {session.discipline === "Sporttrap" && (
-          <>
-            <div className="row">
-              {sporttrapSeriesCount > 1 && (
+        <section className="logSection">
+          <div className="logSectionTitle">
+            <span>1</span>
+            <div>
+              <h3>Where / setup</h3>
+              <p className="small muted">Choose the current position once, then keep saving misses from the same spot.</p>
+            </div>
+          </div>
+
+          {session.discipline === "Sporttrap" && (
+            <>
+              <div className="row compactLogRow">
+                {sporttrapSeriesCount > 1 && (
+                  <div>
+                    <label>Series</label>
+                    <select value={seriesNumber} onChange={(e) => setSeriesNumber(Number(e.target.value))}>
+                      {Array.from({ length: sporttrapSeriesCount }, (_, index) => index + 1).map((v) => (
+                        <option key={v} value={v}>
+                          Series {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div>
-                  <label>Series</label>
-                  <select value={seriesNumber} onChange={(e) => setSeriesNumber(Number(e.target.value))}>
-                    {Array.from({ length: sporttrapSeriesCount }, (_, index) => index + 1).map((v) => (
+                  <label>Stand</label>
+                  <select value={plate} onChange={(e) => setPlate(Number(e.target.value))}>
+                    {[1, 2, 3, 4, 5].map((v) => (
                       <option key={v} value={v}>
-                        Series {v}
+                        Stand {v}
                       </option>
                     ))}
                   </select>
                 </div>
-              )}
-              <div>
-                <label>Stand / shooter number</label>
-                <select value={plate} onChange={(e) => setPlate(Number(e.target.value))}>
-                  {[1, 2, 3, 4, 5].map((v) => (
-                    <option key={v} value={v}>
-                      Stand {v}
-                    </option>
-                  ))}
-                </select>
+                <div>
+                  <label>Sequence</label>
+                  <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
+                    {[1, 2, 3].map((v) => {
+                      const event = getSporttrapEvent(plate, v);
+                      return (
+                        <option key={v} value={v}>
+                          {getSporttrapPresentationLabel(event.presentation)} {getSporttrapMachineLabel(event)}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
               </div>
-              <div>
-                <label>Sporttrap sequence</label>
-                <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
-                  {[1, 2, 3].map((v) => {
-                    const event = getSporttrapEvent(plate, v);
-                    return (
-                      <option key={v} value={v}>
-                        {getSporttrapPresentationLabel(event.presentation)}
+              <div className="notice calculatedNotice small">{calculatedText}</div>
+            </>
+          )}
+
+          {session.discipline === "Leirduesti" && (
+            <>
+              <div className="row compactLogRow">
+                <div>
+                  <label>Post</label>
+                  <select value={courseNumber} onChange={(e) => changeCourse(Number(e.target.value))}>
+                    {courses.map((course) => (
+                      <option key={course.id || course.course_number} value={course.course_number}>
+                        Post {course.course_number}
                       </option>
-                    );
-                  })}
-                </select>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label>Pair / sequence</label>
+                  <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
+                    {Array.from({ length: leirduestiTargetsPerPost }, (_, index) => index + 1).map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+              <div className="fieldBlock">
+                <label>Situation</label>
+                {renderButtonGroup(leirduestiSituationOptions, leirduestiSituation, setLeirduestiSituation, true)}
+              </div>
+              <div className="notice calculatedNotice small">{calculatedText}</div>
+            </>
+          )}
+
+          {session.discipline === "Compak Sporting" && (
+            <>
+              <div className="row compactLogRow">
+                <div>
+                  <label>Course</label>
+                  <select value={courseNumber} onChange={(e) => changeCourse(Number(e.target.value))}>
+                    {courses.map((course) => (
+                      <option key={course.id || course.course_number} value={course.course_number}>
+                        Course {course.course_number} — {course.fitasc_scheme ? `Scheme ${course.fitasc_scheme}` : "Scheme unknown"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label>Plate</label>
+                  <select value={plate} onChange={(e) => setPlate(Number(e.target.value))}>
+                    {[1, 2, 3, 4, 5].map((v) => (
+                      <option key={v} value={v}>
+                        Plate {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <label>Target / pair</label>
+              <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
+                {expectedRows.map((_row, index) => {
+                  const row = schemeRows.find((item) => item.scheme_number === current?.fitasc_scheme && item.plate_number === plate && item.event_number === index + 1);
+                  const label = row ? `${getMachineLabelFromRow(row)} · ${getPresentationLabel(row.presentation)}` : getPresentationLabel(expectedRows[index]);
+                  return <option key={index + 1} value={index + 1}>{label}</option>;
+                })}
+              </select>
+              <div className="notice calculatedNotice small">{calculatedText}</div>
+              <button type="button" className="secondary smallButton inlineToggle" onClick={() => setShowManualMachine((value) => !value)}>
+                Manual machine entry
+              </button>
+              {showManualMachine && (
+                <div className="subcard compactSubcard">
+                  <label>Machine</label>
+                  <select value={manualMachine} onChange={(e) => setManualMachine(e.target.value)}>
+                    {["A", "B", "C", "D", "E", "F", "Unknown"].map((v) => <option key={v}>{v}</option>)}
+                  </select>
+                  <p className="small muted">Use only when the machine is known but the plate or target / pair selection is not.</p>
+                </div>
+              )}
+              {schemeMissing && (
+                <div className="notice small">
+                  No FITASC scheme set for this course yet. You can still log the miss, but target type may be unknown.
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
+        <section className="logSection">
+          <div className="logSectionTitle">
+            <span>2</span>
+            <div>
+              <h3>What was missed</h3>
+              <p className="small muted">Large quick buttons for the target position.</p>
             </div>
-            <div className="notice small">{calculatedText}</div>
-          </>
-        )}
-        {session.discipline === "Leirduesti" && (
-          <>
-            <div className="row">
-              <div>
-                <label>Post</label>
-                <select value={courseNumber} onChange={(e) => changeCourse(Number(e.target.value))}>
-                  {courses.map((course) => (
-                    <option key={course.id || course.course_number} value={course.course_number}>
-                      Post {course.course_number}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label>Target on post</label>
-                <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
-                  {Array.from({ length: leirduestiTargetsPerPost }, (_, index) => index + 1).map((v) => (
-                    <option key={v} value={v}>
-                      Target {v}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          </div>
+          <div className="quickButtonGrid missedTargetGrid">
+            {missedTargetOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={missedTarget === option.value ? "quickButton selected" : "quickButton"}
+                onClick={() => setMissedTarget(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="logSection">
+          <div className="logSectionTitle">
+            <span>3</span>
+            <div>
+              <h3>Why / details</h3>
+              <p className="small muted">Comment is optional. Save works as soon as the quick fields look right.</p>
             </div>
-            <div className="notice small">{calculatedText}</div>
-          </>
-        )}
-        {session.discipline === "Compak Sporting" && (
-          <>
-            <div className="row">
-              <div>
-                <label>Course</label>
-                <select value={courseNumber} onChange={(e) => changeCourse(Number(e.target.value))}>
-                  {courses.map((course) => (
-                    <option key={course.id || course.course_number} value={course.course_number}>
-                      Course {course.course_number} — {course.fitasc_scheme ? `Scheme ${course.fitasc_scheme}` : "Scheme unknown"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label>Plate</label>
-                <select value={plate} onChange={(e) => setPlate(Number(e.target.value))}>
-                  {[1, 2, 3, 4, 5].map((v) => (
-                    <option key={v} value={v}>
-                      Plate {v}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          </div>
+          {renderActiveDetails()}
+        </section>
+
+        <section className="logSection saveSection">
+          <div className="logSectionTitle">
+            <span>4</span>
+            <div>
+              <h3>Save</h3>
+              <p className="small muted">After saving, setup and quick selections stay in place; only comments clear.</p>
             </div>
-            <label>Target / pair</label>
-            <select value={targetNumber} onChange={(e) => setTargetNumber(Number(e.target.value))}>
-              {expectedRows.map((_row, index) => {
-                const row = schemeRows.find((item) => item.scheme_number === current?.fitasc_scheme && item.plate_number === plate && item.event_number === index + 1);
-                const label = row ? `${getPresentationLabel(row.presentation)} ${getMachineLabelFromRow(row)}` : getPresentationLabel(expectedRows[index]);
-                return <option key={index + 1} value={index + 1}>{label}</option>;
-              })}
-            </select>
-            <div className="notice small">{calculatedText}</div>
-            <button type="button" className="secondary smallButton inlineToggle" onClick={() => setShowManualMachine((value) => !value)}>
-              Manual machine entry
-            </button>
-            {showManualMachine && (
-              <div className="subcard compactSubcard">
-                <label>Machine</label>
-                <select value={manualMachine} onChange={(e) => setManualMachine(e.target.value)}>
-                  {["A", "B", "C", "D", "E", "F", "Unknown"].map((v) => <option key={v}>{v}</option>)}
-                </select>
-                <p className="small muted">Use only when the machine is known but the plate or target / pair selection is not.</p>
-              </div>
-            )}
-            {schemeMissing && (
-              <div className="notice small">
-                No FITASC scheme set for this course yet. You can still log the miss, but target type may be unknown.
-              </div>
-            )}
-          </>
-        )}
-        <label>Missed target</label>
-        <select value={missedTarget} onChange={(e) => setMissedTarget(e.target.value)}>
-          <option>Single target</option>
-          <option>First target in pair</option>
-          <option>Second target in pair</option>
-          <option>Both targets in pair</option>
-          <option>Unknown</option>
-        </select>
-        {renderActiveDetails()}
-        {msg && <div className={msg === "Miss saved" ? "success" : "error"}>{msg}</div>}
-        <div className="btns">
-          <button onClick={save} disabled={saving}>
+          </div>
+          {msg && <div className={msg === "Miss saved" ? "success" : "error"}>{msg}</div>}
+          <button className="saveMissButton" onClick={save} disabled={saving}>
             {saving ? "Saving..." : "Save miss"}
           </button>
-          <Link className="button secondary" href={`/sessions/${params.id}`}>
-            Back
-          </Link>
-          <Link className="button secondary" href={`/sessions/${params.id}/analysis`}>
-            Analysis
-          </Link>
-        </div>
+          <div className="btns compactActions">
+            <Link className="button secondary" href={`/sessions/${params.id}`}>
+              Back
+            </Link>
+            <Link className="button secondary" href={`/sessions/${params.id}/analysis`}>
+              Analysis
+            </Link>
+          </div>
+        </section>
       </div>
 
-      <div className="card">
+      <div className="card recentMissCard">
         <h2>Recent misses</h2>
         <p className="small muted">Last 5 registered misses for this session.</p>
         {recentMisses.length === 0 ? (
           <p>No misses registered yet.</p>
         ) : (
-          recentMisses.map((miss) => (
-            <div className="subcard" key={miss.id}>
-              <strong>
-                {isSporttrap
-                  ? `Series ${miss.course_number ?? "-"} · Stand ${miss.plate ?? "-"} · Sporttrap sequence ${miss.target_type || "-"} · ${miss.target_label || "Unknown"}`
-                  : isLeirduesti
-                    ? `Post ${miss.course_number ?? "-"} · Target ${miss.target_number ?? "-"}`
-                    : `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Unknown"}`}
-              </strong>
-              <div className="small muted">
-                Presentation: {miss.target_type || "-"} · Missed target: {miss.missed_target || "-"}
-              </div>
-              {miss.missed_target === "Both targets in pair" ? (
-                <>
-                  {renderRecentDetail(miss, "first")}
-                  {renderRecentDetail(miss, "second")}
-                </>
-              ) : (
-                <>
-                  <div className="small muted">
-                    Where miss: {miss.where_miss || "-"} · Main reason: {miss.main_reason || "-"} · Read: {miss.target_read || "-"}
+          <div className="recentMissList">
+            {recentMisses.map((miss) => (
+              <div className="recentMissItem" key={miss.id}>
+                <div className="recentMissMain">
+                  <strong>{recentLocation(miss)}</strong>
+                  <div className="recentPills">
+                    <span>{miss.missed_target || "Missed target unknown"}</span>
+                    <span>{miss.main_reason || miss.first_main_reason || miss.second_main_reason || "Reason unknown"}</span>
                   </div>
-                  {miss.comment && <p>{miss.comment}</p>}
-                </>
-              )}
-              <div className="btns">
-                <button className="danger" onClick={() => deleteMiss(miss.id)} disabled={deletingId === miss.id}>
+                  {miss.missed_target === "Both targets in pair" ? (
+                    <div className="recentDetailStack">
+                      {renderRecentDetail(miss, "first")}
+                      {renderRecentDetail(miss, "second")}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="small muted">
+                        {miss.where_miss || "Where unknown"} · {miss.main_reason || "Reason unknown"} · {miss.target_read || "Read unknown"}
+                      </div>
+                      {miss.comment && <p>{miss.comment}</p>}
+                    </>
+                  )}
+                </div>
+                <button className="danger smallButton recentDeleteButton" onClick={() => deleteMiss(miss.id)} disabled={deletingId === miss.id}>
                   {deletingId === miss.id ? "Deleting..." : "Delete"}
                 </button>
               </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </div>
     </main>
