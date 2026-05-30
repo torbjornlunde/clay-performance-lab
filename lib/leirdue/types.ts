@@ -42,6 +42,11 @@ export type LeirdueSearchDebug = {
   resultMenuDiagnostics: { eventUrl: string; contains: Record<string, boolean>; snippet: string }[];
   validationUrlsInspected: number;
   validationShooterMatches: number;
+  candidateCategoryCounts: Record<LeirdueCategory, number>;
+  candidatesWithOwnScore: number;
+  candidatesWithWinningScore: number;
+  candidatesWithTotalTargets: number;
+  candidatesWithShootingGround: number;
   pagesInspected: number;
   shooterPagesFound: number;
   candidateRowsCreated: number;

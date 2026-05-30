@@ -139,6 +139,11 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         <span className="metricChip"><strong>{debug.listeIdPagesFetched}</strong> liste_id pages fetched</span>
         <span className="metricChip"><strong>{debug.listeIdShooterPagesFound}</strong> liste_id shooter pages</span>
         <span className="metricChip"><strong>{debug.candidateRowsCreated}</strong> candidates created</span>
+        <span className="metricChip"><strong>{debug.candidateCategoryCounts.recommended}/{debug.candidateCategoryCounts.review}/{debug.candidateCategoryCounts.control}</strong> rec/review/control</span>
+        <span className="metricChip"><strong>{debug.candidatesWithOwnScore}</strong> own score</span>
+        <span className="metricChip"><strong>{debug.candidatesWithWinningScore}</strong> winning score</span>
+        <span className="metricChip"><strong>{debug.candidatesWithTotalTargets}</strong> total targets</span>
+        <span className="metricChip"><strong>{debug.candidatesWithShootingGround}</strong> shooting ground</span>
       </div>
       {candidatesFound === 0 ? <p className="small muted">No candidates found. Try broader filters or add result manually.</p> : null}
       {recentStatuses.length > 0 ? (
