@@ -55,6 +55,8 @@ function emptyDebug(): LeirdueSearchDebug {
     validationUrlsInspected: 0,
     validationShooterMatches: 0,
     candidateCategoryCounts: { recommended: 0, review: 0, control: 0 },
+    candidateConfidenceCounts: { high: 0, medium: 0, low: 0 },
+    duplicatesRemoved: 0,
     candidatesWithOwnScore: 0,
     candidatesWithWinningScore: 0,
     candidatesWithTotalTargets: 0,
@@ -193,33 +195,70 @@ function classifyDiscipline(text: string, selectedDisciplines: string[]) {
   return { discipline, notes };
 }
 
+function isLikelyControlText(text: string) {
+  const normalized = ` ${normalizeText(text)} `;
+  return CONTROL_TERMS.some((term) => normalized.includes(term)) || /\b(cup|xxl cup|blaser cup)\s+sammenlagt\b/.test(normalized);
+}
+
+function directListScore(text: string) {
+  const normalized = normalizeText(text);
+  if (normalized.includes("sammenlagt resultatliste etter bane")) return 90;
+  if (normalized.includes("resultater sammenlagt") || normalized.includes("resultatliste sammenlagt")) return 85;
+  if (normalized.includes("sammenlagt") && normalized.includes("resultat")) return 75;
+  if (normalized.includes("resultater") || normalized.includes("resultatliste")) return 55;
+  if (/\b\d{1,3}\s+\d{1,3}\s+\d{1,3}\b/.test(normalized)) return 25;
+  return 0;
+}
+
+function isDirectResultList(text: string) {
+  return directListScore(text) > 0 && !isLikelyControlText(text);
+}
+
+function penaltyForControlText(text: string) {
+  const normalized = normalizeText(text);
+  let penalty = 0;
+  if (isLikelyControlText(text)) penalty += 180;
+  if (normalized.includes("prosent")) penalty += 80;
+  if (normalized.includes("uttak")) penalty += 80;
+  if (normalized.includes("ranking") || normalized.includes("rank")) penalty += 80;
+  if (normalized.includes("lag") || normalized.includes("team list")) penalty += 50;
+  if (normalized.includes("påmelding") || normalized.includes("pamelding") || normalized.includes("deltaker")) penalty += 120;
+  if ((normalized.includes("lørdag") && normalized.includes("søndag")) || normalized.includes("lordag sondag") || normalized.includes("combined")) penalty += 30;
+  return penalty;
+}
+
 function classifyListType(text: string) {
   const normalized = ` ${normalizeText(text)} `;
-  if (CONTROL_TERMS.some((term) => normalized.includes(term))) return "Control / not imported by default";
-  if (RESULT_LINK_TERMS.some((term) => normalized.includes(term))) return "Result list";
+  if (isLikelyControlText(text)) return "Control / not imported by default";
+  if (directListScore(text) > 0) return "Direct result list";
   return "Unknown list";
 }
 
 function isControlList(text: string) {
-  const normalized = ` ${normalizeText(text)} `;
-  return CONTROL_TERMS.some((term) => normalized.includes(term));
+  return isLikelyControlText(text);
 }
 
 function looksLikeDirectResult(text: string) {
-  const normalized = normalizeText(text);
-  return RESULT_LINK_TERMS.some((term) => normalized.includes(term)) || /\b\d{1,3}\s+\d{1,3}\s+\d{1,3}\b/.test(normalized);
+  return isDirectResultList(text);
 }
 
 function parseDate(text: string, year: number): string | null {
   const normalized = normalizeText(text);
+  const prefersFirstDay = /\b(lørdag|lordag|saturday)\b/.test(normalized);
+  const prefersSecondDay = /\b(søndag|sondag|sunday)\b/.test(normalized);
   const norwegianRange = normalized.match(/(\d{1,2})\.\s*(?:til|og|-|–)\s*(\d{1,2})\.\s*([a-zæøå]+)\s*(\d{4})/);
-  if (norwegianRange && MONTHS[norwegianRange[3]]) return `${norwegianRange[4]}-${MONTHS[norwegianRange[3]]}-${norwegianRange[2].padStart(2, "0")}`;
+  if (norwegianRange && MONTHS[norwegianRange[3]]) {
+    const day = prefersSecondDay ? norwegianRange[2] : norwegianRange[1];
+    return `${norwegianRange[4]}-${MONTHS[norwegianRange[3]]}-${day.padStart(2, "0")}`;
+  }
   const norwegian = normalized.match(/(\d{1,2})\.\s*([a-zæøå]+)\s*(\d{4})/);
   if (norwegian && MONTHS[norwegian[2]]) return `${norwegian[3]}-${MONTHS[norwegian[2]]}-${norwegian[1].padStart(2, "0")}`;
-  const range = text.match(/(\d{1,2})[.\/-](\d{1,2})[.\/-](?:\d{2,4})?\s*[-–]\s*(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/);
+  const range = text.match(/(\d{1,2})[.\/-](\d{1,2})[.\/-]?(\d{2,4})?\s*[-–]\s*(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/);
   if (range) {
-    const endYear = Number(range[5].length === 2 ? `20${range[5]}` : range[5]);
-    return `${endYear}-${range[4].padStart(2, "0")}-${range[3].padStart(2, "0")}`;
+    const firstYear = Number((range[3] || range[6]).length === 2 ? `20${range[3] || range[6]}` : range[3] || range[6]);
+    const endYear = Number(range[6].length === 2 ? `20${range[6]}` : range[6]);
+    if (prefersSecondDay) return `${endYear}-${range[5].padStart(2, "0")}-${range[4].padStart(2, "0")}`;
+    return `${firstYear}-${range[2].padStart(2, "0")}-${range[1].padStart(2, "0")}`;
   }
   const full = text.match(/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/);
   if (full) {
@@ -264,10 +303,25 @@ function cleanShootingGround(value: string) {
     .trim();
 }
 
+function invalidShootingGround(value: string) {
+  const normalized = normalizeText(value);
+  return (
+    !normalized ||
+    normalized.length < 3 ||
+    ["vestlandet", "ostlandet", "østlandet", "sorlandet", "sørlandet", "nord norge", "leirdue.net", "norges skytterforbund", "njff"].includes(normalized) ||
+    normalized.includes("logg inn") ||
+    normalized.includes("terminliste") ||
+    normalized.includes("resultater") ||
+    normalized.includes("påmelding") ||
+    normalized.includes("pamelding") ||
+    (normalized.includes("cup") && !/\b(j\.f|l\.k|jff|jfl|lk|team)\b/.test(normalized))
+  );
+}
+
 function extractShootingGround(title: string, text: string) {
   const combined = `${title}\n${text}`;
   const organizerPatterns = [
-    /(?:arrangør|arrangor|arranger(?:t av)?|arrangørklubb|klubb|skytebane|bane|sted)\s*:?\s*([^|·\n\r]{3,80})/i,
+    /(?:stevnearrangør|arrangør|arrangor|arranger(?:t av)?|arrangørklubb|klubb|forening|skytebane|bane|sted)\s*:?\s*([^|·\n\r]{3,80})/i,
     /\b(Bergens?\s+J\.F\.\s*\/\s*Kismul)\b/i,
     /\b(Team\s+Sørvest)\b/i,
     /\b(Stavanger\s+og\s+Rogaland\s+J\.F\.F\.)\b/i,
@@ -277,16 +331,16 @@ function extractShootingGround(title: string, text: string) {
     const match = combined.match(pattern);
     if (match?.[1]) {
       const ground = cleanShootingGround(match[1]);
-      if (ground.length >= 3) return ground;
+      if (!invalidShootingGround(ground)) return { value: ground, source: "organizer field" };
     }
   }
 
   const beforeDate = title.split(/\b\d{1,2}\./)[0]?.trim() || title;
   const titleParts = beforeDate.split(/\s+-\s+|\s+–\s+/).map((part) => cleanShootingGround(part)).filter(Boolean);
-  const maybeGround = titleParts.at(-1);
-  if (maybeGround && !/^(\d+\s*(sk|skudd|duer)|lørdag|søndag|saturday|sunday)$/i.test(maybeGround)) return maybeGround;
+  const maybeGround = titleParts.reverse().find((part) => !invalidShootingGround(part) && !/^(\d+\s*(sk|skudd|duer)|lørdag|søndag|saturday|sunday)$/i.test(part));
+  if (maybeGround) return { value: maybeGround, source: "event title" };
 
-  return null;
+  return { value: null, source: "unknown" };
 }
 
 function extractScoreNumbers(line: string) {
@@ -412,33 +466,61 @@ function parseScoresFromLines(lines: string[], html: string, shooterName: string
   return { ownScore, winningScore: competitorTotals.length > 0 ? Math.max(...competitorTotals) : null, scoreLine, notes, parsedNumbers, seriesScores };
 }
 
+function computeCandidatePriority(raw: RawCandidate, category: LeirdueCategory, confidence: LeirdueConfidence) {
+  const context = `${raw.listTitle} ${raw.listType || ""} ${raw.sourceText}`;
+  let priority = directListScore(context);
+  if (raw.ownScore !== null) priority += 35;
+  if (raw.winningScore !== null) priority += 30;
+  if (raw.totalTargets !== null) priority += 25;
+  if (raw.discipline !== "Other") priority += 20;
+  if (raw.date) priority += 15;
+  if (raw.shootingGround) priority += 10;
+  if (category === "recommended") priority += 100;
+  if (category === "review") priority += 30;
+  if (confidence === "high") priority += 40;
+  if (confidence === "medium") priority += 15;
+  priority -= penaltyForControlText(context);
+  return priority;
+}
+
 function buildCandidate(raw: RawCandidate, selectedDisciplines: string[]): LeirdueCandidate {
   const notes = raw.notes.slice();
   const selectedDiscipline = selectedDisciplines.includes(raw.discipline);
   const context = `${raw.listTitle} ${raw.sourceText}`;
   const control = isControlList(context);
-  const direct = looksLikeDirectResult(context);
-  const complete = raw.ownScore !== null && raw.totalTargets !== null && raw.winningScore !== null;
-  let confidence: LeirdueConfidence = "medium";
+  const directScore = directListScore(context);
+  const direct = directScore > 0 && !control;
+  const hasOwnScore = raw.ownScore !== null;
+  const hasTotalTargets = raw.totalTargets !== null;
+  const hasWinningScore = raw.winningScore !== null;
+  const parsedDiscipline = raw.discipline !== "Other";
+  let confidence: LeirdueConfidence = "low";
   let category: LeirdueCategory = "review";
 
   if (control) {
     category = "control";
     confidence = "low";
     notes.push("Category reason: control/non-result terms such as cup summary, ranking, registration, team, final/shoot-off, or percentage list were detected.");
-  } else if (selectedDiscipline && direct && complete && raw.discipline !== "Other") {
+  } else if (direct && hasOwnScore && hasTotalTargets && hasWinningScore && parsedDiscipline && selectedDiscipline) {
+    confidence = "high";
     category = "recommended";
-    confidence = notes.some((note) => /uncertain|review|could not|validation/i.test(note)) ? "medium" : "high";
-    notes.push("Category reason: direct result list with own score, total targets, winning score, and selected discipline parsed.");
-  } else {
+    notes.push("Category reason: high-confidence direct result with row score, total targets, winning score, selected discipline, and no control terms.");
+  } else if (hasOwnScore && (hasTotalTargets || hasWinningScore) && parsedDiscipline && direct) {
+    confidence = "medium";
     category = "review";
-    confidence = complete && selectedDiscipline ? "medium" : "low";
-    if (!complete) notes.push("Category reason: some score fields could not be parsed; review and edit before importing.");
-    if (!direct) notes.push("Category reason: list type is not clearly a direct competition result.");
+    notes.push("Category reason: likely direct result with score parsed, but one or more fields still need review.");
+  } else {
+    confidence = "low";
+    category = "review";
+    if (!hasOwnScore) notes.push("Category reason: shooter found but score is missing.");
+    if (!direct) notes.push("Category reason: list type is unclear or not a direct result list.");
+    if (!parsedDiscipline) notes.push("Category reason: discipline is unclear.");
     if (!selectedDiscipline) notes.push("Category reason: parsed discipline is not selected.");
   }
 
-  notes.push(category === "recommended" && confidence !== "low" ? "Import recommendation: checked by default." : "Import recommendation: not checked by default.");
+  const candidatePriority = computeCandidatePriority(raw, category, confidence);
+  notes.push(`Candidate quality: category=${category}, confidence=${confidence}, candidatePriority=${candidatePriority}.`);
+  notes.push(category === "recommended" ? "Import recommendation: checked by default." : "Import recommendation: not checked by default.");
 
   return {
     date: raw.date,
@@ -453,7 +535,7 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[]): Leird
     confidence,
     notes: Array.from(new Set(notes.filter(Boolean))).join(" "),
     category,
-    importRecommended: category === "recommended" && confidence !== "low",
+    importRecommended: category === "recommended",
   };
 }
 
@@ -479,8 +561,9 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
   const totalTargets = initialTotalTargets || extractLikelyTotalTargets(context, parsed.ownScore, parsed.seriesScores);
   const snippet = findShooterSnippet(lines, input.shooterName);
   const notes = [...discipline.notes, ...parsed.notes, `Source liste_id URL: ${page.url}.`, `List title/type: ${title} / ${classifyListType(context)}.`];
-  const shootingGround = extractShootingGround(title, pageText);
-  if (shootingGround) notes.push(`Shooting ground inferred from organizer/title: ${shootingGround}.`);
+  const shootingGroundResult = extractShootingGround(title, pageText);
+  const shootingGround = shootingGroundResult.value;
+  if (shootingGround) notes.push(`Shooting ground inferred from ${shootingGroundResult.source}: ${shootingGround}.`);
   if (page.label.includes("Debug validation URL")) notes.push("Found through validation URL.");
   if (snippet) notes.push(`Raw snippet: ${snippet}`);
   if (parsed.scoreLine && totalTargets === null) notes.push(`Score row parsed, but total targets could not be inferred from title/list text: ${parsed.scoreLine}`);
@@ -521,16 +604,14 @@ const TORBJORN_LUNDE_2026_VALIDATION_URLS = [
 
 function rankLink(link: Link, input: LeirdueSearchInput) {
   const haystack = normalizeText(`${link.text} ${link.href}`);
-  let score = 0;
+  let score = directListScore(`${link.text} ${link.href}`);
   if (haystack.includes(String(input.year))) score += 5;
-  if (haystack.includes("sammenlagt etter bane") || haystack.includes("resultatliste sammenlagt") || haystack.includes("resultater sammenlagt")) score += 18;
-  if (haystack.includes("sammenlagt") || haystack.includes("etter bane") || haystack.includes("resultater")) score += 12;
   if (haystack.includes("liste_id")) score += 10;
   if (haystack.includes("meny=resultater")) score += 4;
   if (haystack.includes("stevne=")) score += 3;
   if (link.source === "validation") score += 2;
   if (input.disciplines.some((discipline) => haystack.includes(normalizeText(discipline).split(" ")[0]))) score += 3;
-  if (isControlList(haystack)) score -= 4;
+  score -= Math.min(120, penaltyForControlText(haystack));
   return score;
 }
 
@@ -711,35 +792,39 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   return Array.from(listPages.values());
 }
 
-function candidateQuality(candidate: LeirdueCandidate) {
-  const categoryScore = candidate.category === "recommended" ? 300 : candidate.category === "review" ? 150 : 0;
-  const fieldScore = [candidate.ownScore, candidate.winningScore, candidate.totalTargets, candidate.shootingGround].filter((value) => value !== null && value !== "").length * 20;
-  const listScore = normalizeText(`${candidate.name} ${candidate.listType}`).includes("sammenlagt etter bane")
-    ? 20
-    : normalizeText(`${candidate.name} ${candidate.listType}`).includes("sammenlagt")
-      ? 10
-      : 0;
-  return categoryScore + fieldScore + listScore;
+function candidatePriorityFromNotes(candidate: LeirdueCandidate) {
+  const match = candidate.notes.match(/candidatePriority=(-?\d+)/);
+  return match ? Number(match[1]) : 0;
 }
 
-function dedupeCandidates(candidates: LeirdueCandidate[]) {
+function candidateQuality(candidate: LeirdueCandidate) {
+  const categoryScore = candidate.category === "recommended" ? 1000 : candidate.category === "review" ? 400 : 0;
+  const fieldScore = [candidate.ownScore, candidate.winningScore, candidate.totalTargets, candidate.shootingGround, candidate.date].filter((value) => value !== null && value !== "").length * 35;
+  const confidenceScore = candidate.confidence === "high" ? 200 : candidate.confidence === "medium" ? 80 : 0;
+  return categoryScore + confidenceScore + fieldScore + candidatePriorityFromNotes(candidate) - penaltyForControlText(`${candidate.name} ${candidate.listType} ${candidate.notes}`);
+}
+
+function dedupeCandidates(candidates: LeirdueCandidate[], debug: LeirdueSearchDebug) {
   const best = new Map<string, LeirdueCandidate>();
   for (const candidate of candidates) {
-    const key = [candidate.date, normalizeText(candidate.name), candidate.ownScore, candidate.totalTargets].join("|");
+    const key = [candidate.date, normalizeText(candidate.name), candidate.discipline, candidate.ownScore, candidate.totalTargets].join("|");
     const current = best.get(key);
     if (!current || candidateQuality(candidate) > candidateQuality(current)) best.set(key, candidate);
   }
+  debug.duplicatesRemoved = candidates.length - best.size;
   return Array.from(best.values());
 }
 
 function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: LeirdueCandidate[]) {
   debug.candidateCategoryCounts = { recommended: 0, review: 0, control: 0 };
+  debug.candidateConfidenceCounts = { high: 0, medium: 0, low: 0 };
   debug.candidatesWithOwnScore = 0;
   debug.candidatesWithWinningScore = 0;
   debug.candidatesWithTotalTargets = 0;
   debug.candidatesWithShootingGround = 0;
   for (const candidate of candidates) {
     debug.candidateCategoryCounts[candidate.category] += 1;
+    debug.candidateConfidenceCounts[candidate.confidence] += 1;
     if (candidate.ownScore !== null) debug.candidatesWithOwnScore += 1;
     if (candidate.winningScore !== null) debug.candidatesWithWinningScore += 1;
     if (candidate.totalTargets !== null) debug.candidatesWithTotalTargets += 1;
@@ -751,7 +836,7 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   const debug = emptyDebug();
   const pages = await discoverPages(input, debug);
   const candidates = pages.flatMap((page) => extractCandidatesFromPage(page, input, debug));
-  const sorted = dedupeCandidates(candidates).sort((a, b) => (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99"));
+  const sorted = dedupeCandidates(candidates, debug).sort((a, b) => (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99"));
   debug.candidateRowsCreated = sorted.length;
   updateCandidateDebugStats(debug, sorted);
   if (sorted.length === 0 && debug.fetchedUrls.length === 0) debug.rejectedReasons.push("No Leirdue pages could be fetched.");

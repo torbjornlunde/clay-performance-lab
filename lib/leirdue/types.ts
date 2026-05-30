@@ -43,6 +43,8 @@ export type LeirdueSearchDebug = {
   validationUrlsInspected: number;
   validationShooterMatches: number;
   candidateCategoryCounts: Record<LeirdueCategory, number>;
+  candidateConfidenceCounts: Record<LeirdueConfidence, number>;
+  duplicatesRemoved: number;
   candidatesWithOwnScore: number;
   candidatesWithWinningScore: number;
   candidatesWithTotalTargets: number;

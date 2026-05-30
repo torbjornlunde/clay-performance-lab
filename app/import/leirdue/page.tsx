@@ -140,6 +140,8 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         <span className="metricChip"><strong>{debug.listeIdShooterPagesFound}</strong> liste_id shooter pages</span>
         <span className="metricChip"><strong>{debug.candidateRowsCreated}</strong> candidates created</span>
         <span className="metricChip"><strong>{debug.candidateCategoryCounts.recommended}/{debug.candidateCategoryCounts.review}/{debug.candidateCategoryCounts.control}</strong> rec/review/control</span>
+        <span className="metricChip"><strong>{debug.candidateConfidenceCounts.high}/{debug.candidateConfidenceCounts.medium}/{debug.candidateConfidenceCounts.low}</strong> high/med/low</span>
+        <span className="metricChip"><strong>{debug.duplicatesRemoved}</strong> duplicates removed</span>
         <span className="metricChip"><strong>{debug.candidatesWithOwnScore}</strong> own score</span>
         <span className="metricChip"><strong>{debug.candidatesWithWinningScore}</strong> winning score</span>
         <span className="metricChip"><strong>{debug.candidatesWithTotalTargets}</strong> total targets</span>
