@@ -67,22 +67,26 @@ const defaultDetail = (): MissDetail => ({
 const detailSelect =
   "id,course_number,plate,target_number,target_label,target_type,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at";
 
-const missedTargetOptions = [
-  { label: "Single", value: "Single target" },
-  { label: "First", value: "First target in pair" },
-  { label: "Second", value: "Second target in pair" },
-  { label: "Both", value: "Both targets in pair" },
-  { label: "Unknown", value: "Unknown" },
+const pairMissedTargetOptions = [
+  { baseLabel: "First", value: "First target in pair" },
+  { baseLabel: "Second", value: "Second target in pair" },
+  { baseLabel: "Both", value: "Both targets in pair" },
+  { baseLabel: "Unknown", value: "Unknown" },
 ];
 
 const whereMissOptions = ["Behind", "In front", "Over", "Under", "Not sure"];
 const reasonOptions = ["Technical", "Tactical", "Mental", "Fatigue", "Target difficulty", "Wind/weather", "Unknown"];
-const leirduestiSituationOptions = ["Equal pair", "Report pair", "Simo pair", "Single", "Reversed report pair", "Unknown"];
+const leirduestiSituationOptions = ["Repeated pair", "Report pair", "Simo pair", "Single", "Reversed report pair", "Unknown"];
+
+function normalizeLeirduestiLabel(value?: string | null) {
+  return value?.replace(/equal pair/gi, "Repeated pair") || value || "";
+}
 
 function defaultLeirduestiSituation(defaultPostFormat?: string | null) {
-  if (defaultPostFormat?.toLowerCase().includes("single")) return "Single";
-  if (defaultPostFormat?.toLowerCase().includes("unknown")) return "Unknown";
-  return "Equal pair";
+  const normalizedFormat = normalizeLeirduestiLabel(defaultPostFormat).toLowerCase();
+  if (normalizedFormat.includes("single")) return "Single";
+  if (normalizedFormat.includes("unknown")) return "Unknown";
+  return "Repeated pair";
 }
 
 export default function LogPage() {
@@ -95,7 +99,7 @@ export default function LogPage() {
   const [seriesNumber, setSeriesNumber] = useState(1);
   const [plate, setPlate] = useState(1);
   const [targetNumber, setTargetNumber] = useState(1);
-  const [leirduestiSituation, setLeirduestiSituation] = useState("Equal pair");
+  const [leirduestiSituation, setLeirduestiSituation] = useState("Repeated pair");
   const [showManualMachine, setShowManualMachine] = useState(false);
   const [manualMachine, setManualMachine] = useState("Unknown");
   const [schemeRows, setSchemeRows] = useState<CompakSchemeRow[]>([]);
@@ -137,6 +141,10 @@ export default function LogPage() {
         ? getPresentationLabel(expectedRows[targetNumber - 1])
         : "Unknown";
   const targetLabel = isSporttrap ? sporttrapTargetLabel : isLeirduesti ? `Post ${courseNumber}` : showManualMachine ? manualMachine : getMachineLabelFromRow(schemeRow);
+  const firstMachine = isSporttrap ? sporttrapEvent.firstMachine : isCompak ? schemeRow?.first_machine || (showManualMachine ? manualMachine : null) : null;
+  const secondMachine = isSporttrap ? sporttrapEvent.secondMachine || null : isCompak ? schemeRow?.second_machine || null : null;
+  const isSinglePresentation = targetType === "Single";
+  const shouldAskMissedTarget = !isSinglePresentation;
   const calculatedText = isSporttrap
     ? `Calculated: ${sporttrapSequenceText}`
     : isLeirduesti
@@ -146,9 +154,10 @@ export default function LogPage() {
       : "Machine unavailable for this plate and target / pair selection.";
 
   useEffect(() => {
-    if (targetType === "Single") setMissedTarget("Single target");
-    else if (targetType === "Report pair" || targetType === "Simo pair") setMissedTarget("Second target in pair");
-  }, [targetType]);
+    if (isSinglePresentation) setMissedTarget("Single target");
+    else if (targetType === "Unknown" && missedTarget === "Single target") setMissedTarget("Unknown");
+    else if (missedTarget === "Single target") setMissedTarget("Second target in pair");
+  }, [isSinglePresentation, missedTarget, targetType]);
 
   async function load() {
     const { data: u } = await supabase.auth.getUser();
@@ -255,8 +264,8 @@ export default function LogPage() {
       plate: isCompak || isSporttrap ? plate : null,
       target_number: isCompak || isSporttrap || isLeirduesti ? targetNumber : null,
       target_label: isCompak || isSporttrap || isLeirduesti ? targetLabel : null,
-      target_type: targetType,
-      missed_target: missedTarget,
+      target_type: normalizeLeirduestiLabel(targetType),
+      missed_target: isSinglePresentation ? "Single target" : missedTarget,
       where_miss: primaryDetail.whereMiss,
       main_reason: primaryDetail.mainReason,
       target_read: primaryDetail.targetRead,
@@ -346,14 +355,44 @@ export default function LogPage() {
     );
   }
 
+  function targetDetailLabel(position: "first" | "second") {
+    const base = position === "first" ? "First target" : "Second target";
+    const machine = position === "first" ? firstMachine : secondMachine;
+    return machine && machine !== "Unknown" ? `${base} — ${machine}` : base;
+  }
+
+  function missedTargetButtonLabel(baseLabel: string) {
+    if (baseLabel === "First" && firstMachine && firstMachine !== "Unknown") return `First — ${firstMachine}`;
+    if (baseLabel === "Second" && secondMachine && secondMachine !== "Unknown") return `Second — ${secondMachine}`;
+    if (baseLabel === "Both" && firstMachine && secondMachine && firstMachine !== "Unknown" && secondMachine !== "Unknown") return `Both — ${firstMachine}+${secondMachine}`;
+    return baseLabel;
+  }
+
+  function recentMissedTargetLabel(miss: RecentMiss) {
+    if (isLeirduesti) {
+      if (miss.missed_target === "First target in pair") return "First";
+      if (miss.missed_target === "Second target in pair") return "Second";
+      if (miss.missed_target === "Both targets in pair") return "Both";
+      if (miss.missed_target === "Single target") return "Single";
+      return miss.missed_target || "Missed target unknown";
+    }
+    const [first, second] = (miss.target_label || "").split("+");
+    if (miss.missed_target === "First target in pair") return first && first !== "Post " ? `First — ${first}` : "First";
+    if (miss.missed_target === "Second target in pair") return second ? `Second — ${second}` : "Second";
+    if (miss.missed_target === "Both targets in pair") return "Both";
+    if (miss.missed_target === "Single target") return "Single";
+    return miss.missed_target || "Missed target unknown";
+  }
+
   function renderActiveDetails() {
-    if (missedTarget === "First target in pair") return renderDetailFields("first", "First target");
-    if (missedTarget === "Second target in pair") return renderDetailFields("second", "Second target");
+    if (isSinglePresentation) return renderDetailFields("generic");
+    if (missedTarget === "First target in pair") return renderDetailFields("first", targetDetailLabel("first"));
+    if (missedTarget === "Second target in pair") return renderDetailFields("second", targetDetailLabel("second"));
     if (missedTarget === "Both targets in pair") {
       return (
         <>
-          {renderDetailFields("first", "First target")}
-          {renderDetailFields("second", "Second target")}
+          {renderDetailFields("first", targetDetailLabel("first"))}
+          {renderDetailFields("second", targetDetailLabel("second"))}
         </>
       );
     }
@@ -361,8 +400,9 @@ export default function LogPage() {
   }
 
   function recentLocation(miss: RecentMiss) {
+    const targetTypeLabel = normalizeLeirduestiLabel(miss.target_type) || "Situation unknown";
     if (isSporttrap) return `Series ${miss.course_number ?? "-"} · Stand ${miss.plate ?? "-"} · ${miss.target_type || "Sequence"} ${miss.target_label || ""}`.trim();
-    if (isLeirduesti) return `Post ${miss.course_number ?? "-"} · ${miss.target_type || "Situation unknown"}`;
+    if (isLeirduesti) return `Post ${miss.course_number ?? "-"} · ${targetTypeLabel}`;
     return `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Machine unknown"}`;
   }
 
@@ -542,31 +582,33 @@ export default function LogPage() {
           )}
         </section>
 
-        <section className="logSection">
-          <div className="logSectionTitle">
-            <span>2</span>
-            <div>
-              <h3>What was missed</h3>
-              <p className="small muted">Large quick buttons for the target position.</p>
+        {shouldAskMissedTarget && (
+          <section className="logSection">
+            <div className="logSectionTitle">
+              <span>2</span>
+              <div>
+                <h3>Which target did you miss?</h3>
+                <p className="small muted">Choose the target position in the pair or sequence.</p>
+              </div>
             </div>
-          </div>
-          <div className="quickButtonGrid missedTargetGrid">
-            {missedTargetOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={missedTarget === option.value ? "quickButton selected" : "quickButton"}
-                onClick={() => setMissedTarget(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </section>
+            <div className="quickButtonGrid missedTargetGrid">
+              {pairMissedTargetOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={missedTarget === option.value ? "quickButton selected" : "quickButton"}
+                  onClick={() => setMissedTarget(option.value)}
+                >
+                  {missedTargetButtonLabel(option.baseLabel)}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="logSection">
           <div className="logSectionTitle">
-            <span>3</span>
+            <span>{shouldAskMissedTarget ? "3" : "2"}</span>
             <div>
               <h3>Why / details</h3>
               <p className="small muted">Comment is optional. Save works as soon as the quick fields look right.</p>
@@ -577,7 +619,7 @@ export default function LogPage() {
 
         <section className="logSection saveSection">
           <div className="logSectionTitle">
-            <span>4</span>
+            <span>{shouldAskMissedTarget ? "4" : "3"}</span>
             <div>
               <h3>Save</h3>
               <p className="small muted">After saving, setup and quick selections stay in place; only comments clear.</p>
@@ -610,7 +652,8 @@ export default function LogPage() {
                 <div className="recentMissMain">
                   <strong>{recentLocation(miss)}</strong>
                   <div className="recentPills">
-                    <span>{miss.missed_target || "Missed target unknown"}</span>
+                    <span>{miss.target_type === "Single" ? `Single ${miss.target_label || ""}`.trim() : `${normalizeLeirduestiLabel(miss.target_type) || "Presentation unknown"} ${isLeirduesti ? "" : miss.target_label || ""}`.trim()}</span>
+                    <span>{recentMissedTargetLabel(miss)}</span>
                     <span>{miss.main_reason || miss.first_main_reason || miss.second_main_reason || "Reason unknown"}</span>
                   </div>
                   {miss.missed_target === "Both targets in pair" ? (

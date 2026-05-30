@@ -50,6 +50,7 @@ export default function AnalysisPage() {
   const analysis = analyzeMisses(enrichedMisses as MissForAnalysis[]);
   const isSporttrap = session.discipline === "Sporttrap";
   const isLeirduesti = session.discipline === "Leirduesti";
+  const isCompak = session.discipline === "Compak Sporting";
 
   return (
     <main>
@@ -73,40 +74,39 @@ export default function AnalysisPage() {
         </div>
       </div>
       <div className="card">
-        <h2>Patterns</h2>
-        <p>
-          <strong>{isSporttrap ? "Series" : isLeirduesti ? "Post" : "Course"}:</strong> {analysis.formatted.byCourse}
-        </p>
-        <p>
-          <strong>{isSporttrap ? "Stand" : isLeirduesti ? "Post detail" : "Plate"}:</strong> {analysis.formatted.byPlate}
-        </p>
-        <p>
-          <strong>{isSporttrap ? "Sporttrap sequence" : isLeirduesti ? "Target on post" : "Target / pair"}:</strong> {analysis.formatted.byTargetNumber}
-        </p>
-        <p>
-          <strong>Target/machine:</strong> {analysis.formatted.byTargetLabel}
-        </p>
-        <p>
-          <strong>Presentation:</strong> {analysis.formatted.byTargetType}
-        </p>
-        <p>
-          <strong>Miss row type:</strong> {analysis.formatted.byMissedTarget}
-        </p>
-        <p>
-          <strong>Detailed missed target:</strong> {analysis.formatted.byTargetPosition}
-        </p>
-        <p>
-          <strong>Where miss:</strong> {analysis.formatted.byWhere}
-        </p>
-        <p>
-          <strong>Main reason:</strong> {analysis.formatted.byReason}
-        </p>
-      </div>
-      <div className="card">
-        <h2>Interpretation</h2>
-        {analysis.interpretation.map((text: string) => (
+        <h2>Main pattern</h2>
+        {analysis.mainPattern.map((text: string) => (
           <p key={text}>• {text}</p>
         ))}
+      </div>
+      <div className="card">
+        <h2>{isSporttrap ? "Sporttrap patterns" : isLeirduesti ? "Leirduesti patterns" : isCompak ? "Compak/FITASC patterns" : "Patterns"}</h2>
+        {isSporttrap ? (
+          <>
+            <p><strong>Misses by target label:</strong> {analysis.formatted.byTargetLabel}</p>
+            <p><strong>Misses by presentation:</strong> {analysis.formatted.byTargetType}</p>
+            <p><strong>Misses by first/second/both target:</strong> {analysis.formatted.byTargetPosition}</p>
+            <p><strong>Misses by series:</strong> {analysis.formatted.byCourse}</p>
+            <p><strong>Misses by stand:</strong> {analysis.formatted.byPlate}</p>
+            <p><strong>Misses by sequence:</strong> {analysis.formatted.byTargetNumber}</p>
+          </>
+        ) : isLeirduesti ? (
+          <>
+            <p><strong>Misses by post:</strong> {analysis.formatted.byCourse}</p>
+            <p><strong>Misses by situation:</strong> {analysis.formatted.byTargetType}</p>
+            <p><strong>Misses by first/second/both target:</strong> {analysis.formatted.byTargetPosition}</p>
+            <p><strong>Misses by main reason:</strong> {analysis.formatted.byReason}</p>
+            <p><strong>Misses by where miss:</strong> {analysis.formatted.byWhere}</p>
+          </>
+        ) : (
+          <>
+            <p><strong>Misses by machine/target label:</strong> {analysis.formatted.byTargetLabel}</p>
+            <p><strong>Misses by presentation:</strong> {analysis.formatted.byTargetType}</p>
+            <p><strong>Misses by first/second/both target:</strong> {analysis.formatted.byTargetPosition}</p>
+            <p><strong>Misses by course:</strong> {analysis.formatted.byCourse}</p>
+            <p><strong>Misses by plate:</strong> {analysis.formatted.byPlate}</p>
+          </>
+        )}
       </div>
       <div className="card">
         <h2>Training recommendation</h2>
@@ -125,11 +125,11 @@ export default function AnalysisPage() {
                 {isSporttrap
                   ? `Series ${miss.course_number ?? "-"} · Stand ${miss.plate ?? "-"} · Sporttrap sequence ${miss.target_type || "-"} · ${miss.target_label || "Unknown"}`
                   : isLeirduesti
-                    ? `Post ${miss.course_number ?? "-"} · Target ${miss.target_number ?? "-"}`
+                    ? `Post ${miss.course_number ?? "-"} · ${(miss.target_type || "Situation unknown").replace(/Equal pair/gi, "Repeated pair")} · Pair / sequence ${miss.target_number ?? "-"}`
                     : `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Unknown"}`}
               </strong>
               <div className="small muted">
-                {miss.target_type || "-"} · {miss.missed_target} · {miss.where_miss || "-"} · {miss.main_reason || "-"}
+                {(miss.target_type || "-").replace(/Equal pair/gi, "Repeated pair")} · {miss.missed_target === "Single target" ? "Single" : miss.missed_target === "First target in pair" ? "First" : miss.missed_target === "Second target in pair" ? "Second" : miss.missed_target === "Both targets in pair" ? "Both" : miss.missed_target} · {miss.where_miss || "-"} · {miss.main_reason || "-"}
               </div>
               {miss.missed_target === "Both targets in pair" && (
                 <>

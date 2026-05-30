@@ -29,17 +29,34 @@ type DetailedMiss = {
   main_reason: string | null;
 };
 
+function normalizeLabel(value: string | null | undefined) {
+  if (!value) return value;
+  return value.replace(/equal pair/gi, "Repeated pair");
+}
+
+function normalizeMissedTarget(value: string | null | undefined) {
+  if (value === "First target in pair") return "First";
+  if (value === "Second target in pair") return "Second";
+  if (value === "Both targets in pair") return "Both";
+  if (value === "Single target") return "Single";
+  return normalizeLabel(value) || "Unknown";
+}
+
 function countBy(values: (string | number | null | undefined)[]) {
   const result: Record<string, number> = {};
   for (const value of values) {
-    const key = value === null || value === undefined || value === "" ? "Unknown" : String(value);
+    const key = value === null || value === undefined || value === "" ? "Unknown" : String(normalizeLabel(String(value)));
     result[key] = (result[key] || 0) + 1;
   }
   return result;
 }
 
+function topEntry(counts: Record<string, number>) {
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0] ?? ["", 0] as [string, number];
+}
+
 function topKey(counts: Record<string, number>) {
-  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+  return topEntry(counts)[0];
 }
 
 function fmt(counts: Record<string, number>) {
@@ -61,22 +78,22 @@ function expandMisses(misses: MissForAnalysis[]) {
       course_number: miss.course_number,
       plate: miss.plate,
       target_number: miss.target_number,
-      target_type: miss.target_type,
-      target_label: miss.target_label,
+      target_type: normalizeLabel(miss.target_type) || null,
+      target_label: normalizeLabel(miss.target_label) || miss.target_label,
     };
 
     if (miss.missed_target === "Both targets in pair" && hasFirst && hasSecond) {
       detailed.push({
         ...base,
-        targetPosition: "First target in pair",
-        where_miss: miss.first_where_miss || miss.where_miss,
-        main_reason: miss.first_main_reason || miss.main_reason,
+        targetPosition: "Second",
+        where_miss: miss.second_where_miss || miss.where_miss,
+        main_reason: miss.second_main_reason || miss.main_reason,
       });
       detailed.push({
         ...base,
-        targetPosition: "Second target in pair",
-        where_miss: miss.second_where_miss || miss.where_miss,
-        main_reason: miss.second_main_reason || miss.main_reason,
+        targetPosition: "First",
+        where_miss: miss.first_where_miss || miss.where_miss,
+        main_reason: miss.first_main_reason || miss.main_reason,
       });
       continue;
     }
@@ -84,7 +101,7 @@ function expandMisses(misses: MissForAnalysis[]) {
     if (hasFirst) {
       detailed.push({
         ...base,
-        targetPosition: "First target in pair",
+        targetPosition: "First",
         where_miss: miss.first_where_miss || miss.where_miss,
         main_reason: miss.first_main_reason || miss.main_reason,
       });
@@ -94,7 +111,7 @@ function expandMisses(misses: MissForAnalysis[]) {
     if (hasSecond) {
       detailed.push({
         ...base,
-        targetPosition: "Second target in pair",
+        targetPosition: "Second",
         where_miss: miss.second_where_miss || miss.where_miss,
         main_reason: miss.second_main_reason || miss.main_reason,
       });
@@ -103,7 +120,7 @@ function expandMisses(misses: MissForAnalysis[]) {
 
     detailed.push({
       ...base,
-      targetPosition: miss.missed_target,
+      targetPosition: normalizeMissedTarget(miss.missed_target),
       where_miss: miss.where_miss,
       main_reason: miss.main_reason,
     });
@@ -112,50 +129,75 @@ function expandMisses(misses: MissForAnalysis[]) {
   return detailed;
 }
 
+function dominantMessage(counts: Record<string, number>, total: number, messageFor: (key: string) => string) {
+  const [key, count] = topEntry(counts);
+  if (!key || !total || count / total < 0.4 || key === "Unknown") return null;
+  return messageFor(key);
+}
+
+function buildMainPattern(args: {
+  total: number;
+  byMissedTarget: Record<string, number>;
+  byTargetType: Record<string, number>;
+  byTargetLabel: Record<string, number>;
+  byReason: Record<string, number>;
+  byWhere: Record<string, number>;
+}) {
+  if (!args.total) return ["No misses registered yet."];
+
+  const messages = [
+    dominantMessage(args.byMissedTarget, args.total, (key) => {
+      if (key === "Second") return "Most misses are on second target in pairs.";
+      if (key === "First") return "Most misses are on first target in pairs.";
+      if (key === "Both") return "Most misses are on both targets in pairs.";
+      if (key === "Single") return "Most misses are on single targets.";
+      return `Most misses are logged as ${key}.`;
+    }),
+    dominantMessage(args.byTargetType, args.total, (key) => key === "Repeated pair" ? "Most misses are connected to repeated pairs on Leirduesti posts." : `Most misses are connected to ${key}.`),
+    dominantMessage(args.byTargetLabel, args.total, (key) => `Most misses are on machine/target ${key}.`),
+    dominantMessage(args.byReason, args.total, (key) => `Most misses are caused by ${key}.`),
+    dominantMessage(args.byWhere, args.total, (key) => `Most misses are ${key.toLowerCase()}.`),
+  ].filter((message): message is string => Boolean(message));
+
+  return messages.length ? messages : ["Misses are spread across several situations."];
+}
+
+function buildRecommendation(byTargetPosition: Record<string, number>, byTargetType: Record<string, number>, byReason: Record<string, number>) {
+  const position = topKey(byTargetPosition);
+  const targetType = topKey(byTargetType);
+  const reason = topKey(byReason);
+
+  if (position === "Second") return ["Train transition and second-target pickup. Commit to first break point and visual pickup before calling."];
+  if (position === "First") return ["Work on setup, hold point and visual pickup before the first shot."];
+  if (targetType === "Single" || position === "Single") return ["Review hold point, line and timing on single targets."];
+  if (reason === "Technical") return ["Focus on movement, line and follow-through."];
+  if (reason === "Tactical") return ["Plan hold point, break point and transition before calling."];
+  if (["Mental", "Fatigue"].includes(reason)) return ["Use reset routine and simplify decisions between stands/posts."];
+  if (reason === "Wind/weather") return ["Note wind direction and adjust hold/break point earlier."];
+  return ["Register more misses before drawing strong conclusions."];
+}
+
 export function analyzeMisses(misses: MissForAnalysis[]) {
+  const normalizedMisses = misses.map((miss) => ({
+    ...miss,
+    target_type: normalizeLabel(miss.target_type) || null,
+    target_label: normalizeLabel(miss.target_label) || miss.target_label,
+    missed_target: normalizeMissedTarget(miss.missed_target),
+  }));
   const detailedMisses = expandMisses(misses);
   const byCourse = countBy(detailedMisses.map((miss) => miss.course_number));
   const byPlate = countBy(detailedMisses.map((miss) => miss.plate));
   const byTargetNumber = countBy(detailedMisses.map((miss) => miss.target_number));
   const byTargetLabel = countBy(detailedMisses.map((miss) => miss.target_label));
   const byTargetType = countBy(detailedMisses.map((miss) => miss.target_type));
-  const byMissedTarget = countBy(misses.map((miss) => miss.missed_target));
+  const byMissedTarget = countBy(normalizedMisses.map((miss) => miss.missed_target));
   const byTargetPosition = countBy(detailedMisses.map((miss) => miss.targetPosition));
   const byWhere = countBy(detailedMisses.map((miss) => miss.where_miss));
   const byReason = countBy(detailedMisses.map((miss) => miss.main_reason));
   const total = detailedMisses.length;
   const rowTotal = misses.length;
-  const pair = detailedMisses.filter((miss) => `${miss.target_type ?? ""} ${miss.targetPosition ?? ""}`.toLowerCase().match(/double|pair/)).length;
-  const first = detailedMisses.filter((miss) => miss.targetPosition === "First target in pair").length;
-  const second = detailedMisses.filter((miss) => miss.targetPosition === "Second target in pair").length;
-  const interpretation: string[] = [];
-
-  if (!total) {
-    interpretation.push("No misses registered yet.");
-  } else {
-    if (pair >= Math.ceil(total * 0.5)) interpretation.push("Most misses are connected to pairs/doubles. Focus on plan, rhythm and transition.");
-    if (second >= Math.ceil(total * 0.35)) {
-      interpretation.push("Several misses are on the second target in pairs. This suggests pickup point, transition timing, or late first shot.");
-    }
-    if (first >= Math.ceil(total * 0.35)) {
-      interpretation.push("Several misses are on the first target in pairs. This suggests setup, hold point, visual pickup, or target reading before the first shot.");
-    }
-    if (topKey(byWhere) === "Behind") {
-      interpretation.push("Behind is the dominant miss direction. Check late movement, stopped gun, or shooting after the target has won the line.");
-    }
-    if (topKey(byReason) === "Tactical") interpretation.push("Tactical misses dominate. Commit to hold point, break point and transition before calling.");
-    if (["Mental", "Fatigue"].includes(topKey(byReason))) {
-      interpretation.push("Mental/fatigue factors dominate. Use a reset routine and reduce cognitive load between stands.");
-    }
-  }
-
-  const recommendation: string[] = [];
-  if (topKey(byTargetPosition) === "Second target in pair") recommendation.push("Run pair drills with fixed first break point and pre-decided second pickup point.");
-  if (topKey(byTargetPosition) === "First target in pair") recommendation.push("Rehearse the setup, hold point, visual pickup and first break point before calling.");
-  if (topKey(byReason) === "Technical") recommendation.push("Repeat the most common scenario slowly and confirm sight picture before adding speed.");
-  if (topKey(byReason) === "Tactical") recommendation.push("Before calling, state the plan silently: hold point, break point, transition route.");
-  if (topKey(byWhere) === "Behind") recommendation.push("Check if you are arriving late, stopping the gun, or trying to shoot after the target has already won the line.");
-  if (!recommendation.length) recommendation.push("Register more misses before drawing strong conclusions.");
+  const mainPattern = buildMainPattern({ total, byMissedTarget, byTargetType, byTargetLabel, byReason, byWhere });
+  const recommendation = buildRecommendation(byTargetPosition, byTargetType, byReason);
 
   return {
     total,
@@ -171,7 +213,8 @@ export function analyzeMisses(misses: MissForAnalysis[]) {
       byWhere: fmt(byWhere),
       byReason: fmt(byReason),
     },
-    interpretation,
+    mainPattern,
+    interpretation: mainPattern,
     recommendation,
   };
 }

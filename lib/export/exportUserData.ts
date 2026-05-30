@@ -76,6 +76,11 @@ function isUsableNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+
+function cleanExportLabel(value?: string | null) {
+  return value?.replace(/equal pair/gi, "Repeated pair") || null;
+}
+
 function formatDateOnly(value?: string | null) {
   if (!value) return null;
   return value.slice(0, 10);
@@ -186,8 +191,8 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
         "Plate/Stand": miss.plate ?? null,
         "Target number / round if available": miss.target_number ?? null,
         "Target label": miss.target_label || null,
-        "Target type": miss.target_type || null,
-        "Missed target": miss.missed_target || null,
+        "Target type": cleanExportLabel(miss.target_type),
+        "Missed target": cleanExportLabel(miss.missed_target),
         "Where miss": miss.where_miss || null,
         "Main reason": miss.main_reason || null,
         "Target read": miss.target_read || null,
@@ -252,7 +257,7 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
       "Shooting ground": sessionsById.get(definition.session_id)?.shooting_ground || null,
       "Course number": definition.course_number,
       Machine: definition.machine,
-      "Target type": definition.target_type || null,
+      "Target type": cleanExportLabel(definition.target_type),
       Direction: definition.direction || null,
       Speed: definition.speed || null,
       Distance: definition.distance || null,

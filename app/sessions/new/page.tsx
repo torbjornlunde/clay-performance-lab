@@ -41,7 +41,7 @@ export default function NewSessionPage() {
   const [sporttrapSeriesCount, setSporttrapSeriesCount] = useState(1);
   const [leirduestiPostCount, setLeirduestiPostCount] = useState(5);
   const [targetsPerPost, setTargetsPerPost] = useState("10");
-  const [defaultPostFormat, setDefaultPostFormat] = useState("5 equal pairs");
+  const [defaultPostFormat, setDefaultPostFormat] = useState("5 repeated pairs");
   const [competitionDate, setCompetitionDate] = useState(new Date().toISOString().slice(0, 10));
   const [shootingGround, setShootingGround] = useState("");
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
@@ -236,7 +236,7 @@ export default function NewSessionPage() {
             </div>
             <label>Default post format</label>
             <select value={defaultPostFormat} onChange={(e) => setDefaultPostFormat(e.target.value)}>
-              <option>5 equal pairs</option>
+              <option>5 repeated pairs</option>
               <option>2 singles + 2 report pairs + 1 simo pair</option>
               <option>Custom / unknown</option>
             </select>

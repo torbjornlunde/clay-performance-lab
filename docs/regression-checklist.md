@@ -60,3 +60,12 @@ Before merging any future PR:
 - [ ] Sporttrap Log Miss calculated sequence still works.
 - [ ] Leirduesti Log Miss post/situation logging still works.
 - [ ] Log Miss mobile layout is easy to tap with no horizontal scrolling.
+- [ ] Single targets do not ask which target was missed.
+- [ ] Pair targets ask First/Second/Both/Unknown.
+- [ ] FITASC pair options show machine labels.
+- [ ] Sporttrap pair options show machine labels.
+- [ ] Leirduesti uses Repeated pair, not Equal pair.
+- [ ] Analysis shows Main pattern.
+- [ ] Analysis gives short training recommendation.
+- [ ] Existing recent miss delete still works.
+- [ ] Existing Compak/Sporttrap/Leirduesti logging still works.
