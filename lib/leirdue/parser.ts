@@ -195,18 +195,42 @@ function classifyDiscipline(text: string, selectedDisciplines: string[]) {
   return { discipline, notes };
 }
 
+function directResultFlags(text: string) {
+  const normalized = normalizeText(text);
+  const flags: string[] = [];
+  if (normalized.includes("sammenlagt resultatliste etter bane")) flags.push("sammenlagt resultatliste etter bane");
+  if (normalized.includes("resultater sammenlagt")) flags.push("resultater sammenlagt");
+  if (normalized.includes("resultatliste sammenlagt")) flags.push("resultatliste sammenlagt");
+  if (normalized.includes("sammenlagt") && normalized.includes("resultat")) flags.push("sammenlagt result");
+  if (normalized.includes("resultater")) flags.push("resultater");
+  if (normalized.includes("resultatliste")) flags.push("resultatliste");
+  if (/\b\d{1,3}\s+\d{1,3}\s+\d{1,3}\b/.test(normalized)) flags.push("score rows");
+  return Array.from(new Set(flags));
+}
+
+function controlFlags(text: string) {
+  const normalized = normalizeText(text);
+  const flags: string[] = [];
+  if (/\b(?:xxl\s+cup|blaser\s+cup|cup)\s+sammenlagt\b/.test(normalized) || /\bsammenlagt\s+(?:cup|xxl\s+cup|blaser\s+cup)\b/.test(normalized)) flags.push("cup/ranking/prosent/uttak");
+  if (normalized.includes("prosent") || normalized.includes("uttak") || normalized.includes("ranking") || /\brank\b/.test(normalized)) flags.push("cup/ranking/prosent/uttak");
+  if (normalized.includes("påmelding") || normalized.includes("pamelding") || normalized.includes("deltakerliste") || normalized.includes("deltagarliste") || normalized.includes("participant")) flags.push("registration/participant");
+  if (normalized.includes("lagliste") || normalized.includes("lag list") || normalized.includes("team list") || normalized.includes("lister lag")) flags.push("team/lag list");
+  if (normalized.includes("finale only") || normalized.includes("final-only") || normalized.includes("shoot-off") || normalized.includes("shootoff")) flags.push("finale/shoot-off only");
+  if ((normalized.includes("lørdag") && normalized.includes("søndag")) || (normalized.includes("lordag") && normalized.includes("sondag")) || normalized.includes("combined weekend")) flags.push("combined weekend");
+  return Array.from(new Set(flags));
+}
+
 function isLikelyControlText(text: string) {
-  const normalized = ` ${normalizeText(text)} `;
-  return CONTROL_TERMS.some((term) => normalized.includes(term)) || /\b(cup|xxl cup|blaser cup)\s+sammenlagt\b/.test(normalized);
+  return controlFlags(text).length > 0;
 }
 
 function directListScore(text: string) {
-  const normalized = normalizeText(text);
-  if (normalized.includes("sammenlagt resultatliste etter bane")) return 90;
-  if (normalized.includes("resultater sammenlagt") || normalized.includes("resultatliste sammenlagt")) return 85;
-  if (normalized.includes("sammenlagt") && normalized.includes("resultat")) return 75;
-  if (normalized.includes("resultater") || normalized.includes("resultatliste")) return 55;
-  if (/\b\d{1,3}\s+\d{1,3}\s+\d{1,3}\b/.test(normalized)) return 25;
+  const flags = directResultFlags(text);
+  if (flags.includes("sammenlagt resultatliste etter bane")) return 90;
+  if (flags.includes("resultater sammenlagt") || flags.includes("resultatliste sammenlagt")) return 85;
+  if (flags.includes("sammenlagt result")) return 75;
+  if (flags.includes("resultater") || flags.includes("resultatliste")) return 55;
+  if (flags.includes("score rows")) return 25;
   return 0;
 }
 
@@ -215,20 +239,17 @@ function isDirectResultList(text: string) {
 }
 
 function penaltyForControlText(text: string) {
-  const normalized = normalizeText(text);
-  let penalty = 0;
-  if (isLikelyControlText(text)) penalty += 180;
-  if (normalized.includes("prosent")) penalty += 80;
-  if (normalized.includes("uttak")) penalty += 80;
-  if (normalized.includes("ranking") || normalized.includes("rank")) penalty += 80;
-  if (normalized.includes("lag") || normalized.includes("team list")) penalty += 50;
-  if (normalized.includes("påmelding") || normalized.includes("pamelding") || normalized.includes("deltaker")) penalty += 120;
-  if ((normalized.includes("lørdag") && normalized.includes("søndag")) || normalized.includes("lordag sondag") || normalized.includes("combined")) penalty += 30;
-  return penalty;
+  return controlFlags(text).reduce((total, flag) => {
+    if (flag === "cup/ranking/prosent/uttak") return total + 50;
+    if (flag === "registration/participant") return total + 50;
+    if (flag === "team/lag list") return total + 30;
+    if (flag === "finale/shoot-off only") return total + 20;
+    if (flag === "combined weekend") return total + 20;
+    return total;
+  }, 0);
 }
 
 function classifyListType(text: string) {
-  const normalized = ` ${normalizeText(text)} `;
   if (isLikelyControlText(text)) return "Control / not imported by default";
   if (directListScore(text) > 0) return "Direct result list";
   return "Unknown list";
@@ -466,19 +487,16 @@ function parseScoresFromLines(lines: string[], html: string, shooterName: string
   return { ownScore, winningScore: competitorTotals.length > 0 ? Math.max(...competitorTotals) : null, scoreLine, notes, parsedNumbers, seriesScores };
 }
 
-function computeCandidatePriority(raw: RawCandidate, category: LeirdueCategory, confidence: LeirdueConfidence) {
+function computeCandidatePriority(raw: RawCandidate) {
   const context = `${raw.listTitle} ${raw.listType || ""} ${raw.sourceText}`;
-  let priority = directListScore(context);
-  if (raw.ownScore !== null) priority += 35;
-  if (raw.winningScore !== null) priority += 30;
-  if (raw.totalTargets !== null) priority += 25;
-  if (raw.discipline !== "Other") priority += 20;
-  if (raw.date) priority += 15;
+  let priority = 0;
+  if (raw.ownScore !== null) priority += 30;
+  if (raw.winningScore !== null) priority += 20;
+  if (raw.totalTargets !== null) priority += 20;
+  if (raw.discipline !== "Other") priority += 15;
+  if (raw.date) priority += 10;
   if (raw.shootingGround) priority += 10;
-  if (category === "recommended") priority += 100;
-  if (category === "review") priority += 30;
-  if (confidence === "high") priority += 40;
-  if (confidence === "medium") priority += 15;
+  if (directListScore(context) > 0) priority += 20;
   priority -= penaltyForControlText(context);
   return priority;
 }
@@ -487,39 +505,37 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[]): Leird
   const notes = raw.notes.slice();
   const selectedDiscipline = selectedDisciplines.includes(raw.discipline);
   const context = `${raw.listTitle} ${raw.sourceText}`;
-  const control = isControlList(context);
-  const directScore = directListScore(context);
-  const direct = directScore > 0 && !control;
+  const flags = controlFlags(context);
+  const directFlags = directResultFlags(context);
+  const direct = directFlags.length > 0 && flags.length === 0;
   const hasOwnScore = raw.ownScore !== null;
-  const hasTotalTargets = raw.totalTargets !== null;
-  const hasWinningScore = raw.winningScore !== null;
   const parsedDiscipline = raw.discipline !== "Other";
+  const candidatePriority = computeCandidatePriority(raw);
   let confidence: LeirdueConfidence = "low";
   let category: LeirdueCategory = "review";
 
-  if (control) {
+  if (flags.length > 0) {
     category = "control";
     confidence = "low";
-    notes.push("Category reason: control/non-result terms such as cup summary, ranking, registration, team, final/shoot-off, or percentage list were detected.");
-  } else if (direct && hasOwnScore && hasTotalTargets && hasWinningScore && parsedDiscipline && selectedDiscipline) {
-    confidence = "high";
+    notes.push(`Category reason: control flags triggered: ${flags.join(", ")}.`);
+  } else if (candidatePriority >= 70 && direct && hasOwnScore && parsedDiscipline && selectedDiscipline) {
     category = "recommended";
-    notes.push("Category reason: high-confidence direct result with row score, total targets, winning score, selected discipline, and no control terms.");
-  } else if (hasOwnScore && (hasTotalTargets || hasWinningScore) && parsedDiscipline && direct) {
+    confidence = "high";
+    notes.push("Category reason: direct result flags plus parsed score/target/winner/discipline reached recommended threshold.");
+  } else if (candidatePriority >= 40 && hasOwnScore) {
+    category = "review";
     confidence = "medium";
-    category = "review";
-    notes.push("Category reason: likely direct result with score parsed, but one or more fields still need review.");
+    notes.push("Category reason: score exists and candidate priority reached review threshold.");
   } else {
-    confidence = "low";
     category = "review";
+    confidence = "low";
     if (!hasOwnScore) notes.push("Category reason: shooter found but score is missing.");
-    if (!direct) notes.push("Category reason: list type is unclear or not a direct result list.");
+    if (!direct) notes.push("Category reason: direct result flags are missing or unclear.");
     if (!parsedDiscipline) notes.push("Category reason: discipline is unclear.");
     if (!selectedDiscipline) notes.push("Category reason: parsed discipline is not selected.");
   }
 
-  const candidatePriority = computeCandidatePriority(raw, category, confidence);
-  notes.push(`Candidate quality: category=${category}, confidence=${confidence}, candidatePriority=${candidatePriority}.`);
+  notes.push(`Candidate debug: category=${category}; confidence=${confidence}; candidatePriority=${candidatePriority}; controlFlags=${flags.join(", ") || "none"}; directResultFlags=${directFlags.join(", ") || "none"}; ownScore=${raw.ownScore ?? "unknown"}; winningScore=${raw.winningScore ?? "unknown"}; totalTargets=${raw.totalTargets ?? "unknown"}.`);
   notes.push(category === "recommended" ? "Import recommendation: checked by default." : "Import recommendation: not checked by default.");
 
   return {
@@ -793,7 +809,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
 }
 
 function candidatePriorityFromNotes(candidate: LeirdueCandidate) {
-  const match = candidate.notes.match(/candidatePriority=(-?\d+)/);
+  const match = candidate.notes.match(/candidatePriority[=;]\s*(-?\d+)/);
   return match ? Number(match[1]) : 0;
 }
 
@@ -822,6 +838,7 @@ function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: Leirdu
   debug.candidatesWithWinningScore = 0;
   debug.candidatesWithTotalTargets = 0;
   debug.candidatesWithShootingGround = 0;
+  if (candidates.length > 0 && candidates.every((candidate) => candidate.category === "control")) debug.candidateReasons.push("All candidates classified as control. Check list classification rules.");
   for (const candidate of candidates) {
     debug.candidateCategoryCounts[candidate.category] += 1;
     debug.candidateConfidenceCounts[candidate.confidence] += 1;
