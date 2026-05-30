@@ -1,5 +1,3 @@
-import * as XLSX from "xlsx";
-
 export type ExportSession = {
   id: string;
   name: string;
@@ -14,6 +12,7 @@ export type ExportSession = {
   winning_score?: number | null;
   calculated_score?: number | null;
   leirdue_result_url?: string | null;
+  shooting_ground?: string | null;
   notes?: string | null;
 };
 
@@ -70,6 +69,8 @@ export type ExportUserDataInput = {
 
 type SheetValue = string | number | null;
 type SheetRow = Record<string, SheetValue>;
+type WorkbookSheet = { name: string; rows: SheetRow[]; headers: string[] };
+type UserDataWorkbook = { sheets: WorkbookSheet[] };
 
 function isUsableNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -110,15 +111,40 @@ function isResultOnly(session: ExportSession, misses: ExportMiss[]) {
   );
 }
 
-function addSheet(workbook: XLSX.WorkBook, name: string, rows: SheetRow[], headers: string[]) {
-  const sheet = XLSX.utils.json_to_sheet(rows, { header: headers });
-  sheet["!cols"] = headers.map((header) => ({ wch: Math.max(header.length + 2, 16) }));
-  XLSX.utils.book_append_sheet(workbook, sheet, name);
+function addSheet(workbook: UserDataWorkbook, name: string, rows: SheetRow[], headers: string[]) {
+  workbook.sheets.push({ name, rows, headers });
+}
+
+function escapeXml(value: SheetValue) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function spreadsheetCell(value: SheetValue) {
+  const type = typeof value === "number" ? "Number" : "String";
+  return `<Cell><Data ss:Type="${type}">${escapeXml(value)}</Data></Cell>`;
+}
+
+function workbookToSpreadsheetXml(workbook: UserDataWorkbook) {
+  const worksheets = workbook.sheets
+    .map((sheet) => {
+      const headerRow = `<Row>${sheet.headers.map((header) => spreadsheetCell(header)).join("")}</Row>`;
+      const rows = sheet.rows
+        .map((row) => `<Row>${sheet.headers.map((header) => spreadsheetCell(row[header] ?? null)).join("")}</Row>`)
+        .join("");
+      return `<Worksheet ss:Name="${escapeXml(sheet.name)}"><Table>${headerRow}${rows}</Table></Worksheet>`;
+    })
+    .join("");
+
+  return `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">${worksheets}</Workbook>`;
 }
 
 export function createUserDataWorkbook(input: ExportUserDataInput) {
   const exportCreatedAt = input.exportCreatedAt || new Date();
-  const workbook = XLSX.utils.book_new();
+  const workbook: UserDataWorkbook = { sheets: [] };
   const sessionsById = new Map(input.sessions.map((session) => [session.id, session]));
   const sortedSessions = input.sessions.slice().sort((a, b) => String(sessionDate(b)).localeCompare(String(sessionDate(a))));
   const performanceValues = sortedSessions
@@ -132,6 +158,7 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
       Date: sessionDate(session),
       Name: session.name,
       Discipline: session.discipline,
+      "Shooting ground": session.shooting_ground || null,
       "Session type": session.session_type,
       "Shooting format": session.shooting_format || null,
       "Total targets": session.total_targets ?? null,
@@ -142,7 +169,7 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
       Notes: session.notes || null,
       "Created at": session.created_at,
     })),
-    ["Date", "Name", "Discipline", "Session type", "Shooting format", "Total targets", "Own score", "Winning score", "Performance %", "Leirdue URL", "Notes", "Created at"],
+    ["Date", "Name", "Discipline", "Shooting ground", "Session type", "Shooting format", "Total targets", "Own score", "Winning score", "Performance %", "Leirdue URL", "Notes", "Created at"],
   );
 
   addSheet(
@@ -154,6 +181,7 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
         "Session name": session?.name || null,
         "Session date": session ? sessionDate(session) : null,
         Discipline: session?.discipline || null,
+        "Shooting ground": session?.shooting_ground || null,
         "Course/Post": miss.course_number ?? null,
         "Plate/Stand": miss.plate ?? null,
         "Target number / round if available": miss.target_number ?? null,
@@ -179,6 +207,7 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
       "Session name",
       "Session date",
       "Discipline",
+      "Shooting ground",
       "Course/Post",
       "Plate/Stand",
       "Target number / round if available",
@@ -206,12 +235,13 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
     "Courses",
     input.courses.map((course) => ({
       "Session name": sessionsById.get(course.session_id)?.name || null,
+      "Shooting ground": sessionsById.get(course.session_id)?.shooting_ground || null,
       "Course number": course.course_number,
       "FITASC scheme": course.fitasc_scheme ?? null,
       "Shooter number": course.shooter_number ?? null,
       "Start plate": course.start_plate ?? null,
     })),
-    ["Session name", "Course number", "FITASC scheme", "Shooter number", "Start plate"],
+    ["Session name", "Shooting ground", "Course number", "FITASC scheme", "Shooter number", "Start plate"],
   );
 
   addSheet(
@@ -219,6 +249,7 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
     "Target definitions",
     input.targetDefinitions.map((definition) => ({
       "Session name": sessionsById.get(definition.session_id)?.name || null,
+      "Shooting ground": sessionsById.get(definition.session_id)?.shooting_ground || null,
       "Course number": definition.course_number,
       Machine: definition.machine,
       "Target type": definition.target_type || null,
@@ -228,7 +259,7 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
       Difficulty: definition.difficulty || null,
       Notes: definition.notes || null,
     })),
-    ["Session name", "Course number", "Machine", "Target type", "Direction", "Speed", "Distance", "Difficulty", "Notes"],
+    ["Session name", "Shooting ground", "Course number", "Machine", "Target type", "Direction", "Speed", "Distance", "Difficulty", "Notes"],
   );
 
   addSheet(
@@ -254,9 +285,18 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
 }
 
 export function exportUserDataToExcel(input: ExportUserDataInput, filename: string) {
-  XLSX.writeFile(createUserDataWorkbook(input), filename, { compression: true });
+  const workbookXml = workbookToSpreadsheetXml(createUserDataWorkbook(input));
+  const blob = new Blob([workbookXml], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function exportFileName(date = new Date()) {
-  return `clay-performance-lab-export-${date.toISOString().slice(0, 10)}.xlsx`;
+  return `clay-performance-lab-export-${date.toISOString().slice(0, 10)}.xls`;
 }

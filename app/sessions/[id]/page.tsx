@@ -44,6 +44,7 @@ export default function Page() {
       <div className="card">
         <h2>{session.name}</h2>
         <span className="pill">{formatDate(session.competition_date || session.created_at)}</span>
+        {session.shooting_ground && <span className="pill">Shooting ground: {session.shooting_ground}</span>}
         <span className="pill">{session.discipline}</span>
         <span className="pill">{session.session_type}</span>
         {resultOnly && <span className="pill">Result only</span>}
@@ -54,7 +55,7 @@ export default function Page() {
           <div className="summaryStat"><span>Calculated score</span><strong>{calculatedScore ?? "-"}</strong></div>
           <div className="summaryStat"><span>Manual/official score</span><strong>{session.own_score ?? "-"}</strong></div>
           <div className="summaryStat"><span>Winning score</span><strong>{session.winning_score ?? "-"}</strong></div>
-          <div className="summaryStat"><span>Performance</span><strong>{percentage === null ? "-" : `${percentage.toFixed(1)}%`}</strong></div>
+          <div className="summaryStat"><span>Performance vs winning score</span><strong>{percentage === null ? "-" : `${percentage.toFixed(1)}%`}</strong></div>
         </div>
         {typeof session.own_score === "number" && typeof calculatedScore === "number" && session.own_score !== calculatedScore && (
           <div className="notice">Manual score differs from logged misses. This can happen if not all misses were logged.</div>

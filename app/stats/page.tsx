@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { calculateRollingAverage, calculateRollingStdDev, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
+import { calculateRollingStdDev, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
 import { supabase } from "@/lib/supabase/client";
 
 type SessionRow = {
@@ -20,6 +20,7 @@ type SessionRow = {
   own_score?: number | null;
   winning_score?: number | null;
   calculated_score?: number | null;
+  shooting_ground?: string | null;
 };
 
 type MissRow = { session_id: string };
@@ -33,6 +34,7 @@ type ChartPoint = {
   winningScore: number;
   discipline: string;
   leirdueResultUrl: string | null;
+  shootingGround: string | null;
   x: number;
   y: number;
 };
@@ -84,14 +86,15 @@ function percentageFor(session: SessionRow, missCounts: Record<string, number>) 
 
 function PerformanceChart({ points, onPointClick }: { points: ChartPoint[]; onPointClick: (id: string) => void }) {
   const width = 720;
-  const height = 240;
-  const padding = 38;
+  const height = 220;
+  const padding = 34;
   const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
   const { minPercentage, maxPercentage, range } = chartBounds(points.map((point) => point.percentage));
   const referenceY = padding + (maxPercentage - 100) * ((height - padding * 2) / range);
   const baselineY = height - padding;
-  const labelEvery = points.length > 8 ? Math.ceil(points.length / 5) : 1;
-  const shouldShowLabel = (index: number) => index === 0 || index === points.length - 1 || index % labelEvery === 0;
+  const bestPercentage = Math.max(...points.map((point) => point.percentage));
+  const bestIndex = points.findIndex((point) => point.percentage === bestPercentage);
+  const shouldShowLabel = (index: number) => points.length <= 2 || index === points.length - 1 || index === bestIndex;
 
   return (
     <div className="chartWrap" aria-label="Connected line chart showing performance percentage over time, where winning score equals 100 percent">
@@ -121,12 +124,12 @@ function PerformanceChart({ points, onPointClick }: { points: ChartPoint[]; onPo
               }
             }}
           >
-            <title>{`${point.name} · ${formatDate(point.date)} · ${point.percentage.toFixed(1)}% vs winner`}</title>
+            <title>{`${point.name} · ${formatDate(point.date)} · ${point.percentage.toFixed(1)}% performance vs winning score`}</title>
             <circle cx={point.x} cy={point.y} r="13" className="chartPointHitArea" />
             <circle cx={point.x} cy={point.y} r="5" className="chartPoint" />
             {shouldShowLabel(index) && (
               <text x={point.x} y={Math.max(point.y - 12, 16)} textAnchor="middle" className="chartText chartPointLabel">
-                {point.percentage.toFixed(0)}%
+                {index === points.length - 1 ? "Latest" : "Best"} {point.percentage.toFixed(0)}%
               </text>
             )}
           </g>
@@ -136,7 +139,7 @@ function PerformanceChart({ points, onPointClick }: { points: ChartPoint[]; onPo
         <span>{points.length} result{points.length === 1 ? "" : "s"}</span>
         <span>Oldest {formatDate(points[0].date)}</span>
         <span>Newest {formatDate(points[points.length - 1].date)}</span>
-        <span>Chart baseline {minPercentage.toFixed(0)}%</span>
+        <span>Winning score = 100%</span>
       </div>
     </div>
   );
@@ -181,8 +184,8 @@ export default function StatsPage() {
     if (scored.length === 0) return [];
 
     const width = 720;
-    const height = 240;
-    const padding = 38;
+    const height = 220;
+    const padding = 34;
     const { maxPercentage, range } = chartBounds(scored.map((item) => item.result.percentage));
 
     return scored.map((item, index) => {
@@ -197,6 +200,7 @@ export default function StatsPage() {
         winningScore: item.session.winning_score || 0,
         discipline: item.session.discipline,
         leirdueResultUrl: item.session.leirdue_result_url || null,
+        shootingGround: item.session.shooting_ground?.trim() || null,
         x,
         y,
       };
@@ -206,26 +210,44 @@ export default function StatsPage() {
   const summary = useMemo(() => {
     if (chartPoints.length === 0) return null;
     const percentages = chartPoints.map((point) => point.percentage);
-    const rollingAverages = calculateRollingAverage(percentages, DEFAULT_ROLLING_WINDOW_SIZE);
     const rollingConsistency = calculateRollingStdDev(percentages, DEFAULT_ROLLING_WINDOW_SIZE);
     const latest = percentages[percentages.length - 1];
     const best = Math.max(...percentages);
     const average = percentages.reduce((sum, point) => sum + point, 0) / percentages.length;
     const latestConsistency = rollingConsistency[rollingConsistency.length - 1] ?? null;
-    const bestConsistency = rollingConsistency.reduce<number | null>((lowest, value) => {
-      if (value === null) return lowest;
-      return lowest === null ? value : Math.min(lowest, value);
-    }, null);
-    const latestRollingAverage = rollingAverages[rollingAverages.length - 1] ?? null;
     return {
       latest,
       best,
       average,
       latestConsistency,
-      bestConsistency,
-      latestRollingAverage,
-      rollingWindowSize: DEFAULT_ROLLING_WINDOW_SIZE,
     };
+  }, [chartPoints]);
+
+  const byShootingGround = useMemo(() => {
+    const known = chartPoints.filter((point) => point.shootingGround);
+    const unknown = chartPoints.filter((point) => !point.shootingGround);
+    const pointsForSummary = known.length >= 2 || known.length >= unknown.length ? known : chartPoints;
+    const groups = new Map<string, ChartPoint[]>();
+
+    for (const point of pointsForSummary) {
+      const name = point.shootingGround || "Unknown shooting ground";
+      groups.set(name, [...(groups.get(name) || []), point]);
+    }
+
+    return Array.from(groups.entries())
+      .map(([name, points]) => {
+        const byDate = points.slice().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const percentages = points.map((point) => point.percentage);
+        return {
+          name,
+          count: points.length,
+          average: percentages.reduce((sum, value) => sum + value, 0) / percentages.length,
+          best: Math.max(...percentages),
+          latest: byDate[byDate.length - 1].percentage,
+        };
+      })
+      .filter((group) => group.name !== "Unknown shooting ground" || groups.size >= 2)
+      .sort((a, b) => b.count - a.count || b.average - a.average);
   }, [chartPoints]);
 
   return (
@@ -234,7 +256,7 @@ export default function StatsPage() {
         <div>
           <p className="eyebrow">Competition stats</p>
           <h2>Performance trend</h2>
-          <p>Competition and result only performance against the winning score.</p>
+          <p>Competition and result only performance vs winning score.</p>
         </div>
         <div className="btns heroActions">
           <Link href="/dashboard" className="button secondary">
@@ -267,24 +289,17 @@ export default function StatsPage() {
               <strong>{summary.latest.toFixed(1)}%</strong>
             </div>
             <div className="summaryStat">
-              <span>Best</span>
-              <strong>{summary.best.toFixed(1)}%</strong>
-            </div>
-            <div className="summaryStat">
               <span>Average</span>
               <strong>{summary.average.toFixed(1)}%</strong>
+            </div>
+            <div className="summaryStat">
+              <span>Best</span>
+              <strong>{summary.best.toFixed(1)}%</strong>
             </div>
             <div className="summaryStat consistencyStat">
               <span>Consistency</span>
               <strong>{formatConsistency(summary.latestConsistency)}</strong>
-              <p className="small muted">Lower is better. Shows variation around your rolling average.</p>
-              {summary.bestConsistency !== null && (
-                <p className="small muted">Best variation: {formatConsistency(summary.bestConsistency)}</p>
-              )}
-              <p className="small muted">
-                Rolling window: latest {summary.rollingWindowSize} results
-                {summary.latestRollingAverage !== null ? ` · rolling average ${summary.latestRollingAverage.toFixed(1)}%` : ""}
-              </p>
+              <p className="small muted">Lower is better</p>
             </div>
           </div>
         ) : null}
@@ -306,6 +321,28 @@ export default function StatsPage() {
         )}
       </div>
 
+      {!loading && byShootingGround.length >= 2 && (
+        <div className="card statsGroundCard">
+          <div className="sectionHeader">
+            <div>
+              <p className="eyebrow">Shooting ground</p>
+              <h2>By shooting ground</h2>
+            </div>
+          </div>
+          <div className="groundStatsGrid">
+            {byShootingGround.map((ground) => (
+              <div className="groundStat" key={ground.name}>
+                <strong>{ground.name}</strong>
+                <span>{ground.count} competition result{ground.count === 1 ? "" : "s"}</span>
+                <span>Average {ground.average.toFixed(1)}%</span>
+                <span>Best {ground.best.toFixed(1)}%</span>
+                <span>Latest {ground.latest.toFixed(1)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="card statsListCard">
         <div className="sectionHeader">
           <div>
@@ -325,7 +362,8 @@ export default function StatsPage() {
               <div className="statListItem" key={point.id}>
                 <div>
                   <strong>{point.name}</strong>
-                  <div className="small muted">{formatDate(point.date)} · {point.discipline} · Score used {point.score} / Winning {point.winningScore}</div>
+                  <div className="small muted">{formatDate(point.date)}{point.shootingGround ? ` · Shooting ground: ${point.shootingGround}` : ""} · {point.discipline}</div>
+                  <div className="small muted">Score used {point.score} · Winning score {point.winningScore} · Performance vs winning score {point.percentage.toFixed(1)}%</div>
                   <div className="btns">
                     <Link className="button secondary smallButton" href={`/sessions/${point.id}`}>Open</Link>
                     {point.leirdueResultUrl && <a className="button secondary smallButton" href={point.leirdueResultUrl} target="_blank" rel="noreferrer">Open Leirdue result</a>}

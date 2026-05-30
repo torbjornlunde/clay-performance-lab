@@ -1,6 +1,7 @@
 create extension if not exists "pgcrypto";
 create table if not exists public.sessions(id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id) on delete cascade,name text not null,discipline text not null,session_type text not null,shooting_format text,course_count integer,total_targets integer,notes text,leirdue_result_url text,created_at timestamptz not null default now());
 alter table public.sessions add column if not exists leirdue_result_url text;
+alter table public.sessions add column if not exists shooting_ground text;
 alter table public.sessions enable row level security;
 drop policy if exists "sessions_select_own" on public.sessions; create policy "sessions_select_own" on public.sessions for select using (auth.uid()=user_id);
 drop policy if exists "sessions_insert_own" on public.sessions; create policy "sessions_insert_own" on public.sessions for insert with check (auth.uid()=user_id);

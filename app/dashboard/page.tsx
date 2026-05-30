@@ -19,6 +19,7 @@ type Row = {
   own_score?: number | null;
   winning_score?: number | null;
   calculated_score?: number | null;
+  shooting_ground?: string | null;
 };
 
 type MissRow = { session_id: string };
@@ -93,9 +94,10 @@ function SessionCard({ session, missCounts }: { session: Row; missCounts: Record
           <span className={`badge ${label === "Competition" ? "badgeGold" : label === "Result only" ? "badgeBlue" : "badgeGreen"}`}>{label}</span>
         </div>
         <div className="small muted sessionMeta">
+          <span>{formatDate(session.competition_date || session.created_at)}</span>
+          {session.shooting_ground && <span>Shooting ground: {session.shooting_ground}</span>}
           <span>{session.discipline}</span>
           {session.shooting_format && <span>{session.shooting_format}</span>}
-          <span>{formatDate(session.competition_date || session.created_at)}</span>
         </div>
         <div className="metricsRow">
           {session.course_count ? (
@@ -108,7 +110,7 @@ function SessionCard({ session, missCounts }: { session: Row; missCounts: Record
           </span>
           {percentage !== null && (
             <span className="metricChip highlightMetric">
-              <strong>{percentage.toFixed(1)}%</strong> vs winner
+              <strong>{percentage.toFixed(1)}%</strong> performance vs winning score
             </span>
           )}
         </div>
@@ -237,7 +239,7 @@ export default function DashboardPage() {
     const resultOnly = sortedSessions.filter((session) => isResultOnly(session, missCounts));
     return [
       { title: "Competitions", description: "Competition shooting logs with courses, misses or scoring context.", sessions: competitions },
-      { title: "Result only entries", description: "Result only score entries without logged courses or misses.", sessions: resultOnly },
+      { title: "Result only", description: "Result only score entries without logged courses or misses.", sessions: resultOnly },
       { title: "Training", description: "Training shooting logs for reviewing missed-target patterns.", sessions: training },
     ].filter((group) => group.sessions.length > 0);
   }, [sessions, missCounts]);
@@ -247,8 +249,11 @@ export default function DashboardPage() {
       <div className="heroCard dashboardHero">
         <p className="eyebrow">Shooter workspace</p>
         <h2>Dashboard</h2>
-        <p className="dashboardHeroCopy">Create a shooting log, log missed targets, then review analysis and competition trends.</p>
-        <p className="small muted dashboardHeroHelp">Log misses and analyze target patterns. Track score vs winning score without logging misses with Result only.</p>
+        <p className="dashboardHeroCopy">Create shooting logs, capture result only entries, and review competition trends.</p>
+        <div className="dashboardHeroHelp">
+          <p className="small muted"><strong>New shooting log:</strong> Log misses and analyze target patterns.</p>
+          <p className="small muted"><strong>Add result only:</strong> Track score vs winning score without logging misses.</p>
+        </div>
         <div className="dashboardActions">
           <Link href="/sessions/new" className="button">
             New shooting log

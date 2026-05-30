@@ -1054,3 +1054,53 @@ html, body {
     justify-self: start;
   }
 }
+
+.statsGroundCard {
+  max-width: 860px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.groundStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 9px;
+}
+
+.groundStat {
+  display: grid;
+  gap: 4px;
+  background: rgba(10, 16, 24, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  padding: 11px 12px;
+}
+
+.groundStat strong {
+  font-size: 15px;
+}
+
+.groundStat span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dashboardHeroHelp {
+  display: grid;
+  gap: 3px;
+}
+
+.dashboardHeroHelp p {
+  margin: 0;
+}
+
+.statsChartCard .performanceChart {
+  height: clamp(190px, 24vw, 240px);
+  max-height: 240px;
+}
+
+@media (max-width: 760px) {
+  .statsChartCard .performanceChart {
+    height: clamp(160px, 48vw, 190px);
+  }
+}

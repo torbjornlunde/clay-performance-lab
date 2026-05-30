@@ -18,7 +18,7 @@ Before merging any future PR:
 - [ ] Edit setup works.
 - [ ] Target definitions save works.
 - [ ] Stats page opens without horizontal scrolling on mobile.
-- [ ] Result-only entry works.
+- [ ] Result only entry works.
 - [ ] Dashboard desktop layout does not squeeze text beside buttons.
 - [ ] Dashboard main actions are clearly worded for Shooting log vs Result only.
 - [ ] FITASC viewer does not show verification status.
@@ -40,4 +40,15 @@ Before merging any future PR:
 - [ ] Sporttrap Log Miss calculates Round 1 single correctly.
 - [ ] Sporttrap Log Miss calculates Round 2 report pair correctly.
 - [ ] Sporttrap Log Miss calculates Round 3 simo pair correctly.
+- [ ] Shooting ground can be entered on New shooting log.
+- [ ] Shooting ground can be entered on Result only.
+- [ ] Shooting ground can be edited.
+- [ ] Shooting ground appears on Dashboard.
+- [ ] Shooting ground appears on Stats result cards.
+- [ ] Excel export includes Shooting ground.
+- [ ] Stats summary is compact.
+- [ ] Stats chart is compact and clickable.
+- [ ] Stats chart uses oldest-left/newest-right order.
+- [ ] Result list uses newest-first order.
+- [ ] By shooting ground summary appears when applicable.
 - [ ] Existing Compak/FITASC logging still works.

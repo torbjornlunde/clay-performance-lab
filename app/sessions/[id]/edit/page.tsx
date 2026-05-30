@@ -16,6 +16,7 @@ type Session = {
   total_targets: number | null;
   sporttrap_series_count: number | null;
   leirdue_result_url: string | null;
+  shooting_ground: string | null;
   competition_date: string | null;
   own_score: number | null;
   winning_score: number | null;
@@ -58,6 +59,7 @@ export default function EditSessionPage() {
   const [courses, setCourses] = useState<CourseSetup[]>([]);
   const [sporttrapSeriesCount, setSporttrapSeriesCount] = useState(1);
   const [competitionDate, setCompetitionDate] = useState("");
+  const [shootingGround, setShootingGround] = useState("");
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
   const [ownScore, setOwnScore] = useState("");
   const [winningScore, setWinningScore] = useState("");
@@ -77,7 +79,7 @@ export default function EditSessionPage() {
 
     const { data: session } = await supabase
       .from("sessions")
-      .select("id,name,discipline,session_type,shooting_format,course_count,total_targets,sporttrap_series_count,leirdue_result_url,competition_date,own_score,winning_score")
+      .select("id,name,discipline,session_type,shooting_format,course_count,total_targets,sporttrap_series_count,leirdue_result_url,shooting_ground,competition_date,own_score,winning_score")
       .eq("id", params.id)
       .single<Session>();
     const { data: courseRows } = await supabase
@@ -111,6 +113,7 @@ export default function EditSessionPage() {
     setCourses(makeCourses(nextCount, mappedCourses));
     setSporttrapSeriesCount(sporttrapSeries);
     setCompetitionDate(session.competition_date || "");
+    setShootingGround(session.shooting_ground || "");
     setLeirdueResultUrl(session.leirdue_result_url || "");
     setOwnScore(session.own_score === null || session.own_score === undefined ? "" : String(session.own_score));
     setWinningScore(session.winning_score === null || session.winning_score === undefined ? "" : String(session.winning_score));
@@ -144,6 +147,7 @@ export default function EditSessionPage() {
             ? { shooting_format: "Sporttrap", course_count: 1, sporttrap_series_count: sporttrapSeriesCount, total_targets: sporttrapSeriesCount * 25 }
             : {}),
         competition_date: competitionDate || null,
+        shooting_ground: shootingGround.trim() || null,
         own_score: ownScore === "" ? null : Number(ownScore),
         winning_score: winningScore === "" ? null : Number(winningScore),
         leirdue_result_url: leirdueResultUrl.trim() || null,
@@ -204,6 +208,8 @@ export default function EditSessionPage() {
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Session name" />
         <label>Date</label>
         <input className="compactDateInput" value={competitionDate} onChange={(e) => setCompetitionDate(e.target.value)} type="date" />
+        <label>Shooting ground</label>
+        <input value={shootingGround} onChange={(e) => setShootingGround(e.target.value)} placeholder="Kismul, Karmøy, Stavanger..." />
         <label>Leirdue.net result URL</label>
         <input
           value={leirdueResultUrl}

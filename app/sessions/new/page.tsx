@@ -32,6 +32,7 @@ export default function NewSessionPage() {
   const [sporttrapStand, setSporttrapStand] = useState(1);
   const [sporttrapSeriesCount, setSporttrapSeriesCount] = useState(1);
   const [competitionDate, setCompetitionDate] = useState(new Date().toISOString().slice(0, 10));
+  const [shootingGround, setShootingGround] = useState("");
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
   const [ownScore, setOwnScore] = useState("");
   const [winningScore, setWinningScore] = useState("");
@@ -70,6 +71,7 @@ export default function NewSessionPage() {
         sporttrap_series_count: isSporttrap ? sporttrapSeriesCount : null,
         total_targets: isCompak ? count * 25 : isSporttrap ? sporttrapSeriesCount * 25 : null,
         competition_date: competitionDate || null,
+        shooting_ground: shootingGround.trim() || null,
         own_score: ownScore === "" ? null : Number(ownScore),
         winning_score: winningScore === "" ? null : Number(winningScore),
         leirdue_result_url: leirdueResultUrl.trim() || null,
@@ -115,11 +117,13 @@ export default function NewSessionPage() {
   return (
     <main>
       <div className="card">
-        <h2>New session</h2>
+        <h2>New shooting log</h2>
         <label>Session name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Session name" />
         <label>Date</label>
         <input className="compactDateInput" value={competitionDate} onChange={(e) => setCompetitionDate(e.target.value)} type="date" />
+        <label>Shooting ground</label>
+        <input value={shootingGround} onChange={(e) => setShootingGround(e.target.value)} placeholder="Kismul, Karmøy, Stavanger..." />
         <label>Leirdue.net result URL</label>
         <input
           value={leirdueResultUrl}
@@ -261,7 +265,7 @@ export default function NewSessionPage() {
         {err && <div className="error">{err}</div>}
         <div className="btns">
           <button onClick={save} disabled={saving}>
-            {saving ? "Saving..." : "Save session"}
+            {saving ? "Saving..." : "Save shooting log"}
           </button>
           <button className="secondary" onClick={() => router.push("/dashboard")}>
             Cancel

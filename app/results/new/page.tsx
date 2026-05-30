@@ -10,6 +10,7 @@ export default function NewResultPage() {
   const [name, setName] = useState("");
   const [competitionDate, setCompetitionDate] = useState(new Date().toISOString().slice(0, 10));
   const [discipline, setDiscipline] = useState("Compak Sporting");
+  const [shootingGround, setShootingGround] = useState("");
   const [totalTargets, setTotalTargets] = useState("100");
   const [ownScore, setOwnScore] = useState("");
   const [winningScore, setWinningScore] = useState("");
@@ -40,6 +41,7 @@ export default function NewResultPage() {
       course_count: null,
       total_targets: Number(totalTargets),
       competition_date: competitionDate,
+      shooting_ground: shootingGround.trim() || null,
       own_score: Number(ownScore),
       winning_score: Number(winningScore),
       leirdue_result_url: leirdueResultUrl.trim() || null,
@@ -56,8 +58,8 @@ export default function NewResultPage() {
   return (
     <main>
       <form className="card" onSubmit={save}>
-        <p className="eyebrow">Result-only mode</p>
-        <h2>Add competition result</h2>
+        <p className="eyebrow">Result only mode</p>
+        <h2>Add result only</h2>
         <p>Use this when you only want score statistics, without logging misses.</p>
         <label>Competition name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Competition name" required />
@@ -79,6 +81,8 @@ export default function NewResultPage() {
             </select>
           </div>
         </div>
+        <label>Shooting ground</label>
+        <input value={shootingGround} onChange={(e) => setShootingGround(e.target.value)} placeholder="Kismul, Karmøy, Stavanger..." />
         <div className="row">
           <div>
             <label>Total targets</label>
