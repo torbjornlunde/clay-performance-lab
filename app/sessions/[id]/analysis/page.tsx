@@ -5,7 +5,10 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { analyzeMisses, MissForAnalysis } from "@/lib/analysis/sessionAnalysis";
 import { isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
-import { normalizeLeirduestiLabel, shortMissedTarget } from "@/lib/misses/labels";
+import {
+  normalizeLeirduestiLabel,
+  shortMissedTarget,
+} from "@/lib/misses/labels";
 import { supabase } from "@/lib/supabase/client";
 
 export default function AnalysisPage() {
@@ -30,8 +33,15 @@ export default function AnalysisPage() {
       .select("id,name,discipline,shooting_format")
       .eq("id", params.id)
       .single();
-    const { data: missData } = await supabase.from("misses").select("*").eq("session_id", params.id).order("created_at");
-    const { data: definitionData } = await supabase.from("session_target_definitions").select("course_number,machine,target_type,direction").eq("session_id", params.id);
+    const { data: missData } = await supabase
+      .from("misses")
+      .select("*")
+      .eq("session_id", params.id)
+      .order("created_at");
+    const { data: definitionData } = await supabase
+      .from("session_target_definitions")
+      .select("course_number,machine,target_type,direction")
+      .eq("session_id", params.id);
     setSession(sessionData);
     setMisses(missData || []);
     setDefinitions(definitionData || []);
@@ -46,8 +56,17 @@ export default function AnalysisPage() {
   }
 
   const enrichedMisses = misses.map((miss) => {
-    const definition = definitions.find((item) => item.course_number === miss.course_number && item.machine === miss.target_label);
-    return definition ? { ...miss, target_label: `${miss.target_label} – ${definition.direction?.toLowerCase()} ${definition.target_type?.toLowerCase()}` } : miss;
+    const definition = definitions.find(
+      (item) =>
+        item.course_number === miss.course_number &&
+        item.machine === miss.target_label,
+    );
+    return definition
+      ? {
+          ...miss,
+          target_label: `${miss.target_label} – ${definition.direction?.toLowerCase()} ${definition.target_type?.toLowerCase()}`,
+        }
+      : miss;
   });
   const analysis = analyzeMisses(enrichedMisses as MissForAnalysis[]);
   const isSporttrap = session.discipline === "Sporttrap";
@@ -65,7 +84,9 @@ export default function AnalysisPage() {
         <span className="pill">
           Miss rows <strong>{analysis.rowTotal}</strong>
         </span>
-        {session.shooting_format && !isSporttrap && <span className="pill">{session.shooting_format}</span>}
+        {session.shooting_format && !isSporttrap && (
+          <span className="pill">{session.shooting_format}</span>
+        )}
         <div className="btns">
           <Link className="button" href={`/sessions/${session.id}/log`}>
             Log more
@@ -82,31 +103,94 @@ export default function AnalysisPage() {
         ))}
       </div>
       <div className="card">
-        <h2>{isSporttrap ? "Sporttrap patterns" : isLeirduesti ? "Leirduesti patterns" : isCompak ? `${session.discipline} patterns` : "Patterns"}</h2>
+        <h2>
+          {isSporttrap
+            ? "Sporttrap patterns"
+            : isLeirduesti
+              ? "Leirduesti patterns"
+              : isCompak
+                ? `${session.discipline} patterns`
+                : "Patterns"}
+        </h2>
         {isSporttrap ? (
           <>
-            <p><strong>Misses by target label:</strong> {analysis.formatted.byTargetLabel}</p>
-            <p><strong>Misses by presentation:</strong> {analysis.formatted.byTargetType}</p>
-            <p><strong>Misses by first/second/both target:</strong> {analysis.formatted.byTargetPosition}</p>
-            <p><strong>Misses by series:</strong> {analysis.formatted.byCourse}</p>
-            <p><strong>Misses by stand:</strong> {analysis.formatted.byPlate}</p>
-            <p><strong>Misses by sequence:</strong> {analysis.formatted.byTargetNumber}</p>
+            <p>
+              <strong>Misses by target label:</strong>{" "}
+              {analysis.formatted.byTargetLabel}
+            </p>
+            <p>
+              <strong>Misses by actual presentation:</strong>{" "}
+              {analysis.formatted.byTargetType}
+            </p>
+            <p>
+              <strong>Misses by first/second/both target:</strong>{" "}
+              {analysis.formatted.byTargetPosition}
+            </p>
+            <p>
+              <strong>Misses by shooting order:</strong>{" "}
+              {analysis.formatted.byReversedOrder}
+            </p>
+            <p>
+              <strong>Misses by series:</strong> {analysis.formatted.byCourse}
+            </p>
+            <p>
+              <strong>Misses by stand:</strong> {analysis.formatted.byPlate}
+            </p>
+            <p>
+              <strong>Misses by sequence:</strong>{" "}
+              {analysis.formatted.byTargetNumber}
+            </p>
           </>
         ) : isLeirduesti ? (
           <>
-            <p><strong>Misses by post:</strong> {analysis.formatted.byCourse}</p>
-            <p><strong>Misses by situation:</strong> {analysis.formatted.byTargetType}</p>
-            <p><strong>Misses by first/second/both target:</strong> {analysis.formatted.byTargetPosition}</p>
-            <p><strong>Misses by main reason:</strong> {analysis.formatted.byReason}</p>
-            <p><strong>Misses by where miss:</strong> {analysis.formatted.byWhere}</p>
+            <p>
+              <strong>Misses by post:</strong> {analysis.formatted.byCourse}
+            </p>
+            <p>
+              <strong>Misses by actual presentation:</strong>{" "}
+              {analysis.formatted.byTargetType}
+            </p>
+            <p>
+              <strong>Misses by first/second/both target:</strong>{" "}
+              {analysis.formatted.byTargetPosition}
+            </p>
+            <p>
+              <strong>Misses by shooting order:</strong>{" "}
+              {analysis.formatted.byReversedOrder}
+            </p>
+            <p>
+              <strong>Misses by main reason:</strong>{" "}
+              {analysis.formatted.byReason}
+            </p>
+            <p>
+              <strong>Misses by where miss:</strong>{" "}
+              {analysis.formatted.byWhere}
+            </p>
           </>
         ) : (
           <>
-            <p><strong>Misses by machine/target label:</strong> {analysis.formatted.byTargetLabel}</p>
-            <p><strong>Misses by presentation:</strong> {analysis.formatted.byTargetType}</p>
-            <p><strong>Misses by first/second/both target:</strong> {analysis.formatted.byTargetPosition}</p>
-            <p><strong>Misses by course:</strong> {analysis.formatted.byCourse}</p>
-            <p><strong>Misses by plate:</strong> {analysis.formatted.byPlate}</p>
+            <p>
+              <strong>Misses by machine/target label:</strong>{" "}
+              {analysis.formatted.byTargetLabel}
+            </p>
+            <p>
+              <strong>Misses by actual presentation:</strong>{" "}
+              {analysis.formatted.byTargetType}
+            </p>
+            <p>
+              <strong>Misses by first/second/both target:</strong>{" "}
+              {analysis.formatted.byTargetPosition}
+            </p>
+            <p>
+              <strong>Misses by shooting order:</strong>{" "}
+              {analysis.formatted.byReversedOrder}
+            </p>
+            <p>
+              <strong>Misses by course:</strong> {analysis.formatted.byCourse}
+            </p>
+            <p>
+              <strong>Misses by plate:</strong> {analysis.formatted.byPlate}
+            </p>
           </>
         )}
       </div>
@@ -131,15 +215,22 @@ export default function AnalysisPage() {
                     : `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Unknown"}`}
               </strong>
               <div className="small muted">
-                {normalizeLeirduestiLabel(miss.target_type) || "-"} · {shortMissedTarget(miss.missed_target)} · {miss.where_miss || "-"} · {miss.main_reason || "-"}
+                {normalizeLeirduestiLabel(
+                  miss.actual_presentation || miss.target_type,
+                ) || "-"}{" "}
+                · {shortMissedTarget(miss.missed_target)} ·{" "}
+                {miss.where_miss || "-"} · {miss.main_reason || "-"}
+                {miss.is_reversed_order ? " · Reversed order" : ""}
               </div>
               {miss.missed_target === "Both targets in pair" && (
                 <>
                   <div className="small muted">
-                    First target: {miss.first_where_miss || "-"} · {miss.first_main_reason || "-"}
+                    First target: {miss.first_where_miss || "-"} ·{" "}
+                    {miss.first_main_reason || "-"}
                   </div>
                   <div className="small muted">
-                    Second target: {miss.second_where_miss || "-"} · {miss.second_main_reason || "-"}
+                    Second target: {miss.second_where_miss || "-"} ·{" "}
+                    {miss.second_main_reason || "-"}
                   </div>
                 </>
               )}

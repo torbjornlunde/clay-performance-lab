@@ -23,6 +23,11 @@ export type ExportMiss = {
   target_number?: number | null;
   target_label?: string | null;
   target_type?: string | null;
+  base_presentation?: string | null;
+  actual_presentation?: string | null;
+  presented_pair_label?: string | null;
+  shooting_order_label?: string | null;
+  is_reversed_order?: boolean | null;
   missed_target?: string | null;
   where_miss?: string | null;
   main_reason?: string | null;
@@ -76,9 +81,12 @@ function isUsableNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-
 function cleanExportLabel(value?: string | null) {
-  return value?.replace(/equal pair/gi, "Report pair").replace(/repeated pair/gi, "Report pair") || null;
+  return (
+    value
+      ?.replace(/equal pair/gi, "Report pair")
+      .replace(/repeated pair/gi, "Report pair") || null
+  );
 }
 
 function formatDateOnly(value?: string | null) {
@@ -97,26 +105,40 @@ function missCountFor(sessionId: string, misses: ExportMiss[]) {
 function scoreUsed(session: ExportSession, misses: ExportMiss[]) {
   if (isUsableNumber(session.own_score)) return session.own_score;
   if (isUsableNumber(session.calculated_score)) return session.calculated_score;
-  if (isUsableNumber(session.total_targets)) return Math.max(session.total_targets - missCountFor(session.id, misses), 0);
+  if (isUsableNumber(session.total_targets))
+    return Math.max(
+      session.total_targets - missCountFor(session.id, misses),
+      0,
+    );
   return null;
 }
 
 function performancePercentage(session: ExportSession, misses: ExportMiss[]) {
   const score = scoreUsed(session, misses);
-  if (!isUsableNumber(score) || !isUsableNumber(session.winning_score) || session.winning_score <= 0) return null;
+  if (
+    !isUsableNumber(score) ||
+    !isUsableNumber(session.winning_score) ||
+    session.winning_score <= 0
+  )
+    return null;
   return (score / session.winning_score) * 100;
 }
 
 function isResultOnly(session: ExportSession, misses: ExportMiss[]) {
   return Boolean(
     isUsableNumber(session.own_score) &&
-      isUsableNumber(session.winning_score) &&
-      missCountFor(session.id, misses) === 0 &&
-      !session.course_count,
+    isUsableNumber(session.winning_score) &&
+    missCountFor(session.id, misses) === 0 &&
+    !session.course_count,
   );
 }
 
-function addSheet(workbook: UserDataWorkbook, name: string, rows: SheetRow[], headers: string[]) {
+function addSheet(
+  workbook: UserDataWorkbook,
+  name: string,
+  rows: SheetRow[],
+  headers: string[],
+) {
   workbook.sheets.push({ name, rows, headers });
 }
 
@@ -138,7 +160,10 @@ function workbookToSpreadsheetXml(workbook: UserDataWorkbook) {
     .map((sheet) => {
       const headerRow = `<Row>${sheet.headers.map((header) => spreadsheetCell(header)).join("")}</Row>`;
       const rows = sheet.rows
-        .map((row) => `<Row>${sheet.headers.map((header) => spreadsheetCell(row[header] ?? null)).join("")}</Row>`)
+        .map(
+          (row) =>
+            `<Row>${sheet.headers.map((header) => spreadsheetCell(row[header] ?? null)).join("")}</Row>`,
+        )
         .join("");
       return `<Worksheet ss:Name="${escapeXml(sheet.name)}"><Table>${headerRow}${rows}</Table></Worksheet>`;
     })
@@ -150,8 +175,14 @@ function workbookToSpreadsheetXml(workbook: UserDataWorkbook) {
 export function createUserDataWorkbook(input: ExportUserDataInput) {
   const exportCreatedAt = input.exportCreatedAt || new Date();
   const workbook: UserDataWorkbook = { sheets: [] };
-  const sessionsById = new Map(input.sessions.map((session) => [session.id, session]));
-  const sortedSessions = input.sessions.slice().sort((a, b) => String(sessionDate(b)).localeCompare(String(sessionDate(a))));
+  const sessionsById = new Map(
+    input.sessions.map((session) => [session.id, session]),
+  );
+  const sortedSessions = input.sessions
+    .slice()
+    .sort((a, b) =>
+      String(sessionDate(b)).localeCompare(String(sessionDate(a))),
+    );
   const performanceValues = sortedSessions
     .map((session) => performancePercentage(session, input.misses))
     .filter((value): value is number => value !== null);
@@ -174,7 +205,21 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
       Notes: session.notes || null,
       "Created at": session.created_at,
     })),
-    ["Date", "Name", "Discipline", "Shooting ground", "Session type", "Shooting format", "Total targets", "Own score", "Winning score", "Performance %", "Leirdue URL", "Notes", "Created at"],
+    [
+      "Date",
+      "Name",
+      "Discipline",
+      "Shooting ground",
+      "Session type",
+      "Shooting format",
+      "Total targets",
+      "Own score",
+      "Winning score",
+      "Performance %",
+      "Leirdue URL",
+      "Notes",
+      "Created at",
+    ],
   );
 
   addSheet(
@@ -192,6 +237,13 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
         "Target number / round if available": miss.target_number ?? null,
         "Target label": miss.target_label || null,
         "Target type": cleanExportLabel(miss.target_type),
+        "Base presentation": cleanExportLabel(miss.base_presentation),
+        "Actual presentation": cleanExportLabel(
+          miss.actual_presentation || miss.target_type,
+        ),
+        "Presented pair": miss.presented_pair_label || null,
+        "Shooting order": miss.shooting_order_label || null,
+        "Reversed order": miss.is_reversed_order ? "Yes" : "No",
         "Missed target": cleanExportLabel(miss.missed_target),
         "Where miss": miss.where_miss || null,
         "Main reason": miss.main_reason || null,
@@ -218,6 +270,11 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
       "Target number / round if available",
       "Target label",
       "Target type",
+      "Base presentation",
+      "Actual presentation",
+      "Presented pair",
+      "Shooting order",
+      "Reversed order",
       "Missed target",
       "Where miss",
       "Main reason",
@@ -240,13 +297,21 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
     "Courses",
     input.courses.map((course) => ({
       "Session name": sessionsById.get(course.session_id)?.name || null,
-      "Shooting ground": sessionsById.get(course.session_id)?.shooting_ground || null,
+      "Shooting ground":
+        sessionsById.get(course.session_id)?.shooting_ground || null,
       "Course number": course.course_number,
       "FITASC scheme": course.fitasc_scheme ?? null,
       "Shooter number": course.shooter_number ?? null,
       "Start plate": course.start_plate ?? null,
     })),
-    ["Session name", "Shooting ground", "Course number", "FITASC scheme", "Shooter number", "Start plate"],
+    [
+      "Session name",
+      "Shooting ground",
+      "Course number",
+      "FITASC scheme",
+      "Shooter number",
+      "Start plate",
+    ],
   );
 
   addSheet(
@@ -254,7 +319,8 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
     "Target definitions",
     input.targetDefinitions.map((definition) => ({
       "Session name": sessionsById.get(definition.session_id)?.name || null,
-      "Shooting ground": sessionsById.get(definition.session_id)?.shooting_ground || null,
+      "Shooting ground":
+        sessionsById.get(definition.session_id)?.shooting_ground || null,
       "Course number": definition.course_number,
       Machine: definition.machine,
       "Target type": cleanExportLabel(definition.target_type),
@@ -264,7 +330,18 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
       Difficulty: definition.difficulty || null,
       Notes: definition.notes || null,
     })),
-    ["Session name", "Shooting ground", "Course number", "Machine", "Target type", "Direction", "Speed", "Distance", "Difficulty", "Notes"],
+    [
+      "Session name",
+      "Shooting ground",
+      "Course number",
+      "Machine",
+      "Target type",
+      "Direction",
+      "Speed",
+      "Distance",
+      "Difficulty",
+      "Notes",
+    ],
   );
 
   addSheet(
@@ -272,15 +349,40 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
     "Summary",
     [
       { Metric: "Total sessions", Value: sortedSessions.length },
-      { Metric: "Total competitions", Value: sortedSessions.filter((session) => session.session_type === "Competition" && !isResultOnly(session, input.misses)).length },
-      { Metric: "Total training sessions", Value: sortedSessions.filter((session) => session.session_type !== "Competition" && !isResultOnly(session, input.misses)).length },
-      { Metric: "Total result-only entries if detectable", Value: sortedSessions.filter((session) => isResultOnly(session, input.misses)).length },
+      {
+        Metric: "Total competitions",
+        Value: sortedSessions.filter(
+          (session) =>
+            session.session_type === "Competition" &&
+            !isResultOnly(session, input.misses),
+        ).length,
+      },
+      {
+        Metric: "Total training sessions",
+        Value: sortedSessions.filter(
+          (session) =>
+            session.session_type !== "Competition" &&
+            !isResultOnly(session, input.misses),
+        ).length,
+      },
+      {
+        Metric: "Total result-only entries if detectable",
+        Value: sortedSessions.filter((session) =>
+          isResultOnly(session, input.misses),
+        ).length,
+      },
       { Metric: "Total misses", Value: input.misses.length },
       {
         Metric: "Average performance % where winning score exists",
-        Value: performanceValues.length ? performanceValues.reduce((sum, value) => sum + value, 0) / performanceValues.length : null,
+        Value: performanceValues.length
+          ? performanceValues.reduce((sum, value) => sum + value, 0) /
+            performanceValues.length
+          : null,
       },
-      { Metric: "Best performance %", Value: performanceValues.length ? Math.max(...performanceValues) : null },
+      {
+        Metric: "Best performance %",
+        Value: performanceValues.length ? Math.max(...performanceValues) : null,
+      },
       { Metric: "Export created at", Value: exportCreatedAt.toISOString() },
     ],
     ["Metric", "Value"],
@@ -289,9 +391,14 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
   return workbook;
 }
 
-export function exportUserDataToExcel(input: ExportUserDataInput, filename: string) {
+export function exportUserDataToExcel(
+  input: ExportUserDataInput,
+  filename: string,
+) {
   const workbookXml = workbookToSpreadsheetXml(createUserDataWorkbook(input));
-  const blob = new Blob([workbookXml], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const blob = new Blob([workbookXml], {
+    type: "application/vnd.ms-excel;charset=utf-8",
+  });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

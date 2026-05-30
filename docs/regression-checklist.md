@@ -106,3 +106,15 @@ Before merging any future PR:
 - [ ] Add result manually link works.
 - [ ] Existing logging and stats still work.
 - [ ] Manual validation case: Torbjørn Lunde, 2026 should include direct daily Compak/Kompakt/Leirduesti candidates and keep XXL/Blaser cup, uttak/prosent, finale/shoot-off, and weekend-combined control lists unselected.
+
+## Live training logging usability
+- [ ] Pair order can be switched in Log Miss.
+- [ ] First/Second labels update when order is reversed.
+- [ ] Simo pair can be overridden to Report pair.
+- [ ] Actual presentation is used in analysis.
+- [ ] Singles do not ask First/Second/Both.
+- [ ] Target definitions can be copied to all courses.
+- [ ] Target definitions can be copied from one course to another.
+- [ ] Speed and distance remain core target definition fields.
+- [ ] Recent misses still edit/delete correctly.
+- [ ] Export still works.
