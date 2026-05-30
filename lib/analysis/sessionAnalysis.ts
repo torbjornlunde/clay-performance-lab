@@ -56,6 +56,27 @@ function normalizeMissedTarget(value: string | null | undefined) {
   return normalizeLabel(value) || "Unknown";
 }
 
+export function analysisPresentation(miss: {
+  actual_presentation?: string | null;
+  target_type?: string | null;
+  base_presentation?: string | null;
+}) {
+  return normalizePresentation(
+    miss.actual_presentation ||
+      miss.target_type ||
+      miss.base_presentation ||
+      "Unknown",
+  );
+}
+
+function isPresentationOverride(miss: MissForAnalysis) {
+  if (!miss.actual_presentation || !miss.base_presentation) return false;
+  return (
+    normalizePresentation(miss.actual_presentation) !==
+    normalizePresentation(miss.base_presentation)
+  );
+}
+
 function countBy(values: (string | number | null | undefined)[]) {
   const result: Record<string, number> = {};
   for (const value of values) {
@@ -112,9 +133,7 @@ function expandMisses(misses: MissForAnalysis[]) {
       course_number: miss.course_number,
       plate: miss.plate,
       target_number: miss.target_number,
-      target_type: normalizePresentation(
-        miss.actual_presentation || miss.target_type,
-      ),
+      target_type: analysisPresentation(miss),
       target_label:
         normalizeLabel(
           miss.shooting_order_label ||
@@ -280,9 +299,7 @@ function buildRecommendation(
 export function analyzeMisses(misses: MissForAnalysis[]) {
   const normalizedMisses = misses.map((miss) => ({
     ...miss,
-    target_type: normalizePresentation(
-      miss.actual_presentation || miss.target_type,
-    ),
+    target_type: analysisPresentation(miss),
     target_label:
       normalizeLabel(
         miss.shooting_order_label ||
@@ -315,6 +332,7 @@ export function analyzeMisses(misses: MissForAnalysis[]) {
     ),
   );
   const reversedCount = misses.filter((miss) => miss.is_reversed_order).length;
+  const overrideCount = misses.filter(isPresentationOverride).length;
   const total = detailedMisses.length;
   const rowTotal = misses.length;
   const mainPattern = buildMainPattern({
@@ -337,6 +355,7 @@ export function analyzeMisses(misses: MissForAnalysis[]) {
   return {
     total,
     rowTotal,
+    overrideCount,
     formatted: {
       byCourse: fmt(byCourse),
       byPlate: fmt(byPlate),

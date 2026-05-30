@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { isOrdinaryLeirduesti } from "@/lib/disciplines";
+import { analysisPresentation } from "@/lib/analysis/sessionAnalysis";
+import { isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
 import {
   normalizeLeirduestiLabel,
   shortMissedTarget,
@@ -45,16 +46,16 @@ function value(text: string | number | null | undefined) {
 }
 
 function labelFor(session: Session, miss: Miss) {
-  const targetType = normalizePresentation(
-    miss.actual_presentation || miss.target_type,
-  );
+  const targetType = analysisPresentation(miss);
   const reversed = miss.is_reversed_order ? " · Reversed order" : "";
   const pair = miss.presented_pair_label || miss.target_label;
   if (session.discipline === "Sporttrap")
     return `Series ${value(miss.course_number)} · Stand ${value(miss.plate)} · ${value(pair)} · ${targetType}${reversed}`;
   if (isOrdinaryLeirduesti(session.discipline))
     return `Post ${value(miss.course_number)} · ${targetType} · Pair / sequence ${value(miss.target_number)}${reversed}`;
-  return `Course ${value(miss.course_number)} · Plate ${value(miss.plate)} · ${value(pair)} · ${targetType}${reversed}`;
+  if (isCompactDiscipline(session.discipline))
+    return `Course ${value(miss.course_number)} · Plate ${value(miss.plate)} · ${value(pair)} · ${targetType}${reversed}`;
+  return `Course ${value(miss.course_number)} · ${value(pair)} · ${targetType}${reversed}`;
 }
 
 function DetailRow({
@@ -242,11 +243,7 @@ export default function MissesPage() {
                   )}
                 </DetailRow>
                 <DetailRow label="Actual presentation">
-                  {value(
-                    normalizePresentation(
-                      miss.actual_presentation || miss.target_type,
-                    ),
-                  )}
+                  {value(analysisPresentation(miss))}
                 </DetailRow>
                 {miss.shooting_order_label && (
                   <DetailRow label="Shooting order">

@@ -16,7 +16,11 @@ export const DISCIPLINE_OPTIONS = [
 ];
 
 export function isCompactDiscipline(discipline?: string | null) {
-  return discipline === COMPAK_SPORTING || discipline === KOMPAKT_LEIRDUESTI;
+  const normalized = discipline?.trim().toLowerCase();
+  return (
+    normalized === COMPAK_SPORTING.toLowerCase() ||
+    normalized === KOMPAKT_LEIRDUESTI.toLowerCase()
+  );
 }
 
 export function isOrdinaryLeirduesti(discipline?: string | null) {

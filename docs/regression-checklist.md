@@ -111,10 +111,13 @@ Before merging any future PR:
 - [ ] Pair order can be switched in Log Miss.
 - [ ] First/Second labels update when order is reversed.
 - [ ] Simo pair can be overridden to Report pair.
-- [ ] Actual presentation is used in analysis.
+- [ ] Edit miss actual presentation works for Compak Sporting.
+- [ ] Edit miss actual presentation works for Kompakt leirduesti.
+- [ ] Edit miss reversed order works for Compak Sporting.
+- [ ] Analysis uses actual_presentation over target_type and base_presentation.
 - [ ] Singles do not ask First/Second/Both.
-- [ ] Target definitions can be copied to all courses.
-- [ ] Target definitions can be copied from one course to another.
-- [ ] Speed and distance remain core target definition fields.
+- [ ] Target definitions Copy to all courses works.
+- [ ] Target definitions Copy from course to course works.
+- [ ] Speed and distance are preserved when copying target definitions.
 - [ ] Recent misses still edit/delete correctly.
 - [ ] Export still works.

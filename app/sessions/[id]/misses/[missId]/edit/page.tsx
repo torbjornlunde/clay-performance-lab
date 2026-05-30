@@ -15,7 +15,7 @@ import {
   leirduestiSituationOptions,
 } from "@/lib/misses/labels";
 import {
-  actualPresentationOptions,
+  presentationOverrideOptions,
   normalizePresentation,
   orderedPairMachines,
   orderLabel,
@@ -191,7 +191,11 @@ export default function EditMissPage() {
     (session?.total_targets && session?.course_count
       ? Math.max(Math.round(session.total_targets / session.course_count), 1)
       : 10);
-  const pairTarget = normalizePresentation(actualPresentation) !== "Single";
+  const effectivePresentation =
+    actualPresentation === "Use scheme default"
+      ? normalizePresentation(basePresentation)
+      : normalizePresentation(actualPresentation);
+  const pairTarget = effectivePresentation !== "Single";
   const labelParts = splitPairLabel(presentedPairLabel || targetLabel);
   const ordered = orderedPairMachines(
     labelParts.first,
@@ -316,9 +320,9 @@ export default function EditMissPage() {
       normalizePresentation(missData.base_presentation || missData.target_type),
     );
     setActualPresentation(
-      normalizePresentation(
-        missData.actual_presentation || missData.target_type,
-      ),
+      missData.actual_presentation
+        ? normalizePresentation(missData.actual_presentation)
+        : "Use scheme default",
     );
     setPresentedPairLabel(
       missData.presented_pair_label || missData.target_label || null,
@@ -404,9 +408,20 @@ export default function EditMissPage() {
     if (!session) return;
     setSaving(true);
     setError("");
-    const isFirst = missedTarget === "First target in pair";
-    const isSecond = missedTarget === "Second target in pair";
-    const isBoth = missedTarget === "Both targets in pair";
+    const resolvedActualPresentation =
+      actualPresentation === "Use scheme default"
+        ? normalizePresentation(basePresentation)
+        : normalizePresentation(actualPresentation);
+    const isPairTarget = resolvedActualPresentation !== "Single";
+    const isFirst = isPairTarget && missedTarget === "First target in pair";
+    const isSecond = isPairTarget && missedTarget === "Second target in pair";
+    const isBoth = isPairTarget && missedTarget === "Both targets in pair";
+    const resolvedPresentedPairLabel = isPairTarget
+      ? presentedPairLabel || null
+      : null;
+    const resolvedShootingOrderLabel = isPairTarget
+      ? shootingOrderLabel
+      : null;
     const primary = isFirst
       ? firstDetail
       : isSecond
@@ -419,13 +434,13 @@ export default function EditMissPage() {
         plate: isCompak || isSporttrap ? plate : null,
         target_number: targetNumber,
         target_label: targetLabel || null,
-        target_type: normalizePresentation(actualPresentation),
+        target_type: resolvedActualPresentation,
         base_presentation: normalizePresentation(basePresentation),
-        actual_presentation: normalizePresentation(actualPresentation),
-        presented_pair_label: presentedPairLabel || null,
-        shooting_order_label: shootingOrderLabel,
-        is_reversed_order: isReversedOrder,
-        missed_target: !pairTarget ? "Single target" : missedTarget,
+        actual_presentation: resolvedActualPresentation,
+        presented_pair_label: resolvedPresentedPairLabel,
+        shooting_order_label: resolvedShootingOrderLabel,
+        is_reversed_order: isPairTarget ? isReversedOrder : false,
+        missed_target: !isPairTarget ? "Single target" : missedTarget,
         where_miss: primary.whereMiss,
         main_reason: primary.mainReason,
         target_read: primary.targetRead,
@@ -570,11 +585,16 @@ export default function EditMissPage() {
           value={actualPresentation}
           onChange={(e) => setActualPresentation(e.target.value)}
         >
-          {actualPresentationOptions.map((option) => (
+          {presentationOverrideOptions.map((option) => (
             <option key={option}>{option}</option>
           ))}
         </select>
-        <p className="small muted">Base scheme: {basePresentation}</p>
+        <p className="small muted">
+          Base scheme: {basePresentation}
+          {actualPresentation === "Use scheme default"
+            ? " · using scheme default"
+            : ` · actual: ${effectivePresentation}`}
+        </p>
         <label>Target / machine label</label>
         <input
           value={targetLabel}

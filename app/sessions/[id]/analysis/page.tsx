@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { analyzeMisses, MissForAnalysis } from "@/lib/analysis/sessionAnalysis";
+import {
+  analysisPresentation,
+  analyzeMisses,
+  MissForAnalysis,
+} from "@/lib/analysis/sessionAnalysis";
 import { isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
 import {
   normalizeLeirduestiLabel,
@@ -84,6 +88,11 @@ export default function AnalysisPage() {
         <span className="pill">
           Miss rows <strong>{analysis.rowTotal}</strong>
         </span>
+        {analysis.overrideCount > 0 && (
+          <span className="pill">
+            Presentation overrides <strong>{analysis.overrideCount}</strong>
+          </span>
+        )}
         {session.shooting_format && !isSporttrap && (
           <span className="pill">{session.shooting_format}</span>
         )}
@@ -205,7 +214,15 @@ export default function AnalysisPage() {
         {misses.length === 0 ? (
           <p>No misses registered yet.</p>
         ) : (
-          misses.map((miss) => (
+          misses.map((miss) => {
+            const actualPresentation = analysisPresentation(miss);
+            const basePresentation = analysisPresentation({
+              actual_presentation: miss.base_presentation,
+            });
+            const hasPresentationOverride =
+              Boolean(miss.actual_presentation && miss.base_presentation) &&
+              actualPresentation !== basePresentation;
+            return (
             <div className="subcard" key={miss.id}>
               <strong>
                 {isSporttrap
@@ -215,13 +232,17 @@ export default function AnalysisPage() {
                     : `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${miss.target_label || "Unknown"}`}
               </strong>
               <div className="small muted">
-                {normalizeLeirduestiLabel(
-                  miss.actual_presentation || miss.target_type,
-                ) || "-"}{" "}
+                {normalizeLeirduestiLabel(actualPresentation) || "-"}{" "}
                 · {shortMissedTarget(miss.missed_target)} ·{" "}
                 {miss.where_miss || "-"} · {miss.main_reason || "-"}
                 {miss.is_reversed_order ? " · Reversed order" : ""}
               </div>
+              {hasPresentationOverride && (
+                <div className="small muted">
+                  Base presentation: {basePresentation} · Actual presentation:{" "}
+                  {actualPresentation}
+                </div>
+              )}
               {miss.missed_target === "Both targets in pair" && (
                 <>
                   <div className="small muted">
@@ -236,7 +257,8 @@ export default function AnalysisPage() {
               )}
               {miss.comment && <div>{miss.comment}</div>}
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </main>

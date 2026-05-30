@@ -43,6 +43,12 @@ type Definition = {
   difficulty: string;
   notes: string;
 };
+
+type DefinitionRow = Definition & {
+  session_id?: string;
+  course_number?: number;
+  updated_at?: string;
+};
 function blank(): Record<string, Definition> {
   return Object.fromEntries(
     machines.map((machine) => [
@@ -142,31 +148,69 @@ export default function TargetDefinitionsPage() {
     setMsg(error ? error.message : "Target definitions saved");
   }
 
-  async function definitionsFor(course: number) {
+  async function definitionsFor(course: number): Promise<DefinitionRow[]> {
     const { data, error } = await supabase
       .from("session_target_definitions")
       .select("machine,target_type,direction,speed,distance,difficulty,notes")
       .eq("session_id", params.id)
       .eq("course_number", course);
     if (error) throw error;
-    return data || [];
+    return (data || []).map((row: any) => ({
+      machine: row.machine,
+      target_type: row.target_type || "Unknown",
+      direction: row.direction || "Unknown",
+      speed: row.speed || "Unknown",
+      distance: row.distance || "Unknown",
+      difficulty: row.difficulty || "Unknown",
+      notes: row.notes || "",
+    }));
+  }
+
+  function currentDefinitionRows(): DefinitionRow[] {
+    return machines.map((machine) => ({ ...defs[machine] }));
+  }
+
+  function hasSourceDefinitions(source: DefinitionRow[]) {
+    return source.some(
+      (definition) =>
+        definition.target_type !== "Unknown" ||
+        definition.direction !== "Unknown" ||
+        definition.speed !== "Unknown" ||
+        definition.distance !== "Unknown" ||
+        definition.difficulty !== "Unknown" ||
+        Boolean(definition.notes.trim()),
+    );
   }
 
   async function copyDefinitions(
     sourceCourse: number,
     destinationCourses: number[],
+    copyAll = false,
   ) {
     setMsg("");
     try {
-      const source = await definitionsFor(sourceCourse);
-      if (source.length === 0) {
-        setMsg(`No target definitions found for Course ${sourceCourse}.`);
+      const destinations = Array.from(
+        new Set(destinationCourses.filter((course) => course !== sourceCourse)),
+      );
+      if (destinations.length === 0) {
+        setMsg("No other courses to copy to.");
         return;
       }
+
+      const source =
+        sourceCourse === courseNumber
+          ? currentDefinitionRows()
+          : await definitionsFor(sourceCourse);
+      if (source.length === 0 || !hasSourceDefinitions(source)) {
+        setMsg("No target definitions to copy from this course.");
+        return;
+      }
+
       const existingDestinations: number[] = [];
-      for (const destination of destinationCourses) {
+      for (const destination of destinations) {
         const existing = await definitionsFor(destination);
-        if (existing.length > 0) existingDestinations.push(destination);
+        if (existing.length > 0 && hasSourceDefinitions(existing))
+          existingDestinations.push(destination);
       }
       if (existingDestinations.length > 0) {
         const warning =
@@ -175,8 +219,10 @@ export default function TargetDefinitionsPage() {
             : `This will overwrite existing target definitions for Courses ${existingDestinations.join(", ")}.`;
         if (!window.confirm(`${warning}\n\nContinue?`)) return;
       }
-      const rows = destinationCourses.flatMap((destination) =>
-        source.map((definition: any) => ({
+
+      const now = new Date().toISOString();
+      const rows = destinations.flatMap((destination) =>
+        source.map((definition) => ({
           session_id: params.id,
           course_number: destination,
           machine: definition.machine,
@@ -185,21 +231,22 @@ export default function TargetDefinitionsPage() {
           speed: definition.speed,
           distance: definition.distance,
           difficulty: definition.difficulty,
-          notes: definition.notes || null,
-          updated_at: new Date().toISOString(),
+          notes: definition.notes.trim() || null,
+          updated_at: now,
         })),
       );
       const { error } = await supabase
         .from("session_target_definitions")
         .upsert(rows, { onConflict: "session_id,course_number,machine" });
       if (error) throw error;
-      setMsg(
-        destinationCourses.length === 1
-          ? `Copied Course ${sourceCourse} definitions to Course ${destinationCourses[0]}.`
-          : `Copied Course ${sourceCourse} definitions to all other courses.`,
-      );
-      if (destinationCourses.includes(courseNumber))
+
+      if (destinations.includes(courseNumber))
         await loadDefinitions(courseNumber);
+      setMsg(
+        copyAll
+          ? "Target definitions copied to all courses."
+          : `Copied Course ${sourceCourse} definitions to Course ${destinations[0]}.`,
+      );
     } catch (err) {
       setMsg(
         err instanceof Error
@@ -270,6 +317,7 @@ export default function TargetDefinitionsPage() {
                 copyDefinitions(
                   courseNumber,
                   courses.filter((course) => course !== courseNumber),
+                  true,
                 )
               }
             >
@@ -359,7 +407,9 @@ export default function TargetDefinitionsPage() {
         {msg && (
           <div
             className={
-              msg.includes("saved") || msg.includes("Copied")
+              msg.includes("saved") ||
+              msg.includes("Copied") ||
+              msg.includes("copied")
                 ? "success"
                 : "error"
             }
