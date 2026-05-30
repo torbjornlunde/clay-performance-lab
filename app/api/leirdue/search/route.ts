@@ -33,9 +33,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const candidates = await searchLeirdueCandidates({ shooterName, year, disciplines });
-    return NextResponse.json({ candidates });
+    const result = await searchLeirdueCandidates({ shooterName, year, disciplines });
+    if (result.debug.fetchedUrls.length > 0 && result.debug.fetchedUrls.every((item) => !item.ok)) {
+      return NextResponse.json({ ...result, error: FETCH_ERROR_MESSAGE }, { status: 502 });
+    }
+    return NextResponse.json(result);
   } catch {
-    return NextResponse.json({ error: FETCH_ERROR_MESSAGE }, { status: 502 });
+    return NextResponse.json({ error: FETCH_ERROR_MESSAGE, debug: { fetchedUrls: [], eventLinksFound: 0, resultLinksFound: 0, pagesInspected: 0, shooterPagesFound: 0, candidateRowsCreated: 0, rejectedReasons: [FETCH_ERROR_MESSAGE], firstUsefulSnippet: null } }, { status: 502 });
   }
 }

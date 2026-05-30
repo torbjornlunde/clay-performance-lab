@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
-import type { LeirdueCandidate, LeirdueCategory } from "@/lib/leirdue/types";
+import type { LeirdueCandidate, LeirdueCategory, LeirdueSearchDebug } from "@/lib/leirdue/types";
 
 const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduesti", "Sporting"];
 const OPTIONAL_DISCIPLINES = ["Trap", "Skeet", "Other"];
@@ -22,12 +22,18 @@ type SaveResponse = {
   error?: string;
 };
 
+type SearchResponse = {
+  candidates?: LeirdueCandidate[];
+  debug?: LeirdueSearchDebug;
+  error?: string;
+};
+
 function candidateSelectedByDefault(candidate: LeirdueCandidate) {
   return candidate.category === "recommended" && (candidate.confidence === "high" || candidate.confidence === "medium") && candidate.importRecommended;
 }
 
 function performance(candidate: EditableCandidate) {
-  if (!candidate.winningScore || candidate.winningScore <= 0) return null;
+  if (candidate.ownScore === null || !candidate.winningScore || candidate.winningScore <= 0) return null;
   return (Number(candidate.ownScore) / Number(candidate.winningScore)) * 100;
 }
 
@@ -64,7 +70,7 @@ function CandidateCard({ candidate, onChange }: { candidate: EditableCandidate; 
       <div className="row">
         <div>
           <label>Date</label>
-          <input type="date" value={candidate.date} onChange={(event) => update("date", event.target.value)} />
+          <input type="date" value={candidate.date || ""} onChange={(event) => update("date", event.target.value)} />
         </div>
         <div>
           <label>Proposed discipline</label>
@@ -80,28 +86,28 @@ function CandidateCard({ candidate, onChange }: { candidate: EditableCandidate; 
       <input value={candidate.name} onChange={(event) => update("name", event.target.value)} />
 
       <label>Shooting ground</label>
-      <input value={candidate.shootingGround} onChange={(event) => update("shootingGround", event.target.value)} placeholder="Shooting ground" />
+      <input value={candidate.shootingGround || ""} onChange={(event) => update("shootingGround", event.target.value)} placeholder="Shooting ground" />
 
       <div className="row threeColumnRow">
         <div>
           <label>Own score</label>
-          <input type="number" min="0" inputMode="numeric" value={candidate.ownScore} onChange={(event) => update("ownScore", Number(event.target.value))} />
+          <input type="number" min="0" inputMode="numeric" value={candidate.ownScore ?? ""} onChange={(event) => update("ownScore", Number(event.target.value))} />
         </div>
         <div>
           <label>Total targets</label>
-          <input type="number" min="1" inputMode="numeric" value={candidate.totalTargets} onChange={(event) => update("totalTargets", Number(event.target.value))} />
+          <input type="number" min="1" inputMode="numeric" value={candidate.totalTargets ?? ""} onChange={(event) => update("totalTargets", Number(event.target.value))} />
         </div>
         <div>
           <label>Winning score</label>
-          <input type="number" min="1" inputMode="numeric" value={candidate.winningScore} onChange={(event) => update("winningScore", Number(event.target.value))} />
+          <input type="number" min="1" inputMode="numeric" value={candidate.winningScore ?? ""} onChange={(event) => update("winningScore", Number(event.target.value))} />
         </div>
       </div>
 
       <div className="metricsRow">
-        <span className="metricChip"><strong>{candidate.ownScore}/{candidate.totalTargets}</strong> own score</span>
-        <span className="metricChip"><strong>{candidate.winningScore}/{candidate.totalTargets}</strong> winning score</span>
+        <span className="metricChip"><strong>{candidate.ownScore ?? "?"}/{candidate.totalTargets ?? "?"}</strong> own score</span>
+        <span className="metricChip"><strong>{candidate.winningScore ?? "?"}/{candidate.totalTargets ?? "?"}</strong> winning score</span>
         {percent !== null ? <span className="metricChip highlightMetric"><strong>{percent.toFixed(1)}%</strong> performance</span> : null}
-        <span className="metricChip"><strong>{candidate.listType}</strong></span>
+        <span className="metricChip"><strong>{candidate.listType || "Unknown list"}</strong></span>
       </div>
 
       <label>Leirdue URL</label>
@@ -118,6 +124,36 @@ function CandidateCard({ candidate, onChange }: { candidate: EditableCandidate; 
   );
 }
 
+function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | null; candidatesFound: number }) {
+  if (!debug) return null;
+  const recentStatuses = debug.fetchedUrls.slice(-6);
+  return (
+    <details className="card" open={candidatesFound === 0}>
+      <summary>Debug details</summary>
+      <div className="metricsRow">
+        <span className="metricChip"><strong>{debug.fetchedUrls.length}</strong> pages fetched</span>
+        <span className="metricChip"><strong>{debug.eventLinksFound + debug.resultLinksFound}</strong> result/event links</span>
+        <span className="metricChip"><strong>{debug.pagesInspected}</strong> pages inspected</span>
+        <span className="metricChip"><strong>{debug.shooterPagesFound}</strong> shooter pages</span>
+        <span className="metricChip"><strong>{debug.candidateRowsCreated}</strong> candidates created</span>
+      </div>
+      {candidatesFound === 0 ? <p className="small muted">No candidates found. Try broader filters or add result manually.</p> : null}
+      {recentStatuses.length > 0 ? (
+        <>
+          <p className="small muted">Recent fetch statuses:</p>
+          <ul className="small muted">
+            {recentStatuses.map((item) => (
+              <li key={`${item.url}-${item.status}-${item.note || ""}`}>{item.status ?? "network"} {item.ok ? "OK" : "failed"} — {item.url}{item.note ? ` (${item.note})` : ""}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {debug.rejectedReasons.length > 0 ? <p className="small muted">Rejected/skip reasons: {debug.rejectedReasons.slice(0, 5).join("; ")}</p> : null}
+      {debug.firstUsefulSnippet ? <p className="small muted">First useful snippet: {debug.firstUsefulSnippet}</p> : null}
+    </details>
+  );
+}
+
 export default function LeirdueImportPage() {
   const [shooterName, setShooterName] = useState("");
   const [year, setYear] = useState(String(new Date().getFullYear()));
@@ -127,6 +163,7 @@ export default function LeirdueImportPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [debug, setDebug] = useState<LeirdueSearchDebug | null>(null);
 
   const groupedCandidates = useMemo(() => {
     return {
@@ -152,14 +189,17 @@ export default function LeirdueImportPage() {
     setSuccess("");
     setSearching(true);
     setCandidates([]);
+    setDebug(null);
 
     const response = await fetch("/api/leirdue/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ shooterName, year: Number(year), disciplines }),
     });
-    const data = (await response.json()) as { candidates?: LeirdueCandidate[]; error?: string };
+    const data = (await response.json()) as SearchResponse;
     setSearching(false);
+
+    setDebug(data.debug || null);
 
     if (!response.ok) {
       setError(data.error || "Could not fetch Leirdue results right now.");
@@ -167,7 +207,7 @@ export default function LeirdueImportPage() {
     }
 
     setCandidates((data.candidates || []).map(toEditable));
-    if (!data.candidates?.length) setSuccess("No Leirdue candidates found. You can still add the result manually.");
+    if (!data.candidates?.length) setSuccess("No candidates found. Try broader filters or add result manually.");
   }
 
   async function saveSelected() {
@@ -259,6 +299,8 @@ export default function LeirdueImportPage() {
           <Link className="button secondary" href="/dashboard">Dashboard</Link>
         </div>
       </form>
+
+      <DebugDetails debug={debug} candidatesFound={candidates.length} />
 
       {candidates.length > 0 ? (
         <div className="card">
