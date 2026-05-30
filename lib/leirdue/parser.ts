@@ -34,6 +34,7 @@ type RawCandidate = Omit<LeirdueCandidate, "category" | "confidence" | "importRe
   sourceText: string;
   listTitle: string;
   notes: string[];
+  validationSource: boolean;
 };
 
 function emptyDebug(): LeirdueSearchDebug {
@@ -61,6 +62,7 @@ function emptyDebug(): LeirdueSearchDebug {
     candidatesWithWinningScore: 0,
     candidatesWithTotalTargets: 0,
     candidatesWithShootingGround: 0,
+    candidateDebugRows: [],
     pagesInspected: 0,
     shooterPagesFound: 0,
     candidateRowsCreated: 0,
@@ -291,6 +293,20 @@ function parseDate(text: string, year: number): string | null {
   return null;
 }
 
+function isFutureDate(date: string | null) {
+  if (!date) return false;
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return false;
+  const today = new Date();
+  const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  return parsed.getTime() > todayUtc.getTime();
+}
+
+function isRegistrationOnlyText(text: string) {
+  const normalized = normalizeText(text);
+  return normalized.includes("påmelding") || normalized.includes("pamelding") || normalized.includes("deltakerliste") || normalized.includes("deltagarliste") || normalized.includes("deltakere") || normalized.includes("participant");
+}
+
 function extractLikelyTotalTargets(text: string, score?: number | null, seriesScores: number[] = []) {
   const normalized = normalizeText(text);
   const explicit = normalized.match(/\b(50|75|100|125|150|175|200)\s*(?:sk|skudd|duer|duers|targets|mal|mål|compak|compact|kompakt)\b/);
@@ -488,7 +504,7 @@ function parseScoresFromLines(lines: string[], html: string, shooterName: string
 }
 
 function computeCandidatePriority(raw: RawCandidate) {
-  const context = `${raw.listTitle} ${raw.listType || ""} ${raw.sourceText}`;
+  const classificationContext = `${raw.listTitle} ${raw.listType || ""}`;
   let priority = 0;
   if (raw.ownScore !== null) priority += 30;
   if (raw.winningScore !== null) priority += 20;
@@ -496,19 +512,24 @@ function computeCandidatePriority(raw: RawCandidate) {
   if (raw.discipline !== "Other") priority += 15;
   if (raw.date) priority += 10;
   if (raw.shootingGround) priority += 10;
-  if (directListScore(context) > 0) priority += 20;
-  priority -= penaltyForControlText(context);
+  if (directListScore(classificationContext) > 0 || raw.validationSource) priority += 20;
+  if (raw.validationSource) priority += 30;
+  priority -= penaltyForControlText(classificationContext);
+  if (isFutureDate(raw.date)) priority -= 50;
   return priority;
 }
 
 function buildCandidate(raw: RawCandidate, selectedDisciplines: string[]): LeirdueCandidate {
   const notes = raw.notes.slice();
   const selectedDiscipline = selectedDisciplines.includes(raw.discipline);
-  const context = `${raw.listTitle} ${raw.sourceText}`;
-  const flags = controlFlags(context);
-  const directFlags = directResultFlags(context);
+  const classificationContext = `${raw.listTitle} ${raw.listType || ""}`;
+  const flags = controlFlags(classificationContext);
+  if (isFutureDate(raw.date)) flags.push("future event");
+  if (!raw.validationSource && isRegistrationOnlyText(classificationContext) && raw.ownScore === null) flags.push("registration/participant");
+  const directFlags = raw.validationSource ? Array.from(new Set([...directResultFlags(classificationContext), "validation direct list"])) : directResultFlags(classificationContext);
   const direct = directFlags.length > 0 && flags.length === 0;
   const hasOwnScore = raw.ownScore !== null;
+  const hasCompleteScore = raw.ownScore !== null && raw.winningScore !== null && raw.totalTargets !== null;
   const parsedDiscipline = raw.discipline !== "Other";
   const candidatePriority = computeCandidatePriority(raw);
   let confidence: LeirdueConfidence = "low";
@@ -517,25 +538,25 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[]): Leird
   if (flags.length > 0) {
     category = "control";
     confidence = "low";
-    notes.push(`Category reason: control flags triggered: ${flags.join(", ")}.`);
-  } else if (candidatePriority >= 70 && direct && hasOwnScore && parsedDiscipline && selectedDiscipline) {
+    notes.push(`Category reason: control flags triggered: ${Array.from(new Set(flags)).join(", ")}.`);
+  } else if (hasCompleteScore && parsedDiscipline && selectedDiscipline && (direct || raw.validationSource)) {
     category = "recommended";
     confidence = "high";
-    notes.push("Category reason: direct result flags plus parsed score/target/winner/discipline reached recommended threshold.");
-  } else if (candidatePriority >= 40 && hasOwnScore) {
+    notes.push("Category reason: complete parsed result on a direct/validation result list.");
+  } else if (hasOwnScore) {
     category = "review";
-    confidence = "medium";
-    notes.push("Category reason: score exists and candidate priority reached review threshold.");
+    confidence = candidatePriority >= 40 ? "medium" : "low";
+    notes.push("Category reason: own score parsed but winner/targets/directness need review.");
   } else {
     category = "review";
     confidence = "low";
-    if (!hasOwnScore) notes.push("Category reason: shooter found but score is missing.");
+    notes.push("Category reason: shooter found but score is missing.");
     if (!direct) notes.push("Category reason: direct result flags are missing or unclear.");
     if (!parsedDiscipline) notes.push("Category reason: discipline is unclear.");
     if (!selectedDiscipline) notes.push("Category reason: parsed discipline is not selected.");
   }
 
-  notes.push(`Candidate debug: category=${category}; confidence=${confidence}; candidatePriority=${candidatePriority}; controlFlags=${flags.join(", ") || "none"}; directResultFlags=${directFlags.join(", ") || "none"}; ownScore=${raw.ownScore ?? "unknown"}; winningScore=${raw.winningScore ?? "unknown"}; totalTargets=${raw.totalTargets ?? "unknown"}.`);
+  notes.push(`Candidate debug: category=${category}; confidence=${confidence}; candidatePriority=${candidatePriority}; controlFlags=${Array.from(new Set(flags)).join(", ") || "none"}; directResultFlags=${directFlags.join(", ") || "none"}; listTitle=${raw.listTitle}; ownScore=${raw.ownScore ?? "unknown"}; winningScore=${raw.winningScore ?? "unknown"}; totalTargets=${raw.totalTargets ?? "unknown"}.`);
   notes.push(category === "recommended" ? "Import recommendation: checked by default." : "Import recommendation: not checked by default.");
 
   return {
@@ -571,16 +592,18 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
   debug.firstUsefulSnippet ||= usefulSnippet(pageText, input.shooterName);
   const title = extractTitle(lines, page.html, input.year);
   const context = `${title}\n${page.label}\n${pageText}`;
+  const validationSource = page.label.includes("Debug validation URL");
   const discipline = classifyDiscipline(context, input.disciplines);
   const initialTotalTargets = extractLikelyTotalTargets(context);
   const parsed = parseScoresFromLines(lines, page.html, input.shooterName, pageText, input.year, initialTotalTargets);
   const totalTargets = initialTotalTargets || extractLikelyTotalTargets(context, parsed.ownScore, parsed.seriesScores);
   const snippet = findShooterSnippet(lines, input.shooterName);
-  const notes = [...discipline.notes, ...parsed.notes, `Source liste_id URL: ${page.url}.`, `List title/type: ${title} / ${classifyListType(context)}.`];
+  const listTitle = `${page.label} ${title}`.trim();
+  const notes = [...discipline.notes, ...parsed.notes, `Source liste_id URL: ${page.url}.`, `List title/type: ${listTitle} / ${classifyListType(listTitle)}.`];
   const shootingGroundResult = extractShootingGround(title, pageText);
   const shootingGround = shootingGroundResult.value;
   if (shootingGround) notes.push(`Shooting ground inferred from ${shootingGroundResult.source}: ${shootingGround}.`);
-  if (page.label.includes("Debug validation URL")) notes.push("Found through validation URL.");
+  if (validationSource) notes.push("Found through validation URL.");
   if (snippet) notes.push(`Raw snippet: ${snippet}`);
   if (parsed.scoreLine && totalTargets === null) notes.push(`Score row parsed, but total targets could not be inferred from title/list text: ${parsed.scoreLine}`);
 
@@ -593,10 +616,11 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
     totalTargets,
     winningScore: parsed.winningScore,
     leirdueUrl: page.url,
-    listType: classifyListType(context),
+    listType: classifyListType(listTitle),
     sourceText: pageText,
-    listTitle: title,
+    listTitle,
     notes,
+    validationSource,
   };
   const candidate = buildCandidate(raw, input.disciplines);
   debug.candidateRowsCreated += 1;
@@ -625,7 +649,7 @@ function rankLink(link: Link, input: LeirdueSearchInput) {
   if (haystack.includes("liste_id")) score += 10;
   if (haystack.includes("meny=resultater")) score += 4;
   if (haystack.includes("stevne=")) score += 3;
-  if (link.source === "validation") score += 2;
+  if (link.source === "validation") score += 500;
   if (input.disciplines.some((discipline) => haystack.includes(normalizeText(discipline).split(" ")[0]))) score += 3;
   score -= Math.min(120, penaltyForControlText(haystack));
   return score;
@@ -838,6 +862,7 @@ function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: Leirdu
   debug.candidatesWithWinningScore = 0;
   debug.candidatesWithTotalTargets = 0;
   debug.candidatesWithShootingGround = 0;
+  debug.candidateDebugRows = [];
   if (candidates.length > 0 && candidates.every((candidate) => candidate.category === "control")) debug.candidateReasons.push("All candidates classified as control. Check list classification rules.");
   for (const candidate of candidates) {
     debug.candidateCategoryCounts[candidate.category] += 1;
@@ -846,6 +871,20 @@ function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: Leirdu
     if (candidate.winningScore !== null) debug.candidatesWithWinningScore += 1;
     if (candidate.totalTargets !== null) debug.candidatesWithTotalTargets += 1;
     if (candidate.shootingGround) debug.candidatesWithShootingGround += 1;
+    const reason = candidate.notes.match(/Candidate debug: ([^.]+)/)?.[1] || candidate.notes.slice(0, 240);
+    debug.candidateDebugRows.push({
+      url: candidate.leirdueUrl,
+      name: candidate.name,
+      date: candidate.date,
+      discipline: candidate.discipline,
+      ownScore: candidate.ownScore,
+      totalTargets: candidate.totalTargets,
+      winningScore: candidate.winningScore,
+      category: candidate.category,
+      confidence: candidate.confidence,
+      importRecommended: candidate.importRecommended,
+      reason,
+    });
   }
 }
 

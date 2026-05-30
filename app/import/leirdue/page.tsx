@@ -161,6 +161,19 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
       {debug.listInspectionLimitReached ? <p className="small muted">Result list inspection limit reached.</p> : null}
       {debug.validationUrlsInspected > 0 ? <p className="small muted">Validation URLs inspected: {debug.validationUrlsInspected}; validation shooter matches: {debug.validationShooterMatches}</p> : null}
       {debug.resultMenuDiagnostics.length > 0 ? <p className="small muted">Result menu diagnostics: {debug.resultMenuDiagnostics.map((item) => `${item.eventUrl} contains ${Object.entries(item.contains).filter(([, value]) => value).map(([key]) => key).join(", ") || "none"}: ${item.snippet.slice(0, 240)}`).join(" | ")}</p> : null}
+
+      {debug.candidateDebugRows.length > 0 ? (
+        <>
+          <p className="small muted">Candidate table:</p>
+          <ul className="small muted">
+            {debug.candidateDebugRows.slice(0, 20).map((item) => (
+              <li key={`${item.url}-${item.date}-${item.ownScore}`}>
+                {item.date || "no date"} — {item.name} — {item.discipline} — {item.ownScore ?? "?"}/{item.totalTargets ?? "?"} winner {item.winningScore ?? "?"} — {item.category}/{item.confidence} — {item.importRecommended ? "recommended" : "not checked"} — {item.url} — {item.reason}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
       {debug.firstListeIdUrlsInspected.length > 0 ? <p className="small muted">First liste_id URLs inspected: {debug.firstListeIdUrlsInspected.join("; ")}</p> : null}
       {debug.firstShooterMatchUrls.length > 0 ? <p className="small muted">Shooter found on: {debug.firstShooterMatchUrls.join("; ")}</p> : null}
       {debug.candidateReasons.length > 0 ? <p className="small muted">Candidate reasons: {debug.candidateReasons.slice(0, 8).join("; ")}</p> : null}
