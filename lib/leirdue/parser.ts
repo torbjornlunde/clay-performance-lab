@@ -26,7 +26,7 @@ export type LeirdueSearchInput = {
   disciplines: string[];
 };
 
-type Link = { href: string; text: string };
+type Link = { href: string; text: string; source?: "anchor" | "raw" | "validation" };
 type Page = { url: string; html: string; label: string; kind: "overview" | "event" | "list" };
 type ParsedScore = { ownScore: number | null; winningScore: number | null; scoreLine: string | null; notes: string[] };
 type RawCandidate = Omit<LeirdueCandidate, "category" | "confidence" | "importRecommended" | "notes"> & {
@@ -41,12 +41,18 @@ function emptyDebug(): LeirdueSearchDebug {
     eventLinksFound: 0,
     resultLinksFound: 0,
     eventPagesFetched: 0,
+    eventInfoPagesFetched: 0,
+    eventResultMenuPagesFetched: 0,
     listeIdLinksExtracted: 0,
+    listeIdLinksFromResultMenus: 0,
     listeIdPagesFetched: 0,
     listeIdShooterPagesFound: 0,
     firstListeIdUrlsInspected: [],
     firstShooterMatchUrls: [],
     listInspectionLimitReached: false,
+    resultMenuDiagnostics: [],
+    validationUrlsInspected: 0,
+    validationShooterMatches: 0,
     pagesInspected: 0,
     shooterPagesFound: 0,
     candidateRowsCreated: 0,
@@ -119,7 +125,7 @@ function extractLinks(html: string): Link[] {
   while ((match = linkRegex.exec(html))) {
     const href = match[1];
     const text = stripTags(match[2]) || href;
-    if (href) links.push({ href: absolutizeUrl(href), text });
+    if (href) links.push({ href: absolutizeUrl(href), text, source: "anchor" });
   }
   return links;
 }
@@ -386,6 +392,7 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
   const totalTargets = parsed.ownScore !== null ? extractLikelyTotalTargets(context, parsed.ownScore) : extractLikelyTotalTargets(context);
   const snippet = findShooterSnippet(lines, input.shooterName);
   const notes = [...discipline.notes, ...parsed.notes];
+  if (page.label.includes("Debug validation URL")) notes.push("Found through validation URL.");
   if (snippet) notes.push(`Raw snippet: ${snippet}`);
   if (parsed.scoreLine && totalTargets === null) notes.push(`Score row parsed, but total targets could not be inferred from title/list text: ${parsed.scoreLine}`);
 
@@ -411,6 +418,17 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
 
 const EVENT_PAGE_LIMIT = 240;
 const RESULT_LIST_PAGE_LIMIT = 650;
+const TORBJORN_LUNDE_2026_VALIDATION_URLS = [
+  "https://www.leirdue.net/?liste_id=57102&meny=resultater&stevne=12486",
+  "https://www.leirdue.net/?liste_id=59154&meny=resultater&stevne=12307",
+  "https://www.leirdue.net/?liste_id=57301&meny=resultater&stevne=12524",
+  "https://www.leirdue.net/?liste_id=57305&meny=resultater&stevne=12525",
+  "https://www.leirdue.net/?liste_id=58967&meny=resultater&stevne=12506",
+  "https://www.leirdue.net/?liste_id=59402&meny=resultater&stevne=12234",
+  "https://www.leirdue.net/?liste_id=59400&meny=resultater&stevne=12811",
+  "https://www.leirdue.net/?liste_id=59217&meny=resultater&stevne=12675",
+  "https://www.leirdue.net/?liste_id=60025&meny=resultater&stevne=12674",
+];
 
 function rankLink(link: Link, input: LeirdueSearchInput) {
   const haystack = normalizeText(`${link.text} ${link.href}`);
@@ -421,9 +439,28 @@ function rankLink(link: Link, input: LeirdueSearchInput) {
   if (haystack.includes("liste_id")) score += 10;
   if (haystack.includes("meny=resultater")) score += 4;
   if (haystack.includes("stevne=")) score += 3;
+  if (link.source === "validation") score += 2;
   if (input.disciplines.some((discipline) => haystack.includes(normalizeText(discipline).split(" ")[0]))) score += 3;
   if (isControlList(haystack)) score -= 4;
   return score;
+}
+
+function extractStevneId(value: string) {
+  return decodeEntities(value).match(/[?&]stevne=(\d+)/i)?.[1] || null;
+}
+
+function eventInfoUrl(stevneId: string) {
+  return `${LEIRDUE_BASE_URL}?stevne=${stevneId}`;
+}
+
+function eventResultMenuUrl(stevneId: string) {
+  return `${LEIRDUE_BASE_URL}?stevne=${stevneId}&meny=resultater`;
+}
+
+function listeIdUrl(stevneId: string | null, listeId: string) {
+  const params = new URLSearchParams({ meny: "resultater", liste_id: listeId });
+  if (stevneId) params.set("stevne", stevneId);
+  return `${LEIRDUE_BASE_URL}?${params.toString()}`;
 }
 
 function isLeirdueResultUrl(url: string) {
@@ -445,10 +482,66 @@ function isEventish(link: Link, input: LeirdueSearchInput) {
   return (hasEventId && resultPage) || (resultPage && relevantYear) || (hasEventId && relevantYear);
 }
 
-function addListeIdLinksFromHtml(html: string, links: Map<string, Link>) {
+function titleFromListeContext(context: string) {
+  const text = stripTags(context).replace(/\s+/g, " ").trim();
+  const before = text.split(/liste_id\s*=\s*\d+/i)[0]?.trim() || text;
+  return before.split(/[|>»]/).at(-1)?.trim().slice(-140) || "Result list";
+}
+
+function addListeIdLink(links: Map<string, Link>, href: string, text: string, source: Link["source"]) {
+  const absolute = absolutizeUrl(href);
+  if (!links.has(absolute)) links.set(absolute, { href: absolute, text, source });
+}
+
+function addListeIdLinksFromAnchors(html: string, links: Map<string, Link>) {
   for (const link of extractLinks(html)) {
-    if (isListeIdLink(link)) links.set(link.href, link);
+    if (isListeIdLink(link)) addListeIdLink(links, link.href, link.text, "anchor");
   }
+}
+
+function addListeIdLinksFromRawHtml(html: string, eventUrl: string, links: Map<string, Link>) {
+  const stevneId = extractStevneId(eventUrl);
+  let count = 0;
+  for (const match of html.matchAll(/liste_id\s*=\s*(\d+)/gi)) {
+    const listeId = match[1];
+    const start = Math.max(0, match.index - 200);
+    const end = Math.min(html.length, match.index + match[0].length + 200);
+    const context = html.slice(start, end);
+    addListeIdLink(links, listeIdUrl(stevneId, listeId), titleFromListeContext(context), "raw");
+    count += 1;
+  }
+  return count;
+}
+
+function resultMenuContains(html: string) {
+  const text = normalizeText(`${html} ${stripTags(html)}`);
+  return {
+    resultater: text.includes("resultater"),
+    sammenlagt: text.includes("sammenlagt"),
+    liste: text.includes("liste"),
+    "meny=resultater": text.includes("meny=resultater"),
+    liste_id: text.includes("liste_id"),
+  };
+}
+
+function addResultMenuDiagnostic(debug: LeirdueSearchDebug, eventUrl: string, html: string) {
+  if (debug.resultMenuDiagnostics.length >= 10) return;
+  const stripped = stripTags(html) || html.replace(/\s+/g, " ").trim();
+  debug.resultMenuDiagnostics.push({ eventUrl, contains: resultMenuContains(html), snippet: stripped.slice(0, 1000) });
+}
+
+function isTorbjornLunde2026Validation(input: LeirdueSearchInput) {
+  const shooter = normalizeText(input.shooterName);
+  return input.year === 2026 && shooter.includes("torbjørn lunde".normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase());
+}
+
+function addValidationListeIdLinks(input: LeirdueSearchInput, links: Map<string, Link>, debug: LeirdueSearchDebug) {
+  if (!isTorbjornLunde2026Validation(input)) return;
+  for (const url of TORBJORN_LUNDE_2026_VALIDATION_URLS) {
+    addListeIdLink(links, url, "Debug validation URL for Torbjørn Lunde 2026", "validation");
+  }
+  debug.validationUrlsInspected = TORBJORN_LUNDE_2026_VALIDATION_URLS.length;
+  debug.candidateReasons.push("Added Torbjørn Lunde 2026 debug validation liste_id URLs.");
 }
 
 async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebug) {
@@ -458,29 +551,56 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     `${LEIRDUE_BASE_URL}?meny=stevner&aar=${input.year}`,
     `${LEIRDUE_BASE_URL}?meny=stevner&year=${input.year}`,
   ];
-  const eventLinks = new Map<string, Link>();
+  const eventIds = new Map<string, string>();
   const listeIdLinks = new Map<string, Link>();
   const listPages = new Map<string, Page>();
 
   for (const url of startUrls) {
     const html = await fetchLeirdue(url, debug);
     if (!html) continue;
-    addListeIdLinksFromHtml(html, listeIdLinks);
+    addListeIdLinksFromAnchors(html, listeIdLinks);
+    addListeIdLinksFromRawHtml(html, url, listeIdLinks);
     for (const link of extractLinks(html)) {
-      if (isEventish(link, input)) eventLinks.set(link.href, link);
+      if (!isEventish(link, input)) continue;
+      const stevneId = extractStevneId(link.href);
+      if (stevneId) eventIds.set(stevneId, link.text);
+    }
+    for (const match of html.matchAll(/stevne\s*=\s*(\d+)/gi)) {
+      eventIds.set(match[1], `Raw event ${match[1]}`);
     }
   }
 
-  debug.eventLinksFound = eventLinks.size;
-  const rankedEventLinks = Array.from(eventLinks.values()).sort((a, b) => rankLink(b, input) - rankLink(a, input)).slice(0, EVENT_PAGE_LIMIT);
-  if (eventLinks.size > rankedEventLinks.length) debug.rejectedReasons.push(`Event page inspection limit reached at ${EVENT_PAGE_LIMIT} of ${eventLinks.size} event links.`);
+  debug.eventLinksFound = eventIds.size;
+  const rankedEventIds = Array.from(eventIds.entries())
+    .map(([stevneId, text]) => ({ stevneId, text, href: eventInfoUrl(stevneId) }))
+    .sort((a, b) => rankLink({ href: b.href, text: b.text }, input) - rankLink({ href: a.href, text: a.text }, input))
+    .slice(0, EVENT_PAGE_LIMIT);
+  if (eventIds.size > rankedEventIds.length) debug.rejectedReasons.push(`Event page inspection limit reached at ${EVENT_PAGE_LIMIT} of ${eventIds.size} event links.`);
 
-  for (const link of rankedEventLinks) {
-    const html = await fetchLeirdue(link.href, debug);
-    if (!html) continue;
+  for (const event of rankedEventIds) {
+    const infoUrl = eventInfoUrl(event.stevneId);
+    const infoHtml = await fetchLeirdue(infoUrl, debug);
+    if (infoHtml) {
+      debug.eventPagesFetched += 1;
+      debug.eventInfoPagesFetched += 1;
+      addListeIdLinksFromAnchors(infoHtml, listeIdLinks);
+      addListeIdLinksFromRawHtml(infoHtml, infoUrl, listeIdLinks);
+    }
+
+    const resultMenuUrl = eventResultMenuUrl(event.stevneId);
+    const before = listeIdLinks.size;
+    const resultHtml = await fetchLeirdue(resultMenuUrl, debug);
+    if (!resultHtml) continue;
     debug.eventPagesFetched += 1;
-    addListeIdLinksFromHtml(html, listeIdLinks);
+    debug.eventResultMenuPagesFetched += 1;
+    addListeIdLinksFromAnchors(resultHtml, listeIdLinks);
+    const rawMatches = addListeIdLinksFromRawHtml(resultHtml, resultMenuUrl, listeIdLinks);
+    const extracted = listeIdLinks.size - before;
+    debug.listeIdLinksFromResultMenus += Math.max(extracted, rawMatches);
+    if (rawMatches === 0 && extracted === 0) addResultMenuDiagnostic(debug, resultMenuUrl, resultHtml);
   }
+
+  addValidationListeIdLinks(input, listeIdLinks, debug);
 
   debug.listeIdLinksExtracted = listeIdLinks.size;
   debug.resultLinksFound = listeIdLinks.size;
@@ -495,6 +615,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     const html = await fetchLeirdue(link.href, debug);
     if (!html) continue;
     debug.listeIdPagesFetched += 1;
+    if (link.source === "validation" && normalizeText(stripTags(html)).includes(normalizeText(input.shooterName))) debug.validationShooterMatches += 1;
     listPages.set(link.href, { url: link.href, html, label: link.text, kind: "list" });
   }
 

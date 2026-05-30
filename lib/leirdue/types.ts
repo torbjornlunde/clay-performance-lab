@@ -30,12 +30,18 @@ export type LeirdueSearchDebug = {
   eventLinksFound: number;
   resultLinksFound: number;
   eventPagesFetched: number;
+  eventInfoPagesFetched: number;
+  eventResultMenuPagesFetched: number;
   listeIdLinksExtracted: number;
+  listeIdLinksFromResultMenus: number;
   listeIdPagesFetched: number;
   listeIdShooterPagesFound: number;
   firstListeIdUrlsInspected: string[];
   firstShooterMatchUrls: string[];
   listInspectionLimitReached: boolean;
+  resultMenuDiagnostics: { eventUrl: string; contains: Record<string, boolean>; snippet: string }[];
+  validationUrlsInspected: number;
+  validationShooterMatches: number;
   pagesInspected: number;
   shooterPagesFound: number;
   candidateRowsCreated: number;

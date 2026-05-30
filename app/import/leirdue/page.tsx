@@ -132,8 +132,10 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
       <summary>Debug details</summary>
       <div className="metricsRow">
         <span className="metricChip"><strong>{debug.fetchedUrls.length}</strong> pages fetched</span>
-        <span className="metricChip"><strong>{debug.eventPagesFetched}</strong> event pages fetched</span>
+        <span className="metricChip"><strong>{debug.eventInfoPagesFetched}</strong> event info pages</span>
+        <span className="metricChip"><strong>{debug.eventResultMenuPagesFetched}</strong> result menu pages</span>
         <span className="metricChip"><strong>{debug.listeIdLinksExtracted}</strong> liste_id links</span>
+        <span className="metricChip"><strong>{debug.listeIdLinksFromResultMenus}</strong> from result menus</span>
         <span className="metricChip"><strong>{debug.listeIdPagesFetched}</strong> liste_id pages fetched</span>
         <span className="metricChip"><strong>{debug.listeIdShooterPagesFound}</strong> liste_id shooter pages</span>
         <span className="metricChip"><strong>{debug.candidateRowsCreated}</strong> candidates created</span>
@@ -150,6 +152,8 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         </>
       ) : null}
       {debug.listInspectionLimitReached ? <p className="small muted">Result list inspection limit reached.</p> : null}
+      {debug.validationUrlsInspected > 0 ? <p className="small muted">Validation URLs inspected: {debug.validationUrlsInspected}; validation shooter matches: {debug.validationShooterMatches}</p> : null}
+      {debug.resultMenuDiagnostics.length > 0 ? <p className="small muted">Result menu diagnostics: {debug.resultMenuDiagnostics.map((item) => `${item.eventUrl} contains ${Object.entries(item.contains).filter(([, value]) => value).map(([key]) => key).join(", ") || "none"}: ${item.snippet.slice(0, 240)}`).join(" | ")}</p> : null}
       {debug.firstListeIdUrlsInspected.length > 0 ? <p className="small muted">First liste_id URLs inspected: {debug.firstListeIdUrlsInspected.join("; ")}</p> : null}
       {debug.firstShooterMatchUrls.length > 0 ? <p className="small muted">Shooter found on: {debug.firstShooterMatchUrls.join("; ")}</p> : null}
       {debug.candidateReasons.length > 0 ? <p className="small muted">Candidate reasons: {debug.candidateReasons.slice(0, 8).join("; ")}</p> : null}
