@@ -132,9 +132,10 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
       <summary>Debug details</summary>
       <div className="metricsRow">
         <span className="metricChip"><strong>{debug.fetchedUrls.length}</strong> pages fetched</span>
-        <span className="metricChip"><strong>{debug.eventLinksFound + debug.resultLinksFound}</strong> result/event links</span>
-        <span className="metricChip"><strong>{debug.pagesInspected}</strong> pages inspected</span>
-        <span className="metricChip"><strong>{debug.shooterPagesFound}</strong> shooter pages</span>
+        <span className="metricChip"><strong>{debug.eventPagesFetched}</strong> event pages fetched</span>
+        <span className="metricChip"><strong>{debug.listeIdLinksExtracted}</strong> liste_id links</span>
+        <span className="metricChip"><strong>{debug.listeIdPagesFetched}</strong> liste_id pages fetched</span>
+        <span className="metricChip"><strong>{debug.listeIdShooterPagesFound}</strong> liste_id shooter pages</span>
         <span className="metricChip"><strong>{debug.candidateRowsCreated}</strong> candidates created</span>
       </div>
       {candidatesFound === 0 ? <p className="small muted">No candidates found. Try broader filters or add result manually.</p> : null}
@@ -148,6 +149,10 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
           </ul>
         </>
       ) : null}
+      {debug.listInspectionLimitReached ? <p className="small muted">Result list inspection limit reached.</p> : null}
+      {debug.firstListeIdUrlsInspected.length > 0 ? <p className="small muted">First liste_id URLs inspected: {debug.firstListeIdUrlsInspected.join("; ")}</p> : null}
+      {debug.firstShooterMatchUrls.length > 0 ? <p className="small muted">Shooter found on: {debug.firstShooterMatchUrls.join("; ")}</p> : null}
+      {debug.candidateReasons.length > 0 ? <p className="small muted">Candidate reasons: {debug.candidateReasons.slice(0, 8).join("; ")}</p> : null}
       {debug.rejectedReasons.length > 0 ? <p className="small muted">Rejected/skip reasons: {debug.rejectedReasons.slice(0, 5).join("; ")}</p> : null}
       {debug.firstUsefulSnippet ? <p className="small muted">First useful snippet: {debug.firstUsefulSnippet}</p> : null}
     </details>

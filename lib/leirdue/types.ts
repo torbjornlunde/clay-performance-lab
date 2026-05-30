@@ -29,10 +29,18 @@ export type LeirdueSearchDebug = {
   fetchedUrls: LeirdueFetchDebug[];
   eventLinksFound: number;
   resultLinksFound: number;
+  eventPagesFetched: number;
+  listeIdLinksExtracted: number;
+  listeIdPagesFetched: number;
+  listeIdShooterPagesFound: number;
+  firstListeIdUrlsInspected: string[];
+  firstShooterMatchUrls: string[];
+  listInspectionLimitReached: boolean;
   pagesInspected: number;
   shooterPagesFound: number;
   candidateRowsCreated: number;
   rejectedReasons: string[];
+  candidateReasons: string[];
   firstUsefulSnippet: string | null;
 };
 

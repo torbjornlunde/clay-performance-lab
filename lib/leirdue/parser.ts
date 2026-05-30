@@ -27,7 +27,7 @@ export type LeirdueSearchInput = {
 };
 
 type Link = { href: string; text: string };
-type Page = { url: string; html: string; label: string };
+type Page = { url: string; html: string; label: string; kind: "overview" | "event" | "list" };
 type ParsedScore = { ownScore: number | null; winningScore: number | null; scoreLine: string | null; notes: string[] };
 type RawCandidate = Omit<LeirdueCandidate, "category" | "confidence" | "importRecommended" | "notes"> & {
   sourceText: string;
@@ -40,10 +40,18 @@ function emptyDebug(): LeirdueSearchDebug {
     fetchedUrls: [],
     eventLinksFound: 0,
     resultLinksFound: 0,
+    eventPagesFetched: 0,
+    listeIdLinksExtracted: 0,
+    listeIdPagesFetched: 0,
+    listeIdShooterPagesFound: 0,
+    firstListeIdUrlsInspected: [],
+    firstShooterMatchUrls: [],
+    listInspectionLimitReached: false,
     pagesInspected: 0,
     shooterPagesFound: 0,
     candidateRowsCreated: 0,
     rejectedReasons: [],
+    candidateReasons: [],
     firstUsefulSnippet: null,
   };
 }
@@ -110,8 +118,8 @@ function extractLinks(html: string): Link[] {
   let match: RegExpExecArray | null;
   while ((match = linkRegex.exec(html))) {
     const href = match[1];
-    const text = stripTags(match[2]);
-    if (href && text) links.push({ href: absolutizeUrl(href), text });
+    const text = stripTags(match[2]) || href;
+    if (href) links.push({ href: absolutizeUrl(href), text });
   }
   return links;
 }
@@ -262,6 +270,14 @@ function isScoreLine(line: string) {
   return numbers.length >= 1 && numbers.some((value) => value <= 200) && !/[A-Za-zÆØÅæøå]{4,}/.test(line.replace(/Sum/gi, ""));
 }
 
+function likelyFinalScoreFromRow(line: string, year: number) {
+  if (/%/.test(line) || line.includes(String(year))) return null;
+  const numbers = extractScoreNumbers(line).filter((value) => value <= 200);
+  if (numbers.length === 0) return null;
+  if (isScoreLine(line) || (/[A-Za-zÆØÅæøå]{3,}/.test(line) && numbers.length >= 2)) return numbers.at(-1) ?? null;
+  return null;
+}
+
 function findShooterSnippet(lines: string[], shooterName: string) {
   const shooter = normalizeText(shooterName);
   const index = lines.findIndex((line) => normalizeText(line).includes(shooter));
@@ -269,7 +285,7 @@ function findShooterSnippet(lines: string[], shooterName: string) {
   return lines.slice(Math.max(0, index - 3), index + 7).join(" | ");
 }
 
-function parseScoresFromLines(lines: string[], shooterName: string, pageText: string): ParsedScore {
+function parseScoresFromLines(lines: string[], shooterName: string, pageText: string, year: number): ParsedScore {
   const shooter = normalizeText(shooterName);
   const notes: string[] = [];
   let ownScore: number | null = null;
@@ -278,17 +294,19 @@ function parseScoresFromLines(lines: string[], shooterName: string, pageText: st
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    if (isScoreLine(line)) {
-      const numbers = extractScoreNumbers(line);
-      const last = numbers.at(-1);
-      if (typeof last === "number" && last <= 200) allFinalScores.push(last);
-    }
+    const rowFinalScore = likelyFinalScoreFromRow(line, year);
+    if (rowFinalScore !== null) allFinalScores.push(rowFinalScore);
     if (!normalizeText(line).includes(shooter)) continue;
+    const ownLineScore = likelyFinalScoreFromRow(line, year);
+    if (ownLineScore !== null) {
+      ownScore = ownLineScore;
+      scoreLine = line;
+      break;
+    }
     const nearby = lines.slice(index, index + 7);
-    const numeric = nearby.find(isScoreLine);
+    const numeric = nearby.find((candidateLine) => likelyFinalScoreFromRow(candidateLine, year) !== null);
     if (numeric) {
-      const numbers = extractScoreNumbers(numeric);
-      ownScore = numbers.at(-1) ?? null;
+      ownScore = likelyFinalScoreFromRow(numeric, year);
       scoreLine = numeric;
       break;
     }
@@ -353,15 +371,17 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
   const pageText = lines.join("\n");
   const shooterPresent = normalizeText(pageText).includes(normalizeText(input.shooterName));
   if (!shooterPresent) {
-    debug.rejectedReasons.push(`${page.url}: shooter name not found`);
+    if (debug.candidateReasons.length < 30) debug.candidateReasons.push(`${page.url}: shooter name not found on liste_id page`);
     return [];
   }
 
   debug.shooterPagesFound += 1;
+  debug.listeIdShooterPagesFound += 1;
+  if (debug.firstShooterMatchUrls.length < 10) debug.firstShooterMatchUrls.push(page.url);
   debug.firstUsefulSnippet ||= usefulSnippet(pageText, input.shooterName);
   const title = extractTitle(lines, page.html, input.year);
   const context = `${title}\n${page.label}\n${pageText}`;
-  const parsed = parseScoresFromLines(lines, input.shooterName, pageText);
+  const parsed = parseScoresFromLines(lines, input.shooterName, pageText, input.year);
   const discipline = classifyDiscipline(context, input.disciplines);
   const totalTargets = parsed.ownScore !== null ? extractLikelyTotalTargets(context, parsed.ownScore) : extractLikelyTotalTargets(context);
   const snippet = findShooterSnippet(lines, input.shooterName);
@@ -383,70 +403,102 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
     listTitle: title,
     notes,
   };
+  const candidate = buildCandidate(raw, input.disciplines);
   debug.candidateRowsCreated += 1;
-  return [buildCandidate(raw, input.disciplines)];
+  debug.candidateReasons.push(`${page.url}: candidate created as ${candidate.category}/${candidate.confidence}`);
+  return [candidate];
 }
+
+const EVENT_PAGE_LIMIT = 240;
+const RESULT_LIST_PAGE_LIMIT = 650;
 
 function rankLink(link: Link, input: LeirdueSearchInput) {
   const haystack = normalizeText(`${link.text} ${link.href}`);
   let score = 0;
   if (haystack.includes(String(input.year))) score += 5;
-  if (RESULT_LINK_TERMS.some((term) => haystack.includes(term))) score += 10;
-  if (haystack.includes("liste_id") || haystack.includes("resultater")) score += 4;
+  if (haystack.includes("sammenlagt etter bane") || haystack.includes("resultatliste sammenlagt") || haystack.includes("resultater sammenlagt")) score += 18;
+  if (haystack.includes("sammenlagt") || haystack.includes("etter bane") || haystack.includes("resultater")) score += 12;
+  if (haystack.includes("liste_id")) score += 10;
+  if (haystack.includes("meny=resultater")) score += 4;
+  if (haystack.includes("stevne=")) score += 3;
   if (input.disciplines.some((discipline) => haystack.includes(normalizeText(discipline).split(" ")[0]))) score += 3;
   if (isControlList(haystack)) score -= 4;
   return score;
 }
 
+function isLeirdueResultUrl(url: string) {
+  const normalized = normalizeText(url);
+  return normalized.includes("meny=resultater") || normalized.includes("liste_id=");
+}
+
+function isListeIdLink(link: Link) {
+  const normalized = normalizeText(link.href);
+  return normalized.includes("liste_id=") && isLeirdueResultUrl(link.href);
+}
+
 function isEventish(link: Link, input: LeirdueSearchInput) {
   const haystack = normalizeText(`${link.text} ${link.href}`);
-  return haystack.includes(String(input.year)) || haystack.includes("stevne=") || haystack.includes("resultater") || haystack.includes("liste_id");
+  if (isListeIdLink(link)) return false;
+  const hasEventId = haystack.includes("stevne=");
+  const resultPage = haystack.includes("meny=resultater");
+  const relevantYear = haystack.includes(String(input.year));
+  return (hasEventId && resultPage) || (resultPage && relevantYear) || (hasEventId && relevantYear);
+}
+
+function addListeIdLinksFromHtml(html: string, links: Map<string, Link>) {
+  for (const link of extractLinks(html)) {
+    if (isListeIdLink(link)) links.set(link.href, link);
+  }
 }
 
 async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebug) {
-  const params = new URLSearchParams({ meny: "resultater", year: String(input.year), aar: String(input.year), sok: input.shooterName, search: input.shooterName });
   const startUrls = [
-    `${LEIRDUE_BASE_URL}?${params.toString()}`,
     `${LEIRDUE_BASE_URL}?meny=resultater&aar=${input.year}`,
     `${LEIRDUE_BASE_URL}?meny=resultater&year=${input.year}`,
     `${LEIRDUE_BASE_URL}?meny=stevner&aar=${input.year}`,
+    `${LEIRDUE_BASE_URL}?meny=stevner&year=${input.year}`,
   ];
-  const pages = new Map<string, Page>();
-  const firstLayerLinks = new Map<string, Link>();
+  const eventLinks = new Map<string, Link>();
+  const listeIdLinks = new Map<string, Link>();
+  const listPages = new Map<string, Page>();
 
   for (const url of startUrls) {
     const html = await fetchLeirdue(url, debug);
     if (!html) continue;
-    pages.set(url, { url, html, label: "Leirdue overview" });
+    addListeIdLinksFromHtml(html, listeIdLinks);
     for (const link of extractLinks(html)) {
-      if (isEventish(link, input)) firstLayerLinks.set(link.href, link);
+      if (isEventish(link, input)) eventLinks.set(link.href, link);
     }
   }
 
-  debug.eventLinksFound = firstLayerLinks.size;
-  const rankedFirstLayer = Array.from(firstLayerLinks.values()).sort((a, b) => rankLink(b, input) - rankLink(a, input)).slice(0, 80);
-  const resultLinks = new Map<string, Link>();
+  debug.eventLinksFound = eventLinks.size;
+  const rankedEventLinks = Array.from(eventLinks.values()).sort((a, b) => rankLink(b, input) - rankLink(a, input)).slice(0, EVENT_PAGE_LIMIT);
+  if (eventLinks.size > rankedEventLinks.length) debug.rejectedReasons.push(`Event page inspection limit reached at ${EVENT_PAGE_LIMIT} of ${eventLinks.size} event links.`);
 
-  for (const link of rankedFirstLayer) {
+  for (const link of rankedEventLinks) {
     const html = await fetchLeirdue(link.href, debug);
     if (!html) continue;
-    pages.set(link.href, { url: link.href, html, label: link.text });
-    for (const nested of extractLinks(html)) {
-      const haystack = normalizeText(`${nested.text} ${nested.href}`);
-      const resultish = RESULT_LINK_TERMS.some((term) => haystack.includes(term)) || haystack.includes("liste_id") || haystack.includes("meny=resultater");
-      if (resultish) resultLinks.set(nested.href, nested);
-    }
+    debug.eventPagesFetched += 1;
+    addListeIdLinksFromHtml(html, listeIdLinks);
   }
 
-  debug.resultLinksFound = resultLinks.size;
-  const rankedResultLinks = Array.from(resultLinks.values()).sort((a, b) => rankLink(b, input) - rankLink(a, input)).slice(0, 140);
-  for (const link of rankedResultLinks) {
-    if (pages.has(link.href)) continue;
+  debug.listeIdLinksExtracted = listeIdLinks.size;
+  debug.resultLinksFound = listeIdLinks.size;
+  const rankedListeIdLinks = Array.from(listeIdLinks.values()).sort((a, b) => rankLink(b, input) - rankLink(a, input));
+  if (rankedListeIdLinks.length > RESULT_LIST_PAGE_LIMIT) {
+    debug.listInspectionLimitReached = true;
+    debug.rejectedReasons.push("Result list inspection limit reached.");
+  }
+
+  for (const link of rankedListeIdLinks.slice(0, RESULT_LIST_PAGE_LIMIT)) {
+    if (debug.firstListeIdUrlsInspected.length < 10) debug.firstListeIdUrlsInspected.push(link.href);
     const html = await fetchLeirdue(link.href, debug);
-    if (html) pages.set(link.href, { url: link.href, html, label: link.text });
+    if (!html) continue;
+    debug.listeIdPagesFetched += 1;
+    listPages.set(link.href, { url: link.href, html, label: link.text, kind: "list" });
   }
 
-  return Array.from(pages.values());
+  return Array.from(listPages.values());
 }
 
 function dedupeCandidates(candidates: LeirdueCandidate[]) {
