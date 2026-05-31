@@ -137,6 +137,7 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         <span className="metricChip"><strong>{debug.fetchedUrls.length}</strong> pages fetched</span>
         <span className="metricChip"><strong>{debug.eventInfoPagesFetched}</strong> event info pages</span>
         <span className="metricChip"><strong>{debug.eventResultMenuPagesFetched}</strong> result menu pages</span>
+        <span className="metricChip"><strong>{debug.resultMenusBeforeFirstListeIdScan}</strong> menus before first liste_id scan</span>
         <span className="metricChip"><strong>{debug.listeIdLinksExtracted}</strong> liste_id links</span>
         <span className="metricChip"><strong>{debug.listeIdLinksFromResultMenus}</strong> from result menus</span>
         <span className="metricChip"><strong>{debug.listeIdPagesQueued}</strong> liste_id pages queued</span>
@@ -146,6 +147,7 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         <span className="metricChip"><strong>{debug.shooterPagesParsed}</strong> shooter pages parsed</span>
         <span className="metricChip"><strong>{debug.completedEventsInspected}</strong> completed events inspected</span>
         <span className={`metricChip ${debug.timedOut ? "danger" : ""}`}><strong>{debug.timedOut ? debug.timedOutAtPhase || "yes" : "no"}</strong> timed out</span>
+        <span className={`metricChip ${debug.timedOutBeforeFirstListeIdScan ? "danger" : ""}`}><strong>{debug.timedOutBeforeFirstListeIdScan ? "yes" : "no"}</strong> timeout before liste_id scan</span>
         <span className="metricChip"><strong>{debug.selectedYearEventIdsCount}</strong> selected-year events</span>
         <span className={`metricChip ${debug.limitReached ? "danger" : ""}`}><strong>{debug.limitReached ? debug.whichLimit || "yes" : "no"}</strong> limit reached</span>
         <span className={`metricChip ${debug.overviewYearMismatch ? "danger" : ""}`}><strong>{debug.overviewYearMismatch ? "yes" : "no"}</strong> overview year mismatch</span>

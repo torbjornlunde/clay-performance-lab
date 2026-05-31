@@ -49,6 +49,10 @@ const MAX_EVENT_PAGES_INSPECTED = 120;
 const MAX_RESULT_MENU_PAGES_FETCHED = 120;
 const MAX_LISTE_ID_PAGES_SCANNED = 250;
 const MAX_SHOOTER_PAGES_PARSED = 50;
+const RESULT_MENU_BATCH_SIZE = 10;
+const MAX_RESULT_MENUS_BEFORE_FIRST_SCAN = 40;
+const RESULT_MENU_PHASE_BUDGET_MS = Math.floor(SEARCH_TIMEOUT_MS * 0.4);
+const MIN_LIST_SCAN_RESERVE_MS = Math.floor(SEARCH_TIMEOUT_MS * 0.5);
 const TIME_LIMIT_MESSAGE = "Leirdue search reached time limit. Showing partial results.";
 
 function markTimedOut(debug: LeirdueSearchDebug) {
@@ -118,6 +122,8 @@ function emptyDebug(): LeirdueSearchDebug {
     scanStoppedReason: null,
     candidatesFoundAfterDiscovery: 0,
     candidatesFoundAfterScan: 0,
+    resultMenusBeforeFirstListeIdScan: 0,
+    timedOutBeforeFirstListeIdScan: false,
     timedOut: false,
     limitReached: false,
     whichLimit: null,
@@ -1005,6 +1011,83 @@ function listPageLabel(item: ListeIdQueueItem) {
   return [item.eventTitle, item.text].filter(Boolean).join(" — ") || `Leirdue result${item.eventDate ? ` — ${item.eventDate}` : ""}`;
 }
 
+function updateListeIdQueueDebug(debug: LeirdueSearchDebug, queueItems: ListeIdQueueItem[]) {
+  debug.listeIdPagesQueued = Math.max(debug.listeIdPagesQueued, queueItems.length);
+  debug.prioritizedListeIdLinks = queueItems.slice(0, 20).map((item) => ({
+    url: item.href,
+    title: listPageLabel(item),
+    score: item.priority,
+    reason: item.reason,
+  }));
+}
+
+async function scanQueuedListeIdPages(
+  input: LeirdueSearchInput,
+  debug: LeirdueSearchDebug,
+  state: CrawlState,
+  links: Map<string, Link>,
+  eventsById: Map<string, EventLinkMeta>,
+  scannedKeys: Set<string>,
+  listPages: Map<string, Page>,
+  maxPages: number,
+) {
+  const queueItems = listeIdQueueItems(links, eventsById, input);
+  updateListeIdQueueDebug(debug, queueItems);
+  const pendingItems = queueItems.filter((item) => !scannedKeys.has(item.key) && !listPages.has(item.key));
+  if (queueItems.length > MAX_LISTE_ID_PAGES_SCANNED) {
+    debug.listInspectionLimitReached = true;
+    markLimitReached(debug, "max liste_id scan pages");
+    debug.lowPriorityListeIdPagesSkipped = Math.max(debug.lowPriorityListeIdPagesSkipped, queueItems.length - MAX_LISTE_ID_PAGES_SCANNED);
+  }
+
+  let scannedThisPass = 0;
+  debug.timedOutAtPhase = "listeId";
+  for (const item of pendingItems) {
+    if (scannedThisPass >= maxPages) break;
+    if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) {
+      markLimitReached(debug, "max liste_id scan pages");
+      debug.scanStoppedReason ||= "max scan pages";
+      break;
+    }
+    if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) {
+      markLimitReached(debug, "max shooter pages parsed");
+      debug.scanStoppedReason ||= "max shooter pages";
+      break;
+    }
+    if (shouldStopCrawl(debug, state)) {
+      debug.scanStoppedReason ||= "timeout";
+      break;
+    }
+
+    scannedKeys.add(item.key);
+    if (debug.firstListeIdUrlsInspected.length < 10) debug.firstListeIdUrlsInspected.push(item.href);
+    const html = await fetchLeirdue(item.href, debug, state);
+    if (!html) continue;
+
+    scannedThisPass += 1;
+    debug.listeIdPagesFetched += 1;
+    debug.listeIdPagesScannedForName += 1;
+    if (item.priority >= 80) debug.highPriorityListeIdPagesFetched += 1;
+
+    const pageText = stripTags(html);
+    const shooterFound = pageContainsShooter(pageText, input.shooterName);
+    if (item.source === "validation" && shooterFound) debug.validationShooterMatches += 1;
+    if (!shooterFound) continue;
+
+    if (debug.firstShooterMatchUrls.length < 10 && !debug.firstShooterMatchUrls.includes(item.href)) debug.firstShooterMatchUrls.push(item.href);
+    debug.firstUsefulSnippet ||= usefulSnippet(pageText, input.shooterName);
+    if (debug.shooterMatchSnippets.length < 20) {
+      const snippet = usefulSnippet(pageText, input.shooterName);
+      if (snippet) debug.shooterMatchSnippets.push({ url: item.href, snippet });
+    }
+    listPages.set(item.key, { url: item.href, html, label: listPageLabel(item), kind: "list" });
+  }
+
+  debug.listeIdShooterPagesFound = listPages.size;
+  debug.candidatesFoundAfterScan = listPages.size;
+  return scannedThisPass;
+}
+
 function addListeIdLink(links: Map<string, Link>, href: string, text: string, source: Link["source"]) {
   const absolute = absolutizeUrl(href);
   const key = canonicalListeIdKey(absolute);
@@ -1262,7 +1345,9 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   const eventLinks = new Map<string, EventLinkMeta>();
   const listeIdLinks = new Map<string, Link>();
   const listPages = new Map<string, Page>();
+  const scannedListeIdKeys = new Set<string>();
   const overviewHtmlByUrl = new Map<string, string>();
+  const crawlStartedAt = state.deadlineAt - SEARCH_TIMEOUT_MS;
 
   debug.timedOutAtPhase = "overview";
   for (const url of guessedUrls) {
@@ -1360,11 +1445,25 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
 
   debug.phaseReached = "phase1";
   debug.timedOutAtPhase = "eventMenu";
+  let menusSinceLastScan = 0;
+  let firstListeIdScanStarted = false;
   for (const event of rankedEvents) {
     if (shouldStopCrawl(debug, state)) break;
     if (debug.eventResultMenuPagesFetched >= MAX_RESULT_MENU_PAGES_FETCHED) {
       markLimitReached(debug, "max result menu pages");
       break;
+    }
+
+    const elapsed = Date.now() - crawlStartedAt;
+    const menuBudgetSpent = elapsed >= RESULT_MENU_PHASE_BUDGET_MS || remainingCrawlMs(state) <= MIN_LIST_SCAN_RESERVE_MS || debug.eventResultMenuPagesFetched >= MAX_RESULT_MENUS_BEFORE_FIRST_SCAN;
+    if (menuBudgetSpent && listeIdLinks.size > scannedListeIdKeys.size) {
+      if (!firstListeIdScanStarted) {
+        firstListeIdScanStarted = true;
+        debug.resultMenusBeforeFirstListeIdScan = debug.eventResultMenuPagesFetched;
+      }
+      await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, 60);
+      menusSinceLastScan = 0;
+      if (remainingCrawlMs(state) <= MIN_LIST_SCAN_RESERVE_MS || shouldStopCrawl(debug, state)) break;
     }
 
     addUnique(debug.eventIdsInspected, event.eventId);
@@ -1380,6 +1479,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     if (!resultHtml) continue;
     debug.eventPagesFetched += 1;
     debug.eventResultMenuPagesFetched += 1;
+    menusSinceLastScan += 1;
     addListeIdLinksFromAnchors(resultHtml, listeIdLinks);
     const rawMatches = addListeIdLinksFromRawHtml(resultHtml, resultMenuUrl, listeIdLinks);
     const extractedUrls = Array.from(listeIdLinks.keys()).filter((candidateUrl) => !beforeUrls.has(candidateUrl)).map((key) => listeIdLinks.get(key)?.href).filter((url): url is string => Boolean(url));
@@ -1387,6 +1487,16 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     debug.resultMenuDebug.push({ eventId: event.eventId, url: resultMenuUrl, listeIdCount: extractedUrls.length || rawMatches, firstListeIdUrls: extractedUrls.slice(0, 5) });
     debug.listeIdLinksFromResultMenus += Math.max(extractedUrls.length, rawMatches);
     if (rawMatches === 0 && extractedUrls.length === 0) addResultMenuDiagnostic(debug, resultMenuUrl, resultHtml);
+
+    if (listeIdLinks.size > scannedListeIdKeys.size && menusSinceLastScan >= RESULT_MENU_BATCH_SIZE) {
+      if (!firstListeIdScanStarted) {
+        firstListeIdScanStarted = true;
+        debug.resultMenusBeforeFirstListeIdScan = debug.eventResultMenuPagesFetched;
+      }
+      await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, 40);
+      menusSinceLastScan = 0;
+      if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED || listPages.size >= MAX_SHOOTER_PAGES_PARSED || shouldStopCrawl(debug, state)) break;
+    }
   }
 
   const foundYears = Object.keys(debug.eventYearsFound).filter((year) => year !== "unknown");
@@ -1406,64 +1516,35 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   debug.candidatesFoundAfterDiscovery = 0;
   debug.listeIdLinksExtracted = listeIdLinks.size;
   debug.resultLinksFound = listeIdLinks.size;
-  const rankedListeIdLinks = listeIdQueueItems(listeIdLinks, eventLinks, input);
-  debug.listeIdPagesQueued = rankedListeIdLinks.length;
-  debug.prioritizedListeIdLinks = rankedListeIdLinks.slice(0, 20).map((item) => ({
-    url: item.href,
-    title: listPageLabel(item),
-    score: item.priority,
-    reason: item.reason,
-  }));
-  if (rankedListeIdLinks.length > MAX_LISTE_ID_PAGES_SCANNED) {
-    debug.listInspectionLimitReached = true;
-    markLimitReached(debug, "max liste_id scan pages");
-    debug.lowPriorityListeIdPagesSkipped += rankedListeIdLinks.length - MAX_LISTE_ID_PAGES_SCANNED;
-    debug.rejectedReasons.push("Result list scan limit reached; lower-priority liste_id pages were not fetched.");
+
+  if (listeIdLinks.size > scannedListeIdKeys.size && !debug.timedOut) {
+    if (debug.resultMenusBeforeFirstListeIdScan === 0 && debug.listeIdPagesScannedForName === 0) {
+      debug.resultMenusBeforeFirstListeIdScan = debug.eventResultMenuPagesFetched;
+    }
+    await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, MAX_LISTE_ID_PAGES_SCANNED);
+  } else {
+    updateListeIdQueueDebug(debug, listeIdQueueItems(listeIdLinks, eventLinks, input));
   }
 
-  debug.timedOutAtPhase = "listeId";
-  for (const item of rankedListeIdLinks.slice(0, MAX_LISTE_ID_PAGES_SCANNED)) {
-    if (shouldStopCrawl(debug, state)) {
-      debug.scanStoppedReason ||= "timeout";
-      break;
-    }
-    if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) {
-      markLimitReached(debug, "max liste_id scan pages");
-      debug.scanStoppedReason ||= "max scan pages";
-      break;
-    }
-    if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) {
-      markLimitReached(debug, "max shooter pages parsed");
-      debug.scanStoppedReason ||= "max shooter pages";
-      break;
-    }
-    if (debug.firstListeIdUrlsInspected.length < 10) debug.firstListeIdUrlsInspected.push(item.href);
-    const html = await fetchLeirdue(item.href, debug, state);
-    if (!html) continue;
-    debug.listeIdPagesFetched += 1;
-    debug.listeIdPagesScannedForName += 1;
-    if (item.priority >= 80) debug.highPriorityListeIdPagesFetched += 1;
-
-    const pageText = stripTags(html);
-    const shooterFound = pageContainsShooter(pageText, input.shooterName);
-    if (item.source === "validation" && shooterFound) debug.validationShooterMatches += 1;
-    if (!shooterFound) continue;
-
-    if (debug.firstShooterMatchUrls.length < 10) debug.firstShooterMatchUrls.push(item.href);
-    debug.firstUsefulSnippet ||= usefulSnippet(pageText, input.shooterName);
-    if (debug.shooterMatchSnippets.length < 20) {
-      const snippet = usefulSnippet(pageText, input.shooterName);
-      if (snippet) debug.shooterMatchSnippets.push({ url: item.href, snippet });
-    }
-    listPages.set(item.key, { url: item.href, html, label: listPageLabel(item), kind: "list" });
-  }
-
+  debug.listeIdLinksExtracted = listeIdLinks.size;
+  debug.resultLinksFound = listeIdLinks.size;
   debug.listeIdShooterPagesFound = listPages.size;
   debug.candidatesFoundAfterScan = listPages.size;
-  if (!debug.scanStoppedReason) debug.scanStoppedReason = rankedListeIdLinks.length > MAX_LISTE_ID_PAGES_SCANNED ? "max scan pages" : "completed queue";
+  debug.timedOutBeforeFirstListeIdScan = debug.timedOut && debug.listeIdPagesScannedForName === 0;
+  if (debug.timedOutBeforeFirstListeIdScan && debug.listeIdPagesQueued > 0) {
+    debug.message = "Pipeline bug: result lists were queued but not scanned.";
+    debug.rejectedReasons.push("Pipeline bug: result lists were queued but not scanned.");
+  } else if (debug.timedOut && debug.listeIdPagesFetched === 0) {
+    debug.message = "Timed out before result list pages were inspected";
+  }
+  if (!debug.scanStoppedReason) {
+    if (debug.timedOut) debug.scanStoppedReason = "timeout";
+    else if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) debug.scanStoppedReason = "max scan pages";
+    else if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) debug.scanStoppedReason = "max shooter pages";
+    else debug.scanStoppedReason = "completed queue";
+  }
   if (debug.timedOut) debug.phaseReached = "timeout";
   else if (debug.listeIdPagesFetched > 0) debug.phaseReached = "phase2";
-  if (debug.timedOut && debug.listeIdPagesFetched === 0) debug.message = "Timed out before result list pages were inspected";
 
   return Array.from(listPages.values());
 }

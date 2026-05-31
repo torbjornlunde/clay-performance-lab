@@ -77,6 +77,8 @@ export type LeirdueSearchDebug = {
   scanStoppedReason: "timeout" | "max scan pages" | "max shooter pages" | "completed queue" | null;
   candidatesFoundAfterDiscovery: number;
   candidatesFoundAfterScan: number;
+  resultMenusBeforeFirstListeIdScan: number;
+  timedOutBeforeFirstListeIdScan: boolean;
   timedOut: boolean;
   limitReached: boolean;
   whichLimit: string | null;
