@@ -83,14 +83,14 @@ main {
   justify-content: center;
   border-radius: 999px;
   background:
-    radial-gradient(circle at 50% 45%, rgba(242, 120, 34, 0.18), transparent 62%),
+    radial-gradient(circle at 52% 48%, rgba(255, 104, 19, 0.18), transparent 62%),
     rgba(255, 255, 255, 0.035);
-  box-shadow: 0 0 0 4px rgba(242, 120, 34, 0.08), 0 10px 24px rgba(242, 90, 24, 0.2);
+  box-shadow: 0 0 0 4px rgba(255, 104, 19, 0.09), 0 10px 24px rgba(255, 82, 12, 0.24);
 }
 
 .mark svg {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   display: block;
   filter: drop-shadow(0 7px 12px rgba(0, 0, 0, 0.34));
 }
