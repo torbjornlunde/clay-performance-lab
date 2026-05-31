@@ -7,32 +7,34 @@ import { supabase } from "@/lib/supabase/client";
 function ClayTargetIcon() {
   return (
     <span className="mark" role="img" aria-label="Orange clay target icon">
-      <svg viewBox="0 0 48 48" focusable="false" aria-hidden="true">
+      <svg viewBox="0 0 64 48" focusable="false" aria-hidden="true">
         <defs>
-          <linearGradient id="clayTargetTop" x1="11" y1="14" x2="36" y2="30" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#ffbd52" />
-            <stop offset="32%" stopColor="#ff6a13" />
-            <stop offset="72%" stopColor="#f04a0b" />
-            <stop offset="100%" stopColor="#b93209" />
+          <linearGradient id="clayTargetTop" x1="12" y1="10" x2="54" y2="31" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#ffd16a" />
+            <stop offset="22%" stopColor="#ff8a1c" />
+            <stop offset="58%" stopColor="#ff5a05" />
+            <stop offset="100%" stopColor="#c93305" />
           </linearGradient>
-          <linearGradient id="clayTargetWall" x1="12" y1="24" x2="36" y2="39" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#ff7a19" />
-            <stop offset="55%" stopColor="#d83c08" />
-            <stop offset="100%" stopColor="#661909" />
+          <linearGradient id="clayTargetSide" x1="14" y1="25" x2="49" y2="43" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#ff7412" />
+            <stop offset="46%" stopColor="#df3f05" />
+            <stop offset="100%" stopColor="#6f1a05" />
           </linearGradient>
-          <radialGradient id="clayTargetDish" cx="36%" cy="28%" r="78%">
-            <stop offset="0%" stopColor="#ffd98b" />
-            <stop offset="30%" stopColor="#ff7a19" />
-            <stop offset="74%" stopColor="#e84409" />
-            <stop offset="100%" stopColor="#8c2508" />
+          <radialGradient id="clayTargetRecess" cx="38%" cy="30%" r="72%">
+            <stop offset="0%" stopColor="#ffbd4c" />
+            <stop offset="48%" stopColor="#ff5b05" />
+            <stop offset="100%" stopColor="#8f2104" />
           </radialGradient>
         </defs>
-        <path d="M8.5 22.7c1.3-6.9 9.1-12 18.5-11.4 9.7.6 16.7 6.7 15.7 13.6l-1.3 6.8c-1.2 6.3-8.8 10.4-18 9.7-9.3-.7-16-5.8-15.9-12.1l1-6.6Z" fill="url(#clayTargetWall)" />
-        <path d="M8.6 22.6c1-7.1 8.9-12.2 18.6-11.6 9.8.7 16.8 6.9 15.6 13.9-1 6.9-8.9 11.8-18.4 11.1-9.6-.7-16.7-6.8-15.8-13.4Z" fill="url(#clayTargetTop)" />
-        <path d="M13.1 23c.8-4.6 6.4-7.9 13.3-7.5 6.8.5 11.9 4.6 11.2 9.2-.7 4.5-6.4 7.7-13.2 7.2-6.9-.5-11.9-4.5-11.3-8.9Z" fill="url(#clayTargetDish)" />
-        <path d="M17.6 23.4c.4-2.6 4-4.5 8.1-4.2 4.1.3 7.2 2.7 6.8 5.4-.4 2.6-4 4.4-8.1 4.1-4.1-.3-7.2-2.7-6.8-5.3Z" fill="none" stroke="#9b2707" strokeWidth="2" opacity="0.78" />
-        <path d="M10.6 21.6c1.8-5.6 8.4-9.2 16.3-8.7 5.7.4 10.4 2.8 12.8 6.2" fill="none" stroke="#ffe0a3" strokeWidth="2.4" strokeLinecap="round" opacity="0.76" />
-        <path d="M8.2 27.7c3 4.6 9.1 7.8 16.2 8.3 7.9.6 14.7-2.8 17.1-8.1l-.7 3.5c-1.5 5.4-8.6 9-17.3 8.3-8.5-.7-15-5.2-15.8-10.7l.5-1.3Z" fill="#7f2208" opacity="0.42" />
+        <ellipse cx="32" cy="38" rx="24" ry="5.4" fill="#05070b" opacity="0.34" />
+        <path d="M7.6 21.2c2.1-8 13.4-13.3 27-12.6 13.8.8 24.1 7.6 24.3 16.2l-2.2 7.4c-2.4 7.1-13.8 11.4-27 10.3C16.2 41.4 6.2 34.9 6 27.4l1.6-6.2Z" fill="url(#clayTargetSide)" />
+        <path d="M7.7 21.2c1.9-8.3 13.3-13.9 27.1-13.1 14.1.8 24.7 7.9 24 16.2-.7 8.1-12.3 13.7-26.1 12.7C18.7 36 6 29.3 7.7 21.2Z" fill="url(#clayTargetTop)" />
+        <path d="M9.2 26.1c4.2 5.7 13 9.7 23.5 10.5 11 .8 20.7-2.9 24.4-8.8l-1.2 4c-3.4 6-13.7 9.7-25.1 8.8-11.3-.9-20.5-5.8-23.5-12.1l.7-2.6 1.2.2Z" fill="#7b1d04" opacity="0.48" />
+        <ellipse cx="33.2" cy="22.3" rx="20.4" ry="8.5" transform="rotate(4 33.2 22.3)" fill="none" stroke="#9e2604" strokeWidth="2.9" opacity="0.76" />
+        <ellipse cx="33.2" cy="22.2" rx="14.2" ry="5.7" transform="rotate(4 33.2 22.2)" fill="url(#clayTargetRecess)" stroke="#be3105" strokeWidth="1.6" opacity="0.98" />
+        <ellipse cx="33.2" cy="22.1" rx="7.4" ry="2.9" transform="rotate(4 33.2 22.1)" fill="#c83204" stroke="#7f1b03" strokeWidth="1.4" opacity="0.9" />
+        <path d="M11.9 20.1c3.1-6.1 12.3-9.8 23.2-9.1 8.5.5 15.7 3.8 19 8.2" fill="none" stroke="#ffe5a3" strokeWidth="2.5" strokeLinecap="round" opacity="0.76" />
+        <path d="M15.1 29.4c4.3 2.5 10.5 4.1 17.5 4.5 7.4.4 14.1-.9 18.7-3.6" fill="none" stroke="#f44504" strokeWidth="2" strokeLinecap="round" opacity="0.72" />
       </svg>
     </span>
   );
