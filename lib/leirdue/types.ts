@@ -51,6 +51,12 @@ export type LeirdueSearchDebug = {
   overviewYearMismatch: boolean;
   overviewDiagnostics: { url: string; containsSelectedYear: boolean; selectedYearLinkCount: number; snippet: string }[];
   noSelectedYearEventsReason: string | null;
+  timedOut: boolean;
+  limitReached: boolean;
+  whichLimit: string | null;
+  message: string | null;
+  lastFetchUrl: string | null;
+  errorMessage: string | null;
   eventIdsFound: string[];
   eventIdsInspected: string[];
   eventDatesParsed: Record<string, string | null>;

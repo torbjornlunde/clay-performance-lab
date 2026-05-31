@@ -141,6 +141,8 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         <span className="metricChip"><strong>{debug.listeIdPagesFetched}</strong> liste_id pages fetched</span>
         <span className="metricChip"><strong>{debug.listeIdShooterPagesFound}</strong> liste_id shooter pages</span>
         <span className="metricChip"><strong>{debug.completedEventsInspected}</strong> completed events inspected</span>
+        <span className={`metricChip ${debug.timedOut ? "danger" : ""}`}><strong>{debug.timedOut ? "yes" : "no"}</strong> timed out</span>
+        <span className={`metricChip ${debug.limitReached ? "danger" : ""}`}><strong>{debug.limitReached ? debug.whichLimit || "yes" : "no"}</strong> limit reached</span>
         <span className={`metricChip ${debug.overviewYearMismatch ? "danger" : ""}`}><strong>{debug.overviewYearMismatch ? "yes" : "no"}</strong> overview year mismatch</span>
         <span className="metricChip"><strong>{debug.futureEventsSkipped}</strong> future events skipped</span>
         <span className="metricChip"><strong>{debug.skippedOutsideSelectedYear}</strong> outside-year skipped</span>
@@ -167,6 +169,9 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
           </ul>
         </>
       ) : null}
+      {debug.message ? <p className="small muted">Search warning: {debug.message}</p> : null}
+      {debug.errorMessage ? <p className="small muted">Last error: {debug.errorMessage}</p> : null}
+      {debug.lastFetchUrl ? <p className="small muted">Last fetch URL: {debug.lastFetchUrl}</p> : null}
       {debug.listInspectionLimitReached ? <p className="small muted">Result list inspection limit reached.</p> : null}
       {debug.validationUrlsInspected > 0 ? <p className="small muted">Validation URLs inspected: {debug.validationUrlsInspected}; validation shooter matches: {debug.validationShooterMatches}</p> : null}
       <p className="small muted">Guessed overview URLs tried: {debug.guessedYearOverviewUrlsTried.join("; ") || "none"}</p>
@@ -254,23 +259,37 @@ export default function LeirdueImportPage() {
     setCandidates([]);
     setDebug(null);
 
-    const response = await fetch("/api/leirdue/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shooterName, year: Number(year), disciplines }),
-    });
-    const data = (await response.json()) as SearchResponse;
-    setSearching(false);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 35_000);
 
-    setDebug(data.debug || null);
+    try {
+      const response = await fetch("/api/leirdue/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shooterName, year: Number(year), disciplines }),
+        signal: controller.signal,
+      });
+      const data = (await response.json()) as SearchResponse;
+      setDebug(data.debug || null);
 
-    if (!response.ok) {
-      setError(data.error || "Could not fetch Leirdue results right now.");
-      return;
+      if (!response.ok) {
+        setError(data.error || "Could not fetch Leirdue results right now.");
+        return;
+      }
+
+      setCandidates((data.candidates || []).map(toEditable));
+      if (data.debug?.timedOut || data.debug?.limitReached) setError(data.debug.message || "Leirdue search returned partial results due to a timeout or crawl limit.");
+      if (!data.candidates?.length) setSuccess("No candidates found. Try broader filters or add result manually.");
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === "AbortError") {
+        setError("Leirdue search took too long. Try a narrower search or another year.");
+      } else {
+        setError("Could not fetch Leirdue results right now.");
+      }
+    } finally {
+      window.clearTimeout(timeoutId);
+      setSearching(false);
     }
-
-    setCandidates((data.candidates || []).map(toEditable));
-    if (!data.candidates?.length) setSuccess("No candidates found. Try broader filters or add result manually.");
   }
 
   async function saveSelected() {

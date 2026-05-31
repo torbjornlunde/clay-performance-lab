@@ -38,6 +38,45 @@ type RawCandidate = Omit<LeirdueCandidate, "category" | "confidence" | "importRe
   shootingGroundSource: "organizer field" | "event text" | "known-club match" | "inferred" | "unknown";
 };
 
+
+type CrawlState = { deadlineAt: number };
+
+const SEARCH_TIMEOUT_MS = 25_000;
+const FETCH_TIMEOUT_MS = 8_000;
+const MAX_EVENT_PAGES_INSPECTED = 40;
+const MAX_RESULT_MENU_PAGES_FETCHED = 40;
+const MAX_LISTE_ID_PAGES_FETCHED = 150;
+const MAX_SHOOTER_MATCH_PAGES = 50;
+const TIME_LIMIT_MESSAGE = "Leirdue search reached time limit. Showing partial results.";
+
+function markTimedOut(debug: LeirdueSearchDebug) {
+  debug.timedOut = true;
+  debug.message ||= TIME_LIMIT_MESSAGE;
+}
+
+function markLimitReached(debug: LeirdueSearchDebug, whichLimit: string) {
+  debug.limitReached = true;
+  debug.whichLimit ||= whichLimit;
+  debug.message ||= `Leirdue search reached ${whichLimit}. Showing partial results.`;
+}
+
+function shouldStopCrawl(debug: LeirdueSearchDebug, state: CrawlState) {
+  if (Date.now() >= state.deadlineAt) {
+    markTimedOut(debug);
+    return true;
+  }
+  return false;
+}
+
+function remainingCrawlMs(state: CrawlState) {
+  return Math.max(0, state.deadlineAt - Date.now());
+}
+
+function markFetchError(debug: LeirdueSearchDebug, url: string, note: string) {
+  debug.errorMessage = note;
+  debug.rejectedReasons.push(`${url}: ${note}`);
+}
+
 function emptyDebug(): LeirdueSearchDebug {
   return {
     fetchedUrls: [],
@@ -51,6 +90,12 @@ function emptyDebug(): LeirdueSearchDebug {
     overviewYearMismatch: false,
     overviewDiagnostics: [],
     noSelectedYearEventsReason: null,
+    timedOut: false,
+    limitReached: false,
+    whichLimit: null,
+    message: null,
+    lastFetchUrl: null,
+    errorMessage: null,
     eventIdsFound: [],
     eventIdsInspected: [],
     eventDatesParsed: {},
@@ -204,29 +249,39 @@ function usefulSnippet(text: string, query?: string) {
   return compact.slice(start, start + 420);
 }
 
-async function fetchLeirdue(url: string, debug: LeirdueSearchDebug) {
+async function fetchLeirdue(url: string, debug: LeirdueSearchDebug, state: CrawlState) {
   let status: number | null = null;
+  if (shouldStopCrawl(debug, state)) return null;
+  const remainingMs = remainingCrawlMs(state);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1, Math.min(FETCH_TIMEOUT_MS, remainingMs)));
+  debug.lastFetchUrl = url;
   try {
     const response = await fetch(url, {
       headers: { "User-Agent": "Clay Performance Lab Leirdue import/1.0", Accept: "text/html,application/xhtml+xml" },
       cache: "no-store",
+      signal: controller.signal,
     });
     status = response.status;
     const html = await response.text();
     debug.fetchedUrls.push({ url, status, ok: response.ok });
     if (!response.ok) {
-      debug.rejectedReasons.push(`${url}: HTTP ${response.status}`);
+      markFetchError(debug, url, `HTTP ${response.status}`);
       return null;
     }
     if (!debug.firstUsefulSnippet) debug.firstUsefulSnippet = usefulSnippet(stripTags(html));
     return html;
   } catch (error) {
+    const timedOut = controller.signal.aborted && Date.now() >= state.deadlineAt - 5;
+    if (timedOut) markTimedOut(debug);
     const cause = error instanceof Error && "cause" in error ? error.cause : null;
     const causeMessage = typeof cause === "object" && cause && "message" in cause && typeof cause.message === "string" ? ` (${cause.message})` : "";
-    const note = error instanceof Error ? `${error.message}${causeMessage}` : FETCH_ERROR_MESSAGE;
+    const note = timedOut ? TIME_LIMIT_MESSAGE : error instanceof Error ? `${error.message}${causeMessage}` : FETCH_ERROR_MESSAGE;
     debug.fetchedUrls.push({ url, status, ok: false, note });
-    debug.rejectedReasons.push(`${url}: ${note}`);
+    markFetchError(debug, url, note);
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -880,9 +935,24 @@ function titleFromListeContext(context: string) {
   return before.split(/[|>»]/).at(-1)?.trim().slice(-140) || "Result list";
 }
 
+
+function canonicalListeIdKey(href: string) {
+  const absolute = absolutizeUrl(href);
+  try {
+    const url = new URL(absolute);
+    const listeId = url.searchParams.get("liste_id");
+    const stevneId = url.searchParams.get("stevne");
+    if (listeId) return `liste:${stevneId || "none"}:${listeId}`;
+  } catch {
+    // Fall back to the normalized absolute URL below.
+  }
+  return absolute.replace(/&amp;/g, "&");
+}
+
 function addListeIdLink(links: Map<string, Link>, href: string, text: string, source: Link["source"]) {
   const absolute = absolutizeUrl(href);
-  if (!links.has(absolute)) links.set(absolute, { href: absolute, text, source });
+  const key = canonicalListeIdKey(absolute);
+  if (!links.has(key)) links.set(key, { href: absolute, text, source });
 }
 
 function addListeIdLinksFromAnchors(html: string, links: Map<string, Link>) {
@@ -997,7 +1067,7 @@ function overviewEventLinksForYear(html: string, selectedYear: number) {
   return Array.from(linksByEvent.values());
 }
 
-async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebug) {
+async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebug, state: CrawlState) {
   const guessedUrls = [
     `${LEIRDUE_BASE_URL}?resultater=`,
     `${LEIRDUE_BASE_URL}?meny=resultater&aar=${input.year}`,
@@ -1015,7 +1085,8 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   const overviewHtmlByUrl = new Map<string, string>();
 
   for (const url of guessedUrls) {
-    const html = await fetchLeirdue(url, debug);
+    if (shouldStopCrawl(debug, state)) break;
+    const html = await fetchLeirdue(url, debug, state);
     if (!html) continue;
     overviewHtmlByUrl.set(url, html);
     addOverviewDiagnostic(debug, url, html, input.year);
@@ -1030,9 +1101,10 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   if (selectedYearUrls.size === 0) selectedYearUrls.add(`${LEIRDUE_BASE_URL}?resultater=`);
 
   for (const url of selectedYearUrls) {
+    if (shouldStopCrawl(debug, state)) break;
     let html = overviewHtmlByUrl.get(url);
     if (!html) {
-      const fetchedHtml = await fetchLeirdue(url, debug);
+      const fetchedHtml = await fetchLeirdue(url, debug, state);
       if (!fetchedHtml) continue;
       html = fetchedHtml;
       overviewHtmlByUrl.set(url, html);
@@ -1065,12 +1137,20 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   const rankedEventIds = Array.from(eventIds.entries())
     .map(([stevneId, text]) => ({ stevneId, text, href: eventInfoUrl(stevneId) }))
     .sort((a, b) => rankLink({ href: b.href, text: b.text }, input) - rankLink({ href: a.href, text: a.text }, input))
-    .slice(0, EVENT_PAGE_LIMIT);
-  if (eventIds.size > rankedEventIds.length) debug.rejectedReasons.push(`Event page inspection limit reached at ${EVENT_PAGE_LIMIT} of ${eventIds.size} event links.`);
+    .slice(0, MAX_EVENT_PAGES_INSPECTED);
+  if (eventIds.size > rankedEventIds.length) {
+    markLimitReached(debug, "max event pages");
+    debug.rejectedReasons.push(`Event page inspection limit reached at ${MAX_EVENT_PAGES_INSPECTED} of ${eventIds.size} event links.`);
+  }
 
   for (const event of rankedEventIds) {
+    if (shouldStopCrawl(debug, state)) break;
+    if (debug.eventInfoPagesFetched >= MAX_EVENT_PAGES_INSPECTED) {
+      markLimitReached(debug, "max event pages");
+      break;
+    }
     const infoUrl = eventInfoUrl(event.stevneId);
-    const infoHtml = await fetchLeirdue(infoUrl, debug);
+    const infoHtml = await fetchLeirdue(infoUrl, debug, state);
     let eventDate = parseDate(event.text, input.year);
     if (infoHtml) {
       debug.eventPagesFetched += 1;
@@ -1105,9 +1185,14 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
       addListeIdLinksFromRawHtml(infoHtml, infoUrl, listeIdLinks);
     }
 
+    if (debug.eventResultMenuPagesFetched >= MAX_RESULT_MENU_PAGES_FETCHED) {
+      markLimitReached(debug, "max result menu pages");
+      break;
+    }
+
     const resultMenuUrl = eventResultMenuUrl(event.stevneId);
     const beforeUrls = new Set(listeIdLinks.keys());
-    const resultHtml = await fetchLeirdue(resultMenuUrl, debug);
+    const resultHtml = await fetchLeirdue(resultMenuUrl, debug, state);
     if (!resultHtml) continue;
     debug.eventPagesFetched += 1;
     debug.eventResultMenuPagesFetched += 1;
@@ -1136,18 +1221,28 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   debug.listeIdLinksExtracted = listeIdLinks.size;
   debug.resultLinksFound = listeIdLinks.size;
   const rankedListeIdLinks = Array.from(listeIdLinks.values()).sort((a, b) => rankLink(b, input) - rankLink(a, input));
-  if (rankedListeIdLinks.length > RESULT_LIST_PAGE_LIMIT) {
+  if (rankedListeIdLinks.length > MAX_LISTE_ID_PAGES_FETCHED) {
     debug.listInspectionLimitReached = true;
+    markLimitReached(debug, "max liste_id pages");
     debug.rejectedReasons.push("Result list inspection limit reached.");
   }
 
-  for (const link of rankedListeIdLinks.slice(0, RESULT_LIST_PAGE_LIMIT)) {
+  for (const link of rankedListeIdLinks.slice(0, MAX_LISTE_ID_PAGES_FETCHED)) {
+    if (shouldStopCrawl(debug, state)) break;
+    if (debug.listeIdPagesFetched >= MAX_LISTE_ID_PAGES_FETCHED) {
+      markLimitReached(debug, "max liste_id pages");
+      break;
+    }
+    if (debug.listeIdShooterPagesFound >= MAX_SHOOTER_MATCH_PAGES) {
+      markLimitReached(debug, "max shooter match pages");
+      break;
+    }
     if (debug.firstListeIdUrlsInspected.length < 10) debug.firstListeIdUrlsInspected.push(link.href);
-    const html = await fetchLeirdue(link.href, debug);
+    const html = await fetchLeirdue(link.href, debug, state);
     if (!html) continue;
     debug.listeIdPagesFetched += 1;
     if (link.source === "validation" && pageContainsShooter(stripTags(html), input.shooterName)) debug.validationShooterMatches += 1;
-    listPages.set(link.href, { url: link.href, html, label: link.text, kind: "list" });
+    listPages.set(canonicalListeIdKey(link.href), { url: link.href, html, label: link.text, kind: "list" });
   }
 
   return Array.from(listPages.values());
@@ -1351,8 +1446,17 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   const debug = emptyDebug();
   debug.selectedYear = input.year;
   debug.normalizedSearchName = normalizeName(input.shooterName);
-  const pages = await discoverPages(input, debug);
-  const candidates = pages.flatMap((page) => extractCandidatesFromPage(page, input, debug));
+  const state: CrawlState = { deadlineAt: Date.now() + SEARCH_TIMEOUT_MS };
+  const pages = await discoverPages(input, debug, state);
+  const candidates: LeirdueCandidate[] = [];
+  for (const page of pages) {
+    if (shouldStopCrawl(debug, state)) break;
+    if (debug.listeIdShooterPagesFound >= MAX_SHOOTER_MATCH_PAGES) {
+      markLimitReached(debug, "max shooter match pages");
+      break;
+    }
+    candidates.push(...extractCandidatesFromPage(page, input, debug));
+  }
   const normalized = normalizeLeirdueCandidates(candidates, input, debug);
   debug.candidateRowsCreated = normalized.length;
   updateCandidateDebugStats(debug, normalized);
