@@ -18,6 +18,21 @@ export type LeirdueCandidate = {
   alreadyImported?: boolean;
 };
 
+
+export type LeirdueValidationChecklistItem = {
+  label: string;
+  expectedName: string;
+  found: boolean;
+  matchedUrl: string | null;
+  parsedOwnScore: number | null;
+  parsedTotalTargets: number | null;
+  parsedWinningScore: number | null;
+  parsedDiscipline: string | null;
+  parsedShootingGround: string | null;
+  status: "pass" | "partial" | "fail";
+  reason: string;
+};
+
 export type LeirdueFetchDebug = {
   url: string;
   status: number | null;
@@ -52,6 +67,7 @@ export type LeirdueSearchDebug = {
   recommendedWithShootingGround: number;
   recommendedWithCompleteScore: number;
   candidateDebugRows: { url: string; name: string; date: string | null; discipline: string; shootingGround: string | null; shootingGroundSource: string; ownScore: number | null; totalTargets: number | null; winningScore: number | null; category: LeirdueCategory; confidence: LeirdueConfidence; importRecommended: boolean; reason: string }[];
+  validationChecklist: LeirdueValidationChecklistItem[];
   pagesInspected: number;
   shooterPagesFound: number;
   candidateRowsCreated: number;

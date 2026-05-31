@@ -164,6 +164,19 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
       {debug.validationUrlsInspected > 0 ? <p className="small muted">Validation URLs inspected: {debug.validationUrlsInspected}; validation shooter matches: {debug.validationShooterMatches}</p> : null}
       {debug.resultMenuDiagnostics.length > 0 ? <p className="small muted">Result menu diagnostics: {debug.resultMenuDiagnostics.map((item) => `${item.eventUrl} contains ${Object.entries(item.contains).filter(([, value]) => value).map(([key]) => key).join(", ") || "none"}: ${item.snippet.slice(0, 240)}`).join(" | ")}</p> : null}
 
+      {debug.validationChecklist.length > 0 ? (
+        <>
+          <p className="small muted">Validation checklist:</p>
+          <ul className="small muted">
+            {debug.validationChecklist.map((item) => (
+              <li key={item.label}>
+                {item.label}. {item.expectedName} — {item.status} — {item.found ? "found" : "not found"} — {item.parsedOwnScore ?? "?"}/{item.parsedTotalTargets ?? "?"} winner {item.parsedWinningScore ?? "?"} — {item.parsedDiscipline || "unknown discipline"} — {item.parsedShootingGround || "unknown ground"} — {item.matchedUrl || "no URL"} — {item.reason}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
       {debug.candidateDebugRows.length > 0 ? (
         <>
           <p className="small muted">Candidate table:</p>
