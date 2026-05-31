@@ -1592,3 +1592,263 @@ html, body {
     grid-template-columns: 1fr;
   }
 }
+
+.dashboardMain {
+  max-width: 900px;
+}
+
+.polishedDashboardHero {
+  grid-template-columns: minmax(0, 0.9fr) minmax(280px, 1fr);
+  align-items: center;
+  padding: 20px;
+}
+
+.polishedDashboardHero .dashboardPrimaryActions {
+  width: 100%;
+  margin-top: 0;
+}
+
+.dashboardTrendCard,
+.dashboardSectionCard,
+.subduedActionsCard {
+  max-width: 860px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.dashboardTrendCard {
+  cursor: pointer;
+  overflow: hidden;
+  padding-bottom: 14px;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(216, 165, 58, 0.16), transparent 34%),
+    linear-gradient(180deg, rgba(20, 30, 43, 0.98), rgba(10, 16, 24, 0.98));
+}
+
+.dashboardTrendCard:focus-visible,
+.dashboardTrendCard:hover {
+  border-color: var(--lineStrong);
+}
+
+.dashboardTrendHeader {
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.dashboardTrendHeader h2,
+.listSectionHeader h2 {
+  margin-bottom: 3px;
+}
+
+.trendHint {
+  margin: 0;
+}
+
+.periodControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 4px 0 10px;
+}
+
+.periodButton {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  background: rgba(10, 16, 24, 0.75);
+  color: var(--muted);
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.periodButton.activePeriod {
+  border-color: rgba(216, 165, 58, 0.54);
+  background: rgba(216, 165, 58, 0.14);
+  color: #ffe2a0;
+}
+
+.customPeriodControls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 170px));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.customPeriodControls label {
+  margin: 0;
+  font-size: 11px;
+}
+
+.customPeriodControls input {
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
+.dashboardChartWrap {
+  position: relative;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.dashboardPerformanceChart {
+  display: block;
+  height: clamp(150px, 24vw, 180px);
+  max-height: 180px;
+}
+
+.selectedChartPoint {
+  fill: rgba(216, 165, 58, 0.38);
+  stroke: #fff0bd;
+}
+
+.chartPreview {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  display: grid;
+  gap: 3px;
+  max-width: min(260px, calc(100% - 24px));
+  padding: 10px 12px;
+  border: 1px solid rgba(216, 165, 58, 0.42);
+  border-radius: 14px;
+  background: rgba(7, 11, 17, 0.92);
+  box-shadow: var(--shadow);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.chartPreview strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.chartPreview small {
+  color: #ffe2a0;
+  font-weight: 800;
+}
+
+.dashboardChartLegend {
+  justify-content: flex-start;
+  margin-top: 8px;
+}
+
+.dashboardListItem {
+  padding: 12px;
+  margin: 8px 0;
+  border-radius: 16px;
+  background: rgba(10, 16, 24, 0.76);
+}
+
+.compactTopline {
+  gap: 8px;
+  align-items: center;
+}
+
+.compactTopline strong {
+  line-height: 1.25;
+}
+
+.compactMeta {
+  margin-top: 5px;
+}
+
+.resultMetrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.resultMetrics strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.resultMetrics .accentMetric,
+.resultMetrics .accentMetric strong {
+  color: #ffe2a0;
+}
+
+.showMoreButton {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.compactEmptyState p {
+  margin: 0;
+  color: #f4dfaf;
+}
+
+.compactEmptyActions {
+  margin-top: 10px;
+}
+
+.subduedActionsCard {
+  padding: 14px;
+  box-shadow: none;
+  background: rgba(13, 20, 29, 0.72);
+}
+
+.subduedActionsGrid {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.subduedActionsGrid .compactAction {
+  min-height: 48px;
+  padding: 9px 10px;
+  opacity: 0.9;
+}
+
+@media (max-width: 720px) {
+  .polishedDashboardHero {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .dashboardTrendHeader {
+    gap: 8px;
+  }
+
+  .dashboardTrendHeader .pill {
+    align-self: flex-start;
+  }
+
+  .periodControls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .periodButton {
+    width: 100%;
+  }
+
+  .customPeriodControls {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .dashboardPerformanceChart {
+    height: 150px;
+  }
+
+  .chartPreview {
+    position: static;
+    margin: 8px 0;
+  }
+
+  .dashboardChartLegend {
+    gap: 6px;
+  }
+
+  .dashboardListItem {
+    gap: 10px;
+  }
+
+  .resultMetrics {
+    gap: 6px 10px;
+  }
+}

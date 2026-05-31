@@ -56,3 +56,17 @@ Use this checklist after each PR and before merging to keep the main user flows 
 - [ ] No-candidates state is understandable.
 - [ ] Add result manually link works.
 - [ ] Candidate review/save should be tested when parser returns candidates.
+
+## G. Dashboard result UX
+
+- [ ] Results combines competition shooting logs and result-only entries.
+- [ ] Results are sorted newest first by competition date/date with created date fallback.
+- [ ] Training logs are separate from Results.
+- [ ] Results show only 3 items by default.
+- [ ] Show more / Show less works for Results.
+- [ ] Show more / Show less works for Training.
+- [ ] Dashboard chart renders without horizontal scrolling on mobile and desktop.
+- [ ] Dashboard chart skips entries without a winning score.
+- [ ] Dashboard chart opens Stats when the card is clicked.
+- [ ] Dashboard chart period filters work for Last month, Last year, All and Custom.
+- [ ] Existing dashboard actions still open the correct routes.

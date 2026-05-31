@@ -47,3 +47,14 @@ A concise step-by-step test plan to run after merges.
 - [ ] Open import page.
 - [ ] Search Torbjørn Lunde / 2026 when parser is ready.
 - [ ] Verify candidate review before saving.
+
+## 7. Dashboard after Leirdue import
+
+- [ ] Import results from Leirdue.net.
+- [ ] Confirm Results contains imported result-only entries and competition logs.
+- [ ] Confirm Training is separate from Results.
+- [ ] Confirm Training is reachable without scrolling past a long result list.
+- [ ] Confirm the performance chart appears and is readable on mobile.
+- [ ] Confirm Show more / Show less works for Results.
+- [ ] Confirm Show more / Show less works for Training.
+- [ ] Confirm the chart card opens Stats.

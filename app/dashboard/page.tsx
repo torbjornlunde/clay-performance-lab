@@ -24,6 +24,7 @@ type Row = {
   targets_per_post?: number | null;
   created_at: string;
   competition_date?: string | null;
+  date?: string | null;
   own_score?: number | null;
   winning_score?: number | null;
   calculated_score?: number | null;
@@ -36,10 +37,17 @@ type ExportCourseRow = ExportCourse;
 type ExportMissRow = ExportMiss;
 type ExportTargetDefinitionRow = ExportTargetDefinition;
 
-type SessionGroup = {
-  title: string;
-  description: string;
-  sessions: Row[];
+type ChartPeriod = "month" | "year" | "all" | "custom";
+
+type TrendPoint = {
+  id: string;
+  name: string;
+  date: string;
+  percentage: number;
+  score: number;
+  winningScore: number;
+  x: number;
+  y: number;
 };
 
 function isUsableNumber(value: unknown): value is number {
@@ -53,40 +61,54 @@ function missCountFor(session: Row, missCounts: Record<string, number>) {
 function scoreUsed(session: Row, missCounts: Record<string, number>) {
   if (isUsableNumber(session.own_score)) return session.own_score;
   if (isUsableNumber(session.calculated_score)) return session.calculated_score;
-  if (isUsableNumber(session.total_targets))
-    return Math.max(
-      session.total_targets - missCountFor(session, missCounts),
-      0,
-    );
+  if (isUsableNumber(session.total_targets)) {
+    return Math.max(session.total_targets - missCountFor(session, missCounts), 0);
+  }
   return null;
 }
 
-function performancePercentage(
-  session: Row,
-  missCounts: Record<string, number>,
-) {
+function performancePercentage(session: Row, missCounts: Record<string, number>) {
   const score = scoreUsed(session, missCounts);
   if (
     !isUsableNumber(score) ||
     !isUsableNumber(session.winning_score) ||
     session.winning_score <= 0
-  )
+  ) {
     return null;
+  }
   return (score / session.winning_score) * 100;
+}
+
+function hasScoreContext(session: Row) {
+  return Boolean(
+    isUsableNumber(session.own_score) ||
+      isUsableNumber(session.winning_score) ||
+      isUsableNumber(session.calculated_score) ||
+      isUsableNumber(session.total_targets),
+  );
+}
+
+function isResultSession(session: Row) {
+  if (session.session_type === "Training") return false;
+  return session.session_type === "Competition" || hasScoreContext(session);
+}
+
+function isTrainingSession(session: Row) {
+  return session.session_type === "Training" || !isResultSession(session);
 }
 
 function isResultOnly(session: Row, missCounts: Record<string, number>) {
   return Boolean(
-    isUsableNumber(session.own_score) &&
-    isUsableNumber(session.winning_score) &&
-    missCountFor(session, missCounts) === 0 &&
-    !session.course_count,
+    session.session_type !== "Competition" ||
+      (isUsableNumber(session.own_score) &&
+        isUsableNumber(session.winning_score) &&
+        missCountFor(session, missCounts) === 0 &&
+        !session.course_count),
   );
 }
 
-function typeLabel(session: Row, missCounts: Record<string, number>) {
-  if (isResultOnly(session, missCounts)) return "Result only";
-  return session.session_type === "Competition" ? "Competition" : "Training";
+function resultTypeLabel(session: Row, missCounts: Record<string, number>) {
+  return isResultOnly(session, missCounts) ? "Result only" : "Competition";
 }
 
 function formatDate(value: string) {
@@ -98,30 +120,27 @@ function formatDate(value: string) {
 }
 
 function sortableDate(session: Row) {
-  return new Date(session.competition_date || session.created_at).getTime();
+  return new Date(session.competition_date || session.date || session.created_at).getTime();
 }
 
 function sortNewestFirst(a: Row, b: Row) {
   return sortableDate(b) - sortableDate(a);
 }
 
-function SessionCard({
-  session,
-  missCounts,
-}: {
-  session: Row;
-  missCounts: Record<string, number>;
-}) {
-  const misses = missCountFor(session, missCounts);
-  const percentage = performancePercentage(session, missCounts);
-  const label = typeLabel(session, missCounts);
+function sortOldestFirst(a: Row, b: Row) {
+  return sortableDate(a) - sortableDate(b);
+}
+
+function displayDate(session: Row) {
+  return session.competition_date || session.date || session.created_at;
+}
+
+function displayedTotalTargets(session: Row) {
   const isSporttrap = session.discipline === "Sporttrap";
   const isLeirduesti = isOrdinaryLeirduesti(session.discipline);
   const sporttrapSeriesCount = isSporttrap
     ? session.sporttrap_series_count ||
-      (session.total_targets
-        ? Math.max(Math.round(session.total_targets / 25), 1)
-        : 1)
+      (session.total_targets ? Math.max(Math.round(session.total_targets / 25), 1) : 1)
     : null;
   const leirduestiPostCount = isLeirduesti
     ? session.post_count || session.course_count
@@ -132,78 +151,277 @@ function SessionCard({
         ? Math.max(Math.round(session.total_targets / leirduestiPostCount), 1)
         : 10)
     : null;
-  const displayedTotalTargets =
-    isSporttrap && sporttrapSeriesCount
-      ? sporttrapSeriesCount * 25
-      : isLeirduesti && leirduestiPostCount && leirduestiTargetsPerPost
-        ? leirduestiPostCount * leirduestiTargetsPerPost
-        : session.total_targets;
+
+  if (isSporttrap && sporttrapSeriesCount) return sporttrapSeriesCount * 25;
+  if (isLeirduesti && leirduestiPostCount && leirduestiTargetsPerPost) {
+    return leirduestiPostCount * leirduestiTargetsPerPost;
+  }
+  return session.total_targets || null;
+}
+
+function chartBounds(percentages: number[]) {
+  const highest = Math.max(...percentages);
+  const lowest = Math.min(...percentages);
+  const maxPercentage = Math.max(100, Math.ceil(highest / 5) * 5);
+  const minPercentage = lowest < 50 ? Math.min(50, Math.floor(lowest / 5) * 5 - 5) : 50;
+  return { minPercentage, maxPercentage, range: Math.max(maxPercentage - minPercentage, 1) };
+}
+
+function dateInputValue(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function ResultCard({ session, missCounts }: { session: Row; missCounts: Record<string, number> }) {
+  const score = scoreUsed(session, missCounts);
+  const percentage = performancePercentage(session, missCounts);
+  const totalTargets = displayedTotalTargets(session);
+  const label = resultTypeLabel(session, missCounts);
 
   return (
-    <article className="sessionItem">
+    <article className="sessionItem dashboardListItem">
       <div className="sessionContent">
-        <div className="sessionTopline">
+        <div className="sessionTopline compactTopline">
           <strong>{session.name}</strong>
-          <span
-            className={`badge ${label === "Competition" ? "badgeGold" : label === "Result only" ? "badgeBlue" : "badgeGreen"}`}
-          >
-            {label}
-          </span>
+          <span className={`badge ${label === "Competition" ? "badgeGold" : "badgeBlue"}`}>{label}</span>
         </div>
-        <div className="small muted sessionMeta">
-          <span>
-            {formatDate(session.competition_date || session.created_at)}
-          </span>
-          {session.shooting_ground && (
-            <span>Shooting ground: {session.shooting_ground}</span>
-          )}
+        <div className="small muted sessionMeta compactMeta">
+          <span>{formatDate(displayDate(session))}</span>
           <span>{session.discipline}</span>
-          {session.shooting_format && <span>{session.shooting_format}</span>}
+          {session.shooting_ground && <span>{session.shooting_ground}</span>}
         </div>
-        <div className="metricsRow">
-          {isSporttrap && sporttrapSeriesCount ? (
-            <span className="metricChip">
-              <strong>{sporttrapSeriesCount}</strong> 25-target series
+        <div className="resultMetrics">
+          {isUsableNumber(score) && (
+            <span>
+              Score <strong>{score}{totalTargets ? ` / ${totalTargets}` : ""}</strong>
             </span>
-          ) : isLeirduesti && leirduestiPostCount ? (
-            <span className="metricChip">
-              <strong>{leirduestiPostCount}</strong> posts
+          )}
+          {isUsableNumber(session.winning_score) && (
+            <span>
+              Winning <strong>{session.winning_score}</strong>
             </span>
-          ) : session.course_count ? (
-            <span className="metricChip">
-              <strong>{session.course_count}</strong> courses
-            </span>
-          ) : null}
-          {isLeirduesti && leirduestiTargetsPerPost ? (
-            <span className="metricChip">
-              <strong>{leirduestiTargetsPerPost}</strong> targets per post
-            </span>
-          ) : null}
-          {displayedTotalTargets ? (
-            <span className="metricChip">
-              <strong>{displayedTotalTargets}</strong> total targets
-            </span>
-          ) : null}
-          <span className="metricChip">
-            <strong>{misses}</strong> misses
-          </span>
+          )}
           {percentage !== null && (
-            <span className="metricChip highlightMetric">
-              <strong>{percentage.toFixed(1)}%</strong> performance vs winning
-              score
+            <span className="accentMetric">
+              Vs winner <strong>{percentage.toFixed(1)}%</strong>
             </span>
           )}
         </div>
       </div>
       <div className="sessionActions">
-        <Link
-          href={`/sessions/${session.id}`}
-          className="button secondary smallButton"
-        >
-          Open
-        </Link>
+        <Link href={`/sessions/${session.id}`} className="button secondary smallButton">Open</Link>
       </div>
     </article>
+  );
+}
+
+function TrainingCard({ session, missCounts }: { session: Row; missCounts: Record<string, number> }) {
+  const misses = missCountFor(session, missCounts);
+  const totalTargets = displayedTotalTargets(session);
+
+  return (
+    <article className="sessionItem dashboardListItem">
+      <div className="sessionContent">
+        <div className="sessionTopline compactTopline">
+          <strong>{session.name}</strong>
+          <span className="badge badgeGreen">Training</span>
+        </div>
+        <div className="small muted sessionMeta compactMeta">
+          <span>{formatDate(displayDate(session))}</span>
+          <span>{session.discipline}</span>
+          {session.shooting_ground && <span>{session.shooting_ground}</span>}
+        </div>
+        <div className="resultMetrics">
+          <span>
+            Misses <strong>{misses}</strong>
+          </span>
+          {totalTargets ? (
+            <span>
+              Targets <strong>{totalTargets}</strong>
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <div className="sessionActions">
+        <Link href={`/sessions/${session.id}`} className="button secondary smallButton">Open</Link>
+      </div>
+    </article>
+  );
+}
+
+function PerformanceTrendCard({
+  sessions,
+  missCounts,
+}: {
+  sessions: Row[];
+  missCounts: Record<string, number>;
+}) {
+  const router = useRouter();
+  const [period, setPeriod] = useState<ChartPeriod>("year");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+
+  const allScored = useMemo(() => {
+    return sessions
+      .filter((session) => isResultSession(session) && isUsableNumber(session.winning_score) && session.winning_score > 0)
+      .map((session) => ({ session, percentage: performancePercentage(session, missCounts), score: scoreUsed(session, missCounts) }))
+      .filter((item): item is { session: Row; percentage: number; score: number } => item.percentage !== null && item.score !== null)
+      .sort((a, b) => sortOldestFirst(a.session, b.session));
+  }, [sessions, missCounts]);
+
+  useEffect(() => {
+    setPeriod(allScored.length > 0 ? "year" : "all");
+    if (allScored.length > 0 && !customFrom && !customTo) {
+      const latest = new Date(displayDate(allScored[allScored.length - 1].session));
+      const from = new Date(latest);
+      from.setFullYear(from.getFullYear() - 1);
+      setCustomFrom(dateInputValue(from));
+      setCustomTo(dateInputValue(latest));
+    }
+  }, [allScored.length, customFrom, customTo, allScored]);
+
+  const filteredScored = useMemo(() => {
+    if (allScored.length === 0 || period === "all") return allScored;
+
+    const latest = new Date(displayDate(allScored[allScored.length - 1].session));
+    const from = new Date(latest);
+    if (period === "month") from.setMonth(from.getMonth() - 1);
+    if (period === "year") from.setFullYear(from.getFullYear() - 1);
+
+    return allScored.filter((item) => {
+      const date = new Date(displayDate(item.session));
+      if (period === "custom") {
+        const afterFrom = customFrom ? date >= new Date(`${customFrom}T00:00:00`) : true;
+        const beforeTo = customTo ? date <= new Date(`${customTo}T23:59:59`) : true;
+        return afterFrom && beforeTo;
+      }
+      return date >= from && date <= latest;
+    });
+  }, [allScored, customFrom, customTo, period]);
+
+  const points = useMemo<TrendPoint[]>(() => {
+    if (filteredScored.length === 0) return [];
+    const width = 720;
+    const height = 180;
+    const padding = 30;
+    const { maxPercentage, range } = chartBounds(filteredScored.map((item) => item.percentage));
+
+    return filteredScored.map((item, index) => {
+      const x = filteredScored.length === 1 ? width / 2 : padding + index * ((width - padding * 2) / (filteredScored.length - 1));
+      const y = padding + (maxPercentage - item.percentage) * ((height - padding * 2) / range);
+      return {
+        id: item.session.id,
+        name: item.session.name,
+        date: displayDate(item.session),
+        percentage: item.percentage,
+        score: item.score,
+        winningScore: item.session.winning_score || 0,
+        x,
+        y,
+      };
+    });
+  }, [filteredScored]);
+
+  const selectedPoint = points.find((point) => point.id === selectedPointId) || null;
+  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const bounds = points.length > 0 ? chartBounds(points.map((point) => point.percentage)) : null;
+  const width = 720;
+  const height = 180;
+  const padding = 30;
+  const baselineY = height - padding;
+  const referenceY = bounds
+    ? padding + (bounds.maxPercentage - 100) * ((height - padding * 2) / bounds.range)
+    : baselineY;
+
+  function openStats() {
+    router.push("/stats");
+  }
+
+  function handlePointClick(point: TrendPoint) {
+    if (selectedPointId === point.id) {
+      router.push(`/sessions/${point.id}`);
+      return;
+    }
+    setSelectedPointId(point.id);
+  }
+
+  return (
+    <section className="card dashboardTrendCard" aria-labelledby="trend-heading" onClick={openStats} role="link" tabIndex={0} onKeyDown={(event) => {
+      if (event.key === "Enter") openStats();
+    }}>
+      <div className="sectionHeader dashboardTrendHeader">
+        <div>
+          <p className="eyebrow">Stats shortcut</p>
+          <h2 id="trend-heading">Performance trend</h2>
+          <p className="small muted trendHint">Performance vs winning score over time. Tap the card for Stats.</p>
+        </div>
+        <span className="pill"><strong>{filteredScored.length}</strong> shown</span>
+      </div>
+      <div className="periodControls" onClick={(event) => event.stopPropagation()}>
+        {(["month", "year", "all", "custom"] as ChartPeriod[]).map((option) => (
+          <button key={option} type="button" className={`periodButton ${period === option ? "activePeriod" : ""}`} onClick={() => setPeriod(option)}>
+            {option === "month" ? "Last month" : option === "year" ? "Last year" : option === "all" ? "All" : "Custom"}
+          </button>
+        ))}
+      </div>
+      {period === "custom" && (
+        <div className="customPeriodControls" onClick={(event) => event.stopPropagation()}>
+          <label>
+            From
+            <input type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} />
+          </label>
+          <label>
+            To
+            <input type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} />
+          </label>
+        </div>
+      )}
+      {/* Future: add year-over-year comparison. */}
+      {points.length === 0 ? (
+        <div className="emptyState compactEmptyState" onClick={(event) => event.stopPropagation()}>
+          Add or import results to see your performance trend.
+        </div>
+      ) : (
+        <div className="dashboardChartWrap">
+          <svg className="performanceChart dashboardPerformanceChart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+            <line x1={padding} x2={width - padding} y1={referenceY} y2={referenceY} className="chartReference" />
+            <text x={padding} y={Math.max(referenceY - 8, 14)} className="chartText">100%</text>
+            <line x1={padding} x2={padding} y1={padding} y2={baselineY} className="chartAxis" />
+            <line x1={padding} x2={width - padding} y1={baselineY} y2={baselineY} className="chartAxis" />
+            <path d={path} className="chartLine" />
+            {points.map((point) => (
+              <g key={point.id} className="chartPointLink" role="button" tabIndex={0} aria-label={`Preview ${point.name}`} onClick={(event) => {
+                event.stopPropagation();
+                handlePointClick(point);
+              }} onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  handlePointClick(point);
+                }
+              }}>
+                <circle cx={point.x} cy={point.y} r="14" className="chartPointHitArea" />
+                <circle cx={point.x} cy={point.y} r="5" className={selectedPointId === point.id ? "chartPoint selectedChartPoint" : "chartPoint"} />
+              </g>
+            ))}
+          </svg>
+          {selectedPoint && (
+            <div className="chartPreview" onClick={(event) => event.stopPropagation()}>
+              <strong>{selectedPoint.name}</strong>
+              <span>{formatDate(selectedPoint.date)}</span>
+              <span>{selectedPoint.score} / winning {selectedPoint.winningScore}</span>
+              <span>{selectedPoint.percentage.toFixed(1)}% vs winner</span>
+              <small>Tap point again to open.</small>
+            </div>
+          )}
+          <div className="chartLegend dashboardChartLegend">
+            <span>Oldest {formatDate(points[0].date)}</span>
+            <span>Newest {formatDate(points[points.length - 1].date)}</span>
+            <span>Entries without winning score skipped</span>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -214,6 +432,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [showAllResults, setShowAllResults] = useState(false);
+  const [showAllTraining, setShowAllTraining] = useState(false);
 
   useEffect(() => {
     load();
@@ -280,25 +500,19 @@ export default function DashboardPage() {
           await Promise.all([
             supabase
               .from("session_courses")
-              .select(
-                "session_id,course_number,fitasc_scheme,shooter_number,start_plate",
-              )
+              .select("session_id,course_number,fitasc_scheme,shooter_number,start_plate")
               .in("session_id", sessionIds)
               .order("course_number")
               .returns<ExportCourseRow[]>(),
             supabase
               .from("misses")
-              .select(
-                "session_id,course_number,plate,target_number,target_label,target_type,base_presentation,actual_presentation,presented_pair_label,shooting_order_label,is_reversed_order,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at",
-              )
+              .select("session_id,course_number,plate,target_number,target_label,target_type,base_presentation,actual_presentation,presented_pair_label,shooting_order_label,is_reversed_order,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at")
               .in("session_id", sessionIds)
               .order("created_at")
               .returns<ExportMissRow[]>(),
             supabase
               .from("session_target_definitions")
-              .select(
-                "session_id,course_number,machine,target_type,direction,speed,distance,difficulty,notes",
-              )
+              .select("session_id,course_number,machine,target_type,direction,speed,distance,difficulty,notes")
               .in("session_id", sessionIds)
               .order("course_number")
               .returns<ExportTargetDefinitionRow[]>(),
@@ -313,8 +527,7 @@ export default function DashboardPage() {
         exportTargetDefinitions = definitionsResult.data || [];
       }
 
-      const { exportFileName, exportUserDataToExcel } =
-        await import("@/lib/export/exportUserData");
+      const { exportFileName, exportUserDataToExcel } = await import("@/lib/export/exportUserData");
       exportUserDataToExcel(
         {
           sessions: exportSessions,
@@ -326,9 +539,7 @@ export default function DashboardPage() {
       );
     } catch (error) {
       setExportError(
-        error instanceof Error
-          ? error.message
-          : "Could not export your data. Please try again.",
+        error instanceof Error ? error.message : "Could not export your data. Please try again.",
       );
     } finally {
       setExporting(false);
@@ -340,137 +551,118 @@ export default function DashboardPage() {
     router.push("/login");
   }
 
-  const groups = useMemo<SessionGroup[]>(() => {
-    const sortedSessions = sessions.slice().sort(sortNewestFirst);
-    const competitions = sortedSessions.filter(
-      (session) =>
-        session.session_type === "Competition" &&
-        !isResultOnly(session, missCounts),
-    );
-    const training = sortedSessions.filter(
-      (session) =>
-        session.session_type !== "Competition" &&
-        !isResultOnly(session, missCounts),
-    );
-    const resultOnly = sortedSessions.filter((session) =>
-      isResultOnly(session, missCounts),
-    );
-    return [
-      {
-        title: "Competitions",
-        description:
-          "Competition shooting logs with courses, misses or scoring context.",
-        sessions: competitions,
-      },
-      {
-        title: "Result only",
-        description:
-          "Result only score entries without logged courses or misses.",
-        sessions: resultOnly,
-      },
-      {
-        title: "Training",
-        description:
-          "Training shooting logs for reviewing missed-target patterns.",
-        sessions: training,
-      },
-    ].filter((group) => group.sessions.length > 0);
-  }, [sessions, missCounts]);
+  const results = useMemo(() => sessions.filter(isResultSession).sort(sortNewestFirst), [sessions]);
+  const training = useMemo(() => sessions.filter(isTrainingSession).sort(sortNewestFirst), [sessions]);
+  const visibleResults = showAllResults ? results : results.slice(0, 3);
+  const visibleTraining = showAllTraining ? training : training.slice(0, 3);
 
   return (
-    <main>
-      <div className="heroCard dashboardHero">
-        <p className="eyebrow">Shooter workspace</p>
-        <h2>Dashboard</h2>
-        <p className="dashboardHeroCopy">
-          Create shooting logs, add result-only entries, and review your
-          performance trends.
-        </p>
+    <main className="dashboardMain">
+      <div className="heroCard dashboardHero polishedDashboardHero">
+        <div>
+          <p className="eyebrow">Shooter workspace</p>
+          <h2>Dashboard</h2>
+          <p className="dashboardHeroCopy">Log a new session or add a competition score in seconds.</p>
+          {/* Future: replace current square logo mark with a small orange clay target icon. */}
+        </div>
         <div className="dashboardPrimaryActions">
           <Link href="/sessions/new" className="dashboardActionCard primaryAction">
             <span>New shooting log</span>
-            <small>Log misses and analyze target patterns.</small>
+            <small>Track misses and training patterns.</small>
           </Link>
           <Link href="/results/new" className="dashboardActionCard secondaryAction">
             <span>Add result only</span>
-            <small>Track score vs winning score without logging misses.</small>
+            <small>Save score vs winning score.</small>
           </Link>
         </div>
       </div>
 
-      <section className="card moreActionsCard" aria-labelledby="more-actions-heading">
+      <PerformanceTrendCard sessions={sessions} missCounts={missCounts} />
+
+      <section className="card dashboardSectionCard" aria-labelledby="results-heading">
+        <div className="sectionHeader listSectionHeader">
+          <div>
+            <p className="eyebrow">Competitions and scores</p>
+            <h2 id="results-heading">Results</h2>
+          </div>
+          {!loading && <span className="countPill">{results.length}</span>}
+        </div>
+        {loading ? (
+          <p>Loading...</p>
+        ) : results.length === 0 ? (
+          <div className="emptyState compactEmptyState">
+            <p>Import from Leirdue.net or add a result to start tracking performance.</p>
+            <div className="btns compactEmptyActions">
+              <Link href="/import/leirdue" className="button smallButton">Import from Leirdue.net</Link>
+              <Link href="/results/new" className="button secondary smallButton">Add result only</Link>
+            </div>
+          </div>
+        ) : (
+          <>
+            {visibleResults.map((session) => (
+              <ResultCard key={session.id} session={session} missCounts={missCounts} />
+            ))}
+            {results.length > 3 && (
+              <button type="button" className="button secondary showMoreButton" onClick={() => setShowAllResults((value) => !value)}>
+                {showAllResults ? "Show less" : "Show more results"}
+              </button>
+            )}
+          </>
+        )}
+      </section>
+
+      <section className="card dashboardSectionCard" aria-labelledby="training-heading">
+        <div className="sectionHeader listSectionHeader">
+          <div>
+            <p className="eyebrow">Practice logs</p>
+            <h2 id="training-heading">Training</h2>
+          </div>
+          {!loading && <span className="countPill">{training.length}</span>}
+        </div>
+        {loading ? (
+          <p>Loading...</p>
+        ) : training.length === 0 ? (
+          <div className="emptyState compactEmptyState">
+            <p>Create a shooting log to start tracking misses and training patterns.</p>
+            <div className="btns compactEmptyActions">
+              <Link href="/sessions/new" className="button smallButton">New shooting log</Link>
+            </div>
+          </div>
+        ) : (
+          <>
+            {visibleTraining.map((session) => (
+              <TrainingCard key={session.id} session={session} missCounts={missCounts} />
+            ))}
+            {training.length > 3 && (
+              <button type="button" className="button secondary showMoreButton" onClick={() => setShowAllTraining((value) => !value)}>
+                {showAllTraining ? "Show less" : "Show more training"}
+              </button>
+            )}
+          </>
+        )}
+      </section>
+
+      <section className="card moreActionsCard subduedActionsCard" aria-labelledby="more-actions-heading">
         <div className="sectionHeader compactSectionHeader">
           <div>
             <p className="eyebrow">Secondary tools</p>
             <h2 id="more-actions-heading">More actions</h2>
           </div>
         </div>
-        <div className="moreActionsGrid">
+        <div className="moreActionsGrid subduedActionsGrid">
           <Link href="/import/leirdue" className="compactAction">
             <span>Import from Leirdue.net</span>
-            <small>Find old competition results and review before saving.</small>
+            <small>Find old competition results.</small>
           </Link>
-          <Link href="/fitasc" className="compactAction">
-            <span>FITASC schemes</span>
-          </Link>
-          <button
-            className="compactAction"
-            onClick={exportMyData}
-            disabled={exporting || loading}
-          >
+          <Link href="/fitasc" className="compactAction"><span>FITASC schemes</span></Link>
+          <button className="compactAction" onClick={exportMyData} disabled={exporting || loading}>
             <span>{exporting ? "Exporting..." : "Export my data"}</span>
-            <small>Download your data as an Excel file.</small>
           </button>
-          <button className="compactAction" onClick={load}>
-            <span>Refresh</span>
-          </button>
-          <button className="compactAction dangerAction" onClick={logout}>
-            <span>Logout</span>
-          </button>
+          <button className="compactAction" onClick={load}><span>Refresh</span></button>
+          <button className="compactAction dangerAction" onClick={logout}><span>Logout</span></button>
         </div>
         {exportError && <div className="error">{exportError}</div>}
       </section>
-
-      <div className="card">
-        <div className="sectionHeader">
-          <div>
-            <p className="eyebrow">Shooting log</p>
-            <h2>Shooting logs and results</h2>
-          </div>
-          {!loading && sessions.length > 0 && (
-            <span className="pill">
-              <strong>{sessions.length}</strong> total
-            </span>
-          )}
-        </div>
-        {loading ? (
-          <p>Loading...</p>
-        ) : sessions.length === 0 ? (
-          <div className="emptyState">
-            No shooting logs or result only entries yet. Create your first
-            training or competition log to start tracking.
-          </div>
-        ) : (
-          groups.map((group) => (
-            <section className="sessionGroup" key={group.title}>
-              <div className="groupHeader">
-                <div>
-                  <h3>{group.title}</h3>
-                  <p className="small muted">{group.description}</p>
-                </div>
-                <span className="countPill">{group.sessions.length}</span>
-              </div>
-              {group.sessions.map((session) => (
-                <SessionCard
-                  key={session.id}
-                  session={session}
-                  missCounts={missCounts}
-                />
-              ))}
-            </section>
-          ))
-        )}
-      </div>
     </main>
   );
 }
