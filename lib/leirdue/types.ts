@@ -56,6 +56,11 @@ export type LeirdueSearchDebug = {
   selectedYearEventIdsCount: number;
   selectedDisciplineFilters: string[];
   eventsFoundBeforeFiltering: number;
+  selectedYearEventLinksBeforeFilter: number;
+  hardSkippedUnselectedDiscipline: number;
+  hardSkippedRankingOrControl: number;
+  genericFallbackEventsAdded: number;
+  selectedYearEventLinksAfterSoftFilter: number;
   relevantEventsInspected: number;
   timedOutAtPhase: "overview" | "eventMenu" | "listeId" | "parsing" | null;
   eventLinksSkippedByReason: Record<"outsideYear" | "future" | "ranking" | "irrelevantDiscipline" | "duplicate" | "limit", number>;

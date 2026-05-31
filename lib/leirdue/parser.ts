@@ -96,6 +96,11 @@ function emptyDebug(): LeirdueSearchDebug {
     selectedYearEventIdsCount: 0,
     selectedDisciplineFilters: [],
     eventsFoundBeforeFiltering: 0,
+    selectedYearEventLinksBeforeFilter: 0,
+    hardSkippedUnselectedDiscipline: 0,
+    hardSkippedRankingOrControl: 0,
+    genericFallbackEventsAdded: 0,
+    selectedYearEventLinksAfterSoftFilter: 0,
     relevantEventsInspected: 0,
     timedOutAtPhase: null,
     eventLinksSkippedByReason: { outsideYear: 0, future: 0, ranking: 0, irrelevantDiscipline: 0, duplicate: 0, limit: 0 },
@@ -1097,13 +1102,14 @@ function selectedDisciplineMatches(text: string, input: LeirdueSearchInput) {
 function eventPriorityDetail(meta: EventLinkMeta, input: LeirdueSearchInput) {
   const text = normalizeText(meta.titleText);
   const reasons: string[] = [];
-  let score = 0;
+  let score = 20;
+  reasons.push("generic selected-year result event");
+  if (selectedDisciplineMatches(meta.titleText, input)) { score += 100; reasons.push("exact selected discipline match"); }
   if (/(compak|sporting|kompakt|kompaktsti|compact|leirduesti)/.test(text)) { score += 80; reasons.push("selected shotgun discipline words"); }
   if (/(blaser|xxl|khan|ranastien)/.test(text)) { score += 35; reasons.push("known relevant cup/event term"); }
   if (/\b(50\s*skudd|50|75|100|200)\b/.test(text)) { score += 15; reasons.push("target count in title"); }
-  if (selectedDisciplineMatches(meta.titleText, input)) { score += 35; reasons.push("matches selected disciplines"); }
   if (/\bcup\b/.test(text) && !/(cup sammenlagt|sammenlagt cup|ranking)/.test(text)) { score += 10; reasons.push("direct cup event"); }
-  if ((text.includes("skeet") && !input.disciplines.some((d) => normalizeText(d).includes("skeet"))) || (text.includes("trap") && !input.disciplines.some((d) => normalizeText(d).includes("trap")))) { score -= 80; reasons.push("unselected trap/skeet discipline"); }
+  if (isClearlyUnselectedDisciplineEvent(meta, input)) { score -= 80; reasons.push("clear unselected discipline"); }
   if (text.includes("ranking") || text.includes("klasseføring") || text.includes("klasseforing") || text.includes("cup sammenlagt") || text.includes("sammenlagt cup")) { score -= 150; reasons.push("ranking/classification/cup summary"); }
   if (text.includes("trening") || text.includes("training") || text.includes("påmelding") || text.includes("pamelding")) { score -= 150; reasons.push("training/registration"); }
   if (isFutureDate(meta.date)) { score -= 150; reasons.push("future"); }
@@ -1121,6 +1127,22 @@ function isRelevantSelectedDisciplineEvent(meta: EventLinkMeta, input: LeirdueSe
   if (/\bxxl\b/.test(text) && /(compak|sporting|kompakt|leirduesti|50|75|100|200)/.test(text)) return true;
   if (/\bcup\b/.test(text) && /(compak|sporting|kompakt|leirduesti)/.test(text) && !/(cup sammenlagt|sammenlagt cup|ranking)/.test(text)) return true;
   return false;
+}
+
+function isClearlyUnselectedDisciplineEvent(meta: EventLinkMeta, input: LeirdueSearchInput) {
+  const text = normalizeText(meta.titleText);
+  if (selectedDisciplineMatches(meta.titleText, input)) return false;
+  const selected = input.disciplines.map((discipline) => normalizeText(discipline));
+  const selectedSkeet = selected.some((discipline) => discipline.includes("skeet"));
+  const selectedTrap = selected.some((discipline) => discipline.includes("trap"));
+  if (!selectedSkeet && /\bskeet\b/.test(text)) return true;
+  if (!selectedTrap && /(ol[-\s]?trap|nordisk\s+trap|jegertrap|\btrap\b|\bnt\b)/.test(text)) return true;
+  return false;
+}
+
+function isHardRankingOrControlEvent(meta: EventLinkMeta) {
+  const text = normalizeText(meta.titleText);
+  return text.includes("ranking") || text.includes("klasseføring") || text.includes("klasseforing") || text.includes("trening") || text.includes("training") || text.includes("påmelding") || text.includes("pamelding") || text.includes("cup sammenlagt") || text.includes("sammenlagt cup");
 }
 
 function listeIdPriorityDetail(link: Link, input: LeirdueSearchInput) {
@@ -1255,11 +1277,30 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   }
 
   debug.eventsFoundBeforeFiltering = eventLinks.size;
-  const relevantEventLinks = Array.from(eventLinks.values()).filter((event) => {
-    const relevant = isRelevantSelectedDisciplineEvent(event, input);
-    if (!relevant) debug.eventLinksSkippedByReason.irrelevantDiscipline += 1;
-    return relevant;
-  });
+  debug.selectedYearEventLinksBeforeFilter = eventLinks.size;
+  const strictRelevantEvents: EventLinkMeta[] = [];
+  const genericFallbackCandidates: EventLinkMeta[] = [];
+  for (const event of eventLinks.values()) {
+    if (isHardRankingOrControlEvent(event)) {
+      debug.hardSkippedRankingOrControl += 1;
+      debug.eventLinksSkippedByReason.ranking += 1;
+      continue;
+    }
+    if (isClearlyUnselectedDisciplineEvent(event, input)) {
+      debug.hardSkippedUnselectedDiscipline += 1;
+      debug.eventLinksSkippedByReason.irrelevantDiscipline += 1;
+      continue;
+    }
+    if (isRelevantSelectedDisciplineEvent(event, input)) strictRelevantEvents.push(event);
+    else genericFallbackCandidates.push(event);
+  }
+  const fallbackLimit = strictRelevantEvents.length < 40 ? 80 : 0;
+  const fallbackEvents = genericFallbackCandidates
+    .sort((a, b) => (b.date || "0000-00-00").localeCompare(a.date || "0000-00-00") || a.titleText.localeCompare(b.titleText))
+    .slice(0, fallbackLimit);
+  debug.genericFallbackEventsAdded = fallbackEvents.length;
+  const relevantEventLinks = [...strictRelevantEvents, ...fallbackEvents];
+  debug.selectedYearEventLinksAfterSoftFilter = relevantEventLinks.length;
   debug.selectedYearEventLinks = relevantEventLinks.map((event) => ({ eventId: event.eventId, url: event.url, titleText: event.titleText, date: event.date, parsedYear: event.parsedYear }));
   debug.selectedYearEventLinksCount = debug.selectedYearEventLinks.length;
   debug.selectedYearEventIdsCount = relevantEventLinks.length;
