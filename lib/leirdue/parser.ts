@@ -1,5 +1,5 @@
 import { COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI } from "@/lib/disciplines";
-import type { LeirdueCandidate, LeirdueCategory, LeirdueConfidence, LeirdueSearchDebug, LeirdueSearchResult, LeirdueValidationChecklistItem } from "@/lib/leirdue/types";
+import type { LeirdueCandidate, LeirdueCategory, LeirdueConfidence, LeirdueDebugParseInput, LeirdueDebugParseResult, LeirdueSearchDebug, LeirdueSearchResult, LeirdueValidationChecklistItem } from "@/lib/leirdue/types";
 
 const LEIRDUE_BASE_URL = "https://www.leirdue.net/";
 const FETCH_ERROR_MESSAGE = "Could not fetch Leirdue results right now.";
@@ -24,43 +24,6 @@ export type LeirdueSearchInput = {
   shooterName: string;
   year: number;
   disciplines: string[];
-};
-
-export type LeirdueDebugParseInput = {
-  url: string;
-  shooterName: string;
-  year?: number | null;
-  selectedDisciplines?: string[];
-};
-
-export type LeirdueDebugParseResult = {
-  url: string;
-  status: number | null;
-  ok: boolean;
-  error: string | null;
-  pageTitle: string | null;
-  eventTitle: string | null;
-  listTitle: string | null;
-  normalizedShooterName: string;
-  shooterFound: boolean;
-  rawSnippet: string | null;
-  parsedRow: string | null;
-  parsedNumbers: number[];
-  parsedSeriesScores: number[];
-  ownScore: number | null;
-  totalTargets: number | null;
-  winningScore: number | null;
-  discipline: string | null;
-  shootingGround: string | null;
-  date: string | null;
-  category: LeirdueCategory | null;
-  confidence: LeirdueConfidence | null;
-  importRecommended: boolean;
-  parserNotes: string[];
-  firstUsefulSnippet: string | null;
-  candidateRows: { text: string; numbers: number[]; total: number | null; seriesScores: number[]; containsShooter: boolean }[];
-  topCompetitorTotals: { row: string; total: number; numbers: number[] }[];
-  candidate: LeirdueCandidate | null;
 };
 
 type Link = { href: string; text: string; source?: "anchor" | "raw" | "validation" };
@@ -1943,7 +1906,7 @@ function debugCandidateRows(lines: string[], html: string, shooterName: string, 
     .sort((a, b) => b.total - a.total)
     .slice(0, 10)
     .map((row) => ({ row: row.text, total: row.total, numbers: row.numbers }));
-  return { candidateRows: candidateRows.slice(0, 50), topCompetitorTotals };
+  return { candidateRows, topCompetitorTotals };
 }
 
 export async function debugParseLeirdueResultUrl(input: LeirdueDebugParseInput): Promise<LeirdueDebugParseResult> {

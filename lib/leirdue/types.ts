@@ -18,6 +18,43 @@ export type LeirdueCandidate = {
   alreadyImported?: boolean;
 };
 
+export type LeirdueDebugParseInput = {
+  url: string;
+  shooterName: string;
+  year?: number | null;
+  selectedDisciplines?: string[];
+};
+
+export type LeirdueDebugParseResult = {
+  url: string;
+  status: number | null;
+  ok: boolean;
+  error: string | null;
+  pageTitle: string | null;
+  eventTitle: string | null;
+  listTitle: string | null;
+  normalizedShooterName: string;
+  shooterFound: boolean;
+  rawSnippet: string | null;
+  parsedRow: string | null;
+  parsedNumbers: number[];
+  parsedSeriesScores: number[];
+  ownScore: number | null;
+  totalTargets: number | null;
+  winningScore: number | null;
+  discipline: string | null;
+  shootingGround: string | null;
+  date: string | null;
+  category: LeirdueCategory | null;
+  confidence: LeirdueConfidence | null;
+  importRecommended: boolean;
+  parserNotes: string[];
+  firstUsefulSnippet: string | null;
+  candidateRows: { text: string; numbers: number[]; total: number | null; seriesScores: number[]; containsShooter: boolean }[];
+  topCompetitorTotals: { row: string; total: number; numbers: number[] }[];
+  candidate: LeirdueCandidate | null;
+};
+
 
 export type LeirdueValidationChecklistItem = {
   label: string;

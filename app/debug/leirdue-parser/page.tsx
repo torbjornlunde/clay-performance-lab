@@ -2,37 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
-import type { LeirdueCandidate, LeirdueCategory, LeirdueConfidence } from "@/lib/leirdue/types";
-
-type DebugParseResult = {
-  url: string;
-  status: number | null;
-  ok: boolean;
-  error: string | null;
-  pageTitle: string | null;
-  eventTitle: string | null;
-  listTitle: string | null;
-  normalizedShooterName: string;
-  shooterFound: boolean;
-  rawSnippet: string | null;
-  parsedRow: string | null;
-  parsedNumbers: number[];
-  parsedSeriesScores: number[];
-  ownScore: number | null;
-  totalTargets: number | null;
-  winningScore: number | null;
-  discipline: string | null;
-  shootingGround: string | null;
-  date: string | null;
-  category: LeirdueCategory | null;
-  confidence: LeirdueConfidence | null;
-  importRecommended: boolean;
-  parserNotes: string[];
-  firstUsefulSnippet: string | null;
-  candidateRows: { text: string; numbers: number[]; total: number | null; seriesScores: number[]; containsShooter: boolean }[];
-  topCompetitorTotals: { row: string; total: number; numbers: number[] }[];
-  candidate: LeirdueCandidate | null;
-};
+import type { LeirdueCandidate, LeirdueDebugParseResult } from "@/lib/leirdue/types";
 
 const EXAMPLE_URLS = [
   {
@@ -87,7 +57,7 @@ export default function LeirdueParserDebugPage() {
   const [shooterName, setShooterName] = useState("Torbjørn Lunde");
   const [year, setYear] = useState("2025");
   const [disciplines, setDisciplines] = useState<string[]>(DEFAULT_DISCIPLINES);
-  const [result, setResult] = useState<DebugParseResult | null>(null);
+  const [result, setResult] = useState<LeirdueDebugParseResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -108,7 +78,7 @@ export default function LeirdueParserDebugPage() {
       });
       const payload = await response.json();
       if (!response.ok && payload.error && !payload.url) throw new Error(payload.error);
-      setResult(payload as DebugParseResult);
+      setResult(payload as LeirdueDebugParseResult);
       if (!response.ok) setError(payload.error || "Leirdue debug parse failed.");
     } catch (parseError) {
       setError(parseError instanceof Error ? parseError.message : "Leirdue debug parse failed.");
