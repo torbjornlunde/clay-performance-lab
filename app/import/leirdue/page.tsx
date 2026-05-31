@@ -60,6 +60,7 @@ function CandidateCard({ candidate, onChange }: { candidate: EditableCandidate; 
           <span>{candidate.selected ? "Import" : "Skip"}</span>
         </label>
         <div className="candidateBadges">
+          <span className={`badge ${candidate.category === "recommended" ? "badgeGreen" : candidate.category === "review" ? "badgeGold" : "badgeBlue"}`}>{candidate.category}</span>
           <span className={`badge ${candidate.confidence === "high" ? "badgeGreen" : candidate.confidence === "medium" ? "badgeGold" : "badgeBlue"}`}>{candidate.confidence} confidence</span>
           {candidate.alreadyImported || candidate.saveStatus === "duplicate" ? <span className="badge badgeBlue">Already imported</span> : null}
           {candidate.saveStatus === "saved" ? <span className="badge badgeGreen">Saved</span> : null}
@@ -182,7 +183,8 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
       <p className="small muted">Selected-year links found: {debug.selectedYearLinksFound.slice(0, 15).map((item) => `${item.text || "link"} -> ${item.url}`).join("; ") || "none"}</p>
       {debug.overviewDiagnostics.length > 0 ? <p className="small muted">Overview diagnostics: {debug.overviewDiagnostics.map((item) => `${item.url} selectedYear=${item.containsSelectedYear ? "yes" : "no"} selectedYearLinks=${item.selectedYearLinkCount}: ${item.snippet.slice(0, 220)}`).join(" | ")}</p> : null}
       {debug.noSelectedYearEventsReason ? <p className="small muted">No selected-year events reason: {debug.noSelectedYearEventsReason}</p> : null}
-      <p className="small muted">Selected-year event links: {debug.selectedYearEventLinksCount}; skipped: {JSON.stringify(debug.eventLinksSkippedByReason)}</p>
+      <p className="small muted">Selected discipline filters: {debug.selectedDisciplineFilters.join(", ") || "none"}</p>
+      <p className="small muted">Events before filtering: {debug.eventsFoundBeforeFiltering}; relevant inspected: {debug.relevantEventsInspected}; selected-year event links: {debug.selectedYearEventLinksCount}; skipped: {JSON.stringify(debug.eventLinksSkippedByReason)}</p>
       <p className="small muted">Phase: {debug.phaseReached || "unknown"}; candidates before timeout: {debug.candidatesFoundBeforeTimeout}; high-priority liste_id pages fetched: {debug.highPriorityListeIdPagesFetched}; low-priority liste_id skipped: {debug.lowPriorityListeIdPagesSkipped}</p>
       {debug.prioritizedEventLinks.length > 0 ? <p className="small muted">Top event priorities: {debug.prioritizedEventLinks.slice(0, 10).map((item) => `${item.eventId} ${item.score}: ${item.title} (${item.reason})`).join(" | ")}</p> : null}
       {debug.prioritizedListeIdLinks.length > 0 ? <p className="small muted">Top liste_id priorities: {debug.prioritizedListeIdLinks.slice(0, 10).map((item) => `${item.score}: ${item.title} (${item.reason})`).join(" | ")}</p> : null}

@@ -44,7 +44,7 @@ type CrawlState = { deadlineAt: number };
 
 const SEARCH_TIMEOUT_MS = 25_000;
 const FETCH_TIMEOUT_MS = 8_000;
-const MAX_EVENT_PAGES_INSPECTED = 80;
+const MAX_EVENT_PAGES_INSPECTED = 40;
 const MAX_RESULT_MENU_PAGES_FETCHED = 80;
 const MAX_LISTE_ID_PAGES_FETCHED = 200;
 const MAX_SHOOTER_MATCH_PAGES = 50;
@@ -94,6 +94,9 @@ function emptyDebug(): LeirdueSearchDebug {
     selectedYearEventLinks: [],
     selectedYearEventLinksCount: 0,
     selectedYearEventIdsCount: 0,
+    selectedDisciplineFilters: [],
+    eventsFoundBeforeFiltering: 0,
+    relevantEventsInspected: 0,
     timedOutAtPhase: null,
     eventLinksSkippedByReason: { outsideYear: 0, future: 0, ranking: 0, irrelevantDiscipline: 0, duplicate: 0, limit: 0 },
     resultMenuDebug: [],
@@ -1083,7 +1086,7 @@ function selectedDisciplineMatches(text: string, input: LeirdueSearchInput) {
     const d = normalizeText(discipline);
     if (d.includes("compak")) return normalized.includes("compak") || normalized.includes("compact");
     if (d.includes("kompakt")) return normalized.includes("kompakt") || normalized.includes("compact") || normalized.includes("kompaktsti");
-    if (d.includes("leirduesti")) return normalized.includes("leirduesti") || normalized.includes("sti");
+    if (d.includes("leirduesti")) return normalized.includes("leirduesti") || normalized.includes("kompaktsti") || /\bsti\b/.test(normalized);
     if (d.includes("sporting")) return normalized.includes("sporting");
     if (d.includes("skeet")) return normalized.includes("skeet");
     if (d.includes("trap")) return normalized.includes("trap");
@@ -1109,6 +1112,15 @@ function eventPriorityDetail(meta: EventLinkMeta, input: LeirdueSearchInput) {
 
 function eventPriority(meta: EventLinkMeta, input: LeirdueSearchInput) {
   return eventPriorityDetail(meta, input).score;
+}
+
+function isRelevantSelectedDisciplineEvent(meta: EventLinkMeta, input: LeirdueSearchInput) {
+  const text = normalizeText(meta.titleText);
+  if (selectedDisciplineMatches(meta.titleText, input)) return true;
+  if (/(blaser|khan|ranastien|nyttår|nyttar)/.test(text)) return true;
+  if (/\bxxl\b/.test(text) && /(compak|sporting|kompakt|leirduesti|50|75|100|200)/.test(text)) return true;
+  if (/\bcup\b/.test(text) && /(compak|sporting|kompakt|leirduesti)/.test(text) && !/(cup sammenlagt|sammenlagt cup|ranking)/.test(text)) return true;
+  return false;
 }
 
 function listeIdPriorityDetail(link: Link, input: LeirdueSearchInput) {
@@ -1180,7 +1192,10 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   ];
   debug.selectedYear = input.year;
   debug.normalizedSearchName = normalizeName(input.shooterName);
+  debug.selectedDisciplineFilters = input.disciplines;
   debug.guessedYearOverviewUrlsTried = guessedUrls;
+  // TODO: Future full-history import should run year-by-year as a background/batch job, not one live request.
+  // TODO: Future UI could allow region/area filtering (Vestlandet, Østlandet, etc.) to reduce Leirdue search scope.
 
   const eventLinks = new Map<string, EventLinkMeta>();
   const listeIdLinks = new Map<string, Link>();
@@ -1239,23 +1254,29 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     }
   }
 
-  debug.selectedYearEventLinks = Array.from(eventLinks.values()).map((event) => ({ eventId: event.eventId, url: event.url, titleText: event.titleText, date: event.date, parsedYear: event.parsedYear }));
+  debug.eventsFoundBeforeFiltering = eventLinks.size;
+  const relevantEventLinks = Array.from(eventLinks.values()).filter((event) => {
+    const relevant = isRelevantSelectedDisciplineEvent(event, input);
+    if (!relevant) debug.eventLinksSkippedByReason.irrelevantDiscipline += 1;
+    return relevant;
+  });
+  debug.selectedYearEventLinks = relevantEventLinks.map((event) => ({ eventId: event.eventId, url: event.url, titleText: event.titleText, date: event.date, parsedYear: event.parsedYear }));
   debug.selectedYearEventLinksCount = debug.selectedYearEventLinks.length;
-  debug.selectedYearEventIdsCount = eventLinks.size;
-  debug.eventLinksFound = eventLinks.size;
-  debug.eventIdsFound = Array.from(eventLinks.keys());
+  debug.selectedYearEventIdsCount = relevantEventLinks.length;
+  debug.eventLinksFound = relevantEventLinks.length;
+  debug.eventIdsFound = relevantEventLinks.map((event) => event.eventId);
 
-  const allRankedEvents = Array.from(eventLinks.values())
+  const allRankedEvents = relevantEventLinks
     .sort((a, b) => eventPriority(b, input) - eventPriority(a, input));
   debug.prioritizedEventLinks = allRankedEvents.slice(0, 20).map((event) => {
     const priority = eventPriorityDetail(event, input);
     return { eventId: event.eventId, title: event.titleText, score: priority.score, reason: priority.reason };
   });
   const rankedEvents = allRankedEvents.slice(0, MAX_EVENT_PAGES_INSPECTED);
-  if (eventLinks.size > rankedEvents.length) {
-    markLimitReached(debug, "max selected-year event links");
-    debug.eventLinksSkippedByReason.limit += eventLinks.size - rankedEvents.length;
-    debug.rejectedReasons.push(`${eventLinks.size} selected-year event links found, ${rankedEvents.length} inspected before timeout/limit.`);
+  if (relevantEventLinks.length > rankedEvents.length) {
+    markLimitReached(debug, "max relevant selected-year event links");
+    debug.eventLinksSkippedByReason.limit += relevantEventLinks.length - rankedEvents.length;
+    debug.rejectedReasons.push(`${relevantEventLinks.length} relevant selected-year event links found, ${rankedEvents.length} inspected before timeout/limit.`);
   }
 
   debug.phaseReached = "phase1";
@@ -1272,6 +1293,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     incrementCounter(debug.eventYearsFound, event.parsedYear);
     incrementCounter(debug.eventYearsInspected, event.parsedYear);
     debug.completedEventsInspected += 1;
+    debug.relevantEventsInspected += 1;
 
     const resultMenuUrl = eventResultMenuUrl(event.eventId);
     const beforeUrls = new Set(listeIdLinks.keys());
@@ -1295,7 +1317,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   }
   if (debug.completedEventsInspected === 0) {
     debug.noSelectedYearEventsReason = eventLinks.size > 0
-      ? `${eventLinks.size} selected-year event links found, 0 inspected before timeout/limit.`
+      ? `${relevantEventLinks.length} relevant selected-year event links found (${debug.eventsFoundBeforeFiltering} before filtering), 0 inspected before timeout/limit.`
       : `No Leirdue year navigation/result overview for ${input.year} was found.`;
     debug.rejectedReasons.push(debug.noSelectedYearEventsReason);
   }
