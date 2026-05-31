@@ -91,15 +91,15 @@ function CandidateCard({ candidate, onChange }: { candidate: EditableCandidate; 
       <div className="row threeColumnRow">
         <div>
           <label>Own score</label>
-          <input type="number" min="0" inputMode="numeric" value={candidate.ownScore ?? ""} onChange={(event) => update("ownScore", Number(event.target.value))} />
+          <input type="number" min="0" inputMode="numeric" value={candidate.ownScore ?? ""} onChange={(event) => update("ownScore", event.target.value === "" ? null : Number(event.target.value))} />
         </div>
         <div>
           <label>Total targets</label>
-          <input type="number" min="1" inputMode="numeric" value={candidate.totalTargets ?? ""} onChange={(event) => update("totalTargets", Number(event.target.value))} />
+          <input type="number" min="1" inputMode="numeric" value={candidate.totalTargets ?? ""} onChange={(event) => update("totalTargets", event.target.value === "" ? null : Number(event.target.value))} />
         </div>
         <div>
           <label>Winning score</label>
-          <input type="number" min="1" inputMode="numeric" value={candidate.winningScore ?? ""} onChange={(event) => update("winningScore", Number(event.target.value))} />
+          <input type="number" min="1" inputMode="numeric" value={candidate.winningScore ?? ""} onChange={(event) => update("winningScore", event.target.value === "" ? null : Number(event.target.value))} />
         </div>
       </div>
 
@@ -131,6 +131,8 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
     <details className="card" open={candidatesFound === 0}>
       <summary>Debug details</summary>
       <div className="metricsRow">
+        <span className="metricChip"><strong>{debug.selectedYear ?? "?"}</strong> selected year</span>
+        <span className="metricChip"><strong>{debug.normalizedSearchName || "?"}</strong> normalized name</span>
         <span className="metricChip"><strong>{debug.fetchedUrls.length}</strong> pages fetched</span>
         <span className="metricChip"><strong>{debug.eventInfoPagesFetched}</strong> event info pages</span>
         <span className="metricChip"><strong>{debug.eventResultMenuPagesFetched}</strong> result menu pages</span>
@@ -138,6 +140,9 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         <span className="metricChip"><strong>{debug.listeIdLinksFromResultMenus}</strong> from result menus</span>
         <span className="metricChip"><strong>{debug.listeIdPagesFetched}</strong> liste_id pages fetched</span>
         <span className="metricChip"><strong>{debug.listeIdShooterPagesFound}</strong> liste_id shooter pages</span>
+        <span className="metricChip"><strong>{debug.completedEventsInspected}</strong> completed events inspected</span>
+        <span className="metricChip"><strong>{debug.futureEventsSkipped}</strong> future events skipped</span>
+        <span className="metricChip"><strong>{debug.skippedOutsideSelectedYear}</strong> outside-year skipped</span>
         <span className="metricChip"><strong>{debug.candidateRowsCreated}</strong> candidates created</span>
         <span className="metricChip"><strong>{debug.candidateCategoryCounts.recommended}/{debug.candidateCategoryCounts.review}/{debug.candidateCategoryCounts.control}</strong> rec/review/control</span>
         <span className="metricChip"><strong>{debug.candidateConfidenceCounts.high}/{debug.candidateConfidenceCounts.medium}/{debug.candidateConfidenceCounts.low}</strong> high/med/low</span>
@@ -148,6 +153,7 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         <span className="metricChip"><strong>{debug.candidatesWithShootingGround}</strong> shooting ground</span>
         <span className="metricChip"><strong>{debug.recommendedWithShootingGround}</strong> recommended ground</span>
         <span className="metricChip"><strong>{debug.recommendedWithCompleteScore}</strong> recommended complete score</span>
+        <span className="metricChip"><strong>{debug.hiddenControlCandidates}</strong> debug/control hidden from useful sections</span>
       </div>
       {candidatesFound === 0 ? <p className="small muted">No candidates found. Try broader filters or add result manually.</p> : null}
       {recentStatuses.length > 0 ? (
@@ -162,6 +168,12 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
       ) : null}
       {debug.listInspectionLimitReached ? <p className="small muted">Result list inspection limit reached.</p> : null}
       {debug.validationUrlsInspected > 0 ? <p className="small muted">Validation URLs inspected: {debug.validationUrlsInspected}; validation shooter matches: {debug.validationShooterMatches}</p> : null}
+      <p className="small muted">Event overview URLs: {debug.eventOverviewUrls.join("; ") || "none"}</p>
+      <p className="small muted">Event IDs found: {debug.eventIdsFound.slice(0, 40).join(", ") || "none"}</p>
+      <p className="small muted">Event IDs inspected: {debug.eventIdsInspected.slice(0, 40).join(", ") || "none"}</p>
+      <p className="small muted">Event years found: {JSON.stringify(debug.eventYearsFound)}; inspected: {JSON.stringify(debug.eventYearsInspected)}; candidates by year: {JSON.stringify(debug.candidatesByYear)}</p>
+      <p className="small muted">Skipped outside selected year: {debug.eventIdsSkippedOutsideYear.slice(0, 20).join(", ") || "none"}; skipped future: {debug.eventIdsSkippedFuture.slice(0, 20).join(", ") || "none"}</p>
+      {debug.shooterMatchSnippets.length > 0 ? <p className="small muted">Shooter snippets: {debug.shooterMatchSnippets.slice(0, 5).map((item) => `${item.url}: ${item.snippet.slice(0, 220)}`).join(" | ")}</p> : null}
       {debug.resultMenuDiagnostics.length > 0 ? <p className="small muted">Result menu diagnostics: {debug.resultMenuDiagnostics.map((item) => `${item.eventUrl} contains ${Object.entries(item.contains).filter(([, value]) => value).map(([key]) => key).join(", ") || "none"}: ${item.snippet.slice(0, 240)}`).join(" | ")}</p> : null}
 
       {debug.validationChecklist.length > 0 ? (
@@ -183,7 +195,7 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
           <ul className="small muted">
             {debug.candidateDebugRows.slice(0, 20).map((item) => (
               <li key={`${item.url}-${item.date}-${item.ownScore}`}>
-                {item.date || "no date"} — {item.name} — {item.discipline} — {item.shootingGround || "unknown ground"} ({item.shootingGroundSource}) — {item.ownScore ?? "?"}/{item.totalTargets ?? "?"} winner {item.winningScore ?? "?"} — {item.category}/{item.confidence} — {item.importRecommended ? "recommended" : "not checked"} — {item.url} — {item.reason}
+                {item.date || "no date"} — {item.name} — {item.discipline} — {item.shootingGround || "unknown ground"} ({item.shootingGroundSource}) — {item.ownScore ?? "?"}/{item.totalTargets ?? "?"} winner {item.winningScore ?? "?"} — {item.category}/{item.confidence} — {item.importRecommended ? "recommended" : "not checked"} — {item.hiddenFromNormalUi ? "hidden/debug" : "visible"} — {item.url} — {item.reason} — {item.notes.slice(0, 260)}
               </li>
             ))}
           </ul>
@@ -315,7 +327,7 @@ export default function LeirdueImportPage() {
         </div>
 
         <label>Shooter name</label>
-        <input value={shooterName} onChange={(event) => setShooterName(event.target.value)} placeholder="Torbjørn Lunde" required />
+        <input value={shooterName} onChange={(event) => setShooterName(event.target.value)} placeholder="Enter shooter name" required />
 
         <label>Year</label>
         <input value={year} onChange={(event) => setYear(event.target.value)} type="number" min="1990" max={new Date().getFullYear() + 1} required />

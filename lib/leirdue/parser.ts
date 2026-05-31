@@ -41,6 +41,23 @@ type RawCandidate = Omit<LeirdueCandidate, "category" | "confidence" | "importRe
 function emptyDebug(): LeirdueSearchDebug {
   return {
     fetchedUrls: [],
+    selectedYear: null,
+    normalizedSearchName: "",
+    eventOverviewUrls: [],
+    eventIdsFound: [],
+    eventIdsInspected: [],
+    eventDatesParsed: {},
+    eventYearsFound: {},
+    eventYearsInspected: {},
+    candidatesByYear: {},
+    skippedOutsideSelectedYear: 0,
+    eventIdsSkippedOutsideYear: [],
+    eventIdsSkippedFuture: [],
+    completedEventsInspected: 0,
+    futureEventsSkipped: 0,
+    listeIdLinksByEvent: {},
+    shooterMatchSnippets: [],
+    hiddenControlCandidates: 0,
     eventLinksFound: 0,
     resultLinksFound: 0,
     eventPagesFetched: 0,
@@ -77,13 +94,41 @@ function emptyDebug(): LeirdueSearchDebug {
 }
 
 function normalizeText(value: string) {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
+  return decodeEntities(value)
     .toLowerCase()
     .replace(/&nbsp;/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeName(value: string) {
+  return normalizeText(value);
+}
+
+function asciiFoldNorwegian(value: string) {
+  return normalizeText(value)
+    .replace(/æ/g, "ae")
+    .replace(/ø/g, "o")
+    .replace(/å/g, "a");
+}
+
+function pageContainsShooter(text: string, shooterName: string) {
+  const normalizedText = normalizeName(text);
+  const normalizedShooter = normalizeName(shooterName);
+  if (!normalizedShooter) return false;
+  if (normalizedText.includes(normalizedShooter)) return true;
+
+  const foldedText = asciiFoldNorwegian(text);
+  const foldedShooter = asciiFoldNorwegian(shooterName);
+  if (foldedText.includes(foldedShooter)) return true;
+
+  const tokens = normalizedShooter.split(" ").filter(Boolean);
+  if (tokens.length < 2) return false;
+  const first = tokens[0];
+  const last = tokens[tokens.length - 1];
+  const escapedFirst = first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedLast = last.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escapedFirst}\\b[\\s\\S]{0,80}\\b${escapedLast}\\b`).test(normalizedText);
 }
 
 function decodeEntities(value: string) {
@@ -299,6 +344,20 @@ function parseDate(text: string, year: number): string | null {
   return null;
 }
 
+
+function parsedYear(date: string | null) {
+  return date ? Number(date.slice(0, 4)) : null;
+}
+
+function incrementCounter(counter: Record<string, number>, key: string | number | null) {
+  const label = key === null ? "unknown" : String(key);
+  counter[label] = (counter[label] || 0) + 1;
+}
+
+function addUnique(list: string[], value: string) {
+  if (!list.includes(value)) list.push(value);
+}
+
 function isFutureDate(date: string | null) {
   if (!date) return false;
   const parsed = new Date(`${date}T00:00:00Z`);
@@ -315,19 +374,19 @@ function isRegistrationOnlyText(text: string) {
 
 function extractLikelyTotalTargets(text: string, score?: number | null, seriesScores: number[] = []) {
   const normalized = normalizeText(text);
-  const explicit = normalized.match(/\b(50|75|100|125|150|175|200)\s*(?:sk|skudd|duer|duers|targets|mal|mål|compak|compact|kompakt)\b/);
+  const explicit = normalized.match(/\b(25|50|75|100|125|150|175|200)\s*(?:sk|skudd|duer|duers|targets|mal|mål|compak|compact|kompakt)\b/);
   if (explicit) return Number(explicit[1]);
-  const named = normalized.match(/\b(50|75|100|125|150|175|200)\b(?=\s*(?:compak|compact|kompakt|sporting|leirduesti|sti))/);
+  const named = normalized.match(/\b(25|50|75|100|125|150|175|200)\b(?=\s*(?:compak|compact|kompakt|sporting|leirduesti|sti))/);
   if (named) return Number(named[1]);
 
   const likelySeries = seriesScores.filter((value) => value >= 15 && value <= 25);
   if (likelySeries.length >= 2) {
     const inferred = likelySeries.length * 25;
-    if ([50, 75, 100, 150, 200].includes(inferred)) return inferred;
+    if ([25, 50, 75, 100, 150, 200].includes(inferred)) return inferred;
   }
 
   if (normalized.length < 220) {
-    const standalone = Array.from(normalized.matchAll(/\b(50|75|100|125|150|175|200)\b/g)).map((match) => Number(match[1]));
+    const standalone = Array.from(normalized.matchAll(/\b(25|50|75|100|125|150|175|200)\b/g)).map((match) => Number(match[1]));
     const plausible = standalone.filter((total) => !score || total >= score);
     if (plausible.length > 0) return plausible[0];
   }
@@ -380,6 +439,11 @@ function invalidShootingGround(value: string) {
   return (
     !normalized ||
     normalized.length < 3 ||
+    /%/.test(value) ||
+    /^\d/.test(normalized) ||
+    normalized === "sporting 1" ||
+    normalized === "lørdag + søndag" ||
+    normalized === "lordag + sondag" ||
     ["vestlandet", "ostlandet", "østlandet", "sorlandet", "sørlandet", "nord norge", "nord-norge", "leirdue.net", "norges skytterforbund", "njff", "ranking", "programvare"].includes(normalized) ||
     normalized.includes("logg inn") ||
     normalized.includes("terminliste") ||
@@ -441,8 +505,8 @@ function extractShootingGround(title: string, text: string) {
 }
 
 function extractScoreNumbers(line: string) {
-  const normalized = line.replace(/,/g, ".");
-  if (/%/.test(normalized)) return [];
+  const withoutPercentages = line.replace(/\b\d{1,3}(?:[,.]\d+)?\s*%/g, " ");
+  const normalized = withoutPercentages.replace(/,/g, ".");
   return Array.from(normalized.matchAll(/\b\d{1,3}\b/g)).map((match) => Number(match[0]));
 }
 
@@ -495,14 +559,12 @@ function likelyFinalScoreFromRow(line: string, year: number, totalTargets: numbe
 }
 
 function findShooterSnippet(lines: string[], shooterName: string) {
-  const shooter = normalizeText(shooterName);
-  const index = lines.findIndex((line) => normalizeText(line).includes(shooter));
+  const index = lines.findIndex((line) => pageContainsShooter(line, shooterName));
   if (index < 0) return null;
   return lines.slice(Math.max(0, index - 3), index + 7).join(" | ");
 }
 
 function parseScoresFromLines(lines: string[], html: string, shooterName: string, pageText: string, year: number, totalTargets: number | null): ParsedScore {
-  const shooter = normalizeText(shooterName);
   const notes: string[] = [];
   let ownScore: number | null = null;
   let scoreLine: string | null = null;
@@ -517,7 +579,7 @@ function parseScoresFromLines(lines: string[], html: string, shooterName: string
     if (parsed?.total !== null && parsed?.total !== undefined) competitorTotals.push(parsed.total);
   }
 
-  const shooterRowText = rowTexts.find((rowText) => normalizeText(rowText).includes(shooter));
+  const shooterRowText = rowTexts.find((rowText) => pageContainsShooter(rowText, shooterName));
   if (shooterRowText) {
     const parsed = parseCompetitorRow(shooterRowText, year, totalTargets, shooterName);
     if (parsed) {
@@ -529,7 +591,7 @@ function parseScoresFromLines(lines: string[], html: string, shooterName: string
   }
 
   if (ownScore === null) {
-    const shooterIndex = lines.findIndex((line) => normalizeText(line).includes(shooter));
+    const shooterIndex = lines.findIndex((line) => pageContainsShooter(line, shooterName));
     if (shooterIndex >= 0) {
       const nearby = lines.slice(shooterIndex, shooterIndex + 8);
       for (const line of nearby) {
@@ -579,12 +641,14 @@ function computeCandidatePriority(raw: RawCandidate) {
   return priority;
 }
 
-function buildCandidate(raw: RawCandidate, selectedDisciplines: string[]): LeirdueCandidate {
+function buildCandidate(raw: RawCandidate, selectedDisciplines: string[], selectedYear: number): LeirdueCandidate {
   const notes = raw.notes.slice();
   const selectedDiscipline = selectedDisciplines.includes(raw.discipline);
   const classificationContext = `${raw.listTitle} ${raw.listType || ""}`;
   const flags = controlFlags(classificationContext);
   if (isFutureDate(raw.date)) flags.push("future event");
+  const candidateYear = parsedYear(raw.date);
+  if (candidateYear !== null && candidateYear !== selectedYear) flags.push("outside selected year");
   if (!raw.validationSource && isRegistrationOnlyText(classificationContext) && raw.ownScore === null) flags.push("registration/participant");
   const directFlags = raw.validationSource ? Array.from(new Set([...directResultFlags(classificationContext), "validation direct list"])) : directResultFlags(classificationContext);
   const direct = directFlags.length > 0 && flags.length === 0;
@@ -640,7 +704,7 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
   debug.pagesInspected += 1;
   const lines = htmlToLines(page.html);
   const pageText = lines.join("\n");
-  const shooterPresent = normalizeText(pageText).includes(normalizeText(input.shooterName));
+  const shooterPresent = pageContainsShooter(pageText, input.shooterName);
   if (!shooterPresent) {
     if (debug.candidateReasons.length < 30) debug.candidateReasons.push(`${page.url}: shooter name not found on liste_id page`);
     return [];
@@ -654,24 +718,31 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
   const validationSource = page.label.includes("Debug validation URL");
   const listTitle = `${page.label} ${title}`.trim();
   const context = `${title}\n${page.label}\n${pageText}`;
+  const candidateDate = parseDate(context, input.year);
+  const candidateYear = parsedYear(candidateDate);
+  incrementCounter(debug.candidatesByYear, candidateYear);
   const discipline = classifyDiscipline(context, input.disciplines);
-  const initialTotalTargets = extractLikelyTotalTargets(listTitle) || extractLikelyTotalTargets(title);
+  const initialTotalTargets = extractLikelyTotalTargets(listTitle) ?? extractLikelyTotalTargets(title);
   const parsed = parseScoresFromLines(lines, page.html, input.shooterName, pageText, input.year, initialTotalTargets);
-  const totalTargets = initialTotalTargets || extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) || extractLikelyTotalTargets(title, parsed.ownScore, parsed.seriesScores) || extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores);
+  const totalTargets = initialTotalTargets ?? extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets(title, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores);
   const snippet = findShooterSnippet(lines, input.shooterName);
   const listType = classifyListType(listTitle);
   const notes = [...discipline.notes, ...parsed.notes, `Source liste_id URL: ${page.url}.`, `List title/type: ${listTitle} / ${listType}.`];
-  const shootingGroundResult = extractShootingGround(title, pageText);
+  const shootingGroundResult = extractShootingGround(title, lines.slice(0, 25).join("\n"));
   const shootingGround = shootingGroundResult.value;
   if (shootingGround) notes.push(`Shooting ground inferred from ${shootingGroundResult.source}: ${shootingGround}.`);
-  else notes.push("Shooting ground could not be inferred from organizer field, event text, or known-club match.");
+  else notes.push("Could not infer shooting ground.");
   if (validationSource) notes.push("Found through validation URL.");
-  if (isFutureDate(parseDate(context, input.year))) notes.push("Future event / participant list, not imported.");
-  if (snippet) notes.push(`Raw snippet: ${snippet}`);
+  if (isFutureDate(candidateDate)) notes.push("Future event / not imported");
+  if (candidateYear !== null && candidateYear !== input.year) notes.push(`Outside selected year (${candidateYear}); selected year is ${input.year}.`);
+  if (snippet) {
+    notes.push(`Raw snippet: ${snippet}`);
+    if (debug.shooterMatchSnippets.length < 20) debug.shooterMatchSnippets.push({ url: page.url, snippet });
+  }
   if (parsed.scoreLine && totalTargets === null) notes.push(`Score row parsed, but total targets could not be inferred from title/list text: ${parsed.scoreLine}`);
 
   const raw: RawCandidate = {
-    date: parseDate(context, input.year),
+    date: candidateDate,
     name: candidateNameFrom(title, page.label, discipline.discipline),
     shootingGround,
     discipline: discipline.discipline,
@@ -686,7 +757,7 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
     validationSource,
     shootingGroundSource: shootingGroundResult.source,
   };
-  const candidate = buildCandidate(raw, input.disciplines);
+  const candidate = buildCandidate(raw, input.disciplines, input.year);
   debug.candidateRowsCreated += 1;
   debug.candidateReasons.push(`${page.url}: candidate created as ${candidate.category}/${candidate.confidence}`);
   return [candidate];
@@ -846,7 +917,7 @@ function addResultMenuDiagnostic(debug: LeirdueSearchDebug, eventUrl: string, ht
 
 function isTorbjornLunde2026Validation(input: LeirdueSearchInput) {
   const shooter = normalizeText(input.shooterName);
-  return input.year === 2026 && shooter.includes("torbjørn lunde".normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase());
+  return input.year === 2026 && (shooter.includes("torbjørn lunde") || asciiFoldNorwegian(shooter).includes("torbjorn lunde"));
 }
 
 function addValidationListeIdLinks(input: LeirdueSearchInput, links: Map<string, Link>, debug: LeirdueSearchDebug) {
@@ -865,6 +936,10 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     `${LEIRDUE_BASE_URL}?meny=stevner&aar=${input.year}`,
     `${LEIRDUE_BASE_URL}?meny=stevner&year=${input.year}`,
   ];
+  debug.selectedYear = input.year;
+  debug.normalizedSearchName = normalizeName(input.shooterName);
+  debug.eventOverviewUrls = startUrls;
+
   const eventIds = new Map<string, string>();
   const listeIdLinks = new Map<string, Link>();
   const listPages = new Map<string, Page>();
@@ -872,8 +947,6 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   for (const url of startUrls) {
     const html = await fetchLeirdue(url, debug);
     if (!html) continue;
-    addListeIdLinksFromAnchors(html, listeIdLinks);
-    addListeIdLinksFromRawHtml(html, url, listeIdLinks);
     for (const link of extractLinks(html)) {
       if (!isEventish(link, input)) continue;
       const stevneId = extractStevneId(link.href);
@@ -885,6 +958,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   }
 
   debug.eventLinksFound = eventIds.size;
+  debug.eventIdsFound = Array.from(eventIds.keys());
   const rankedEventIds = Array.from(eventIds.entries())
     .map(([stevneId, text]) => ({ stevneId, text, href: eventInfoUrl(stevneId) }))
     .sort((a, b) => rankLink({ href: b.href, text: b.text }, input) - rankLink({ href: a.href, text: a.text }, input))
@@ -894,24 +968,52 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   for (const event of rankedEventIds) {
     const infoUrl = eventInfoUrl(event.stevneId);
     const infoHtml = await fetchLeirdue(infoUrl, debug);
+    let eventDate = parseDate(event.text, input.year);
     if (infoHtml) {
       debug.eventPagesFetched += 1;
       debug.eventInfoPagesFetched += 1;
+      const infoText = stripTags(infoHtml);
+      eventDate = parseDate(`${event.text} ${infoText}`, input.year);
+    }
+    const eventYear = parsedYear(eventDate);
+    debug.eventDatesParsed[event.stevneId] = eventDate;
+    incrementCounter(debug.eventYearsFound, eventYear);
+
+    if (eventYear !== null && eventYear !== input.year) {
+      debug.skippedOutsideSelectedYear += 1;
+      addUnique(debug.eventIdsSkippedOutsideYear, event.stevneId);
+      debug.rejectedReasons.push(`${event.stevneId}: skipped outside selected year (${eventYear}, selected ${input.year}).`);
+      continue;
+    }
+
+    if (isFutureDate(eventDate)) {
+      debug.futureEventsSkipped += 1;
+      addUnique(debug.eventIdsSkippedFuture, event.stevneId);
+      debug.rejectedReasons.push(`${event.stevneId}: skipped future event ${eventDate}.`);
+      continue;
+    }
+
+    addUnique(debug.eventIdsInspected, event.stevneId);
+    incrementCounter(debug.eventYearsInspected, eventYear);
+    debug.completedEventsInspected += 1;
+
+    if (infoHtml) {
       addListeIdLinksFromAnchors(infoHtml, listeIdLinks);
       addListeIdLinksFromRawHtml(infoHtml, infoUrl, listeIdLinks);
     }
 
     const resultMenuUrl = eventResultMenuUrl(event.stevneId);
-    const before = listeIdLinks.size;
+    const beforeUrls = new Set(listeIdLinks.keys());
     const resultHtml = await fetchLeirdue(resultMenuUrl, debug);
     if (!resultHtml) continue;
     debug.eventPagesFetched += 1;
     debug.eventResultMenuPagesFetched += 1;
     addListeIdLinksFromAnchors(resultHtml, listeIdLinks);
     const rawMatches = addListeIdLinksFromRawHtml(resultHtml, resultMenuUrl, listeIdLinks);
-    const extracted = listeIdLinks.size - before;
-    debug.listeIdLinksFromResultMenus += Math.max(extracted, rawMatches);
-    if (rawMatches === 0 && extracted === 0) addResultMenuDiagnostic(debug, resultMenuUrl, resultHtml);
+    const extractedUrls = Array.from(listeIdLinks.keys()).filter((url) => !beforeUrls.has(url));
+    if (extractedUrls.length > 0) debug.listeIdLinksByEvent[event.stevneId] = extractedUrls;
+    debug.listeIdLinksFromResultMenus += Math.max(extractedUrls.length, rawMatches);
+    if (rawMatches === 0 && extractedUrls.length === 0) addResultMenuDiagnostic(debug, resultMenuUrl, resultHtml);
   }
 
   addValidationListeIdLinks(input, listeIdLinks, debug);
@@ -929,13 +1031,12 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     const html = await fetchLeirdue(link.href, debug);
     if (!html) continue;
     debug.listeIdPagesFetched += 1;
-    if (link.source === "validation" && normalizeText(stripTags(html)).includes(normalizeText(input.shooterName))) debug.validationShooterMatches += 1;
+    if (link.source === "validation" && pageContainsShooter(stripTags(html), input.shooterName)) debug.validationShooterMatches += 1;
     listPages.set(link.href, { url: link.href, html, label: link.text, kind: "list" });
   }
 
   return Array.from(listPages.values());
 }
-
 
 function candidateMatchesExpected(candidate: LeirdueCandidate, expected: ExpectedValidationResult) {
   if (expected.listeId && !candidate.leirdueUrl.includes(`liste_id=${expected.listeId}`)) return false;
@@ -976,10 +1077,12 @@ function completeCandidate(candidate: LeirdueCandidate) {
   return candidate.ownScore !== null && candidate.winningScore !== null && candidate.totalTargets !== null && candidate.discipline !== "Other" && Boolean(candidate.shootingGround);
 }
 
-function classifyNormalizedCandidate(candidate: LeirdueCandidate) {
+function classifyNormalizedCandidate(candidate: LeirdueCandidate, selectedYear: number) {
   const context = `${candidate.name} ${candidate.listType || ""}`;
   const flags = controlFlags(context);
   if (isFutureDate(candidate.date)) flags.push("future event");
+  const candidateYear = parsedYear(candidate.date);
+  if (candidateYear !== null && candidateYear !== selectedYear) flags.push("outside selected year");
   const direct = directListScore(context) > 0 || isValidationHintedCandidate(candidate);
   let category: LeirdueCategory = "review";
   let confidence: LeirdueConfidence = "low";
@@ -1054,7 +1157,7 @@ function normalizeLeirdueCandidates(rawCandidates: LeirdueCandidate[], input: Le
     const expected = TORBJORN_LUNDE_2026_EXPECTED_RESULTS.find((item) => candidateMatchesExpected(candidate, item));
     return expected ? applyExpectedValidationHint(candidate, expected) : candidate;
   });
-  const classified = hinted.map(classifyNormalizedCandidate);
+  const classified = hinted.map((candidate) => classifyNormalizedCandidate(candidate, input.year));
   const deduped = dedupeCandidates(classified, debug);
   const categoryOrder: Record<LeirdueCategory, number> = { recommended: 0, review: 1, control: 2 };
   const sorted = deduped.sort((a, b) => categoryOrder[a.category] - categoryOrder[b.category] || (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99") || candidateQuality(b) - candidateQuality(a));
@@ -1095,10 +1198,12 @@ function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: Leirdu
   debug.recommendedWithShootingGround = 0;
   debug.recommendedWithCompleteScore = 0;
   debug.candidateDebugRows = [];
+  debug.hiddenControlCandidates = 0;
   if (candidates.length > 0 && candidates.every((candidate) => candidate.category === "control")) debug.candidateReasons.push("All candidates classified as control. Check list classification rules.");
   for (const candidate of candidates) {
-    debug.candidateCategoryCounts[candidate.category] += 1;
-    debug.candidateConfidenceCounts[candidate.confidence] += 1;
+    debug.candidateCategoryCounts[candidate.category] = (debug.candidateCategoryCounts[candidate.category] || 0) + 1;
+    debug.candidateConfidenceCounts[candidate.confidence] = (debug.candidateConfidenceCounts[candidate.confidence] || 0) + 1;
+    if (candidate.category === "control") debug.hiddenControlCandidates += 1;
     if (candidate.ownScore !== null) debug.candidatesWithOwnScore += 1;
     if (candidate.winningScore !== null) debug.candidatesWithWinningScore += 1;
     if (candidate.totalTargets !== null) debug.candidatesWithTotalTargets += 1;
@@ -1121,12 +1226,16 @@ function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: Leirdu
       confidence: candidate.confidence,
       importRecommended: candidate.importRecommended,
       reason,
+      hiddenFromNormalUi: candidate.category === "control" || isFutureDate(candidate.date) || (parsedYear(candidate.date) !== null && parsedYear(candidate.date) !== debug.selectedYear),
+      notes: candidate.notes,
     });
   }
 }
 
 export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promise<LeirdueSearchResult> {
   const debug = emptyDebug();
+  debug.selectedYear = input.year;
+  debug.normalizedSearchName = normalizeName(input.shooterName);
   const pages = await discoverPages(input, debug);
   const candidates = pages.flatMap((page) => extractCandidatesFromPage(page, input, debug));
   const normalized = normalizeLeirdueCandidates(candidates, input, debug);

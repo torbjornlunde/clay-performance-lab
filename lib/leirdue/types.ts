@@ -41,6 +41,23 @@ export type LeirdueFetchDebug = {
 };
 
 export type LeirdueSearchDebug = {
+  selectedYear: number | null;
+  normalizedSearchName: string;
+  eventOverviewUrls: string[];
+  eventIdsFound: string[];
+  eventIdsInspected: string[];
+  eventDatesParsed: Record<string, string | null>;
+  eventYearsFound: Record<string, number>;
+  eventYearsInspected: Record<string, number>;
+  candidatesByYear: Record<string, number>;
+  skippedOutsideSelectedYear: number;
+  eventIdsSkippedOutsideYear: string[];
+  eventIdsSkippedFuture: string[];
+  completedEventsInspected: number;
+  futureEventsSkipped: number;
+  listeIdLinksByEvent: Record<string, string[]>;
+  shooterMatchSnippets: { url: string; snippet: string }[];
+  hiddenControlCandidates: number;
   fetchedUrls: LeirdueFetchDebug[];
   eventLinksFound: number;
   resultLinksFound: number;
@@ -66,7 +83,7 @@ export type LeirdueSearchDebug = {
   candidatesWithShootingGround: number;
   recommendedWithShootingGround: number;
   recommendedWithCompleteScore: number;
-  candidateDebugRows: { url: string; name: string; date: string | null; discipline: string; shootingGround: string | null; shootingGroundSource: string; ownScore: number | null; totalTargets: number | null; winningScore: number | null; category: LeirdueCategory; confidence: LeirdueConfidence; importRecommended: boolean; reason: string }[];
+  candidateDebugRows: { url: string; name: string; date: string | null; discipline: string; shootingGround: string | null; shootingGroundSource: string; ownScore: number | null; totalTargets: number | null; winningScore: number | null; category: LeirdueCategory; confidence: LeirdueConfidence; importRecommended: boolean; reason: string; hiddenFromNormalUi: boolean; notes: string }[];
   validationChecklist: LeirdueValidationChecklistItem[];
   pagesInspected: number;
   shooterPagesFound: number;
