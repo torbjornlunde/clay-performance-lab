@@ -57,6 +57,12 @@ export type LeirdueSearchDebug = {
   timedOutAtPhase: "overview" | "eventMenu" | "listeId" | "parsing" | null;
   eventLinksSkippedByReason: Record<"outsideYear" | "future" | "ranking" | "irrelevantDiscipline" | "duplicate" | "limit", number>;
   resultMenuDebug: { eventId: string; url: string; listeIdCount: number; firstListeIdUrls: string[] }[];
+  prioritizedEventLinks: { eventId: string; title: string; score: number; reason: string }[];
+  prioritizedListeIdLinks: { url: string; title: string; score: number; reason: string }[];
+  phaseReached: "phase1" | "phase2" | "timeout" | null;
+  candidatesFoundBeforeTimeout: number;
+  highPriorityListeIdPagesFetched: number;
+  lowPriorityListeIdPagesSkipped: number;
   timedOut: boolean;
   limitReached: boolean;
   whichLimit: string | null;
