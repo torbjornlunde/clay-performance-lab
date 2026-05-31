@@ -764,10 +764,10 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[], select
     category = "control";
     confidence = "low";
     notes.push(`Category reason: control flags triggered: ${Array.from(new Set(flags)).join(", ")}.`);
-  } else if (hasCompleteScore && parsedDiscipline && selectedDiscipline && (direct || raw.validationSource)) {
+  } else if (hasCompleteScore && raw.date !== null && parsedDiscipline) {
     category = "recommended";
     confidence = "high";
-    notes.push("Category reason: complete parsed result on a direct/validation result list.");
+    notes.push("Category reason: complete parsed result data from fetched liste_id page; direct result flags are not required.");
   } else if (hasOwnScore) {
     category = "review";
     confidence = candidatePriority >= 40 ? "medium" : "low";
@@ -1715,7 +1715,7 @@ function applyExpectedValidationHint(candidate: LeirdueCandidate, expected: Expe
 }
 
 function completeCandidate(candidate: LeirdueCandidate) {
-  return candidate.ownScore !== null && candidate.winningScore !== null && candidate.totalTargets !== null && candidate.discipline !== "Other";
+  return candidate.ownScore !== null && candidate.winningScore !== null && candidate.totalTargets !== null && candidate.date !== null && candidate.discipline !== "Other";
 }
 
 function classifyNormalizedCandidate(candidate: LeirdueCandidate, selectedYear: number) {
@@ -1732,7 +1732,7 @@ function classifyNormalizedCandidate(candidate: LeirdueCandidate, selectedYear: 
   if (flags.length > 0) {
     category = "control";
     confidence = "low";
-  } else if (completeCandidate(candidate) && direct) {
+  } else if (completeCandidate(candidate)) {
     category = "recommended";
     confidence = "high";
     importRecommended = true;
@@ -1741,7 +1741,7 @@ function classifyNormalizedCandidate(candidate: LeirdueCandidate, selectedYear: 
     confidence = candidate.totalTargets !== null || candidate.winningScore !== null ? "medium" : "low";
   }
 
-  const reason = `Normalization classification: category=${category}; confidence=${confidence}; controlFlags=${Array.from(new Set(flags)).join(", ") || "none"}; direct=${direct ? "yes" : "no"}.`;
+  const reason = `Normalization classification: category=${category}; confidence=${confidence}; controlFlags=${Array.from(new Set(flags)).join(", ") || "none"}; direct=${direct ? "yes" : "no"}; completeScoreData=${completeCandidate(candidate) ? "yes" : "no"}.`;
   return { ...candidate, category, confidence, importRecommended, notes: `${candidate.notes} ${reason}`.trim() };
 }
 
