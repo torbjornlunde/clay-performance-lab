@@ -26,6 +26,43 @@ export type LeirdueSearchInput = {
   disciplines: string[];
 };
 
+export type LeirdueDebugParseInput = {
+  url: string;
+  shooterName: string;
+  year?: number | null;
+  selectedDisciplines?: string[];
+};
+
+export type LeirdueDebugParseResult = {
+  url: string;
+  status: number | null;
+  ok: boolean;
+  error: string | null;
+  pageTitle: string | null;
+  eventTitle: string | null;
+  listTitle: string | null;
+  normalizedShooterName: string;
+  shooterFound: boolean;
+  rawSnippet: string | null;
+  parsedRow: string | null;
+  parsedNumbers: number[];
+  parsedSeriesScores: number[];
+  ownScore: number | null;
+  totalTargets: number | null;
+  winningScore: number | null;
+  discipline: string | null;
+  shootingGround: string | null;
+  date: string | null;
+  category: LeirdueCategory | null;
+  confidence: LeirdueConfidence | null;
+  importRecommended: boolean;
+  parserNotes: string[];
+  firstUsefulSnippet: string | null;
+  candidateRows: { text: string; numbers: number[]; total: number | null; seriesScores: number[]; containsShooter: boolean }[];
+  topCompetitorTotals: { row: string; total: number; numbers: number[] }[];
+  candidate: LeirdueCandidate | null;
+};
+
 type Link = { href: string; text: string; source?: "anchor" | "raw" | "validation" };
 type EventTitleParseSource = "anchorText" | "rowSnippet" | "fallback";
 type EventLinkMeta = { eventId: string; url: string; titleText: string; eventTitle: string; organizerText: string | null; dateText: string | null; rawRowSnippet: string; titleParseSource: EventTitleParseSource; date: string | null; parsedYear: number | null };
@@ -1884,6 +1921,177 @@ function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: Leirdu
       hiddenFromNormalUi: candidate.category === "control" || isFutureDate(candidate.date) || (parsedYear(candidate.date) !== null && parsedYear(candidate.date) !== debug.selectedYear),
       notes: candidate.notes,
     });
+  }
+}
+
+function debugSelectedYear(inputYear: number | null | undefined) {
+  const currentYear = new Date().getFullYear();
+  return Number.isInteger(inputYear) && inputYear && inputYear >= 1990 ? inputYear : currentYear;
+}
+
+function debugCandidateRows(lines: string[], html: string, shooterName: string, year: number, totalTargets: number | null) {
+  const rows = extractTableRows(html);
+  const rowTexts = rows.length > 0 ? rows.map((row) => row.text) : lines;
+  const candidateRows = rowTexts
+    .map((rowText) => {
+      const parsed = parseCompetitorRow(rowText, year, totalTargets, pageContainsShooter(rowText, shooterName) ? shooterName : undefined);
+      return parsed ? { text: parsed.text, numbers: parsed.numbers, total: parsed.total, seriesScores: parsed.seriesScores, containsShooter: pageContainsShooter(rowText, shooterName) } : null;
+    })
+    .filter((row): row is { text: string; numbers: number[]; total: number | null; seriesScores: number[]; containsShooter: boolean } => Boolean(row));
+  const topCompetitorTotals = candidateRows
+    .filter((row): row is { text: string; numbers: number[]; total: number; seriesScores: number[]; containsShooter: boolean } => row.total !== null)
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 10)
+    .map((row) => ({ row: row.text, total: row.total, numbers: row.numbers }));
+  return { candidateRows: candidateRows.slice(0, 50), topCompetitorTotals };
+}
+
+export async function debugParseLeirdueResultUrl(input: LeirdueDebugParseInput): Promise<LeirdueDebugParseResult> {
+  const url = absolutizeUrl(input.url);
+  const year = debugSelectedYear(input.year);
+  const selectedDisciplines = input.selectedDisciplines?.length ? input.selectedDisciplines : [COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI, "Sporting"];
+  const normalizedShooterName = normalizeName(input.shooterName);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let status: number | null = null;
+
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers: { "user-agent": "ClayPerformanceLab/1.0 debug parser" } });
+    status = response.status;
+    const html = await response.text();
+    if (!response.ok) {
+      return {
+        url,
+        status,
+        ok: false,
+        error: `HTTP ${response.status}`,
+        pageTitle: null,
+        eventTitle: null,
+        listTitle: null,
+        normalizedShooterName,
+        shooterFound: false,
+        rawSnippet: null,
+        parsedRow: null,
+        parsedNumbers: [],
+        parsedSeriesScores: [],
+        ownScore: null,
+        totalTargets: null,
+        winningScore: null,
+        discipline: null,
+        shootingGround: null,
+        date: null,
+        category: null,
+        confidence: null,
+        importRecommended: false,
+        parserNotes: [`HTTP ${response.status}`],
+        firstUsefulSnippet: null,
+        candidateRows: [],
+        topCompetitorTotals: [],
+        candidate: null,
+      };
+    }
+
+    const lines = htmlToLines(html);
+    const pageText = lines.join("\n");
+    const shooterFound = pageContainsShooter(pageText, input.shooterName);
+    const pageTitle = stripTags(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "") || null;
+    const eventTitle = extractTitle(lines, html, year);
+    const listTitle = `${eventTitle} ${pageTitle || ""}`.trim();
+    const date = parseDate(`${eventTitle}\n${pageText}`, year);
+    const discipline = classifyDiscipline(`${eventTitle}\n${pageText}`, selectedDisciplines);
+    const initialTotalTargets = extractLikelyTotalTargets(listTitle) ?? extractLikelyTotalTargets(eventTitle);
+    const parsed = parseScoresFromLines(lines, html, input.shooterName, pageText, year, initialTotalTargets);
+    const totalTargets = initialTotalTargets ?? extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets(eventTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores);
+    const rowDebug = debugCandidateRows(lines, html, input.shooterName, year, totalTargets);
+    const rawSnippet = findShooterSnippet(lines, input.shooterName) || (shooterFound ? usefulSnippet(pageText, input.shooterName) : null);
+    const shootingGroundResult = extractShootingGround(eventTitle, lines.slice(0, 25).join("\n"));
+    const parserNotes = [...discipline.notes, ...parsed.notes];
+    if (rawSnippet) parserNotes.push(`Raw snippet: ${rawSnippet}`);
+    if (!shootingGroundResult.value) parserNotes.push("Could not infer shooting ground.");
+
+    let candidate: LeirdueCandidate | null = null;
+    if (shooterFound) {
+      const raw: RawCandidate = {
+        date,
+        name: candidateNameFrom(eventTitle, listTitle, discipline.discipline),
+        shootingGround: shootingGroundResult.value,
+        discipline: discipline.discipline,
+        ownScore: parsed.ownScore,
+        totalTargets,
+        winningScore: parsed.winningScore,
+        leirdueUrl: url,
+        listType: classifyListType(listTitle),
+        sourceText: pageText,
+        listTitle,
+        notes: [...parserNotes, `Debug parser fetched exactly one URL: ${url}.`],
+        validationSource: false,
+        shootingGroundSource: shootingGroundResult.source,
+      };
+      candidate = classifyNormalizedCandidate(buildCandidate(raw, selectedDisciplines, year), year);
+    }
+
+    return {
+      url,
+      status,
+      ok: true,
+      error: null,
+      pageTitle,
+      eventTitle,
+      listTitle,
+      normalizedShooterName,
+      shooterFound,
+      rawSnippet,
+      parsedRow: parsed.scoreLine,
+      parsedNumbers: parsed.parsedNumbers,
+      parsedSeriesScores: parsed.seriesScores,
+      ownScore: parsed.ownScore,
+      totalTargets,
+      winningScore: parsed.winningScore,
+      discipline: discipline.discipline,
+      shootingGround: shootingGroundResult.value,
+      date,
+      category: candidate?.category ?? null,
+      confidence: candidate?.confidence ?? null,
+      importRecommended: candidate?.importRecommended ?? false,
+      parserNotes: candidate ? candidate.notes.split(/\.\s+/).filter(Boolean) : parserNotes,
+      firstUsefulSnippet: usefulSnippet(pageText, input.shooterName) || usefulSnippet(pageText),
+      candidateRows: rowDebug.candidateRows,
+      topCompetitorTotals: rowDebug.topCompetitorTotals,
+      candidate,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : FETCH_ERROR_MESSAGE;
+    return {
+      url,
+      status,
+      ok: false,
+      error: message,
+      pageTitle: null,
+      eventTitle: null,
+      listTitle: null,
+      normalizedShooterName,
+      shooterFound: false,
+      rawSnippet: null,
+      parsedRow: null,
+      parsedNumbers: [],
+      parsedSeriesScores: [],
+      ownScore: null,
+      totalTargets: null,
+      winningScore: null,
+      discipline: null,
+      shootingGround: null,
+      date: null,
+      category: null,
+      confidence: null,
+      importRecommended: false,
+      parserNotes: [message],
+      firstUsefulSnippet: null,
+      candidateRows: [],
+      topCompetitorTotals: [],
+      candidate: null,
+    };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
