@@ -51,7 +51,8 @@ export type LeirdueSearchDebug = {
   overviewYearMismatch: boolean;
   overviewDiagnostics: { url: string; containsSelectedYear: boolean; selectedYearLinkCount: number; snippet: string }[];
   noSelectedYearEventsReason: string | null;
-  selectedYearEventLinks: { eventId: string; url: string; titleText: string; date: string | null; parsedYear: number | null }[];
+  selectedYearEventLinks: { eventId: string; url: string; titleText: string; eventTitle?: string; organizerText?: string | null; dateText?: string | null; rawRowSnippet?: string; titleParseSource?: "anchorText" | "rowSnippet" | "fallback"; date: string | null; parsedYear: number | null }[];
+  eventTitleDebugRows: { eventId: string; title: string; organizer: string | null; dateText: string | null; rawRowSnippet: string; titleParseSource: "anchorText" | "rowSnippet" | "fallback"; priority: number; reason: string; selectedDisciplineMatches: string[] }[];
   selectedYearEventLinksCount: number;
   selectedYearEventIdsCount: number;
   selectedDisciplineFilters: string[];
@@ -65,7 +66,7 @@ export type LeirdueSearchDebug = {
   timedOutAtPhase: "overview" | "eventMenu" | "listeId" | "parsing" | null;
   eventLinksSkippedByReason: Record<"outsideYear" | "future" | "ranking" | "irrelevantDiscipline" | "duplicate" | "limit", number>;
   resultMenuDebug: { eventId: string; url: string; listeIdCount: number; firstListeIdUrls: string[] }[];
-  prioritizedEventLinks: { eventId: string; title: string; score: number; reason: string }[];
+  prioritizedEventLinks: { eventId: string; title: string; score: number; reason: string; titleParseSource?: "anchorText" | "rowSnippet" | "fallback"; selectedDisciplineMatches?: string[] }[];
   prioritizedListeIdLinks: { url: string; title: string; score: number; reason: string }[];
   phaseReached: "phase1" | "phase2" | "timeout" | null;
   candidatesFoundBeforeTimeout: number;

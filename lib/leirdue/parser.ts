@@ -27,7 +27,8 @@ export type LeirdueSearchInput = {
 };
 
 type Link = { href: string; text: string; source?: "anchor" | "raw" | "validation" };
-type EventLinkMeta = { eventId: string; url: string; titleText: string; date: string | null; parsedYear: number | null };
+type EventTitleParseSource = "anchorText" | "rowSnippet" | "fallback";
+type EventLinkMeta = { eventId: string; url: string; titleText: string; eventTitle: string; organizerText: string | null; dateText: string | null; rawRowSnippet: string; titleParseSource: EventTitleParseSource; date: string | null; parsedYear: number | null };
 type Page = { url: string; html: string; label: string; kind: "overview" | "event" | "list" };
 type ListeIdQueueItem = { key: string; href: string; text: string; eventId: string | null; listeId: string | null; eventTitle: string; eventDate: string | null; priority: number; reason: string; source?: Link["source"] };
 type ParsedScore = { ownScore: number | null; winningScore: number | null; scoreLine: string | null; notes: string[]; parsedNumbers: number[]; seriesScores: number[] };
@@ -97,6 +98,7 @@ function emptyDebug(): LeirdueSearchDebug {
     overviewDiagnostics: [],
     noSelectedYearEventsReason: null,
     selectedYearEventLinks: [],
+    eventTitleDebugRows: [],
     selectedYearEventLinksCount: 0,
     selectedYearEventIdsCount: 0,
     selectedDisciplineFilters: [],
@@ -1136,6 +1138,11 @@ function isTorbjornLunde2026Validation(input: LeirdueSearchInput) {
   return input.year === 2026 && (shooter.includes("torbjørn lunde") || asciiFoldNorwegian(shooter).includes("torbjorn lunde"));
 }
 
+function isTorbjornLunde2025DebugSearch(input: LeirdueSearchInput) {
+  const shooter = normalizeText(input.shooterName);
+  return input.year === 2025 && (shooter.includes("torbjørn lunde") || asciiFoldNorwegian(shooter).includes("torbjorn lunde"));
+}
+
 function addValidationListeIdLinks(input: LeirdueSearchInput, links: Map<string, Link>, debug: LeirdueSearchDebug) {
   if (!isTorbjornLunde2026Validation(input)) return;
   for (const url of TORBJORN_LUNDE_2026_VALIDATION_URLS) {
@@ -1174,13 +1181,76 @@ function addOverviewDiagnostic(debug: LeirdueSearchDebug, url: string, html: str
   });
 }
 
-function makeEventMeta(href: string, text: string, selectedYear: number): EventLinkMeta | null {
+function genericOverviewTitle(value: string) {
+  const text = normalizeText(value);
+  return !text || text === "resultater" || text === "påmelding" || text === "pamelding" || text === "les mer" || text === "mer" || /^20\d{2}$/.test(text) || text.includes("dato / tid") || text.includes("tittel arrangør") || text.includes("tittel arrangor") || text === "dato" || text === "tittel" || text === "arrangør" || text === "arrangor";
+}
+
+function extractTableCells(html: string) {
+  return Array.from(html.matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi))
+    .map((match) => stripTags(match[1]).replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function nearestRowHtml(html: string, index: number) {
+  const before = html.lastIndexOf("<tr", index);
+  const after = html.indexOf("</tr>", index);
+  if (before !== -1 && after !== -1 && after > before) return html.slice(before, after + 5);
+  const start = Math.max(0, index - 450);
+  const end = Math.min(html.length, index + 450);
+  return html.slice(start, end);
+}
+
+function cleanEventTitleCandidate(value: string, selectedYear: number) {
+  return decodeEntities(value)
+    .replace(/\b(?:dato\s*\/\s*tid|dato|tid|tittel|arrangør|arrangor|resultater|påmelding|pamelding)\b/gi, " ")
+    .replace(new RegExp(`\\b${selectedYear}\\b`, "g"), " ")
+    .replace(/\b(?:januar|februar|mars|april|mai|juni|juli|august|september|oktober|november|desember)\b/gi, " ")
+    .replace(/\b\d{1,2}[.\/-]\d{1,2}(?:[.\/-]\d{2,4})?\b/g, " ")
+    .replace(/\b\d{1,2}\.\s*\/\s*\d{1,2}\.?\b/g, " ")
+    .replace(/\bkl\.?\s*\d{1,2}[:.]\d{2}\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s:–—-]+|[\s:–—-]+$/g, "")
+    .trim();
+}
+
+function eventMetadataFromContext(anchorText: string, rowHtml: string, selectedYear: number, eventId: string) {
+  const cells = extractTableCells(rowHtml);
+  const rawRowSnippet = stripTags(rowHtml).replace(/\s+/g, " ").trim().slice(0, 500);
+  const cleanAnchor = cleanEventTitleCandidate(stripTags(anchorText), selectedYear);
+  const dateText = rawRowSnippet.match(/(?:\d{1,2}[.\/-]\d{1,2}(?:[.\/-]\d{2,4})?|\d{1,2}\.\s*\/\s*\d{1,2}\.?|\b(?:januar|februar|mars|april|mai|juni|juli|august|september|oktober|november|desember)\b)/i)?.[0] ?? null;
+  const titleCells = cells.length >= 3 ? cells.slice(1, -1) : cells;
+  const cellTitle = titleCells
+    .map((cell) => cleanEventTitleCandidate(cell, selectedYear))
+    .filter((cell) => cell.length > 2 && !genericOverviewTitle(cell) && !/^\d/.test(cell))
+    .sort((a, b) => b.length - a.length)[0];
+  const rowTitle = cleanEventTitleCandidate(rawRowSnippet, selectedYear);
+
+  let titleParseSource: EventTitleParseSource = "fallback";
+  let eventTitle = `Event ${eventId}`;
+  if (cleanAnchor && !genericOverviewTitle(cleanAnchor)) {
+    eventTitle = cleanAnchor;
+    titleParseSource = "anchorText";
+  } else if (cellTitle && !genericOverviewTitle(cellTitle)) {
+    eventTitle = cellTitle;
+    titleParseSource = "rowSnippet";
+  } else if (rowTitle && !genericOverviewTitle(rowTitle)) {
+    eventTitle = rowTitle.slice(0, 160);
+    titleParseSource = "rowSnippet";
+  }
+
+  const organizerText = cells.length >= 3 ? cells.at(-1) ?? null : null;
+  return { eventTitle, organizerText, dateText, rawRowSnippet, titleParseSource };
+}
+
+function makeEventMeta(href: string, text: string, selectedYear: number, rowHtml = ""): EventLinkMeta | null {
   const eventId = extractStevneId(href);
   if (!eventId) return null;
-  const cleanText = stripTags(text).replace(/\s+/g, " ").trim() || `Event ${eventId}`;
-  const date = parseDate(cleanText, selectedYear);
+  const metadata = eventMetadataFromContext(text, rowHtml || text, selectedYear, eventId);
+  const priorityText = [metadata.eventTitle, metadata.organizerText, metadata.rawRowSnippet].filter(Boolean).join(" ");
+  const date = parseDate(`${metadata.dateText || ""} ${priorityText}`, selectedYear);
   const year = parsedYear(date);
-  return { eventId, url: eventResultMenuUrl(eventId), titleText: cleanText, date, parsedYear: year };
+  return { eventId, url: eventResultMenuUrl(eventId), titleText: metadata.eventTitle, ...metadata, date, parsedYear: year };
 }
 
 function isOverviewUrl(url: string) {
@@ -1189,7 +1259,7 @@ function isOverviewUrl(url: string) {
 }
 
 function isEventLinkSkippable(meta: EventLinkMeta, selectedYear: number, debug: LeirdueSearchDebug) {
-  const text = normalizeText(meta.titleText);
+  const text = normalizeText(eventPriorityText(meta));
   if (meta.parsedYear !== null && meta.parsedYear !== selectedYear) {
     debug.eventLinksSkippedByReason.outsideYear += 1;
     return true;
@@ -1209,44 +1279,83 @@ function isEventLinkSkippable(meta: EventLinkMeta, selectedYear: number, debug: 
   return false;
 }
 
-function selectedDisciplineMatches(text: string, input: LeirdueSearchInput) {
+function selectedDisciplineMatchTerms(text: string, input: LeirdueSearchInput) {
   const normalized = normalizeText(text);
-  return input.disciplines.some((discipline) => {
+  const matches: string[] = [];
+  for (const discipline of input.disciplines) {
     const d = normalizeText(discipline);
-    if (d.includes("compak")) return normalized.includes("compak") || normalized.includes("compact");
-    if (d.includes("kompakt")) return normalized.includes("kompakt") || normalized.includes("compact") || normalized.includes("kompaktsti");
-    if (d.includes("leirduesti")) return normalized.includes("leirduesti") || normalized.includes("kompaktsti") || /\bsti\b/.test(normalized);
-    if (d.includes("sporting")) return normalized.includes("sporting");
-    if (d.includes("skeet")) return normalized.includes("skeet");
-    if (d.includes("trap")) return normalized.includes("trap");
-    return normalized.includes(d.split(" ")[0]);
-  });
+    if (d.includes("compak") && /(compak|compaq|compact|fitasc\s+compak)/.test(normalized)) matches.push(discipline);
+    else if (d.includes("kompakt") && /(kompakt|kompaktsti|compact\s+leirduesti|kompakt\s+leirduesti)/.test(normalized)) matches.push(discipline);
+    else if (d.includes("leirduesti") && /(leirduesti|kompaktsti|\bsti\b)/.test(normalized)) matches.push(discipline);
+    else if (d.includes("sporting") && /(sporting|fitasc\s+sporting)/.test(normalized)) matches.push(discipline);
+    else if (d.includes("skeet") && /\bskeet\b/.test(normalized)) matches.push(discipline);
+    else if (d.includes("trap") && /\btrap\b/.test(normalized)) matches.push(discipline);
+  }
+  return Array.from(new Set(matches));
+}
+
+function selectedDisciplineMatches(text: string, input: LeirdueSearchInput) {
+  return selectedDisciplineMatchTerms(text, input).length > 0;
+}
+
+function eventPriorityText(meta: EventLinkMeta) {
+  return [meta.eventTitle, meta.organizerText, meta.rawRowSnippet].filter(Boolean).join(" ");
 }
 
 function eventPriorityDetail(meta: EventLinkMeta, input: LeirdueSearchInput) {
-  const text = normalizeText(meta.titleText);
+  const text = normalizeText(eventPriorityText(meta));
+  const titleOnly = normalizeText(meta.eventTitle);
+  const matches = selectedDisciplineMatchTerms(eventPriorityText(meta), input);
   const reasons: string[] = [];
-  let score = 20;
-  reasons.push("generic selected-year result event");
-  if (selectedDisciplineMatches(meta.titleText, input)) { score += 100; reasons.push("exact selected discipline match"); }
-  if (/(compak|sporting|kompakt|kompaktsti|compact|leirduesti)/.test(text)) { score += 80; reasons.push("selected shotgun discipline words"); }
-  if (/(blaser|xxl|khan|ranastien)/.test(text)) { score += 35; reasons.push("known relevant cup/event term"); }
-  if (/\b(50\s*skudd|50|75|100|200)\b/.test(text)) { score += 15; reasons.push("target count in title"); }
-  if (/\bcup\b/.test(text) && !/(cup sammenlagt|sammenlagt cup|ranking)/.test(text)) { score += 10; reasons.push("direct cup event"); }
-  if (isClearlyUnselectedDisciplineEvent(meta, input)) { score -= 80; reasons.push("clear unselected discipline"); }
-  if (text.includes("ranking") || text.includes("klasseføring") || text.includes("klasseforing") || text.includes("cup sammenlagt") || text.includes("sammenlagt cup")) { score -= 150; reasons.push("ranking/classification/cup summary"); }
-  if (text.includes("trening") || text.includes("training") || text.includes("påmelding") || text.includes("pamelding")) { score -= 150; reasons.push("training/registration"); }
+  let score = genericOverviewTitle(meta.eventTitle) || /^event\s+\d+$/i.test(meta.eventTitle) ? 5 : 20;
+  reasons.push(score === 20 ? "generic selected-year result event" : "fallback/generic event title");
+  if (matches.length > 0) { score += 140; reasons.push(`selected discipline match: ${matches.join("/")}`); }
+  if (/(compak|compaq|sporting|kompakt|kompaktsti|compact|leirduesti|fitasc)/.test(text)) { score += 90; reasons.push("selected shotgun discipline words"); }
+  const knownCompetition = /(blaser|xxl|khan|beretta|hringariki|ranastien|nyttår|nyttar|\bcup\b)/.test(text);
+  const selectedContext = matches.length > 0 || /(compak|compaq|sporting|kompakt|kompaktsti|compact|leirduesti|fitasc|50\s*skudd|75|100|200)/.test(text);
+  if (knownCompetition && selectedContext && !/(cup sammenlagt|sammenlagt cup|ranking)/.test(text)) { score += 45; reasons.push("known competition term with selected-discipline context"); }
+  if (/\b(50\s*skudd|75|100|200)\b/.test(text)) { score += 15; reasons.push("target count in title/row"); }
+  if (isClearlyUnselectedDisciplineEvent(meta, input)) { score -= 100; reasons.push("clear unselected discipline"); }
+  if (text.includes("ranking") || text.includes("klasseføring") || text.includes("klasseforing") || text.includes("cup sammenlagt") || text.includes("sammenlagt cup")) { score -= 250; reasons.push("ranking/classification/cup summary"); }
+  if (text.includes("trening") || text.includes("training") || text.includes("påmelding") || text.includes("pamelding")) { score -= 200; reasons.push("training/registration"); }
+  if (/^(dato|tittel|arrangør|arrangor|desember|januar|februar|mars|april|mai|juni|juli|august|september|oktober|november|20\d{2})$/.test(titleOnly)) { score -= 80; reasons.push("generic header/date title"); }
   if (isFutureDate(meta.date)) { score -= 150; reasons.push("future"); }
-  return { score, reason: reasons.join(", ") || "generic selected-year event" };
+  return { score, reason: reasons.join(", ") || "generic selected-year event", matches };
 }
 
 function eventPriority(meta: EventLinkMeta, input: LeirdueSearchInput) {
   return eventPriorityDetail(meta, input).score;
 }
 
+function rankedEventsAcrossYear(events: EventLinkMeta[], input: LeirdueSearchInput) {
+  const sorted = events.slice().sort((a, b) => eventPriority(b, input) - eventPriority(a, input) || a.eventTitle.localeCompare(b.eventTitle));
+  const highPriority = sorted.filter((event) => eventPriority(event, input) > 20);
+  const generic = sorted.filter((event) => eventPriority(event, input) <= 20);
+  const byMonth = new Map<string, EventLinkMeta[]>();
+  for (const event of generic) {
+    const month = event.date?.slice(5, 7) || "unknown";
+    if (!byMonth.has(month)) byMonth.set(month, []);
+    byMonth.get(month)?.push(event);
+  }
+  const months = Array.from(byMonth.keys()).sort();
+  const distributed: EventLinkMeta[] = [];
+  let added = true;
+  while (added) {
+    added = false;
+    for (const month of months) {
+      const next = byMonth.get(month)?.shift();
+      if (next) {
+        distributed.push(next);
+        added = true;
+      }
+    }
+  }
+  return [...highPriority, ...distributed];
+}
+
 function isRelevantSelectedDisciplineEvent(meta: EventLinkMeta, input: LeirdueSearchInput) {
-  const text = normalizeText(meta.titleText);
-  if (selectedDisciplineMatches(meta.titleText, input)) return true;
+  const text = normalizeText(eventPriorityText(meta));
+  if (selectedDisciplineMatches(eventPriorityText(meta), input)) return true;
   if (/(blaser|khan|ranastien|nyttår|nyttar)/.test(text)) return true;
   if (/\bxxl\b/.test(text) && /(compak|sporting|kompakt|leirduesti|50|75|100|200)/.test(text)) return true;
   if (/\bcup\b/.test(text) && /(compak|sporting|kompakt|leirduesti)/.test(text) && !/(cup sammenlagt|sammenlagt cup|ranking)/.test(text)) return true;
@@ -1254,8 +1363,8 @@ function isRelevantSelectedDisciplineEvent(meta: EventLinkMeta, input: LeirdueSe
 }
 
 function isClearlyUnselectedDisciplineEvent(meta: EventLinkMeta, input: LeirdueSearchInput) {
-  const text = normalizeText(meta.titleText);
-  if (selectedDisciplineMatches(meta.titleText, input)) return false;
+  const text = normalizeText(eventPriorityText(meta));
+  if (selectedDisciplineMatches(eventPriorityText(meta), input)) return false;
   const selected = input.disciplines.map((discipline) => normalizeText(discipline));
   const selectedSkeet = selected.some((discipline) => discipline.includes("skeet"));
   const selectedTrap = selected.some((discipline) => discipline.includes("trap"));
@@ -1265,7 +1374,7 @@ function isClearlyUnselectedDisciplineEvent(meta: EventLinkMeta, input: LeirdueS
 }
 
 function isHardRankingOrControlEvent(meta: EventLinkMeta) {
-  const text = normalizeText(meta.titleText);
+  const text = normalizeText(eventPriorityText(meta));
   return text.includes("ranking") || text.includes("klasseføring") || text.includes("klasseforing") || text.includes("trening") || text.includes("training") || text.includes("påmelding") || text.includes("pamelding") || text.includes("cup sammenlagt") || text.includes("sammenlagt cup");
 }
 
@@ -1294,13 +1403,31 @@ function addEventMeta(events: Map<string, EventLinkMeta>, meta: EventLinkMeta, d
 }
 
 function overviewEventLinksForYear(html: string, selectedYear: number, debug: LeirdueSearchDebug) {
+  const linksByEvent = new Map<string, EventLinkMeta>();
+  const anchorRegex = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let anchorMatch: RegExpExecArray | null;
+  while ((anchorMatch = anchorRegex.exec(html))) {
+    const href = absolutizeUrl(anchorMatch[1]);
+    const linkText = stripTags(anchorMatch[2]) || href;
+    if (!extractStevneId(href) || !normalizeText(href).includes("meny=resultater")) continue;
+    const rowHtml = nearestRowHtml(html, anchorMatch.index);
+    const nearbyText = stripTags(rowHtml).replace(/\s+/g, " ").trim();
+    const beforeText = stripTags(html.slice(Math.max(0, anchorMatch.index - 1400), anchorMatch.index)).replace(/\s+/g, " ");
+    const nearestHeadingYear = Array.from(beforeText.matchAll(/\b(20\d{2})\b/g)).at(-1)?.[1];
+    if (nearestHeadingYear && Number(nearestHeadingYear) !== selectedYear && !nearbyText.includes(String(selectedYear))) continue;
+    const meta = makeEventMeta(href, linkText, selectedYear, rowHtml);
+    if (!meta) continue;
+    addEventMeta(linksByEvent, { ...meta, parsedYear: meta.parsedYear ?? selectedYear }, debug);
+  }
+
+  if (linksByEvent.size > 0) return Array.from(linksByEvent.values());
+
   const marked = decodeEntities(html)
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_all, href, label) => `\n[[LINK ${absolutizeUrl(href)}]]${stripTags(label)}[[/LINK]]\n`)
     .replace(/<(br|p|div|tr|td|th|li|h[1-6])\b[^>]*>/gi, "\n")
     .replace(/<[^>]+>/g, " ");
-  const linksByEvent = new Map<string, EventLinkMeta>();
   let currentYear: number | null = null;
   let recentText = "";
 
@@ -1317,7 +1444,7 @@ function overviewEventLinksForYear(html: string, selectedYear: number, debug: Le
     const linkMatch = line.match(/^\[\[LINK (.*?)\]\](.*?)\[\[\/LINK\]\]$/);
     if (linkMatch) {
       if (currentYear !== selectedYear) continue;
-      const meta = makeEventMeta(linkMatch[1], `${recentText} ${linkMatch[2]}`, selectedYear);
+      const meta = makeEventMeta(linkMatch[1], linkMatch[2], selectedYear, `${recentText} ${linkMatch[2]}`);
       if (!meta) continue;
       addEventMeta(linksByEvent, { ...meta, parsedYear: meta.parsedYear ?? selectedYear }, debug);
       continue;
@@ -1424,17 +1551,20 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   debug.genericFallbackEventsAdded = fallbackEvents.length;
   const relevantEventLinks = [...strictRelevantEvents, ...fallbackEvents];
   debug.selectedYearEventLinksAfterSoftFilter = relevantEventLinks.length;
-  debug.selectedYearEventLinks = relevantEventLinks.map((event) => ({ eventId: event.eventId, url: event.url, titleText: event.titleText, date: event.date, parsedYear: event.parsedYear }));
+  debug.selectedYearEventLinks = relevantEventLinks.map((event) => ({ eventId: event.eventId, url: event.url, titleText: event.titleText, eventTitle: event.eventTitle, organizerText: event.organizerText, dateText: event.dateText, rawRowSnippet: event.rawRowSnippet, titleParseSource: event.titleParseSource, date: event.date, parsedYear: event.parsedYear }));
   debug.selectedYearEventLinksCount = debug.selectedYearEventLinks.length;
   debug.selectedYearEventIdsCount = relevantEventLinks.length;
   debug.eventLinksFound = relevantEventLinks.length;
   debug.eventIdsFound = relevantEventLinks.map((event) => event.eventId);
 
-  const allRankedEvents = relevantEventLinks
-    .sort((a, b) => eventPriority(b, input) - eventPriority(a, input));
-  debug.prioritizedEventLinks = allRankedEvents.slice(0, 20).map((event) => {
+  const allRankedEvents = rankedEventsAcrossYear(relevantEventLinks, input);
+  debug.prioritizedEventLinks = allRankedEvents.slice(0, 50).map((event) => {
     const priority = eventPriorityDetail(event, input);
-    return { eventId: event.eventId, title: event.titleText, score: priority.score, reason: priority.reason };
+    return { eventId: event.eventId, title: event.eventTitle, score: priority.score, reason: priority.reason, titleParseSource: event.titleParseSource, selectedDisciplineMatches: priority.matches };
+  });
+  debug.eventTitleDebugRows = allRankedEvents.slice(0, 50).map((event) => {
+    const priority = eventPriorityDetail(event, input);
+    return { eventId: event.eventId, title: event.eventTitle, organizer: event.organizerText, dateText: event.dateText, rawRowSnippet: event.rawRowSnippet, titleParseSource: event.titleParseSource, priority: priority.score, reason: priority.reason, selectedDisciplineMatches: priority.matches };
   });
   const rankedEvents = allRankedEvents.slice(0, MAX_EVENT_PAGES_INSPECTED);
   if (relevantEventLinks.length > rankedEvents.length) {
@@ -1779,6 +1909,10 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   debug.candidatesFoundAfterScan = normalized.length;
   debug.candidatesFoundBeforeTimeout = normalized.length;
   updateCandidateDebugStats(debug, normalized);
+  if (normalized.length === 0 && isTorbjornLunde2025DebugSearch(input)) {
+    debug.message ||= "No candidates found after prioritized scan. Event priority may still be missing relevant events.";
+    debug.candidateReasons.push("No candidates found after prioritized scan. Event priority may still be missing relevant events.");
+  }
   if (normalized.length === 0 && debug.fetchedUrls.length === 0) debug.rejectedReasons.push("No Leirdue pages could be fetched.");
   return { candidates: normalized, debug };
 }
