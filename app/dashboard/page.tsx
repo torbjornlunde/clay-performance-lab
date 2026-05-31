@@ -9,6 +9,7 @@ import type {
   ExportTargetDefinition,
 } from "@/lib/export/exportUserData";
 import { isOrdinaryLeirduesti } from "@/lib/disciplines";
+import { calculateRollingAverage, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
 import { supabase } from "@/lib/supabase/client";
 
 type Row = {
@@ -43,11 +44,17 @@ type TrendPoint = {
   id: string;
   name: string;
   date: string;
-  percentage: number;
-  score: number;
+  discipline: string;
+  shootingGround: string | null;
+  ownScore: number;
   winningScore: number;
+  totalTargets: number | null;
+  performancePercentage: number;
+  rollingAveragePercentage: number;
+  differenceFromRollingAverage: number;
   x: number;
   y: number;
+  rollingAverageY: number;
 };
 
 function isUsableNumber(value: unknown): value is number {
@@ -169,6 +176,17 @@ function chartBounds(percentages: number[]) {
 
 function dateInputValue(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+function formatDifferenceFromRollingAverage(value: number) {
+  const sign = value >= 0 ? "+" : "";
+  return `${sign}${value.toFixed(1)} pp`;
+}
+
+function rollingAveragePositionLabel(value: number) {
+  if (value > 0) return "Above rolling average";
+  if (value < 0) return "Below rolling average";
+  return "Matches rolling average";
 }
 
 function ResultCard({ session, missCounts }: { session: Row; missCounts: Record<string, number> }) {
@@ -304,27 +322,44 @@ function PerformanceTrendCard({
     const width = 720;
     const height = 180;
     const padding = 30;
-    const { maxPercentage, range } = chartBounds(filteredScored.map((item) => item.percentage));
+    const rollingAverages = calculateRollingAverage(
+      filteredScored.map((item) => item.percentage),
+      DEFAULT_ROLLING_WINDOW_SIZE,
+    );
+    const chartValues = filteredScored.flatMap((item, index) => [
+      item.percentage,
+      rollingAverages[index] ?? item.percentage,
+    ]);
+    const { maxPercentage, range } = chartBounds(chartValues);
 
     return filteredScored.map((item, index) => {
+      const rollingAveragePercentage = rollingAverages[index] ?? item.percentage;
       const x = filteredScored.length === 1 ? width / 2 : padding + index * ((width - padding * 2) / (filteredScored.length - 1));
       const y = padding + (maxPercentage - item.percentage) * ((height - padding * 2) / range);
+      const rollingAverageY = padding + (maxPercentage - rollingAveragePercentage) * ((height - padding * 2) / range);
       return {
         id: item.session.id,
         name: item.session.name,
         date: displayDate(item.session),
-        percentage: item.percentage,
-        score: item.score,
+        discipline: item.session.discipline,
+        shootingGround: item.session.shooting_ground?.trim() || null,
+        ownScore: item.score,
         winningScore: item.session.winning_score || 0,
+        totalTargets: displayedTotalTargets(item.session),
+        performancePercentage: item.percentage,
+        rollingAveragePercentage,
+        differenceFromRollingAverage: item.percentage - rollingAveragePercentage,
         x,
         y,
+        rollingAverageY,
       };
     });
   }, [filteredScored]);
 
   const selectedPoint = points.find((point) => point.id === selectedPointId) || null;
   const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
-  const bounds = points.length > 0 ? chartBounds(points.map((point) => point.percentage)) : null;
+  const rollingAveragePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.rollingAverageY}`).join(" ");
+  const bounds = points.length > 0 ? chartBounds(points.flatMap((point) => [point.performancePercentage, point.rollingAveragePercentage])) : null;
   const width = 720;
   const height = 180;
   const padding = 30;
@@ -353,7 +388,7 @@ function PerformanceTrendCard({
         <div>
           <p className="eyebrow">Stats shortcut</p>
           <h2 id="trend-heading">Performance trend</h2>
-          <p className="small muted trendHint">Performance vs winning score over time. Tap the card for Stats.</p>
+          <p className="small muted trendHint">Performance vs winning score over time. Rolling average shows your trend across the latest 5 results.</p>
         </div>
         <span className="pill"><strong>{filteredScored.length}</strong> shown</span>
       </div>
@@ -388,6 +423,7 @@ function PerformanceTrendCard({
             <text x={padding} y={Math.max(referenceY - 8, 14)} className="chartText">100%</text>
             <line x1={padding} x2={padding} y1={padding} y2={baselineY} className="chartAxis" />
             <line x1={padding} x2={width - padding} y1={baselineY} y2={baselineY} className="chartAxis" />
+            <path d={rollingAveragePath} className="chartRollingLine" />
             <path d={path} className="chartLine" />
             {points.map((point) => (
               <g key={point.id} className="chartPointLink" role="button" tabIndex={0} aria-label={`Preview ${point.name}`} onClick={(event) => {
@@ -409,14 +445,20 @@ function PerformanceTrendCard({
             <div className="chartPreview" onClick={(event) => event.stopPropagation()}>
               <strong>{selectedPoint.name}</strong>
               <span>{formatDate(selectedPoint.date)}</span>
-              <span>{selectedPoint.score} / winning {selectedPoint.winningScore}</span>
-              <span>{selectedPoint.percentage.toFixed(1)}% vs winner</span>
+              <span>{selectedPoint.discipline}{selectedPoint.shootingGround ? ` · ${selectedPoint.shootingGround}` : ""}</span>
+              <span>Score: {selectedPoint.ownScore}{selectedPoint.totalTargets ? ` / ${selectedPoint.totalTargets}` : ""}</span>
+              <span>Winning score: {selectedPoint.winningScore}</span>
+              <span>Performance: {selectedPoint.performancePercentage.toFixed(1)}%</span>
+              <span>Rolling average: {selectedPoint.rollingAveragePercentage.toFixed(1)}%</span>
+              <span>Difference: {formatDifferenceFromRollingAverage(selectedPoint.differenceFromRollingAverage)} · {rollingAveragePositionLabel(selectedPoint.differenceFromRollingAverage)}</span>
               <small>Tap point again to open.</small>
             </div>
           )}
           <div className="chartLegend dashboardChartLegend">
             <span>Oldest {formatDate(points[0].date)}</span>
             <span>Newest {formatDate(points[points.length - 1].date)}</span>
+            <span>Performance</span>
+            <span>Rolling average · Last 5 results</span>
             <span>Entries without winning score skipped</span>
           </div>
         </div>

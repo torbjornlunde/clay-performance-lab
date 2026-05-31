@@ -70,3 +70,12 @@ Use this checklist after each PR and before merging to keep the main user flows 
 - [ ] Dashboard chart opens Stats when the card is clicked.
 - [ ] Dashboard chart period filters work for Last month, Last year, All and Custom.
 - [ ] Existing dashboard actions still open the correct routes.
+
+## H. Dashboard rolling average chart
+
+- [ ] Dashboard chart shows individual performance and rolling average.
+- [ ] Rolling average moves over time and is not a flat average.
+- [ ] Rolling average uses performance vs winning score, not raw score.
+- [ ] Period filters affect both chart and rolling average.
+- [ ] Tooltip/preview shows performance, rolling average and difference.
+- [ ] Chart remains mobile-friendly with no horizontal scrolling.

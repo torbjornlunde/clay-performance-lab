@@ -58,3 +58,12 @@ A concise step-by-step test plan to run after merges.
 - [ ] Confirm Show more / Show less works for Results.
 - [ ] Confirm Show more / Show less works for Training.
 - [ ] Confirm the chart card opens Stats.
+
+## 8. Dashboard rolling average chart
+
+- [ ] Import or create several result-only entries.
+- [ ] Open dashboard.
+- [ ] Confirm the rolling average line appears.
+- [ ] Confirm the rolling average changes over time instead of staying flat.
+- [ ] Tap/click a point and confirm the preview shows performance, rolling average and difference.
+- [ ] Change the period filter and confirm the chart and rolling average update.

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { calculateRollingStdDev, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
+import { calculateRollingAverage, calculateRollingStdDev, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
 import { supabase } from "@/lib/supabase/client";
 
 type SessionRow = {
@@ -30,6 +30,7 @@ type ChartPoint = {
   name: string;
   date: string;
   percentage: number;
+  rollingAveragePercentage: number;
   score: number;
   winningScore: number;
   discipline: string;
@@ -37,6 +38,7 @@ type ChartPoint = {
   shootingGround: string | null;
   x: number;
   y: number;
+  rollingAverageY: number;
 };
 
 function isUsableNumber(value: unknown): value is number {
@@ -89,7 +91,8 @@ function PerformanceChart({ points, onPointClick }: { points: ChartPoint[]; onPo
   const height = 220;
   const padding = 34;
   const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
-  const { minPercentage, maxPercentage, range } = chartBounds(points.map((point) => point.percentage));
+  const rollingAveragePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.rollingAverageY}`).join(" ");
+  const { minPercentage, maxPercentage, range } = chartBounds(points.flatMap((point) => [point.percentage, point.rollingAveragePercentage]));
   const referenceY = padding + (maxPercentage - 100) * ((height - padding * 2) / range);
   const baselineY = height - padding;
   const bestPercentage = Math.max(...points.map((point) => point.percentage));
@@ -108,6 +111,7 @@ function PerformanceChart({ points, onPointClick }: { points: ChartPoint[]; onPo
         <text x={padding} y={Math.min(baselineY - 8, height - 10)} className="chartText">
           {minPercentage.toFixed(0)}%
         </text>
+        <path d={rollingAveragePath} className="chartRollingLine" />
         <path d={path} className="chartLine" />
         {points.map((point, index) => (
           <g
@@ -140,6 +144,7 @@ function PerformanceChart({ points, onPointClick }: { points: ChartPoint[]; onPo
         <span>Oldest {formatDate(points[0].date)}</span>
         <span>Newest {formatDate(points[points.length - 1].date)}</span>
         <span>Winning score = 100%</span>
+        <span>Rolling average · Last 5 results</span>
       </div>
     </div>
   );
@@ -186,16 +191,25 @@ export default function StatsPage() {
     const width = 720;
     const height = 220;
     const padding = 34;
-    const { maxPercentage, range } = chartBounds(scored.map((item) => item.result.percentage));
+    const rollingAverages = calculateRollingAverage(
+      scored.map((item) => item.result.percentage),
+      DEFAULT_ROLLING_WINDOW_SIZE,
+    );
+    const { maxPercentage, range } = chartBounds(
+      scored.flatMap((item, index) => [item.result.percentage, rollingAverages[index] ?? item.result.percentage]),
+    );
 
     return scored.map((item, index) => {
+      const rollingAveragePercentage = rollingAverages[index] ?? item.result.percentage;
       const x = scored.length === 1 ? width / 2 : padding + index * ((width - padding * 2) / (scored.length - 1));
       const y = padding + (maxPercentage - item.result.percentage) * ((height - padding * 2) / range);
+      const rollingAverageY = padding + (maxPercentage - rollingAveragePercentage) * ((height - padding * 2) / range);
       return {
         id: item.session.id,
         name: item.session.name,
         date: item.session.competition_date || item.session.created_at,
         percentage: item.result.percentage,
+        rollingAveragePercentage,
         score: item.result.score,
         winningScore: item.session.winning_score || 0,
         discipline: item.session.discipline,
@@ -203,6 +217,7 @@ export default function StatsPage() {
         shootingGround: item.session.shooting_ground?.trim() || null,
         x,
         y,
+        rollingAverageY,
       };
     });
   }, [sessions, missCounts]);
@@ -363,7 +378,7 @@ export default function StatsPage() {
                 <div>
                   <strong>{point.name}</strong>
                   <div className="small muted">{formatDate(point.date)}{point.shootingGround ? ` · Shooting ground: ${point.shootingGround}` : ""} · {point.discipline}</div>
-                  <div className="small muted">Score used {point.score} · Winning score {point.winningScore} · Performance vs winning score {point.percentage.toFixed(1)}%</div>
+                  <div className="small muted">Score used {point.score} · Winning score {point.winningScore} · Performance vs winning score {point.percentage.toFixed(1)}% · Rolling average {point.rollingAveragePercentage.toFixed(1)}%</div>
                   <div className="btns">
                     <Link className="button secondary smallButton" href={`/sessions/${point.id}`}>Open</Link>
                     {point.leirdueResultUrl && <a className="button secondary smallButton" href={point.leirdueResultUrl} target="_blank" rel="noreferrer">Open Leirdue result</a>}
