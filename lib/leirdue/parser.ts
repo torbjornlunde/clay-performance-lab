@@ -29,6 +29,7 @@ export type LeirdueSearchInput = {
 type Link = { href: string; text: string; source?: "anchor" | "raw" | "validation" };
 type EventLinkMeta = { eventId: string; url: string; titleText: string; date: string | null; parsedYear: number | null };
 type Page = { url: string; html: string; label: string; kind: "overview" | "event" | "list" };
+type ListeIdQueueItem = { key: string; href: string; text: string; eventId: string | null; listeId: string | null; eventTitle: string; eventDate: string | null; priority: number; reason: string; source?: Link["source"] };
 type ParsedScore = { ownScore: number | null; winningScore: number | null; scoreLine: string | null; notes: string[]; parsedNumbers: number[]; seriesScores: number[] };
 type ParsedRow = { text: string; cells: string[]; numbers: number[]; total: number | null; seriesScores: number[] };
 type RawCandidate = Omit<LeirdueCandidate, "category" | "confidence" | "importRecommended" | "notes"> & {
@@ -44,10 +45,10 @@ type CrawlState = { deadlineAt: number };
 
 const SEARCH_TIMEOUT_MS = 25_000;
 const FETCH_TIMEOUT_MS = 8_000;
-const MAX_EVENT_PAGES_INSPECTED = 40;
-const MAX_RESULT_MENU_PAGES_FETCHED = 80;
-const MAX_LISTE_ID_PAGES_FETCHED = 200;
-const MAX_SHOOTER_MATCH_PAGES = 50;
+const MAX_EVENT_PAGES_INSPECTED = 120;
+const MAX_RESULT_MENU_PAGES_FETCHED = 120;
+const MAX_LISTE_ID_PAGES_SCANNED = 250;
+const MAX_SHOOTER_PAGES_PARSED = 50;
 const TIME_LIMIT_MESSAGE = "Leirdue search reached time limit. Showing partial results.";
 
 function markTimedOut(debug: LeirdueSearchDebug) {
@@ -111,6 +112,12 @@ function emptyDebug(): LeirdueSearchDebug {
     candidatesFoundBeforeTimeout: 0,
     highPriorityListeIdPagesFetched: 0,
     lowPriorityListeIdPagesSkipped: 0,
+    listeIdPagesQueued: 0,
+    listeIdPagesScannedForName: 0,
+    shooterPagesParsed: 0,
+    scanStoppedReason: null,
+    candidatesFoundAfterDiscovery: 0,
+    candidatesFoundAfterScan: 0,
     timedOut: false,
     limitReached: false,
     whichLimit: null,
@@ -786,7 +793,7 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[], select
   };
 }
 
-function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug: LeirdueSearchDebug) {
+function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug: LeirdueSearchDebug, alreadyMatched = false) {
   debug.pagesInspected += 1;
   const lines = htmlToLines(page.html);
   const pageText = lines.join("\n");
@@ -797,8 +804,8 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
   }
 
   debug.shooterPagesFound += 1;
-  debug.listeIdShooterPagesFound += 1;
-  if (debug.firstShooterMatchUrls.length < 10) debug.firstShooterMatchUrls.push(page.url);
+  if (!alreadyMatched) debug.listeIdShooterPagesFound += 1;
+  if (debug.firstShooterMatchUrls.length < 10 && !debug.firstShooterMatchUrls.includes(page.url)) debug.firstShooterMatchUrls.push(page.url);
   debug.firstUsefulSnippet ||= usefulSnippet(pageText, input.shooterName);
   const title = extractTitle(lines, page.html, input.year);
   const validationSource = page.label.includes("Debug validation URL");
@@ -962,6 +969,40 @@ function canonicalListeIdKey(href: string) {
     // Fall back to the normalized absolute URL below.
   }
   return absolute.replace(/&amp;/g, "&");
+}
+
+function extractListeId(href: string) {
+  try {
+    const url = new URL(absolutizeUrl(href));
+    return url.searchParams.get("liste_id");
+  } catch {
+    return href.match(/liste_id\s*=\s*(\d+)/i)?.[1] ?? null;
+  }
+}
+
+function listeIdQueueItems(links: Map<string, Link>, eventsById: Map<string, EventLinkMeta>, input: LeirdueSearchInput): ListeIdQueueItem[] {
+  return Array.from(links.entries()).map(([key, link]) => {
+    const eventId = extractStevneId(link.href);
+    const event = eventId ? eventsById.get(eventId) : null;
+    const eventText = event?.titleText ?? "";
+    const priority = listeIdPriorityDetail({ ...link, text: `${eventText} ${link.text}`.trim() || link.text }, input);
+    return {
+      key,
+      href: link.href,
+      text: link.text,
+      eventId,
+      listeId: extractListeId(link.href),
+      eventTitle: eventText,
+      eventDate: event?.date ?? null,
+      priority: priority.score,
+      reason: priority.reason,
+      source: link.source,
+    };
+  }).sort((a, b) => b.priority - a.priority || (b.eventDate || "0000-00-00").localeCompare(a.eventDate || "0000-00-00") || a.href.localeCompare(b.href));
+}
+
+function listPageLabel(item: ListeIdQueueItem) {
+  return [item.eventTitle, item.text].filter(Boolean).join(" — ") || `Leirdue result${item.eventDate ? ` — ${item.eventDate}` : ""}`;
 }
 
 function addListeIdLink(links: Map<string, Link>, href: string, text: string, source: Link["source"]) {
@@ -1217,7 +1258,6 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   debug.selectedDisciplineFilters = input.disciplines;
   debug.guessedYearOverviewUrlsTried = guessedUrls;
   // TODO: Future full-history import should run year-by-year as a background/batch job, not one live request.
-  // TODO: Future UI could allow region/area filtering (Vestlandet, Østlandet, etc.) to reduce Leirdue search scope.
 
   const eventLinks = new Map<string, EventLinkMeta>();
   const listeIdLinks = new Map<string, Link>();
@@ -1294,10 +1334,8 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     if (isRelevantSelectedDisciplineEvent(event, input)) strictRelevantEvents.push(event);
     else genericFallbackCandidates.push(event);
   }
-  const fallbackLimit = strictRelevantEvents.length < 40 ? 80 : 0;
   const fallbackEvents = genericFallbackCandidates
-    .sort((a, b) => (b.date || "0000-00-00").localeCompare(a.date || "0000-00-00") || a.titleText.localeCompare(b.titleText))
-    .slice(0, fallbackLimit);
+    .sort((a, b) => (b.date || "0000-00-00").localeCompare(a.date || "0000-00-00") || a.titleText.localeCompare(b.titleText));
   debug.genericFallbackEventsAdded = fallbackEvents.length;
   const relevantEventLinks = [...strictRelevantEvents, ...fallbackEvents];
   debug.selectedYearEventLinksAfterSoftFilter = relevantEventLinks.length;
@@ -1365,40 +1403,64 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
 
   addValidationListeIdLinks(input, listeIdLinks, debug);
 
+  debug.candidatesFoundAfterDiscovery = 0;
   debug.listeIdLinksExtracted = listeIdLinks.size;
   debug.resultLinksFound = listeIdLinks.size;
-  const rankedListeIdLinks = Array.from(listeIdLinks.values()).sort((a, b) => rankLink(b, input) - rankLink(a, input));
-  debug.prioritizedListeIdLinks = rankedListeIdLinks.slice(0, 20).map((link) => {
-    const priority = listeIdPriorityDetail(link, input);
-    return { url: link.href, title: link.text, score: priority.score, reason: priority.reason };
-  });
-  if (rankedListeIdLinks.length > MAX_LISTE_ID_PAGES_FETCHED) {
+  const rankedListeIdLinks = listeIdQueueItems(listeIdLinks, eventLinks, input);
+  debug.listeIdPagesQueued = rankedListeIdLinks.length;
+  debug.prioritizedListeIdLinks = rankedListeIdLinks.slice(0, 20).map((item) => ({
+    url: item.href,
+    title: listPageLabel(item),
+    score: item.priority,
+    reason: item.reason,
+  }));
+  if (rankedListeIdLinks.length > MAX_LISTE_ID_PAGES_SCANNED) {
     debug.listInspectionLimitReached = true;
-    markLimitReached(debug, "max liste_id pages");
-    debug.lowPriorityListeIdPagesSkipped += rankedListeIdLinks.length - MAX_LISTE_ID_PAGES_FETCHED;
-    debug.rejectedReasons.push("Result list inspection limit reached.");
+    markLimitReached(debug, "max liste_id scan pages");
+    debug.lowPriorityListeIdPagesSkipped += rankedListeIdLinks.length - MAX_LISTE_ID_PAGES_SCANNED;
+    debug.rejectedReasons.push("Result list scan limit reached; lower-priority liste_id pages were not fetched.");
   }
 
   debug.timedOutAtPhase = "listeId";
-  for (const link of rankedListeIdLinks.slice(0, MAX_LISTE_ID_PAGES_FETCHED)) {
-    if (shouldStopCrawl(debug, state)) break;
-    if (debug.listeIdPagesFetched >= MAX_LISTE_ID_PAGES_FETCHED) {
-      markLimitReached(debug, "max liste_id pages");
+  for (const item of rankedListeIdLinks.slice(0, MAX_LISTE_ID_PAGES_SCANNED)) {
+    if (shouldStopCrawl(debug, state)) {
+      debug.scanStoppedReason ||= "timeout";
       break;
     }
-    if (debug.listeIdShooterPagesFound >= MAX_SHOOTER_MATCH_PAGES) {
-      markLimitReached(debug, "max shooter match pages");
+    if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) {
+      markLimitReached(debug, "max liste_id scan pages");
+      debug.scanStoppedReason ||= "max scan pages";
       break;
     }
-    if (debug.firstListeIdUrlsInspected.length < 10) debug.firstListeIdUrlsInspected.push(link.href);
-    const priority = listeIdPriorityDetail(link, input);
-    const html = await fetchLeirdue(link.href, debug, state);
+    if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) {
+      markLimitReached(debug, "max shooter pages parsed");
+      debug.scanStoppedReason ||= "max shooter pages";
+      break;
+    }
+    if (debug.firstListeIdUrlsInspected.length < 10) debug.firstListeIdUrlsInspected.push(item.href);
+    const html = await fetchLeirdue(item.href, debug, state);
     if (!html) continue;
     debug.listeIdPagesFetched += 1;
-    if (priority.score >= 80) debug.highPriorityListeIdPagesFetched += 1;
-    if (link.source === "validation" && pageContainsShooter(stripTags(html), input.shooterName)) debug.validationShooterMatches += 1;
-    listPages.set(canonicalListeIdKey(link.href), { url: link.href, html, label: link.text, kind: "list" });
+    debug.listeIdPagesScannedForName += 1;
+    if (item.priority >= 80) debug.highPriorityListeIdPagesFetched += 1;
+
+    const pageText = stripTags(html);
+    const shooterFound = pageContainsShooter(pageText, input.shooterName);
+    if (item.source === "validation" && shooterFound) debug.validationShooterMatches += 1;
+    if (!shooterFound) continue;
+
+    if (debug.firstShooterMatchUrls.length < 10) debug.firstShooterMatchUrls.push(item.href);
+    debug.firstUsefulSnippet ||= usefulSnippet(pageText, input.shooterName);
+    if (debug.shooterMatchSnippets.length < 20) {
+      const snippet = usefulSnippet(pageText, input.shooterName);
+      if (snippet) debug.shooterMatchSnippets.push({ url: item.href, snippet });
+    }
+    listPages.set(item.key, { url: item.href, html, label: listPageLabel(item), kind: "list" });
   }
+
+  debug.listeIdShooterPagesFound = listPages.size;
+  debug.candidatesFoundAfterScan = listPages.size;
+  if (!debug.scanStoppedReason) debug.scanStoppedReason = rankedListeIdLinks.length > MAX_LISTE_ID_PAGES_SCANNED ? "max scan pages" : "completed queue";
   if (debug.timedOut) debug.phaseReached = "timeout";
   else if (debug.listeIdPagesFetched > 0) debug.phaseReached = "phase2";
   if (debug.timedOut && debug.listeIdPagesFetched === 0) debug.message = "Timed out before result list pages were inspected";
@@ -1538,17 +1600,31 @@ function candidatePriorityFromNotes(candidate: LeirdueCandidate) {
   return match ? Number(match[1]) : 0;
 }
 
+function listPreferenceScore(candidate: LeirdueCandidate) {
+  const text = normalizeText(`${candidate.name} ${candidate.listType || ""} ${candidate.notes}`);
+  if (text.includes("resultater sammenlagt") || text.includes("resultatliste sammenlagt") || text.includes("sammenlagt resultatliste etter bane")) return 120;
+  if (text.includes("resultatliste etter bane")) return 100;
+  if (text.includes("klassedelt")) return 50;
+  if (text.includes("resultater") || text.includes("resultatliste")) return 70;
+  return 0;
+}
+
 function candidateQuality(candidate: LeirdueCandidate) {
   const categoryScore = candidate.category === "recommended" ? 1000 : candidate.category === "review" ? 400 : 0;
   const fieldScore = [candidate.ownScore, candidate.winningScore, candidate.totalTargets, candidate.shootingGround, candidate.date].filter((value) => value !== null && value !== "").length * 35;
   const confidenceScore = candidate.confidence === "high" ? 200 : candidate.confidence === "medium" ? 80 : 0;
-  return categoryScore + confidenceScore + fieldScore + candidatePriorityFromNotes(candidate) - penaltyForControlText(`${candidate.name} ${candidate.listType} ${candidate.notes}`);
+  return categoryScore + confidenceScore + fieldScore + listPreferenceScore(candidate) + candidatePriorityFromNotes(candidate) - penaltyForControlText(`${candidate.name} ${candidate.listType} ${candidate.notes}`);
+}
+
+function dedupeKey(candidate: LeirdueCandidate) {
+  const eventKey = extractStevneId(candidate.leirdueUrl) || normalizeText(candidate.name);
+  return [eventKey, candidate.date, candidate.discipline, candidate.ownScore, candidate.totalTargets].join("|");
 }
 
 function dedupeCandidates(candidates: LeirdueCandidate[], debug: LeirdueSearchDebug) {
   const best = new Map<string, LeirdueCandidate>();
   for (const candidate of candidates) {
-    const key = [candidate.date, normalizeText(candidate.name), candidate.discipline, candidate.ownScore, candidate.totalTargets].join("|");
+    const key = dedupeKey(candidate);
     const current = best.get(key);
     if (!current || candidateQuality(candidate) > candidateQuality(current)) best.set(key, candidate);
   }
@@ -1610,14 +1686,16 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   else debug.timedOutAtPhase = "parsing";
   const candidates: LeirdueCandidate[] = [];
   for (const page of pages) {
-    if (debug.listeIdShooterPagesFound >= MAX_SHOOTER_MATCH_PAGES) {
-      markLimitReached(debug, "max shooter match pages");
+    if (debug.shooterPagesParsed >= MAX_SHOOTER_PAGES_PARSED) {
+      markLimitReached(debug, "max shooter pages parsed");
       break;
     }
-    candidates.push(...extractCandidatesFromPage(page, input, debug));
+    debug.shooterPagesParsed += 1;
+    candidates.push(...extractCandidatesFromPage(page, input, debug, true));
   }
   const normalized = normalizeLeirdueCandidates(candidates, input, debug);
   debug.candidateRowsCreated = normalized.length;
+  debug.candidatesFoundAfterScan = normalized.length;
   debug.candidatesFoundBeforeTimeout = normalized.length;
   updateCandidateDebugStats(debug, normalized);
   if (normalized.length === 0 && debug.fetchedUrls.length === 0) debug.rejectedReasons.push("No Leirdue pages could be fetched.");

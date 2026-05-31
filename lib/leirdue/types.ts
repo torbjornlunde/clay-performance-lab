@@ -71,6 +71,12 @@ export type LeirdueSearchDebug = {
   candidatesFoundBeforeTimeout: number;
   highPriorityListeIdPagesFetched: number;
   lowPriorityListeIdPagesSkipped: number;
+  listeIdPagesQueued: number;
+  listeIdPagesScannedForName: number;
+  shooterPagesParsed: number;
+  scanStoppedReason: "timeout" | "max scan pages" | "max shooter pages" | "completed queue" | null;
+  candidatesFoundAfterDiscovery: number;
+  candidatesFoundAfterScan: number;
   timedOut: boolean;
   limitReached: boolean;
   whichLimit: string | null;

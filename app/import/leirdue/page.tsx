@@ -139,8 +139,11 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         <span className="metricChip"><strong>{debug.eventResultMenuPagesFetched}</strong> result menu pages</span>
         <span className="metricChip"><strong>{debug.listeIdLinksExtracted}</strong> liste_id links</span>
         <span className="metricChip"><strong>{debug.listeIdLinksFromResultMenus}</strong> from result menus</span>
+        <span className="metricChip"><strong>{debug.listeIdPagesQueued}</strong> liste_id pages queued</span>
+        <span className="metricChip"><strong>{debug.listeIdPagesScannedForName}</strong> liste_id pages scanned for name</span>
         <span className="metricChip"><strong>{debug.listeIdPagesFetched}</strong> liste_id pages fetched</span>
         <span className="metricChip"><strong>{debug.listeIdShooterPagesFound}</strong> liste_id shooter pages</span>
+        <span className="metricChip"><strong>{debug.shooterPagesParsed}</strong> shooter pages parsed</span>
         <span className="metricChip"><strong>{debug.completedEventsInspected}</strong> completed events inspected</span>
         <span className={`metricChip ${debug.timedOut ? "danger" : ""}`}><strong>{debug.timedOut ? debug.timedOutAtPhase || "yes" : "no"}</strong> timed out</span>
         <span className="metricChip"><strong>{debug.selectedYearEventIdsCount}</strong> selected-year events</span>
@@ -185,7 +188,7 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
       {debug.noSelectedYearEventsReason ? <p className="small muted">No selected-year events reason: {debug.noSelectedYearEventsReason}</p> : null}
       <p className="small muted">Selected discipline filters: {debug.selectedDisciplineFilters.join(", ") || "none"}</p>
       <p className="small muted">Events before filtering: {debug.eventsFoundBeforeFiltering}; after soft filter: {debug.selectedYearEventLinksAfterSoftFilter}; fallback added: {debug.genericFallbackEventsAdded}; relevant inspected: {debug.relevantEventsInspected}; selected-year event links: {debug.selectedYearEventLinksCount}; hard skipped unselected: {debug.hardSkippedUnselectedDiscipline}; hard skipped ranking/control: {debug.hardSkippedRankingOrControl}; skipped: {JSON.stringify(debug.eventLinksSkippedByReason)}</p>
-      <p className="small muted">Phase: {debug.phaseReached || "unknown"}; candidates before timeout: {debug.candidatesFoundBeforeTimeout}; high-priority liste_id pages fetched: {debug.highPriorityListeIdPagesFetched}; low-priority liste_id skipped: {debug.lowPriorityListeIdPagesSkipped}</p>
+      <p className="small muted">Phase: {debug.phaseReached || "unknown"}; scan stopped: {debug.scanStoppedReason || "unknown"}; candidates after discovery/scan/final: {debug.candidatesFoundAfterDiscovery}/{debug.candidatesFoundAfterScan}/{debug.candidatesFoundBeforeTimeout}; high-priority liste_id pages fetched: {debug.highPriorityListeIdPagesFetched}; low-priority liste_id skipped: {debug.lowPriorityListeIdPagesSkipped}</p>
       {debug.prioritizedEventLinks.length > 0 ? <p className="small muted">Top event priorities: {debug.prioritizedEventLinks.slice(0, 10).map((item) => `${item.eventId} ${item.score}: ${item.title} (${item.reason})`).join(" | ")}</p> : null}
       {debug.prioritizedListeIdLinks.length > 0 ? <p className="small muted">Top liste_id priorities: {debug.prioritizedListeIdLinks.slice(0, 10).map((item) => `${item.score}: ${item.title} (${item.reason})`).join(" | ")}</p> : null}
       {debug.resultMenuDebug.length > 0 ? <p className="small muted">Result menu liste_id counts: {debug.resultMenuDebug.slice(0, 10).map((item) => `${item.eventId}: ${item.listeIdCount} (${item.firstListeIdUrls.slice(0, 3).join(", ")})`).join(" | ")}</p> : null}
