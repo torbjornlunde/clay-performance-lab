@@ -1909,6 +1909,111 @@ function debugCandidateRows(lines: string[], html: string, shooterName: string, 
   return { candidateRows, topCompetitorTotals };
 }
 
+function emptyDebugParseResult(url: string, status: number | null, normalizedShooterName: string, error: string): LeirdueDebugParseResult {
+  return {
+    url,
+    status,
+    ok: false,
+    error,
+    pageTitle: null,
+    eventTitle: null,
+    listTitle: null,
+    normalizedShooterName,
+    shooterFound: false,
+    rawSnippet: null,
+    parsedRow: null,
+    parsedNumbers: [],
+    parsedSeriesScores: [],
+    ownScore: null,
+    totalTargets: null,
+    winningScore: null,
+    discipline: null,
+    shootingGround: null,
+    date: null,
+    category: null,
+    confidence: null,
+    importRecommended: false,
+    parserNotes: [error],
+    firstUsefulSnippet: null,
+    candidateRows: [],
+    topCompetitorTotals: [],
+    candidate: null,
+  };
+}
+
+function debugParseLeirdueHtml(params: { url: string; status: number | null; html: string; shooterName: string; year: number; selectedDisciplines: string[]; parserNote: string }): LeirdueDebugParseResult {
+  const { url, status, html, shooterName, year, selectedDisciplines, parserNote } = params;
+  const normalizedShooterName = normalizeName(shooterName);
+  const lines = htmlToLines(html);
+  const pageText = lines.join("\n");
+  const shooterFound = pageContainsShooter(pageText, shooterName);
+  const pageTitle = stripTags(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "") || null;
+  const eventTitle = extractTitle(lines, html, year);
+  const listTitle = `${eventTitle} ${pageTitle || ""}`.trim();
+  const date = parseDate(`${eventTitle}\n${pageText}`, year);
+  const discipline = classifyDiscipline(`${eventTitle}\n${pageText}`, selectedDisciplines);
+  const initialTotalTargets = extractLikelyTotalTargets(listTitle) ?? extractLikelyTotalTargets(eventTitle);
+  const parsed = parseScoresFromLines(lines, html, shooterName, pageText, year, initialTotalTargets);
+  const totalTargets = initialTotalTargets ?? extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets(eventTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores);
+  const rowDebug = debugCandidateRows(lines, html, shooterName, year, totalTargets);
+  const rawSnippet = findShooterSnippet(lines, shooterName) || (shooterFound ? usefulSnippet(pageText, shooterName) : null);
+  const shootingGroundResult = extractShootingGround(eventTitle, lines.slice(0, 25).join("\n"));
+  const parserNotes = [...discipline.notes, ...parsed.notes];
+  if (rawSnippet) parserNotes.push(`Raw snippet: ${rawSnippet}`);
+  if (!shootingGroundResult.value) parserNotes.push("Could not infer shooting ground.");
+
+  let candidate: LeirdueCandidate | null = null;
+  if (shooterFound) {
+    const raw: RawCandidate = {
+      date,
+      name: candidateNameFrom(eventTitle, listTitle, discipline.discipline),
+      shootingGround: shootingGroundResult.value,
+      discipline: discipline.discipline,
+      ownScore: parsed.ownScore,
+      totalTargets,
+      winningScore: parsed.winningScore,
+      leirdueUrl: url,
+      listType: classifyListType(listTitle),
+      sourceText: pageText,
+      listTitle,
+      notes: [...parserNotes, parserNote],
+      validationSource: false,
+      shootingGroundSource: shootingGroundResult.source,
+    };
+    candidate = classifyNormalizedCandidate(buildCandidate(raw, selectedDisciplines, year), year);
+  }
+
+  return {
+    url,
+    status,
+    ok: true,
+    error: null,
+    pageTitle,
+    eventTitle,
+    listTitle,
+    normalizedShooterName,
+    shooterFound,
+    rawSnippet,
+    parsedRow: parsed.scoreLine,
+    parsedNumbers: parsed.parsedNumbers,
+    parsedSeriesScores: parsed.seriesScores,
+    ownScore: parsed.ownScore,
+    totalTargets,
+    winningScore: parsed.winningScore,
+    discipline: discipline.discipline,
+    shootingGround: shootingGroundResult.value,
+    date,
+    category: candidate?.category ?? null,
+    confidence: candidate?.confidence ?? null,
+    importRecommended: candidate?.importRecommended ?? false,
+    parserNotes: candidate ? candidate.notes.split(/\.\s+/).filter(Boolean) : parserNotes,
+    firstUsefulSnippet: usefulSnippet(pageText, shooterName) || usefulSnippet(pageText),
+    candidateRows: rowDebug.candidateRows,
+    topCompetitorTotals: rowDebug.topCompetitorTotals,
+    candidate,
+  };
+}
+
 export async function debugParseLeirdueResultUrl(input: LeirdueDebugParseInput): Promise<LeirdueDebugParseResult> {
   const url = absolutizeUrl(input.url);
   const year = debugSelectedYear(input.year);
@@ -1922,137 +2027,11 @@ export async function debugParseLeirdueResultUrl(input: LeirdueDebugParseInput):
     const response = await fetch(url, { signal: controller.signal, headers: { "user-agent": "ClayPerformanceLab/1.0 debug parser" } });
     status = response.status;
     const html = await response.text();
-    if (!response.ok) {
-      return {
-        url,
-        status,
-        ok: false,
-        error: `HTTP ${response.status}`,
-        pageTitle: null,
-        eventTitle: null,
-        listTitle: null,
-        normalizedShooterName,
-        shooterFound: false,
-        rawSnippet: null,
-        parsedRow: null,
-        parsedNumbers: [],
-        parsedSeriesScores: [],
-        ownScore: null,
-        totalTargets: null,
-        winningScore: null,
-        discipline: null,
-        shootingGround: null,
-        date: null,
-        category: null,
-        confidence: null,
-        importRecommended: false,
-        parserNotes: [`HTTP ${response.status}`],
-        firstUsefulSnippet: null,
-        candidateRows: [],
-        topCompetitorTotals: [],
-        candidate: null,
-      };
-    }
-
-    const lines = htmlToLines(html);
-    const pageText = lines.join("\n");
-    const shooterFound = pageContainsShooter(pageText, input.shooterName);
-    const pageTitle = stripTags(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "") || null;
-    const eventTitle = extractTitle(lines, html, year);
-    const listTitle = `${eventTitle} ${pageTitle || ""}`.trim();
-    const date = parseDate(`${eventTitle}\n${pageText}`, year);
-    const discipline = classifyDiscipline(`${eventTitle}\n${pageText}`, selectedDisciplines);
-    const initialTotalTargets = extractLikelyTotalTargets(listTitle) ?? extractLikelyTotalTargets(eventTitle);
-    const parsed = parseScoresFromLines(lines, html, input.shooterName, pageText, year, initialTotalTargets);
-    const totalTargets = initialTotalTargets ?? extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets(eventTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores);
-    const rowDebug = debugCandidateRows(lines, html, input.shooterName, year, totalTargets);
-    const rawSnippet = findShooterSnippet(lines, input.shooterName) || (shooterFound ? usefulSnippet(pageText, input.shooterName) : null);
-    const shootingGroundResult = extractShootingGround(eventTitle, lines.slice(0, 25).join("\n"));
-    const parserNotes = [...discipline.notes, ...parsed.notes];
-    if (rawSnippet) parserNotes.push(`Raw snippet: ${rawSnippet}`);
-    if (!shootingGroundResult.value) parserNotes.push("Could not infer shooting ground.");
-
-    let candidate: LeirdueCandidate | null = null;
-    if (shooterFound) {
-      const raw: RawCandidate = {
-        date,
-        name: candidateNameFrom(eventTitle, listTitle, discipline.discipline),
-        shootingGround: shootingGroundResult.value,
-        discipline: discipline.discipline,
-        ownScore: parsed.ownScore,
-        totalTargets,
-        winningScore: parsed.winningScore,
-        leirdueUrl: url,
-        listType: classifyListType(listTitle),
-        sourceText: pageText,
-        listTitle,
-        notes: [...parserNotes, `Debug parser fetched exactly one URL: ${url}.`],
-        validationSource: false,
-        shootingGroundSource: shootingGroundResult.source,
-      };
-      candidate = classifyNormalizedCandidate(buildCandidate(raw, selectedDisciplines, year), year);
-    }
-
-    return {
-      url,
-      status,
-      ok: true,
-      error: null,
-      pageTitle,
-      eventTitle,
-      listTitle,
-      normalizedShooterName,
-      shooterFound,
-      rawSnippet,
-      parsedRow: parsed.scoreLine,
-      parsedNumbers: parsed.parsedNumbers,
-      parsedSeriesScores: parsed.seriesScores,
-      ownScore: parsed.ownScore,
-      totalTargets,
-      winningScore: parsed.winningScore,
-      discipline: discipline.discipline,
-      shootingGround: shootingGroundResult.value,
-      date,
-      category: candidate?.category ?? null,
-      confidence: candidate?.confidence ?? null,
-      importRecommended: candidate?.importRecommended ?? false,
-      parserNotes: candidate ? candidate.notes.split(/\.\s+/).filter(Boolean) : parserNotes,
-      firstUsefulSnippet: usefulSnippet(pageText, input.shooterName) || usefulSnippet(pageText),
-      candidateRows: rowDebug.candidateRows,
-      topCompetitorTotals: rowDebug.topCompetitorTotals,
-      candidate,
-    };
+    if (!response.ok) return emptyDebugParseResult(url, status, normalizedShooterName, `HTTP ${response.status}`);
+    return debugParseLeirdueHtml({ url, status, html, shooterName: input.shooterName, year, selectedDisciplines, parserNote: `Debug parser fetched exactly one URL: ${url}.` });
   } catch (error) {
     const message = error instanceof Error ? error.message : FETCH_ERROR_MESSAGE;
-    return {
-      url,
-      status,
-      ok: false,
-      error: message,
-      pageTitle: null,
-      eventTitle: null,
-      listTitle: null,
-      normalizedShooterName,
-      shooterFound: false,
-      rawSnippet: null,
-      parsedRow: null,
-      parsedNumbers: [],
-      parsedSeriesScores: [],
-      ownScore: null,
-      totalTargets: null,
-      winningScore: null,
-      discipline: null,
-      shootingGround: null,
-      date: null,
-      category: null,
-      confidence: null,
-      importRecommended: false,
-      parserNotes: [message],
-      firstUsefulSnippet: null,
-      candidateRows: [],
-      topCompetitorTotals: [],
-      candidate: null,
-    };
+    return emptyDebugParseResult(url, status, normalizedShooterName, message);
   } finally {
     clearTimeout(timeout);
   }
@@ -2073,7 +2052,21 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
       break;
     }
     debug.shooterPagesParsed += 1;
-    candidates.push(...extractCandidatesFromPage(page, input, debug, true));
+    const parsed = debugParseLeirdueHtml({
+      url: page.url,
+      status: 200,
+      html: page.html,
+      shooterName: input.shooterName,
+      year: input.year,
+      selectedDisciplines: input.disciplines,
+      parserNote: `Full-year import reused debug parser for scanned liste_id page: ${page.url}.`,
+    });
+    if (parsed.candidate) {
+      candidates.push(parsed.candidate);
+      if (debug.candidateReasons.length < 50) debug.candidateReasons.push(`Debug parser candidate from ${page.url}: ${parsed.candidate.category}/${parsed.candidate.confidence}, ownScore=${parsed.candidate.ownScore ?? "unknown"}, totalTargets=${parsed.candidate.totalTargets ?? "unknown"}, winningScore=${parsed.candidate.winningScore ?? "unknown"}.`);
+    } else if (debug.candidateReasons.length < 50) {
+      debug.candidateReasons.push(`Debug parser found shooter page but no candidate from ${page.url}: ${parsed.parserNotes.join(" ") || "no parser notes"}`);
+    }
   }
   const normalized = normalizeLeirdueCandidates(candidates, input, debug);
   debug.candidateRowsCreated = normalized.length;
