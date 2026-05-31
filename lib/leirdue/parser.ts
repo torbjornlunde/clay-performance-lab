@@ -44,6 +44,13 @@ function emptyDebug(): LeirdueSearchDebug {
     selectedYear: null,
     normalizedSearchName: "",
     eventOverviewUrls: [],
+    guessedYearOverviewUrlsTried: [],
+    discoveredYearLinks: [],
+    selectedYearLinksFound: [],
+    selectedYearOverviewUrlUsed: null,
+    overviewYearMismatch: false,
+    overviewDiagnostics: [],
+    noSelectedYearEventsReason: null,
     eventIdsFound: [],
     eventIdsInspected: [],
     eventDatesParsed: {},
@@ -929,8 +936,70 @@ function addValidationListeIdLinks(input: LeirdueSearchInput, links: Map<string,
   debug.candidateReasons.push("Added Torbjørn Lunde 2026 debug validation liste_id URLs.");
 }
 
+
+function isLikelyYearNavigationLink(link: Link) {
+  const haystack = normalizeText(`${link.text} ${link.href}`);
+  return /\b20\d{2}\b/.test(haystack) || haystack.includes("resultater=") || haystack.includes("sesong=") || haystack.includes("aar=") || haystack.includes("year=");
+}
+
+function addDebugYearLinks(debug: LeirdueSearchDebug, links: Link[], selectedYear: number) {
+  for (const link of links) {
+    if (!isLikelyYearNavigationLink(link)) continue;
+    const item = { url: link.href, text: link.text };
+    if (!debug.discoveredYearLinks.some((existing) => existing.url === item.url && existing.text === item.text)) debug.discoveredYearLinks.push(item);
+    if (normalizeText(`${link.href} ${link.text}`).includes(String(selectedYear)) && !debug.selectedYearLinksFound.some((existing) => existing.url === item.url && existing.text === item.text)) {
+      debug.selectedYearLinksFound.push(item);
+    }
+  }
+}
+
+function addOverviewDiagnostic(debug: LeirdueSearchDebug, url: string, html: string, selectedYear: number) {
+  const text = stripTags(html);
+  const links = extractLinks(html);
+  const selectedYearLinkCount = links.filter((link) => normalizeText(`${link.href} ${link.text}`).includes(String(selectedYear))).length;
+  debug.overviewDiagnostics.push({
+    url,
+    containsSelectedYear: normalizeText(text).includes(String(selectedYear)) || selectedYearLinkCount > 0,
+    selectedYearLinkCount,
+    snippet: usefulSnippet(text, String(selectedYear)) || text.replace(/\s+/g, " ").trim().slice(0, 500),
+  });
+}
+
+function overviewEventLinksForYear(html: string, selectedYear: number) {
+  const marked = decodeEntities(html)
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_all, href, label) => `\n[[LINK ${absolutizeUrl(href)}]]${stripTags(label)}[[/LINK]]\n`)
+    .replace(/<(br|p|div|tr|td|th|li|h[1-6])\b[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ");
+  const linksByEvent = new Map<string, Link>();
+  let currentYear: number | null = null;
+
+  for (const rawLine of marked.split(/\n+/)) {
+    const line = rawLine.replace(/\s+/g, " ").trim();
+    if (!line) continue;
+    const headingYear = line.match(/^20\d{2}$/)?.[0];
+    if (headingYear) {
+      currentYear = Number(headingYear);
+      continue;
+    }
+
+    const linkMatch = line.match(/^\[\[LINK (.*?)\]\](.*?)\[\[\/LINK\]\]$/);
+    if (!linkMatch || currentYear !== selectedYear) continue;
+    const href = linkMatch[1];
+    const stevneId = extractStevneId(href);
+    if (!stevneId) continue;
+    const existing = linksByEvent.get(stevneId);
+    const text = stripTags(linkMatch[2]).trim();
+    linksByEvent.set(stevneId, { href, text: [existing?.text, text].filter(Boolean).join(" "), source: "anchor" });
+  }
+
+  return Array.from(linksByEvent.values());
+}
+
 async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebug) {
-  const startUrls = [
+  const guessedUrls = [
+    `${LEIRDUE_BASE_URL}?resultater=`,
     `${LEIRDUE_BASE_URL}?meny=resultater&aar=${input.year}`,
     `${LEIRDUE_BASE_URL}?meny=resultater&year=${input.year}`,
     `${LEIRDUE_BASE_URL}?meny=stevner&aar=${input.year}`,
@@ -938,22 +1007,56 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   ];
   debug.selectedYear = input.year;
   debug.normalizedSearchName = normalizeName(input.shooterName);
-  debug.eventOverviewUrls = startUrls;
+  debug.guessedYearOverviewUrlsTried = guessedUrls;
 
   const eventIds = new Map<string, string>();
   const listeIdLinks = new Map<string, Link>();
   const listPages = new Map<string, Page>();
+  const overviewHtmlByUrl = new Map<string, string>();
 
-  for (const url of startUrls) {
+  for (const url of guessedUrls) {
     const html = await fetchLeirdue(url, debug);
     if (!html) continue;
-    for (const link of extractLinks(html)) {
-      if (!isEventish(link, input)) continue;
-      const stevneId = extractStevneId(link.href);
-      if (stevneId) eventIds.set(stevneId, link.text);
+    overviewHtmlByUrl.set(url, html);
+    addOverviewDiagnostic(debug, url, html, input.year);
+    addDebugYearLinks(debug, extractLinks(html), input.year);
+  }
+
+  const selectedYearUrls = new Set<string>();
+  for (const item of debug.selectedYearLinksFound) selectedYearUrls.add(item.url);
+  for (const [url, html] of overviewHtmlByUrl) {
+    if (normalizeText(stripTags(html)).includes(String(input.year))) selectedYearUrls.add(url);
+  }
+  if (selectedYearUrls.size === 0) selectedYearUrls.add(`${LEIRDUE_BASE_URL}?resultater=`);
+
+  for (const url of selectedYearUrls) {
+    let html = overviewHtmlByUrl.get(url);
+    if (!html) {
+      const fetchedHtml = await fetchLeirdue(url, debug);
+      if (!fetchedHtml) continue;
+      html = fetchedHtml;
+      overviewHtmlByUrl.set(url, html);
+      addOverviewDiagnostic(debug, url, html, input.year);
+      addDebugYearLinks(debug, extractLinks(html), input.year);
     }
-    for (const match of html.matchAll(/stevne\s*=\s*(\d+)/gi)) {
-      eventIds.set(match[1], `Raw event ${match[1]}`);
+    if (!debug.selectedYearOverviewUrlUsed && normalizeText(stripTags(html)).includes(String(input.year))) debug.selectedYearOverviewUrlUsed = url;
+    addUnique(debug.eventOverviewUrls, url);
+
+    const selectedYearEventLinks = overviewEventLinksForYear(html, input.year);
+    for (const link of selectedYearEventLinks) {
+      const stevneId = extractStevneId(link.href);
+      if (stevneId) eventIds.set(stevneId, link.text || `Selected-year event ${stevneId}`);
+    }
+
+    if (selectedYearEventLinks.length === 0) {
+      for (const link of extractLinks(html)) {
+        if (!isEventish(link, input)) continue;
+        const stevneId = extractStevneId(link.href);
+        if (stevneId) eventIds.set(stevneId, link.text);
+      }
+      for (const match of html.matchAll(/stevne\s*=\s*(\d+)/gi)) {
+        eventIds.set(match[1], `Raw event ${match[1]}`);
+      }
     }
   }
 
@@ -1010,10 +1113,22 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     debug.eventResultMenuPagesFetched += 1;
     addListeIdLinksFromAnchors(resultHtml, listeIdLinks);
     const rawMatches = addListeIdLinksFromRawHtml(resultHtml, resultMenuUrl, listeIdLinks);
-    const extractedUrls = Array.from(listeIdLinks.keys()).filter((url) => !beforeUrls.has(url));
+    const extractedUrls = Array.from(listeIdLinks.keys()).filter((candidateUrl) => !beforeUrls.has(candidateUrl));
     if (extractedUrls.length > 0) debug.listeIdLinksByEvent[event.stevneId] = extractedUrls;
     debug.listeIdLinksFromResultMenus += Math.max(extractedUrls.length, rawMatches);
     if (rawMatches === 0 && extractedUrls.length === 0) addResultMenuDiagnostic(debug, resultMenuUrl, resultHtml);
+  }
+
+  const foundYears = Object.keys(debug.eventYearsFound).filter((year) => year !== "unknown");
+  debug.overviewYearMismatch = foundYears.length > 0 && !foundYears.includes(String(input.year));
+  if (debug.overviewYearMismatch) {
+    debug.rejectedReasons.push(`Selected year overview appears to return ${foundYears.join(", ")} events, not ${input.year}.`);
+  }
+  if (debug.completedEventsInspected === 0) {
+    debug.noSelectedYearEventsReason = debug.selectedYearOverviewUrlUsed
+      ? `No ${input.year} events were inspected from ${debug.selectedYearOverviewUrlUsed}. Event years found: ${foundYears.join(", ") || "unknown"}.`
+      : `No Leirdue year navigation/result overview for ${input.year} was found.`;
+    debug.rejectedReasons.push(debug.noSelectedYearEventsReason);
   }
 
   addValidationListeIdLinks(input, listeIdLinks, debug);

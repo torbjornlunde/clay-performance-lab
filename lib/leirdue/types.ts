@@ -44,6 +44,13 @@ export type LeirdueSearchDebug = {
   selectedYear: number | null;
   normalizedSearchName: string;
   eventOverviewUrls: string[];
+  guessedYearOverviewUrlsTried: string[];
+  discoveredYearLinks: { url: string; text: string }[];
+  selectedYearLinksFound: { url: string; text: string }[];
+  selectedYearOverviewUrlUsed: string | null;
+  overviewYearMismatch: boolean;
+  overviewDiagnostics: { url: string; containsSelectedYear: boolean; selectedYearLinkCount: number; snippet: string }[];
+  noSelectedYearEventsReason: string | null;
   eventIdsFound: string[];
   eventIdsInspected: string[];
   eventDatesParsed: Record<string, string | null>;
