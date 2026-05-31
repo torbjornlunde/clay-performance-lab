@@ -75,14 +75,24 @@ main {
 }
 
 .mark {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(242, 120, 34, 0.18), transparent 62%),
+    rgba(255, 255, 255, 0.035);
+  box-shadow: 0 0 0 4px rgba(242, 120, 34, 0.08), 0 10px 24px rgba(242, 90, 24, 0.2);
+}
+
+.mark svg {
   width: 36px;
   height: 36px;
-  flex: 0 0 auto;
-  border-radius: 13px;
-  background:
-    linear-gradient(135deg, #f6d77a, #d6a43a 56%, #8f6420),
-    radial-gradient(circle at 70% 20%, #fff4bd, transparent 35%);
-  box-shadow: 0 0 0 4px rgba(216, 165, 58, 0.08), 0 10px 24px rgba(216, 165, 58, 0.18);
+  display: block;
+  filter: drop-shadow(0 7px 12px rgba(0, 0, 0, 0.34));
 }
 
 .topNav {

@@ -563,7 +563,6 @@ export default function DashboardPage() {
           <p className="eyebrow">Shooter workspace</p>
           <h2>Dashboard</h2>
           <p className="dashboardHeroCopy">Log a new session or add a competition score in seconds.</p>
-          {/* Future: replace current square logo mark with a small orange clay target icon. */}
         </div>
         <div className="dashboardPrimaryActions">
           <Link href="/sessions/new" className="dashboardActionCard primaryAction">
