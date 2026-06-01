@@ -39,6 +39,7 @@ type LeirdueContinuationState = {
   visibleCandidatesCountTotal: number;
   hiddenLowQualityCandidatesCountTotal: number;
   candidates: LeirdueCandidate[];
+  pendingListeIdQueue: Link[];
 };
 
 type Link = { href: string; text: string; source?: "anchor" | "raw" | "validation" };
@@ -67,6 +68,8 @@ const MAX_LISTE_ID_PAGES_SCANNED = 250;
 const MAX_SHOOTER_PAGES_PARSED = 50;
 const TARGET_COMPLETE_CANDIDATES = 16;
 const RESULT_MENU_BATCH_SIZE = 10;
+const MAX_CONTINUATION_EVENT_MENUS_BEFORE_SCAN = 5;
+const MAX_CONTINUATION_LISTE_IDS_TO_SCAN_PER_BATCH = 50;
 const MAX_RESULT_MENUS_BEFORE_FIRST_SCAN = 40;
 const RESULT_MENU_PHASE_BUDGET_MS = Math.floor(SEARCH_TIMEOUT_MS * 0.4);
 const MIN_LIST_SCAN_RESERVE_MS = Math.floor(SEARCH_TIMEOUT_MS * 0.5);
@@ -118,6 +121,7 @@ function continuationTokenPayload(input: LeirdueSearchInput, token: string | nul
       visibleCandidatesCountTotal: Number.isInteger(parsed.visibleCandidatesCountTotal) ? Math.max(0, Number(parsed.visibleCandidatesCountTotal)) : 0,
       hiddenLowQualityCandidatesCountTotal: Number.isInteger(parsed.hiddenLowQualityCandidatesCountTotal) ? Math.max(0, Number(parsed.hiddenLowQualityCandidatesCountTotal)) : 0,
       candidates: Array.isArray(parsed.candidates) ? parsed.candidates.filter(isLeirdueCandidate) : [],
+      pendingListeIdQueue: Array.isArray(parsed.pendingListeIdQueue) ? parsed.pendingListeIdQueue.filter(isContinuationLink) : [],
     };
   } catch {
     return null;
@@ -132,6 +136,12 @@ function isLeirdueCandidate(value: unknown): value is LeirdueCandidate {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<LeirdueCandidate>;
   return typeof candidate.name === "string" && typeof candidate.leirdueUrl === "string" && typeof candidate.discipline === "string";
+}
+
+function isContinuationLink(value: unknown): value is Link {
+  if (!value || typeof value !== "object") return false;
+  const link = value as Partial<Link>;
+  return typeof link.href === "string" && typeof link.text === "string";
 }
 
 function markFetchError(debug: LeirdueSearchDebug, url: string, note: string) {
@@ -195,6 +205,12 @@ function emptyDebug(): LeirdueSearchDebug {
     eventMenusFetchedThisBatch: 0,
     timeBudgetReason: null,
     continuationStopReason: null,
+    pendingListeIdQueueAtStart: 0,
+    pendingListeIdQueueAtEnd: 0,
+    listeIdsQueuedThisBatch: 0,
+    listeIdsScannedThisBatch: 0,
+    scanFirstMode: false,
+    batchStopReason: null,
     candidateQualityStopReason: null,
     selectedDisciplineFilters: [],
     eventsFoundBeforeFiltering: 0,
@@ -1300,6 +1316,16 @@ function listPageLabel(item: ListeIdQueueItem) {
   return [item.eventTitle, item.text].filter(Boolean).join(" — ") || `Leirdue result${item.eventDate ? ` — ${item.eventDate}` : ""}`;
 }
 
+function pendingListeIdQueue(links: Map<string, Link>, scannedKeys: Set<string>) {
+  return Array.from(links.entries())
+    .filter(([key]) => !scannedKeys.has(key))
+    .map(([, link]) => link);
+}
+
+function remainingContinuationListScanBudget(debug: LeirdueSearchDebug) {
+  return Math.max(0, MAX_CONTINUATION_LISTE_IDS_TO_SCAN_PER_BATCH - debug.scannedThisBatch);
+}
+
 function updateListeIdQueueDebug(debug: LeirdueSearchDebug, queueItems: ListeIdQueueItem[]) {
   debug.listeIdPagesQueued = Math.max(debug.listeIdPagesQueued, queueItems.length);
   debug.prioritizedListeIdLinks = queueItems.slice(0, 20).map((item) => ({
@@ -1324,6 +1350,7 @@ async function scanQueuedListeIdPages(
   updateListeIdQueueDebug(debug, queueItems);
   const pendingItems = queueItems.filter((item) => !scannedKeys.has(item.key) && !listPages.has(item.key));
   debug.queuedThisBatch = Math.max(debug.queuedThisBatch, pendingItems.length);
+  debug.listeIdsQueuedThisBatch = Math.max(debug.listeIdsQueuedThisBatch, pendingItems.length);
   if (queueItems.length > MAX_LISTE_ID_PAGES_SCANNED) {
     debug.listInspectionLimitReached = true;
     markLimitReached(debug, "max liste_id scan pages");
@@ -1359,6 +1386,7 @@ async function scanQueuedListeIdPages(
     debug.listeIdPagesScannedForName += 1;
     debug.fetchedThisBatch += 1;
     debug.scannedThisBatch += 1;
+    debug.listeIdsScannedThisBatch += 1;
     if (item.priority >= 80) debug.highPriorityListeIdPagesFetched += 1;
 
     const pageText = stripTags(html);
@@ -1782,6 +1810,18 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   const listPages = new Map<string, Page>();
   const previouslyScannedEventIds = new Set(continuation?.scannedEventIds ?? []);
   const scannedListeIdKeys = new Set(continuation?.scannedListeIdKeys ?? []);
+  for (const link of continuation?.pendingListeIdQueue ?? []) {
+    const key = canonicalListeIdKey(link.href);
+    if (!scannedListeIdKeys.has(key)) listeIdLinks.set(key, link);
+  }
+  debug.pendingListeIdQueueAtStart = pendingListeIdQueue(listeIdLinks, scannedListeIdKeys).length;
+  if (continuation && debug.pendingListeIdQueueAtStart > 0) {
+    debug.scanFirstMode = true;
+    await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, MAX_CONTINUATION_LISTE_IDS_TO_SCAN_PER_BATCH);
+    if (debug.scannedThisBatch >= MAX_CONTINUATION_LISTE_IDS_TO_SCAN_PER_BATCH || shouldStopCrawl(debug, state)) {
+      debug.batchStopReason = debug.scannedThisBatch >= MAX_CONTINUATION_LISTE_IDS_TO_SCAN_PER_BATCH ? "listScanBatchLimit" : "timeoutAfterScanFirst";
+    }
+  }
   const overviewHtmlByUrl = new Map<string, string>();
   const crawlStartedAt = state.deadlineAt - SEARCH_TIMEOUT_MS;
 
@@ -1884,6 +1924,8 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   let firstListeIdScanStarted = false;
   let eventsDequeued = 0;
   for (const event of rankedEvents) {
+    if (continuation && debug.scannedThisBatch >= MAX_CONTINUATION_LISTE_IDS_TO_SCAN_PER_BATCH) { debug.batchStopReason ||= "listScanBatchLimit"; break; }
+    if (continuation && debug.eventMenusFetchedThisBatch >= MAX_CONTINUATION_EVENT_MENUS_BEFORE_SCAN) { debug.batchStopReason ||= "eventMenuBatchLimit"; break; }
     if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; debug.candidateQualityStopReason = "timeout"; break; }
     if (debug.eventResultMenuPagesFetched >= MAX_RESULT_MENU_PAGES_FETCHED) {
       markLimitReached(debug, "max result menu pages");
@@ -1893,8 +1935,13 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     }
 
     const elapsed = Date.now() - crawlStartedAt;
-    const menuBudgetReason = elapsed >= RESULT_MENU_PHASE_BUDGET_MS ? "resultMenuPhaseBudget" : remainingCrawlMs(state) <= MIN_LIST_SCAN_RESERVE_MS ? "scanReserve" : debug.eventResultMenuPagesFetched >= MAX_RESULT_MENUS_BEFORE_FIRST_SCAN ? "menuCountBeforeFirstScan" : null;
+    const menuBudgetReason = continuation && debug.eventMenusFetchedThisBatch >= MAX_CONTINUATION_EVENT_MENUS_BEFORE_SCAN ? "continuationMenuBatchLimit" : elapsed >= RESULT_MENU_PHASE_BUDGET_MS ? "resultMenuPhaseBudget" : remainingCrawlMs(state) <= MIN_LIST_SCAN_RESERVE_MS ? "scanReserve" : debug.eventResultMenuPagesFetched >= MAX_RESULT_MENUS_BEFORE_FIRST_SCAN ? "menuCountBeforeFirstScan" : null;
     const menuBudgetSpent = menuBudgetReason !== null;
+    if (menuBudgetSpent && listeIdLinks.size <= scannedListeIdKeys.size && continuation) {
+      debug.timeBudgetReason ||= menuBudgetReason;
+      debug.batchStopReason ||= menuBudgetReason;
+      break;
+    }
     if (menuBudgetSpent && listeIdLinks.size > scannedListeIdKeys.size) {
       debug.timeBudgetReason ||= menuBudgetReason;
       if (!firstListeIdScanStarted) {
@@ -1903,7 +1950,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
       }
       const beforeScanned = debug.listeIdPagesScannedForName;
       const beforeShooterPages = debug.listeIdShooterPagesFound;
-      await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, 60);
+      await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, continuation ? remainingContinuationListScanBudget(debug) : 60);
       recordEventBatchScan(debug, beforeScanned, beforeShooterPages);
       refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
       menusSinceLastScan = 0;
@@ -1911,6 +1958,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
       if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; debug.candidateQualityStopReason = "scanLimit"; break; }
       if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) { debug.eventStopReason = "max shooter pages"; debug.candidateQualityStopReason = "shooterPageLimit"; break; }
       if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; debug.candidateQualityStopReason = "timeout"; break; }
+      if (continuation) { debug.batchStopReason ||= "scanAfterMenuBudget"; break; }
     }
 
     eventsDequeued += 1;
@@ -1964,7 +2012,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
       }
       const beforeScanned = debug.listeIdPagesScannedForName;
       const beforeShooterPages = debug.listeIdShooterPagesFound;
-      await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, 20);
+      await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, continuation ? remainingContinuationListScanBudget(debug) : 20);
       recordEventBatchScan(debug, beforeScanned, beforeShooterPages);
       refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
       menusSinceLastScan = 0;
@@ -1981,7 +2029,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
       }
       const beforeScanned = debug.listeIdPagesScannedForName;
       const beforeShooterPages = debug.listeIdShooterPagesFound;
-      await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, continuation ? 20 : 40);
+      await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, continuation ? remainingContinuationListScanBudget(debug) : 40);
       recordEventBatchScan(debug, beforeScanned, beforeShooterPages);
       refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
       menusSinceLastScan = 0;
@@ -1989,6 +2037,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
       if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; debug.candidateQualityStopReason = "scanLimit"; break; }
       if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) { debug.eventStopReason = "max shooter pages"; debug.candidateQualityStopReason = "shooterPageLimit"; break; }
       if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; debug.candidateQualityStopReason = "timeout"; break; }
+      if (continuation) { debug.batchStopReason ||= "scanAfterMenu"; break; }
     }
   }
 
@@ -2064,8 +2113,9 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     if (notReached.length > 0) debug.rejectedReasons.push(`Known discovered events were not reached before stop: ${notReached.map((item) => item.eventId).join(", ")}.`);
   }
 
+  debug.pendingListeIdQueueAtEnd = pendingListeIdQueue(listeIdLinks, scannedListeIdKeys).length;
   debug.scannedListeIdTotal = scannedListeIdKeys.size;
-  return { pages: Array.from(listPages.values()), scannedListeIdKeys };
+  return { pages: Array.from(listPages.values()), scannedListeIdKeys, pendingListeIdQueue: pendingListeIdQueue(listeIdLinks, scannedListeIdKeys) };
 }
 
 function candidateMatchesExpected(candidate: LeirdueCandidate, expected: ExpectedValidationResult) {
@@ -2530,6 +2580,7 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
         visibleCandidatesCountTotal: debug.visibleCandidatesCountTotal,
         hiddenLowQualityCandidatesCountTotal: debug.hiddenLowQualityCandidatesCountTotal,
         candidates: returnedCandidates,
+        pendingListeIdQueue: discovered.pendingListeIdQueue,
       })
     : null;
   return { candidates: returnedCandidates, debug, continuationToken };

@@ -131,6 +131,12 @@ export type LeirdueSearchDebug = {
   eventMenusFetchedThisBatch: number;
   timeBudgetReason: string | null;
   continuationStopReason: string | null;
+  pendingListeIdQueueAtStart: number;
+  pendingListeIdQueueAtEnd: number;
+  listeIdsQueuedThisBatch: number;
+  listeIdsScannedThisBatch: number;
+  scanFirstMode: boolean;
+  batchStopReason: string | null;
   candidateQualityStopReason: "completeCandidatesFound" | "timeout" | "scanLimit" | "eventQueueExhausted" | "shooterPageLimit" | "resultMenuLimit" | null;
   selectedDisciplineFilters: string[];
   eventsFoundBeforeFiltering: number;
