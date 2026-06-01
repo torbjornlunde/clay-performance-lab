@@ -98,9 +98,15 @@ export type LeirdueSearchDebug = {
   knownTorbjorn2025Debug: { eventId: string; listeId: string; discovered: boolean; inspected: boolean; listeQueued: boolean; listeScanned: boolean }[];
   eventBatchesProcessed: number;
   eventQueueRemainingWhenStopped: number;
-  eventStopReason: "enough candidates" | "max scan pages" | "max shooter pages" | "timeout" | "result menu limit" | "event queue exhausted" | null;
+  eventStopReason: "completeCandidatesFound" | "enough candidates" | "max scan pages" | "max shooter pages" | "timeout" | "result menu limit" | "event queue exhausted" | null;
   candidatesFoundPerBatch: number[];
   listeIdPagesScannedPerBatch: number[];
+  completeCandidatesFound: number;
+  partialCandidatesFound: number;
+  lowQualityCandidatesFound: number;
+  searchContinuedBecauseOnlyLowQualityCandidates: boolean;
+  percentageHeavyCandidates: number;
+  candidateQualityStopReason: "completeCandidatesFound" | "timeout" | "scanLimit" | "eventQueueExhausted" | "shooterPageLimit" | "resultMenuLimit" | null;
   selectedDisciplineFilters: string[];
   eventsFoundBeforeFiltering: number;
   selectedYearEventLinksBeforeFilter: number;

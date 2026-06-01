@@ -110,6 +110,12 @@ function emptyDebug(): LeirdueSearchDebug {
     eventStopReason: null,
     candidatesFoundPerBatch: [],
     listeIdPagesScannedPerBatch: [],
+    completeCandidatesFound: 0,
+    partialCandidatesFound: 0,
+    lowQualityCandidatesFound: 0,
+    searchContinuedBecauseOnlyLowQualityCandidates: false,
+    percentageHeavyCandidates: 0,
+    candidateQualityStopReason: null,
     selectedDisciplineFilters: [],
     eventsFoundBeforeFiltering: 0,
     selectedYearEventLinksBeforeFilter: 0,
@@ -545,6 +551,45 @@ function refreshKnownTorbjorn2025Debug(input: LeirdueSearchInput, debug: Leirdue
   });
 }
 
+
+
+function percentageTokenCount(text: string) {
+  return (text.match(/\b\d{1,3}(?:[,.]\d+)?\s*%/g) || []).length;
+}
+
+function isPercentageHeavyText(text: string) {
+  return percentageTokenCount(text) >= 3;
+}
+
+function isCompleteDirectCandidate(candidate: LeirdueCandidate | null, selectedYear: number) {
+  if (!candidate) return false;
+  const candidateYear = parsedYear(candidate.date);
+  return candidate.ownScore !== null
+    && candidate.totalTargets !== null
+    && candidate.winningScore !== null
+    && candidate.date !== null
+    && candidateYear === selectedYear
+    && candidate.discipline !== "Other"
+    && candidate.category !== "control"
+    && !isFutureDate(candidate.date);
+}
+
+function recordCandidateQuality(debug: LeirdueSearchDebug, parsed: LeirdueDebugParseResult, pageText: string) {
+  const qualityText = normalizeText(`${parsed.listTitle || ""} ${parsed.parsedRow || ""} ${parsed.rawSnippet || ""} ${pageText.slice(0, 1200)}`);
+  const percentageHeavy = isPercentageHeavyText(`${parsed.rawSnippet || ""} ${parsed.parsedRow || ""} ${pageText.slice(0, 1200)}`);
+  const controlLike = percentageHeavy || /(ranking|prosent|cup sammenlagt|sammenlagt premiering|klasseføring|klasseforing)/.test(qualityText);
+  if (percentageHeavy) debug.percentageHeavyCandidates += 1;
+  if (isCompleteDirectCandidate(parsed.candidate, debug.selectedYear ?? new Date().getFullYear()) && !controlLike) {
+    debug.completeCandidatesFound += 1;
+  } else if (controlLike || (!parsed.ownScore && !parsed.totalTargets)) {
+    debug.lowQualityCandidatesFound += 1;
+  } else {
+    debug.partialCandidatesFound += 1;
+  }
+  if (debug.completeCandidatesFound === 0 && (debug.partialCandidatesFound > 0 || debug.lowQualityCandidatesFound > 0)) {
+    debug.searchContinuedBecauseOnlyLowQualityCandidates = true;
+  }
+}
 
 function recordEventBatchScan(debug: LeirdueSearchDebug, beforeScanned: number, beforeShooterPages: number) {
   const scanned = debug.listeIdPagesScannedForName - beforeScanned;
@@ -1194,6 +1239,20 @@ async function scanQueuedListeIdPages(
       const snippet = usefulSnippet(pageText, input.shooterName);
       if (snippet) debug.shooterMatchSnippets.push({ url: item.href, snippet });
     }
+    const parsedForQuality = debugParseLeirdueHtml({
+      url: item.href,
+      status: 200,
+      html,
+      shooterName: input.shooterName,
+      year: input.year,
+      selectedDisciplines: input.disciplines,
+      parserNote: `Full-year scan quality check for liste_id page: ${item.href}.`,
+    });
+    recordCandidateQuality(debug, parsedForQuality, pageText);
+    if (debug.candidateReasons.length < 50) {
+      const quality = isCompleteDirectCandidate(parsedForQuality.candidate, input.year) ? "complete" : isPercentageHeavyText(`${parsedForQuality.rawSnippet || ""} ${parsedForQuality.parsedRow || ""} ${pageText.slice(0, 1200)}`) ? "lowQuality/percentage" : parsedForQuality.candidate ? "partial" : "lowQuality";
+      debug.candidateReasons.push(`Scan quality ${quality} from ${item.href}: ownScore=${parsedForQuality.ownScore ?? "unknown"}, totalTargets=${parsedForQuality.totalTargets ?? "unknown"}, winningScore=${parsedForQuality.winningScore ?? "unknown"}.`);
+    }
     listPages.set(item.key, { url: item.href, html, label: listPageLabel(item), kind: "list" });
   }
 
@@ -1505,7 +1564,7 @@ function listeIdPriorityDetail(link: Link, input: LeirdueSearchInput) {
   if (text.includes("liste_id")) score += 10;
   if (link.source === "validation") { score += 500; reasons.push("validation"); }
   if (text.includes("klassedelt")) { score -= 20; reasons.push("class split"); }
-  if (/(lagskyting|lagliste|finaleliste|finale|cup sammenlagt|ranking|prosent|uttak|flere stevner|sesong|season)/.test(text)) { score -= 140; reasons.push("control/summary list"); }
+  if (/(lagskyting|lagliste|finaleliste|finale|cup sammenlagt|sammenlagt premiering|ranking|prosent|klasseføring|klasseforing|uttak|flere stevner|sesong|season|%)/.test(text)) { score -= 180; reasons.push("control/summary/percentage list"); }
   return { score, reason: reasons.join(", ") || "generic liste_id" };
 }
 
@@ -1688,10 +1747,11 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   let firstListeIdScanStarted = false;
   let eventsDequeued = 0;
   for (const event of rankedEvents) {
-    if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; break; }
+    if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; debug.candidateQualityStopReason = "timeout"; break; }
     if (debug.eventResultMenuPagesFetched >= MAX_RESULT_MENU_PAGES_FETCHED) {
       markLimitReached(debug, "max result menu pages");
       debug.eventStopReason = "result menu limit";
+      debug.candidateQualityStopReason = "resultMenuLimit";
       break;
     }
 
@@ -1708,10 +1768,10 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
       recordEventBatchScan(debug, beforeScanned, beforeShooterPages);
       refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
       menusSinceLastScan = 0;
-      if (listPages.size >= 8) { debug.eventStopReason = "enough candidates"; break; }
-      if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; break; }
-      if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) { debug.eventStopReason = "max shooter pages"; break; }
-      if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; break; }
+      if (debug.completeCandidatesFound >= 2) { debug.eventStopReason = "completeCandidatesFound"; debug.candidateQualityStopReason = "completeCandidatesFound"; break; }
+      if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; debug.candidateQualityStopReason = "scanLimit"; break; }
+      if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) { debug.eventStopReason = "max shooter pages"; debug.candidateQualityStopReason = "shooterPageLimit"; break; }
+      if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; debug.candidateQualityStopReason = "timeout"; break; }
     }
 
     eventsDequeued += 1;
@@ -1766,10 +1826,10 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
       recordEventBatchScan(debug, beforeScanned, beforeShooterPages);
       refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
       menusSinceLastScan = 0;
-      if (listPages.size >= 8) { debug.eventStopReason = "enough candidates"; break; }
-      if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; break; }
-      if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) { debug.eventStopReason = "max shooter pages"; break; }
-      if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; break; }
+      if (debug.completeCandidatesFound >= 2) { debug.eventStopReason = "completeCandidatesFound"; debug.candidateQualityStopReason = "completeCandidatesFound"; break; }
+      if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; debug.candidateQualityStopReason = "scanLimit"; break; }
+      if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) { debug.eventStopReason = "max shooter pages"; debug.candidateQualityStopReason = "shooterPageLimit"; break; }
+      if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; debug.candidateQualityStopReason = "timeout"; break; }
     }
   }
 
@@ -1828,10 +1888,11 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
   setEventQueueDebugRows(debug, allRankedEvents, input);
   debug.selectedYearEventLinks = relevantEventLinks.map((event) => ({ eventId: event.eventId, url: event.url, titleText: event.titleText, eventTitle: event.eventTitle, organizerText: event.organizerText, dateText: event.dateText, rawRowSnippet: event.rawRowSnippet, titleParseSource: event.titleParseSource, date: event.date, parsedYear: event.parsedYear, overviewMatchedYear: event.overviewMatchedYear, actualEventYear: event.actualEventYear, actualEventDate: event.actualEventDate, actualDateText: event.actualDateText, inspected: event.inspected, skippedReason: event.skippedReason }));
-  if (listPages.size >= 8) debug.eventStopReason = "enough candidates";
-  else if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) debug.eventStopReason = "max scan pages";
-  else if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) debug.eventStopReason = "max shooter pages";
-  else if (debug.timedOut) debug.eventStopReason = "timeout";
+  if (debug.completeCandidatesFound >= 2) { debug.eventStopReason = "completeCandidatesFound"; debug.candidateQualityStopReason = "completeCandidatesFound"; }
+  else if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; debug.candidateQualityStopReason = "scanLimit"; }
+  else if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) { debug.eventStopReason = "max shooter pages"; debug.candidateQualityStopReason = "shooterPageLimit"; }
+  else if (debug.timedOut) { debug.eventStopReason = "timeout"; debug.candidateQualityStopReason = "timeout"; }
+  else if (debug.eventStopReason === "event queue exhausted") debug.candidateQualityStopReason = "eventQueueExhausted";
   if (isTorbjornLunde2025DebugSearch(input)) {
     refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
     const notReached = debug.knownTorbjorn2025Debug.filter((item) => item.discovered && !item.inspected);
