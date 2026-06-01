@@ -96,6 +96,11 @@ export type LeirdueSearchDebug = {
   unknownYearFallbackEventsCount: number;
   actualYearMismatchSkippedCount: number;
   knownTorbjorn2025Debug: { eventId: string; listeId: string; discovered: boolean; inspected: boolean; listeQueued: boolean; listeScanned: boolean }[];
+  eventBatchesProcessed: number;
+  eventQueueRemainingWhenStopped: number;
+  eventStopReason: "enough candidates" | "max scan pages" | "max shooter pages" | "timeout" | "result menu limit" | "event queue exhausted" | null;
+  candidatesFoundPerBatch: number[];
+  listeIdPagesScannedPerBatch: number[];
   selectedDisciplineFilters: string[];
   eventsFoundBeforeFiltering: number;
   selectedYearEventLinksBeforeFilter: number;

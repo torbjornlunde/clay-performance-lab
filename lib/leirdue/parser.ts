@@ -105,6 +105,11 @@ function emptyDebug(): LeirdueSearchDebug {
     unknownYearFallbackEventsCount: 0,
     actualYearMismatchSkippedCount: 0,
     knownTorbjorn2025Debug: [],
+    eventBatchesProcessed: 0,
+    eventQueueRemainingWhenStopped: 0,
+    eventStopReason: null,
+    candidatesFoundPerBatch: [],
+    listeIdPagesScannedPerBatch: [],
     selectedDisciplineFilters: [],
     eventsFoundBeforeFiltering: 0,
     selectedYearEventLinksBeforeFilter: 0,
@@ -538,6 +543,25 @@ function refreshKnownTorbjorn2025Debug(input: LeirdueSearchInput, debug: Leirdue
       listeScanned: scannedKeys.has(key),
     };
   });
+}
+
+
+function recordEventBatchScan(debug: LeirdueSearchDebug, beforeScanned: number, beforeShooterPages: number) {
+  const scanned = debug.listeIdPagesScannedForName - beforeScanned;
+  const candidates = debug.listeIdShooterPagesFound - beforeShooterPages;
+  debug.eventBatchesProcessed += 1;
+  debug.listeIdPagesScannedPerBatch.push(scanned);
+  debug.candidatesFoundPerBatch.push(candidates);
+}
+
+function appendKnownTorbjorn2025Events(input: LeirdueSearchInput, rankedEvents: EventLinkMeta[], eventLinks: Map<string, EventLinkMeta>) {
+  if (!isTorbjornLunde2025DebugSearch(input)) return rankedEvents;
+  const withKnown = rankedEvents.slice();
+  for (const { eventId } of knownTorbjorn2025Assertions(input)) {
+    const event = eventLinks.get(eventId);
+    if (event && !withKnown.some((item) => item.eventId === eventId)) withKnown.push(event);
+  }
+  return withKnown;
 }
 
 function eventQueueSortRank(event: EventLinkMeta, selectedYear: number) {
@@ -1651,7 +1675,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
 
   const allRankedEvents = rankedEventsAcrossYear(relevantEventLinks, input);
   setEventQueueDebugRows(debug, allRankedEvents, input);
-  const rankedEvents = allRankedEvents.slice(0, MAX_EVENT_PAGES_INSPECTED);
+  const rankedEvents = appendKnownTorbjorn2025Events(input, allRankedEvents.slice(0, MAX_EVENT_PAGES_INSPECTED), eventLinks);
   if (relevantEventLinks.length > rankedEvents.length) {
     markLimitReached(debug, "max relevant selected-year event links");
     debug.eventLinksSkippedByReason.limit += relevantEventLinks.length - rankedEvents.length;
@@ -1662,10 +1686,12 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   debug.timedOutAtPhase = "eventMenu";
   let menusSinceLastScan = 0;
   let firstListeIdScanStarted = false;
+  let eventsDequeued = 0;
   for (const event of rankedEvents) {
-    if (shouldStopCrawl(debug, state)) break;
+    if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; break; }
     if (debug.eventResultMenuPagesFetched >= MAX_RESULT_MENU_PAGES_FETCHED) {
       markLimitReached(debug, "max result menu pages");
+      debug.eventStopReason = "result menu limit";
       break;
     }
 
@@ -1676,12 +1702,19 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
         firstListeIdScanStarted = true;
         debug.resultMenusBeforeFirstListeIdScan = debug.eventResultMenuPagesFetched;
       }
+      const beforeScanned = debug.listeIdPagesScannedForName;
+      const beforeShooterPages = debug.listeIdShooterPagesFound;
       await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, 60);
+      recordEventBatchScan(debug, beforeScanned, beforeShooterPages);
       refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
       menusSinceLastScan = 0;
-      if (remainingCrawlMs(state) <= MIN_LIST_SCAN_RESERVE_MS || shouldStopCrawl(debug, state)) break;
+      if (listPages.size >= 8) { debug.eventStopReason = "enough candidates"; break; }
+      if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; break; }
+      if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) { debug.eventStopReason = "max shooter pages"; break; }
+      if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; break; }
     }
 
+    eventsDequeued += 1;
     const resultMenuUrl = eventResultMenuUrl(event.eventId);
     const beforeUrls = new Set(listeIdLinks.keys());
     const resultHtml = await fetchLeirdue(resultMenuUrl, debug, state);
@@ -1727,10 +1760,16 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
         firstListeIdScanStarted = true;
         debug.resultMenusBeforeFirstListeIdScan = debug.eventResultMenuPagesFetched;
       }
+      const beforeScanned = debug.listeIdPagesScannedForName;
+      const beforeShooterPages = debug.listeIdShooterPagesFound;
       await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, 40);
+      recordEventBatchScan(debug, beforeScanned, beforeShooterPages);
       refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
       menusSinceLastScan = 0;
-      if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED || listPages.size >= MAX_SHOOTER_PAGES_PARSED || shouldStopCrawl(debug, state)) break;
+      if (listPages.size >= 8) { debug.eventStopReason = "enough candidates"; break; }
+      if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; break; }
+      if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) { debug.eventStopReason = "max shooter pages"; break; }
+      if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; break; }
     }
   }
 
@@ -1749,6 +1788,8 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   addValidationListeIdLinks(input, listeIdLinks, debug);
 
   debug.candidatesFoundAfterDiscovery = 0;
+  debug.eventQueueRemainingWhenStopped = Math.max(0, rankedEvents.length - eventsDequeued);
+  if (!debug.eventStopReason) debug.eventStopReason = "event queue exhausted";
   debug.listeIdLinksExtracted = listeIdLinks.size;
   debug.resultLinksFound = listeIdLinks.size;
 
@@ -1756,7 +1797,10 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     if (debug.resultMenusBeforeFirstListeIdScan === 0 && debug.listeIdPagesScannedForName === 0) {
       debug.resultMenusBeforeFirstListeIdScan = debug.eventResultMenuPagesFetched;
     }
+    const beforeScanned = debug.listeIdPagesScannedForName;
+    const beforeShooterPages = debug.listeIdShooterPagesFound;
     await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, MAX_LISTE_ID_PAGES_SCANNED);
+    recordEventBatchScan(debug, beforeScanned, beforeShooterPages);
     refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
   } else {
     updateListeIdQueueDebug(debug, listeIdQueueItems(listeIdLinks, eventLinks, input));
@@ -1784,6 +1828,15 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
   setEventQueueDebugRows(debug, allRankedEvents, input);
   debug.selectedYearEventLinks = relevantEventLinks.map((event) => ({ eventId: event.eventId, url: event.url, titleText: event.titleText, eventTitle: event.eventTitle, organizerText: event.organizerText, dateText: event.dateText, rawRowSnippet: event.rawRowSnippet, titleParseSource: event.titleParseSource, date: event.date, parsedYear: event.parsedYear, overviewMatchedYear: event.overviewMatchedYear, actualEventYear: event.actualEventYear, actualEventDate: event.actualEventDate, actualDateText: event.actualDateText, inspected: event.inspected, skippedReason: event.skippedReason }));
+  if (listPages.size >= 8) debug.eventStopReason = "enough candidates";
+  else if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) debug.eventStopReason = "max scan pages";
+  else if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) debug.eventStopReason = "max shooter pages";
+  else if (debug.timedOut) debug.eventStopReason = "timeout";
+  if (isTorbjornLunde2025DebugSearch(input)) {
+    refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
+    const notReached = debug.knownTorbjorn2025Debug.filter((item) => item.discovered && !item.inspected);
+    if (notReached.length > 0) debug.rejectedReasons.push(`Known discovered events were not reached before stop: ${notReached.map((item) => item.eventId).join(", ")}.`);
+  }
 
   return Array.from(listPages.values());
 }
