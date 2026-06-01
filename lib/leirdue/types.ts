@@ -104,6 +104,11 @@ export type LeirdueSearchDebug = {
   candidatesFoundPerBatch: number[];
   listeIdPagesScannedPerBatch: number[];
   completeCandidatesFound: number;
+  completeCandidatesTotal: number;
+  visibleCompleteCandidates: number;
+  hiddenCompleteCandidates: number;
+  importableCompleteCandidates: number;
+  targetReachedBy: string | null;
   partialCandidatesFound: number;
   lowQualityCandidatesFound: number;
   searchContinuedBecauseOnlyLowQualityCandidates: boolean;

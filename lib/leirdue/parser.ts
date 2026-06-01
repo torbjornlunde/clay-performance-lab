@@ -179,6 +179,11 @@ function emptyDebug(): LeirdueSearchDebug {
     candidatesFoundPerBatch: [],
     listeIdPagesScannedPerBatch: [],
     completeCandidatesFound: 0,
+    completeCandidatesTotal: 0,
+    visibleCompleteCandidates: 0,
+    hiddenCompleteCandidates: 0,
+    importableCompleteCandidates: 0,
+    targetReachedBy: null,
     partialCandidatesFound: 0,
     lowQualityCandidatesFound: 0,
     searchContinuedBecauseOnlyLowQualityCandidates: false,
@@ -746,7 +751,7 @@ function recordCandidateQuality(debug: LeirdueSearchDebug, parsed: LeirdueDebugP
   const percentageHeavy = isPercentageHeavyText(`${parsed.rawSnippet || ""} ${parsed.parsedRow || ""} ${pageText.slice(0, 1200)}`);
   const controlLike = percentageHeavy || /(ranking|prosent|cup sammenlagt|sammenlagt premiering|klasseføring|klasseforing)/.test(qualityText);
   if (percentageHeavy) debug.percentageHeavyCandidates += 1;
-  if (isCompleteDirectCandidate(parsed.candidate, debug.selectedYear ?? new Date().getFullYear()) && !controlLike) {
+  if (isImportableCompleteCandidate(parsed.candidate, debug.selectedYear ?? new Date().getFullYear()) && !controlLike) {
     debug.completeCandidatesFound += 1;
   } else if (controlLike || (!parsed.ownScore && !parsed.totalTargets)) {
     debug.lowQualityCandidatesFound += 1;
@@ -2243,6 +2248,8 @@ function classifyNormalizedCandidate(candidate: LeirdueCandidate, selectedYear: 
   if (isFutureDate(candidate.date)) flags.push("future event");
   const candidateYear = parsedYear(candidate.date);
   if (candidateYear !== null && candidateYear !== selectedYear) flags.push("outside selected year");
+  const hiddenReason = candidateHiddenReason(candidate, selectedYear);
+  if (hiddenReason && hiddenReason !== "missingTotalTargets") flags.push(hiddenReason);
   const direct = directListScore(context) > 0 || isValidationHintedCandidate(candidate);
   let category: LeirdueCategory = "review";
   let confidence: LeirdueConfidence = "low";
@@ -2367,13 +2374,52 @@ function dedupeCandidates(candidates: LeirdueCandidate[], debug: LeirdueSearchDe
 }
 
 
+function parsedNumbersFromCandidateNotes(candidate: LeirdueCandidate) {
+  return (candidate.notes.match(/Parsed numbers: ([^.]+)/)?.[1] || "")
+    .split(/,\s*/)
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isFinite(value));
+}
+
+function parsedSeriesFromCandidateNotes(candidate: LeirdueCandidate) {
+  return (candidate.notes.match(/Parsed series scores: ([^.]+)/)?.[1] || "")
+    .split(/,\s*/)
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isFinite(value));
+}
+
+function candidateLooksMultiEventSummary(candidate: LeirdueCandidate) {
+  if (candidate.ownScore === null || candidate.totalTargets === null) return false;
+  const numbers = parsedNumbersFromCandidateNotes(candidate);
+  if (numbers.length < 3) return false;
+  const finalNumber = numbers.at(-1);
+  if (finalNumber === undefined || finalNumber <= candidate.totalTargets) return false;
+  const prior = numbers.slice(0, -1);
+  const priorSum = prior.reduce((total, value) => total + value, 0);
+  const context = normalizeText(`${candidate.name} ${candidate.listType || ""} ${candidate.notes}`);
+  return Math.abs(priorSum - finalNumber) <= 1 && (prior.includes(candidate.ownScore) || finalNumber > candidate.ownScore) && /(cup|sammenlagt|premiering|flere stevner|multi-event|resultater med flere stevner)/.test(context);
+}
+
+function candidateLooksIncompleteSeriesRow(candidate: LeirdueCandidate) {
+  if (candidate.ownScore === null || candidate.totalTargets === null) return false;
+  const numbers = parsedNumbersFromCandidateNotes(candidate);
+  const series = parsedSeriesFromCandidateNotes(candidate);
+  const expectedSeriesByTargets: Record<number, number> = { 50: 2, 75: 3, 100: 4, 125: 5, 130: 13, 150: 6, 200: 8 };
+  const expected = expectedSeriesByTargets[candidate.totalTargets];
+  if (!expected) return false;
+  if (series.length >= expected && seriesSumConsistent(series.slice(0, expected), candidate.ownScore)) return false;
+  if (candidate.totalTargets === 100 && series.length >= 10 && series.every((value) => value >= 0 && value <= 10) && seriesSumConsistent(series, candidate.ownScore)) return false;
+  const sourceIsSeriesPattern = /totalTargetsSource=seriesPattern/.test(candidate.notes);
+  if (candidate.ownScore > 25 && !sourceIsSeriesPattern) return false;
+  return (numbers.length <= expected && candidate.ownScore <= 25) || (series.length > 0 && series.length < expected && candidate.ownScore <= 25);
+}
+
+function isImportableCompleteCandidate(candidate: LeirdueCandidate | null, selectedYear: number) {
+  return isCompleteDirectCandidate(candidate, selectedYear) && candidate !== null && candidateHiddenReason(candidate, selectedYear) === null;
+}
+
 function candidateHiddenFromNormalUi(candidate: LeirdueCandidate, selectedYear: number | null) {
-  const text = normalizeText(`${candidate.name} ${candidate.listType || ""} ${candidate.notes}`);
-  const percentageHeavy = isPercentageHeavyText(text);
-  const summaryList = /(ranking|prosent|cup sammenlagt|sammenlagt premiering|klasseføring|klasseforing|sesong|season)/.test(text);
-  const outsideYear = parsedYear(candidate.date) !== null && selectedYear !== null && parsedYear(candidate.date) !== selectedYear;
-  const missingUsableScore = candidate.ownScore === null || candidate.totalTargets === null;
-  return candidate.category === "control" || isFutureDate(candidate.date) || outsideYear || percentageHeavy || summaryList || missingUsableScore;
+  return candidateHiddenReason(candidate, selectedYear) !== null;
 }
 
 function candidateHiddenReason(candidate: LeirdueCandidate, selectedYear: number | null) {
@@ -2382,8 +2428,10 @@ function candidateHiddenReason(candidate: LeirdueCandidate, selectedYear: number
   if (isFutureDate(candidate.date)) return "future";
   if (parsedYear(candidate.date) !== null && selectedYear !== null && parsedYear(candidate.date) !== selectedYear) return "outsideYear";
   if (isPercentageHeavyText(text)) return "percentageHeavy";
-  if (/(cup sammenlagt|sammenlagt premiering)/.test(text)) return "cupSummary";
+  if (candidateLooksMultiEventSummary(candidate)) return "multiEventSummary";
+  if (/(cup sammenlagt|sammenlagt premiering|resultater med flere stevner|flere stevner)/.test(text)) return "cupSummary";
   if (/(ranking|klasseføring|klasseforing)/.test(text)) return "rankingSummary";
+  if (candidateLooksIncompleteSeriesRow(candidate)) return "incompleteSeriesRow";
   if (candidate.ownScore === null || candidate.totalTargets === null) return "missingTotalTargets";
   return null;
 }
@@ -2402,6 +2450,11 @@ function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: Leirdu
   debug.visibleCandidatesCount = 0;
   debug.hiddenLowQualityCandidatesCount = 0;
   debug.completeCandidatesFoundList = [];
+  debug.completeCandidatesTotal = 0;
+  debug.visibleCompleteCandidates = 0;
+  debug.hiddenCompleteCandidates = 0;
+  debug.importableCompleteCandidates = 0;
+  debug.targetReachedBy = null;
   if (candidates.length > 0 && candidates.every((candidate) => candidate.category === "control")) debug.candidateReasons.push("All candidates classified as control. Check list classification rules.");
   for (const candidate of candidates) {
     debug.candidateCategoryCounts[candidate.category] = (debug.candidateCategoryCounts[candidate.category] || 0) + 1;
@@ -2410,7 +2463,13 @@ function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: Leirdu
     if (hiddenFromNormalUi) debug.hiddenLowQualityCandidatesCount += 1;
     else debug.visibleCandidatesCount += 1;
     if (candidate.category === "control") debug.hiddenControlCandidates += 1;
-    if (isCompleteDirectCandidate(candidate, debug.selectedYear ?? new Date().getFullYear())) {
+    const completeScoreCandidate = isCompleteDirectCandidate(candidate, debug.selectedYear ?? new Date().getFullYear());
+    const importableCompleteCandidate = isImportableCompleteCandidate(candidate, debug.selectedYear ?? new Date().getFullYear());
+    if (completeScoreCandidate) debug.completeCandidatesTotal += 1;
+    if (completeScoreCandidate && hiddenFromNormalUi) debug.hiddenCompleteCandidates += 1;
+    if (completeScoreCandidate && !hiddenFromNormalUi) debug.visibleCompleteCandidates += 1;
+    if (importableCompleteCandidate) {
+      debug.importableCompleteCandidates += 1;
       debug.completeCandidatesFoundList.push({ url: candidate.leirdueUrl, name: candidate.name, date: candidate.date, ownScore: candidate.ownScore, totalTargets: candidate.totalTargets, winningScore: candidate.winningScore });
     }
     if (candidate.ownScore !== null) debug.candidatesWithOwnScore += 1;
@@ -2649,8 +2708,9 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   debug.previousVisibleCandidatesCount = continuation?.visibleCandidatesCountTotal ?? 0;
   updateCandidateDebugStats(debug, returnedCandidates);
   debug.returnedVisibleCandidatesCount = debug.visibleCandidatesCount;
-  debug.accumulatedCompleteCandidatesCount = debug.completeCandidatesFoundList.length;
-  debug.completeCandidatesFoundTotal = debug.accumulatedCompleteCandidatesCount;
+  debug.accumulatedCompleteCandidatesCount = debug.importableCompleteCandidates;
+  debug.completeCandidatesFoundTotal = debug.importableCompleteCandidates;
+  debug.targetReachedBy = debug.importableCompleteCandidates >= TARGET_COMPLETE_CANDIDATES ? "importableCompleteCandidates" : null;
   debug.visibleCandidatesCountTotal = debug.visibleCandidatesCount;
   debug.hiddenLowQualityCandidatesCountTotal = debug.hiddenLowQualityCandidatesCount;
   const likelySelectedYearWorkRemaining = debug.pendingListeIdQueueRemaining > 0 || debug.confirmedSelectedYearEventsRemaining > 0 || debug.likelySelectedYearEventsRemaining > 0 || debug.unknownYearEventsRemaining > 0;
