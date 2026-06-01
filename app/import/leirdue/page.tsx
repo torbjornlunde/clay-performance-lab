@@ -9,6 +9,11 @@ import type { LeirdueCandidate, LeirdueCategory, LeirdueSearchDebug } from "@/li
 const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduesti", "Sporting"];
 const OPTIONAL_DISCIPLINES = ["Trap", "Skeet", "Other"];
 const DISCIPLINE_CHOICES = [...DEFAULT_DISCIPLINES, ...OPTIONAL_DISCIPLINES];
+const MAX_AUTO_BATCHES = 10;
+const MAX_AUTO_LISTE_ID_SCANNED = 300;
+const MAX_AUTO_SEARCH_MS = 4 * 60 * 1000;
+const MAX_EMPTY_AUTO_BATCHES = 2;
+const BATCH_TIMEOUT_MS = 35_000;
 const SECTION_LABELS: Record<LeirdueCategory, string> = {
   recommended: "Recommended imports",
   review: "Review before import",
@@ -78,6 +83,10 @@ function candidateQualityRank(candidate: LeirdueCandidate) {
   return 1;
 }
 
+function visibleCandidateCount(candidates: EditableCandidate[]) {
+  return candidates.filter(visibleImportCandidate).length;
+}
+
 function mergeCandidates(current: EditableCandidate[], incoming: LeirdueCandidate[]) {
   const merged = new Map(current.map((candidate) => [candidateMergeKey(candidate), candidate]));
   incoming.forEach((candidate, index) => {
@@ -97,6 +106,23 @@ function mergeCandidates(current: EditableCandidate[], incoming: LeirdueCandidat
 
 function normalizeSaveError(response: SaveResponse) {
   return response.error || "Could not save selected Leirdue results.";
+}
+
+function hasLikelySelectedYearWork(debug?: LeirdueSearchDebug) {
+  if (!debug) return true;
+  return debug.pendingListeIdQueueRemaining > 0 || debug.confirmedSelectedYearEventsRemaining > 0 || debug.unknownYearSelectedTextEventsRemaining > 0;
+}
+
+function estimatedSearchProgress(debug: LeirdueSearchDebug | undefined, batchIndex: number, visibleCount: number, finished = false) {
+  if (finished) return 100;
+  const batchProgress = Math.min(batchIndex / MAX_AUTO_BATCHES, 1) * 55;
+  const scanProgress = Math.min((debug?.scannedListeIdTotal || 0) / MAX_AUTO_LISTE_ID_SCANNED, 1) * 25;
+  const candidateProgress = Math.min(visibleCount / Math.max(debug?.expectedCandidateTarget || 16, 1), 1) * 15;
+  return Math.max(10, Math.min(95, Math.round(5 + batchProgress + scanProgress + candidateProgress)));
+}
+
+function autoSearchStopMessage(visibleCount: number) {
+  return `Search stopped after finding ${visibleCount} likely result${visibleCount === 1 ? "" : "s"}. You can review these now.`;
 }
 
 function CandidateCard({ candidate, onChange }: { candidate: EditableCandidate; onChange: (candidate: EditableCandidate) => void }) {
@@ -309,6 +335,9 @@ export default function LeirdueImportPage() {
   const [success, setSuccess] = useState("");
   const [debug, setDebug] = useState<LeirdueSearchDebug | null>(null);
   const [continuationToken, setContinuationToken] = useState<string | null>(null);
+  const [searchProgress, setSearchProgress] = useState(0);
+  const [searchStatus, setSearchStatus] = useState("");
+  const [searchCounterText, setSearchCounterText] = useState("");
 
   const groupedCandidates = useMemo(() => {
     return {
@@ -328,19 +357,9 @@ export default function LeirdueImportPage() {
     setCandidates((current) => current.map((candidate) => (candidate.localId === updated.localId ? updated : candidate)));
   }
 
-  async function runSearchBatch(token: string | null, reset: boolean) {
-    setError("");
-    setSuccess("");
-    setSearching(true);
-    if (reset) {
-      setCandidates([]);
-      setDebug(null);
-      setContinuationToken(null);
-    }
-
+  async function fetchSearchBatch(token: string | null) {
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 35_000);
-
+    const timeoutId = window.setTimeout(() => controller.abort(), BATCH_TIMEOUT_MS);
     try {
       const response = await fetch("/api/leirdue/search", {
         method: "POST",
@@ -349,42 +368,125 @@ export default function LeirdueImportPage() {
         signal: controller.signal,
       });
       const data = (await response.json()) as SearchResponse;
-      setDebug(data.debug || null);
-      setContinuationToken(data.continuationToken || null);
+      return { response, data };
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
 
-      if (!response.ok) {
-        setError(data.error || "Could not fetch Leirdue results right now.");
-        return;
+  async function runAutoSearch(startToken: string | null, reset: boolean) {
+    if (searching) return;
+
+    setError("");
+    setSuccess("");
+    setSearching(true);
+    setSearchProgress(reset ? 5 : Math.max(searchProgress, 15));
+    setSearchStatus(reset ? "Preparing Leirdue search..." : "Continuing search for more results...");
+    setSearchCounterText("");
+
+    let token = startToken;
+    let batchCount = 0;
+    let consecutiveEmptyBatches = 0;
+    let stoppedInsideLoop = false;
+    let currentCandidates = reset ? [] : candidates;
+    const startedAt = Date.now();
+
+    if (reset) {
+      setCandidates([]);
+      setDebug(null);
+      setContinuationToken(null);
+    }
+
+    try {
+      while (batchCount < MAX_AUTO_BATCHES) {
+        batchCount += 1;
+        const batchLabel = token ? `batch ${batchCount + (debug?.batchNumber || 0)}` : "batch 1";
+        setSearchStatus(token ? "Continuing search for more results..." : "Finding relevant events...");
+        setSearchCounterText(`Running ${batchLabel} — ${visibleCandidateCount(currentCandidates)} results found so far`);
+
+        const { response, data } = await fetchSearchBatch(token);
+        setDebug(data.debug || null);
+
+        if (!response.ok) {
+          setError(data.error || "Could not fetch Leirdue results right now.");
+          setContinuationToken(token);
+          stoppedInsideLoop = true;
+          break;
+        }
+
+        setSearchStatus("Searching for your name in result lists...");
+        const beforeVisible = visibleCandidateCount(currentCandidates);
+        currentCandidates = reset && batchCount === 1 ? (data.candidates || []).map(toEditable) : mergeCandidates(currentCandidates, data.candidates || []);
+        const afterVisible = visibleCandidateCount(currentCandidates);
+        const newVisible = afterVisible - beforeVisible;
+        setCandidates(currentCandidates);
+
+        const nextToken = data.continuationToken || null;
+        const target = data.debug?.expectedCandidateTarget || 16;
+        const completeTotal = data.debug?.completeCandidatesFoundTotal ?? afterVisible;
+        const likelyWorkRemains = hasLikelySelectedYearWork(data.debug);
+        const shouldContinue = Boolean(nextToken && likelyWorkRemains && completeTotal < target);
+        setContinuationToken(shouldContinue ? nextToken : null);
+        setSearchProgress(estimatedSearchProgress(data.debug, batchCount, afterVisible, !shouldContinue));
+        setSearchCounterText(`Batch ${data.debug?.batchNumber || batchCount} — ${data.debug?.scannedListeIdTotal || 0} result lists checked — ${afterVisible} results found so far`);
+
+        if (newVisible <= 0 && (data.debug?.pendingListeIdQueueRemaining || 0) === 0) consecutiveEmptyBatches += 1;
+        else consecutiveEmptyBatches = 0;
+
+        if (!shouldContinue) {
+          setSearchStatus("Preparing import review...");
+          if (data.debug?.message) setSuccess(data.debug.message);
+          else if (afterVisible === 0 && reset) setSuccess("No candidates found. Try broader filters or add result manually.");
+          else if (completeTotal >= target) setSuccess(`Search complete. We found ${afterVisible} likely result${afterVisible === 1 ? "" : "s"} for ${year}.`);
+          else setSuccess(`Search complete. We found ${afterVisible} likely result${afterVisible === 1 ? "" : "s"} for ${year}. Older/archive pages were skipped.`);
+          stoppedInsideLoop = true;
+          break;
+        }
+
+        token = nextToken;
+        const scannedTooManyLists = (data.debug?.scannedListeIdTotal || 0) >= MAX_AUTO_LISTE_ID_SCANNED;
+        const searchedTooLong = Date.now() - startedAt >= MAX_AUTO_SEARCH_MS;
+        const noVisibleProgress = consecutiveEmptyBatches >= MAX_EMPTY_AUTO_BATCHES;
+        if (scannedTooManyLists || searchedTooLong || noVisibleProgress) {
+          setContinuationToken(nextToken);
+          setSearchStatus("Preparing import review...");
+          setSuccess(autoSearchStopMessage(afterVisible));
+          setSearchProgress(100);
+          stoppedInsideLoop = true;
+          break;
+        }
+
+        setSearchStatus("Fetching more result lists...");
       }
 
-      setCandidates((current) => (reset ? (data.candidates || []).map(toEditable) : mergeCandidates(current, data.candidates || [])));
-      if (data.continuationToken && data.debug?.completeCandidatesFoundTotal !== undefined && data.debug.completeCandidatesFoundTotal < data.debug.expectedCandidateTarget) {
-        setSuccess("More Leirdue results may exist. Use Continue search to scan the next batch without losing selected candidates.");
-      } else if (data.debug?.timedOut || data.debug?.limitReached) {
-        setError(data.debug.message || "Leirdue search returned partial results due to a timeout or crawl limit.");
-      } else if (!data.candidates?.length && reset) {
-        setSuccess("No candidates found. Try broader filters or add result manually.");
+      if (batchCount >= MAX_AUTO_BATCHES && !stoppedInsideLoop) {
+        const visibleCount = visibleCandidateCount(currentCandidates);
+        setSuccess(autoSearchStopMessage(visibleCount));
+        setSearchStatus("Preparing import review...");
+        setSearchProgress(100);
       }
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
-        setError("Leirdue search took too long. Continue the search if a continuation is available, or try another year.");
+        const visibleCount = visibleCandidateCount(currentCandidates);
+        if (visibleCount > 0) setSuccess(autoSearchStopMessage(visibleCount));
+        else setError("Leirdue search took too long before candidates were found. Try again or use a narrower year.");
       } else {
         setError("Could not fetch Leirdue results right now.");
       }
     } finally {
-      window.clearTimeout(timeoutId);
       setSearching(false);
+      setSearchProgress((progress) => (progress > 0 ? Math.max(progress, 100) : progress));
     }
   }
 
   async function search(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await runSearchBatch(null, true);
+    await runAutoSearch(null, true);
   }
 
   async function continueSearch() {
     if (!continuationToken) return;
-    await runSearchBatch(continuationToken, false);
+    await runAutoSearch(continuationToken, false);
   }
 
   async function saveSelected() {
@@ -469,10 +571,22 @@ export default function LeirdueImportPage() {
 
         {error ? <div className="error">{error}</div> : null}
         {success ? <div className="success">{success} {success.includes("saved") ? <Link href="/stats">Open Stats</Link> : null}</div> : null}
+        {searching || searchStatus ? (
+          <div className="searchProgressPanel" aria-live="polite">
+            {searching ? <p className="small">This search may take a few minutes. Please do not close or refresh the page while we fetch results from Leirdue.net.</p> : null}
+            <div className="progressHeader">
+              <span>Estimated progress</span>
+              <strong>{Math.round(searchProgress)}%</strong>
+            </div>
+            <progress value={searchProgress} max={100} />
+            {searchStatus ? <p className="small muted">{searchStatus}</p> : null}
+            {searchCounterText ? <p className="small muted">{searchCounterText}</p> : null}
+          </div>
+        ) : null}
 
         <div className="btns">
           <button disabled={searching || disciplines.length === 0}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
-          {continuationToken ? <button type="button" className="secondary" disabled={searching} onClick={continueSearch}>{searching ? "Continuing..." : "Continue search"}</button> : null}
+          {continuationToken && !searching ? <button type="button" className="secondary" onClick={continueSearch}>Continue search</button> : null}
           <Link className="button secondary" href="/results/new">Add result manually</Link>
           <Link className="button secondary" href="/dashboard">Dashboard</Link>
         </div>
