@@ -9,9 +9,9 @@ import type { LeirdueCandidate, LeirdueCategory, LeirdueSearchDebug } from "@/li
 const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduesti", "Sporting"];
 const OPTIONAL_DISCIPLINES = ["Trap", "Skeet", "Other"];
 const DISCIPLINE_CHOICES = [...DEFAULT_DISCIPLINES, ...OPTIONAL_DISCIPLINES];
-const MAX_AUTO_BATCHES = 10;
-const MAX_AUTO_LISTE_ID_SCANNED = 300;
-const MAX_AUTO_SEARCH_MS = 4 * 60 * 1000;
+const MAX_AUTO_BATCHES = 12;
+const MAX_AUTO_LISTE_ID_SCANNED = 400;
+const MAX_AUTO_SEARCH_MS = 5 * 60 * 1000;
 const MAX_EMPTY_AUTO_BATCHES = 2;
 const BATCH_TIMEOUT_MS = 35_000;
 const SECTION_LABELS: Record<LeirdueCategory, string> = {
@@ -110,7 +110,7 @@ function normalizeSaveError(response: SaveResponse) {
 
 function hasLikelySelectedYearWork(debug?: LeirdueSearchDebug) {
   if (!debug) return true;
-  return debug.pendingListeIdQueueRemaining > 0 || debug.confirmedSelectedYearEventsRemaining > 0 || debug.unknownYearSelectedTextEventsRemaining > 0;
+  return debug.pendingListeIdQueueRemaining > 0 || debug.confirmedSelectedYearEventsRemaining > 0 || debug.likelySelectedYearEventsRemaining > 0 || debug.unknownYearEventsRemaining > 0;
 }
 
 function estimatedSearchProgress(debug: LeirdueSearchDebug | undefined, batchIndex: number, visibleCount: number, finished = false) {
@@ -121,8 +121,8 @@ function estimatedSearchProgress(debug: LeirdueSearchDebug | undefined, batchInd
   return Math.max(10, Math.min(95, Math.round(5 + batchProgress + scanProgress + candidateProgress)));
 }
 
-function autoSearchStopMessage(visibleCount: number) {
-  return `Søket stoppet etter å ha funnet ${visibleCount} sannsynlige resultat${visibleCount === 1 ? "" : "er"}. Du kan gå gjennom disse nå.`;
+function autoSearchStopMessage(visibleCount: number, year: string) {
+  return `Søket stoppet etter å ha funnet ${visibleCount} sannsynlige resultat${visibleCount === 1 ? "" : "er"} for ${year}. Det kan fortsatt finnes resultater som Leirdue.net ikke gjorde mulig å hente automatisk.`;
 }
 
 function autoSearchCompleteMessage(visibleCount: number, year: string) {
@@ -253,7 +253,9 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         <span className="metricChip"><strong>{debug.scannedListeIdTotal}</strong> total liste_id scanned</span>
         <span className="metricChip"><strong>{debug.scannedEventTotal}</strong> total events scanned</span>
         <span className="metricChip"><strong>{debug.remainingEventQueueCount}</strong> remaining events</span>
-        <span className="metricChip"><strong>{debug.confirmedSelectedYearEventsRemaining}/{debug.unknownYearSelectedTextEventsRemaining}/{debug.outsideYearFallbackEventsRemaining}/{debug.pendingListeIdQueueRemaining}</strong> confirmed/unknown/outside/pending</span>
+        <span className="metricChip"><strong>{debug.confirmedSelectedYearEventsRemaining}/{debug.likelySelectedYearEventsRemaining}/{debug.unknownYearEventsRemaining}/{debug.outsideYearFallbackEventsRemaining}/{debug.pendingListeIdQueueRemaining}</strong> confirmed/likely/unknown/outside/pending</span>
+        <span className="metricChip"><strong>{debug.oldYearEventsSkippedThisBatch}/{debug.likelySelectedYearEventsProcessedThisBatch}</strong> old skipped / likely processed</span>
+        <span className={`metricChip ${debug.autoStoppedBecauseOnlyOldFallbackRemains ? "badgeGold" : ""}`}><strong>{debug.autoStoppedBecauseOnlyOldFallbackRemains ? "yes" : "no"}</strong> old-fallback stop</span>
       </div>
       {candidatesFound === 0 ? <p className="small muted">No candidates found. Try broader filters or add result manually.</p> : null}
       {recentStatuses.length > 0 ? (
@@ -469,7 +471,7 @@ export default function LeirdueImportPage() {
         if (scannedTooManyLists || searchedTooLong || noVisibleProgress) {
           setContinuationToken(nextToken);
           setSearchStatus("Klargjør importlisten...");
-          setSuccess(autoSearchStopMessage(afterVisible));
+          setSuccess(autoSearchStopMessage(afterVisible, year));
           setSearchProgress(100);
           stoppedInsideLoop = true;
           break;
@@ -480,14 +482,14 @@ export default function LeirdueImportPage() {
 
       if (batchCount >= MAX_AUTO_BATCHES && !stoppedInsideLoop) {
         const visibleCount = visibleCandidateCount(currentCandidates);
-        setSuccess(autoSearchStopMessage(visibleCount));
+        setSuccess(autoSearchStopMessage(visibleCount, year));
         setSearchStatus("Klargjør importlisten...");
         setSearchProgress(100);
       }
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
         const visibleCount = visibleCandidateCount(currentCandidates);
-        if (visibleCount > 0) setSuccess(autoSearchStopMessage(visibleCount));
+        if (visibleCount > 0) setSuccess(autoSearchStopMessage(visibleCount, year));
         else setError("Leirdue-søket tok for lang tid før vi fant kandidater. Prøv igjen eller velg et smalere år.");
       } else {
         setError("Kunne ikke hente Leirdue-resultater akkurat nå.");

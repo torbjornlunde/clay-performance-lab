@@ -119,9 +119,14 @@ export type LeirdueSearchDebug = {
   scannedEventTotal: number;
   remainingEventQueueCount: number;
   confirmedSelectedYearEventsRemaining: number;
+  likelySelectedYearEventsRemaining: number;
   unknownYearSelectedTextEventsRemaining: number;
+  unknownYearEventsRemaining: number;
   outsideYearFallbackEventsRemaining: number;
   pendingListeIdQueueRemaining: number;
+  oldYearEventsSkippedThisBatch: number;
+  likelySelectedYearEventsProcessedThisBatch: number;
+  autoStoppedBecauseOnlyOldFallbackRemains: boolean;
   continuationDisabledReason: string | null;
   batchNumber: number;
   completeCandidatesFoundTotal: number;

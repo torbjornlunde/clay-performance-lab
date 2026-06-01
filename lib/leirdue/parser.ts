@@ -62,9 +62,9 @@ type CrawlState = { deadlineAt: number };
 
 const SEARCH_TIMEOUT_MS = 25_000;
 const FETCH_TIMEOUT_MS = 8_000;
-const MAX_EVENT_PAGES_INSPECTED = 120;
-const MAX_RESULT_MENU_PAGES_FETCHED = 160;
-const MAX_LISTE_ID_PAGES_SCANNED = 250;
+const MAX_EVENT_PAGES_INSPECTED = 160;
+const MAX_RESULT_MENU_PAGES_FETCHED = 180;
+const MAX_LISTE_ID_PAGES_SCANNED = 300;
 const MAX_SHOOTER_PAGES_PARSED = 50;
 const TARGET_COMPLETE_CANDIDATES = 16;
 const RESULT_MENU_BATCH_SIZE = 10;
@@ -193,9 +193,14 @@ function emptyDebug(): LeirdueSearchDebug {
     scannedEventTotal: 0,
     remainingEventQueueCount: 0,
     confirmedSelectedYearEventsRemaining: 0,
+    likelySelectedYearEventsRemaining: 0,
     unknownYearSelectedTextEventsRemaining: 0,
+    unknownYearEventsRemaining: 0,
     outsideYearFallbackEventsRemaining: 0,
     pendingListeIdQueueRemaining: 0,
+    oldYearEventsSkippedThisBatch: 0,
+    likelySelectedYearEventsProcessedThisBatch: 0,
+    autoStoppedBecauseOnlyOldFallbackRemains: false,
     continuationDisabledReason: null,
     batchNumber: 1,
     completeCandidatesFoundTotal: 0,
@@ -762,34 +767,48 @@ function boostKnownTorbjorn2025Events(input: LeirdueSearchInput, rankedEvents: E
   return [...boosted, ...rankedEvents.filter((event) => !boostedIds.has(event.eventId))];
 }
 
-function eventQueueSortRank(event: EventLinkMeta, selectedYear: number) {
-  if (event.actualEventYear === selectedYear) return 0;
-  if (event.actualEventYear === null) return 1;
-  return 2;
+function eventHasExplicitSelectedYearText(event: EventLinkMeta, selectedYear: number) {
+  const yearText = String(selectedYear);
+  return `${event.titleText} ${event.eventTitle} ${event.rawRowSnippet} ${event.dateText || ""} ${event.actualDateText || ""}`.includes(yearText);
 }
 
 function eventHasSelectedYearText(event: EventLinkMeta, selectedYear: number) {
-  const yearText = String(selectedYear);
-  return event.overviewMatchedYear || event.parsedYear === selectedYear || `${event.titleText} ${event.eventTitle} ${event.rawRowSnippet} ${event.dateText || ""}`.includes(yearText);
+  return eventHasExplicitSelectedYearText(event, selectedYear) || event.overviewMatchedYear || event.parsedYear === selectedYear;
+}
+
+function eventHasSelectedDisciplineContext(event: EventLinkMeta, input: LeirdueSearchInput) {
+  return selectedDisciplineMatches(eventPriorityText(event), input);
+}
+
+function eventQueueSortRank(event: EventLinkMeta, input: LeirdueSearchInput) {
+  if (event.actualEventYear === input.year) return 0;
+  if (event.actualEventYear !== null) return 4;
+  if (eventHasExplicitSelectedYearText(event, input.year)) return 1;
+  if (eventHasSelectedDisciplineContext(event, input)) return 2;
+  return 3;
 }
 
 function shouldUseEventForContinuation(event: EventLinkMeta, input: LeirdueSearchInput, continuation: LeirdueContinuationState | null) {
   if (!continuation || continuation.visibleCandidatesCountTotal === 0) return true;
   if (event.actualEventYear !== null) return event.actualEventYear === input.year;
-  return eventHasSelectedYearText(event, input.year);
+  return eventHasExplicitSelectedYearText(event, input.year) || eventHasSelectedDisciplineContext(event, input);
 }
 
 function setRemainingQueueDebug(debug: LeirdueSearchDebug, events: EventLinkMeta[], inspectedEventIds: Set<string>, input: LeirdueSearchInput, pendingListeIds: number) {
   const remaining = events.filter((event) => !inspectedEventIds.has(event.eventId) && !event.skippedReason);
+  const likelySelectedYearEvents = remaining.filter((event) => event.actualEventYear === null && eventHasExplicitSelectedYearText(event, input.year));
+  const unknownSelectedDisciplineEvents = remaining.filter((event) => event.actualEventYear === null && !eventHasExplicitSelectedYearText(event, input.year) && eventHasSelectedDisciplineContext(event, input));
   debug.confirmedSelectedYearEventsRemaining = remaining.filter((event) => event.actualEventYear === input.year).length;
-  debug.unknownYearSelectedTextEventsRemaining = remaining.filter((event) => event.actualEventYear === null && eventHasSelectedYearText(event, input.year)).length;
-  debug.outsideYearFallbackEventsRemaining = remaining.filter((event) => event.actualEventYear !== input.year && !(event.actualEventYear === null && eventHasSelectedYearText(event, input.year))).length;
+  debug.likelySelectedYearEventsRemaining = likelySelectedYearEvents.length;
+  debug.unknownYearSelectedTextEventsRemaining = likelySelectedYearEvents.length;
+  debug.unknownYearEventsRemaining = unknownSelectedDisciplineEvents.length;
+  debug.outsideYearFallbackEventsRemaining = remaining.filter((event) => event.actualEventYear !== input.year && !(event.actualEventYear === null && (eventHasExplicitSelectedYearText(event, input.year) || eventHasSelectedDisciplineContext(event, input)))).length;
   debug.pendingListeIdQueueRemaining = pendingListeIds;
   debug.remainingEventQueueCount = remaining.length;
 }
 
 function setEventQueueDebugRows(debug: LeirdueSearchDebug, events: EventLinkMeta[], input: LeirdueSearchInput) {
-  const sortedEvents = events.slice().sort((a, b) => eventQueueSortRank(a, input.year) - eventQueueSortRank(b, input.year) || eventPriority(b, input) - eventPriority(a, input) || Number(b.eventId) - Number(a.eventId) || a.eventTitle.localeCompare(b.eventTitle));
+  const sortedEvents = events.slice().sort((a, b) => eventQueueSortRank(a, input) - eventQueueSortRank(b, input) || eventPriority(b, input) - eventPriority(a, input) || Number(b.eventId) - Number(a.eventId) || a.eventTitle.localeCompare(b.eventTitle));
   debug.prioritizedEventLinks = sortedEvents.slice(0, 50).map((event) => {
     const priority = eventPriorityDetail(event, input);
     return {
@@ -1704,32 +1723,15 @@ function eventPriority(meta: EventLinkMeta, input: LeirdueSearchInput) {
 }
 
 function rankedEventsAcrossYear(events: EventLinkMeta[], input: LeirdueSearchInput) {
-  const sorted = events.slice().sort((a, b) => eventPriority(b, input) - eventPriority(a, input) || Number(b.eventId) - Number(a.eventId) || a.eventTitle.localeCompare(b.eventTitle));
-  const highPriority = sorted.filter((event) => eventPriority(event, input) > 20);
-  const generic = sorted.filter((event) => eventPriority(event, input) <= 20);
-  const byMonth = new Map<string, EventLinkMeta[]>();
-  for (const event of generic) {
-    const month = event.date?.slice(5, 7) || "unknown";
-    if (!byMonth.has(month)) byMonth.set(month, []);
-    byMonth.get(month)?.push(event);
+  const groups = new Map<number, EventLinkMeta[]>();
+  for (const event of events) {
+    const rank = eventQueueSortRank(event, input);
+    if (!groups.has(rank)) groups.set(rank, []);
+    groups.get(rank)?.push(event);
   }
-  for (const monthEvents of byMonth.values()) {
-    monthEvents.sort((a, b) => Number(b.eventId) - Number(a.eventId) || a.eventTitle.localeCompare(b.eventTitle));
-  }
-  const months = Array.from(byMonth.keys()).sort().reverse();
-  const distributed: EventLinkMeta[] = [];
-  let added = true;
-  while (added) {
-    added = false;
-    for (const month of months) {
-      const next = byMonth.get(month)?.shift();
-      if (next) {
-        distributed.push(next);
-        added = true;
-      }
-    }
-  }
-  return [...highPriority, ...distributed];
+  return Array.from(groups.keys()).sort((a, b) => a - b).flatMap((rank) =>
+    (groups.get(rank) || []).sort((a, b) => eventPriority(b, input) - eventPriority(a, input) || Number(b.eventId) - Number(a.eventId) || (b.date || "0000-00-00").localeCompare(a.date || "0000-00-00") || a.eventTitle.localeCompare(b.eventTitle)),
+  );
 }
 
 function isRelevantSelectedDisciplineEvent(meta: EventLinkMeta, input: LeirdueSearchInput) {
@@ -2027,6 +2029,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     if (event.actualEventYear !== null && event.actualEventYear !== input.year) {
       event.skippedReason = "actualEventYearMismatch";
       debug.actualYearMismatchSkippedCount += 1;
+      debug.oldYearEventsSkippedThisBatch += 1;
       debug.eventLinksSkippedByReason.outsideYear += 1;
       addUnique(debug.eventIdsSkippedOutsideYear, event.eventId);
       setEventQueueDebugRows(debug, allRankedEvents, input);
@@ -2034,7 +2037,10 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
       continue;
     }
     if (event.actualEventYear === input.year) debug.actualSelectedYearEventsCount += 1;
-    else debug.unknownYearFallbackEventsCount += 1;
+    else {
+      debug.unknownYearFallbackEventsCount += 1;
+      if (eventHasExplicitSelectedYearText(event, input.year)) debug.likelySelectedYearEventsProcessedThisBatch += 1;
+    }
     debug.completedEventsInspected += 1;
     debug.relevantEventsInspected += 1;
 
@@ -2592,10 +2598,11 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   debug.completeCandidatesFoundTotal = debug.accumulatedCompleteCandidatesCount;
   debug.visibleCandidatesCountTotal = debug.visibleCandidatesCount;
   debug.hiddenLowQualityCandidatesCountTotal = debug.hiddenLowQualityCandidatesCount;
-  const likelySelectedYearWorkRemaining = debug.pendingListeIdQueueRemaining > 0 || debug.confirmedSelectedYearEventsRemaining > 0 || debug.unknownYearSelectedTextEventsRemaining > 0;
+  const likelySelectedYearWorkRemaining = debug.pendingListeIdQueueRemaining > 0 || debug.confirmedSelectedYearEventsRemaining > 0 || debug.likelySelectedYearEventsRemaining > 0 || debug.unknownYearEventsRemaining > 0;
   const onlyOldFallbackRemains = debug.visibleCandidatesCount > 0 && !likelySelectedYearWorkRemaining && debug.outsideYearFallbackEventsRemaining > 0;
   if (onlyOldFallbackRemains) {
     debug.continuationDisabledReason = "onlyOutsideYearFallbackEventsRemain";
+    debug.autoStoppedBecauseOnlyOldFallbackRemains = true;
     debug.continuationStopReason = "noMoreLikelySelectedYearResults";
     debug.message ||= `Søket er ferdig. Vi fant ${debug.visibleCandidatesCount} sannsynlige resultater for ${input.year}. Eldre/arkiverte sider ble hoppet over.`;
     debug.rejectedReasons.push("Continuation stopped: only outside-year fallback events remain.");
