@@ -77,8 +77,21 @@ export type LeirdueFetchDebug = {
   note?: string;
 };
 
+export type LeirdueIndexStatus = "not_started" | "running" | "partial" | "complete" | "failed";
+
 export type LeirdueSearchDebug = {
   selectedYear: number | null;
+  indexStatus?: LeirdueIndexStatus;
+  indexSource?: "local" | "builder" | "live_fallback";
+  indexedEventsForYear?: number;
+  indexedListeIdsForYear?: number;
+  indexedRowsForYear?: number;
+  indexedShooterRowsFound?: number;
+  importableRowsFound?: number;
+  hiddenRowsFound?: number;
+  indexCoverageEstimatePercent?: number;
+  indexLastUpdatedAt?: string | null;
+  missingReason?: string | null;
   normalizedSearchName: string;
   eventOverviewUrls: string[];
   guessedYearOverviewUrlsTried: string[];

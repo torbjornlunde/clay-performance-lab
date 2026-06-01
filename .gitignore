@@ -6,3 +6,6 @@ node_modules
 .DS_Store
 
 tsconfig.tsbuildinfo
+
+# Runtime Leirdue index cache
+data/leirdue-index-v1.json
