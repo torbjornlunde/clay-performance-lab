@@ -118,6 +118,11 @@ export type LeirdueSearchDebug = {
   scannedListeIdTotal: number;
   scannedEventTotal: number;
   remainingEventQueueCount: number;
+  confirmedSelectedYearEventsRemaining: number;
+  unknownYearSelectedTextEventsRemaining: number;
+  outsideYearFallbackEventsRemaining: number;
+  pendingListeIdQueueRemaining: number;
+  continuationDisabledReason: string | null;
   batchNumber: number;
   completeCandidatesFoundTotal: number;
   visibleCandidatesCountTotal: number;

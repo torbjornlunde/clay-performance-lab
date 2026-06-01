@@ -192,6 +192,11 @@ function emptyDebug(): LeirdueSearchDebug {
     scannedListeIdTotal: 0,
     scannedEventTotal: 0,
     remainingEventQueueCount: 0,
+    confirmedSelectedYearEventsRemaining: 0,
+    unknownYearSelectedTextEventsRemaining: 0,
+    outsideYearFallbackEventsRemaining: 0,
+    pendingListeIdQueueRemaining: 0,
+    continuationDisabledReason: null,
     batchNumber: 1,
     completeCandidatesFoundTotal: 0,
     visibleCandidatesCountTotal: 0,
@@ -761,6 +766,26 @@ function eventQueueSortRank(event: EventLinkMeta, selectedYear: number) {
   if (event.actualEventYear === selectedYear) return 0;
   if (event.actualEventYear === null) return 1;
   return 2;
+}
+
+function eventHasSelectedYearText(event: EventLinkMeta, selectedYear: number) {
+  const yearText = String(selectedYear);
+  return event.overviewMatchedYear || event.parsedYear === selectedYear || `${event.titleText} ${event.eventTitle} ${event.rawRowSnippet} ${event.dateText || ""}`.includes(yearText);
+}
+
+function shouldUseEventForContinuation(event: EventLinkMeta, input: LeirdueSearchInput, continuation: LeirdueContinuationState | null) {
+  if (!continuation || continuation.visibleCandidatesCountTotal === 0) return true;
+  if (event.actualEventYear !== null) return event.actualEventYear === input.year;
+  return eventHasSelectedYearText(event, input.year);
+}
+
+function setRemainingQueueDebug(debug: LeirdueSearchDebug, events: EventLinkMeta[], inspectedEventIds: Set<string>, input: LeirdueSearchInput, pendingListeIds: number) {
+  const remaining = events.filter((event) => !inspectedEventIds.has(event.eventId) && !event.skippedReason);
+  debug.confirmedSelectedYearEventsRemaining = remaining.filter((event) => event.actualEventYear === input.year).length;
+  debug.unknownYearSelectedTextEventsRemaining = remaining.filter((event) => event.actualEventYear === null && eventHasSelectedYearText(event, input.year)).length;
+  debug.outsideYearFallbackEventsRemaining = remaining.filter((event) => event.actualEventYear !== input.year && !(event.actualEventYear === null && eventHasSelectedYearText(event, input.year))).length;
+  debug.pendingListeIdQueueRemaining = pendingListeIds;
+  debug.remainingEventQueueCount = remaining.length;
 }
 
 function setEventQueueDebugRows(debug: LeirdueSearchDebug, events: EventLinkMeta[], input: LeirdueSearchInput) {
@@ -1929,7 +1954,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   const allRankedEvents = rankedEventsAcrossYear(relevantEventLinks, input);
   setEventQueueDebugRows(debug, allRankedEvents, input);
   setNextUnscannedEventQueueDebug(debug, allRankedEvents, input);
-  const continuationRankedEvents = allRankedEvents.filter((event) => !previouslyScannedEventIds.has(event.eventId));
+  const continuationRankedEvents = allRankedEvents.filter((event) => !previouslyScannedEventIds.has(event.eventId) && shouldUseEventForContinuation(event, input, continuation));
   const rankedEvents = boostKnownTorbjorn2025Events(input, continuationRankedEvents.slice(0, MAX_EVENT_PAGES_INSPECTED), eventLinks, debug).filter((event) => !previouslyScannedEventIds.has(event.eventId));
   if (continuationRankedEvents.length > rankedEvents.length) {
     markLimitReached(debug, "max relevant selected-year event links");
@@ -2077,7 +2102,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   debug.candidatesFoundAfterDiscovery = 0;
   const inspectedEventIds = new Set([...previouslyScannedEventIds, ...debug.eventIdsInspected]);
   debug.eventQueueRemainingWhenStopped = Math.max(0, rankedEvents.length - eventsDequeued);
-  debug.remainingEventQueueCount = allRankedEvents.filter((event) => !inspectedEventIds.has(event.eventId) && !event.skippedReason).length;
+  setRemainingQueueDebug(debug, allRankedEvents, inspectedEventIds, input, pendingListeIdQueue(listeIdLinks, scannedListeIdKeys).length);
   debug.scannedEventTotal = inspectedEventIds.size;
   debug.scannedListeIdTotal = scannedListeIdKeys.size;
   if (!debug.eventStopReason) debug.eventStopReason = "event queue exhausted";
@@ -2133,6 +2158,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   }
 
   debug.pendingListeIdQueueAtEnd = pendingListeIdQueue(listeIdLinks, scannedListeIdKeys).length;
+  debug.pendingListeIdQueueRemaining = debug.pendingListeIdQueueAtEnd;
   debug.scannedListeIdTotal = scannedListeIdKeys.size;
   return { pages: Array.from(listPages.values()), scannedListeIdKeys, pendingListeIdQueue: pendingListeIdQueue(listeIdLinks, scannedListeIdKeys) };
 }
@@ -2566,19 +2592,29 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   debug.completeCandidatesFoundTotal = debug.accumulatedCompleteCandidatesCount;
   debug.visibleCandidatesCountTotal = debug.visibleCandidatesCount;
   debug.hiddenLowQualityCandidatesCountTotal = debug.hiddenLowQualityCandidatesCount;
-  const canContinue = debug.completeCandidatesFoundTotal < TARGET_COMPLETE_CANDIDATES && debug.remainingEventQueueCount > 0;
+  const likelySelectedYearWorkRemaining = debug.pendingListeIdQueueRemaining > 0 || debug.confirmedSelectedYearEventsRemaining > 0 || debug.unknownYearSelectedTextEventsRemaining > 0;
+  const onlyOldFallbackRemains = debug.visibleCandidatesCount > 0 && !likelySelectedYearWorkRemaining && debug.outsideYearFallbackEventsRemaining > 0;
+  if (onlyOldFallbackRemains) {
+    debug.continuationDisabledReason = "onlyOutsideYearFallbackEventsRemain";
+    debug.continuationStopReason = "noMoreLikelySelectedYearResults";
+    debug.message ||= `Søket er ferdig. Vi fant ${debug.visibleCandidatesCount} sannsynlige resultater for ${input.year}. Eldre/arkiverte sider ble hoppet over.`;
+    debug.rejectedReasons.push("Continuation stopped: only outside-year fallback events remain.");
+  }
+  const canContinue = debug.completeCandidatesFoundTotal < TARGET_COMPLETE_CANDIDATES && likelySelectedYearWorkRemaining && !onlyOldFallbackRemains;
   debug.continuationAvailable = canContinue;
   debug.continuationReason = canContinue
     ? debug.timedOut
       ? "timeoutButContinuationAvailable"
       : debug.candidateQualityStopReason === "scanLimit"
         ? "scanLimitButContinuationAvailable"
-        : "remainingEventQueueAvailable"
+        : "remainingSelectedYearWorkAvailable"
     : debug.completeCandidatesFoundTotal >= TARGET_COMPLETE_CANDIDATES
       ? "targetReached"
-      : debug.remainingEventQueueCount === 0
-        ? "eventQueueExhausted"
-        : null;
+      : onlyOldFallbackRemains
+        ? "noMoreLikelySelectedYearResults"
+        : debug.remainingEventQueueCount === 0
+          ? "eventQueueExhausted"
+          : "noMoreLikelySelectedYearResults";
   debug.continuationStopReason = debug.continuationReason || debug.scanStoppedReason;
   if (canContinue && debug.timedOut) debug.scanStoppedReason = "timeout";
   else if (canContinue && debug.candidateQualityStopReason === "scanLimit") debug.scanStoppedReason = "scanLimit";
