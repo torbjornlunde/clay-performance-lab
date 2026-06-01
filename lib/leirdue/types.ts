@@ -218,7 +218,7 @@ export type LeirdueSearchDebug = {
   candidatesWithShootingGround: number;
   recommendedWithShootingGround: number;
   recommendedWithCompleteScore: number;
-  candidateDebugRows: { url: string; name: string; date: string | null; discipline: string; shootingGround: string | null; shootingGroundSource: string; ownScore: number | null; totalTargets: number | null; winningScore: number | null; category: LeirdueCategory; confidence: LeirdueConfidence; importRecommended: boolean; reason: string; hiddenFromNormalUi: boolean; notes: string }[];
+  candidateDebugRows: { url: string; name: string; date: string | null; discipline: string; shootingGround: string | null; shootingGroundSource: string; ownScore: number | null; totalTargets: number | null; winningScore: number | null; category: LeirdueCategory; confidence: LeirdueConfidence; importRecommended: boolean; reason: string; hiddenFromNormalUi: boolean; totalTargetsSource: string | null; inferredTotalTargets: number | null; inferenceConfidence: string | null; hiddenReason: string | null; notes: string }[];
   validationChecklist: LeirdueValidationChecklistItem[];
   pagesInspected: number;
   shooterPagesFound: number;

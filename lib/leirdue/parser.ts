@@ -48,6 +48,7 @@ type EventLinkMeta = { eventId: string; url: string; titleText: string; eventTit
 type Page = { url: string; html: string; label: string; kind: "overview" | "event" | "list" };
 type ListeIdQueueItem = { key: string; href: string; text: string; eventId: string | null; listeId: string | null; eventTitle: string; eventDate: string | null; priority: number; reason: string; source?: Link["source"] };
 type ParsedScore = { ownScore: number | null; winningScore: number | null; scoreLine: string | null; notes: string[]; parsedNumbers: number[]; seriesScores: number[] };
+type TotalTargetsInference = { totalTargets: number; source: "titleTargetCount" | "seriesPattern"; confidence: "high" | "medium" | "low" };
 type ParsedRow = { text: string; cells: string[]; numbers: number[]; total: number | null; seriesScores: number[] };
 type RawCandidate = Omit<LeirdueCandidate, "category" | "confidence" | "importRecommended" | "notes"> & {
   sourceText: string;
@@ -598,32 +599,53 @@ function seriesSumConsistent(seriesScores: number[], score?: number | null) {
 }
 
 function totalTargetsFromSeriesScores(seriesScores: number[], score?: number | null, rowText = "") {
+  return totalTargetsInferenceFromSeriesScores(seriesScores, score, rowText)?.totalTargets ?? null;
+}
+
+function totalTargetsInferenceFromSeriesScores(seriesScores: number[], score?: number | null, rowText = ""): TotalTargetsInference | null {
   if (seriesScores.length === 0 || percentageTokenCount(rowText) > 0 || !seriesSumConsistent(seriesScores, score)) return null;
-  if (seriesScores.length === 10 && seriesScores.every((value) => value >= 0 && value <= 10)) return 100;
-  if (seriesScores.length === 3 && seriesScores.every((value) => value >= 0 && value <= 25)) return 75;
-  if (seriesScores.length === 2 && seriesScores.every((value) => value >= 0 && value <= 25)) return 50;
+  const allTenOrLess = seriesScores.every((value) => value >= 0 && value <= 10);
+  const allTwentyFiveOrLess = seriesScores.every((value) => value >= 0 && value <= 25);
+  if (seriesScores.length === 10 && allTenOrLess) return { totalTargets: 100, source: "seriesPattern", confidence: "medium" };
+  if ((seriesScores.length === 13 || seriesScores.length === 14) && allTenOrLess) return { totalTargets: 130, source: "seriesPattern", confidence: "medium" };
+  if ([2, 3, 4, 5, 6, 8].includes(seriesScores.length) && allTwentyFiveOrLess) return { totalTargets: seriesScores.length * 25, source: "seriesPattern", confidence: "medium" };
   return null;
 }
 
-function extractLikelyTotalTargets(text: string, score?: number | null, seriesScores: number[] = [], rowText = "") {
+function explicitTargetCountFromText(text: string) {
   const normalized = normalizeText(text);
-  const explicit = normalized.match(/\b(25|50|75|100|125|150|175|200)\s*(?:sk|skudd|skudds|skot|skots|duer|duers|targets|mal|mål|compak|compact|kompakt)\b/);
+  const explicit = normalized.match(/\b(25|50|75|100|125|130|150|175|200)\s*(?:sk|skudd|skudds|skot|skots|duer|duers|targets|mal|mål|compak|compact|kompakt)\b/);
   if (explicit) return Number(explicit[1]);
-  const named = normalized.match(/\b(25|50|75|100|125|150|175|200)\b(?=\s*(?:compak|compact|kompakt|sporting|leirduesti|sti))/);
-  if (named) return Number(named[1]);
+  const named = normalized.match(/\b(25|50|75|100|125|130|150|175|200)\b(?=\s*(?:compak|compact|kompakt|sporting|leirduesti|sti))/);
+  return named ? Number(named[1]) : null;
+}
+
+function textDisallowsTotalTargetsInference(text: string) {
+  const normalized = normalizeText(text);
+  return percentageTokenCount(text) > 0 || /(ranking|prosent|cup sammenlagt|sammenlagt premiering|klasseføring|klasseforing|lagskyting|lagliste|flere stevner|sesong|season|uttak)/.test(normalized);
+}
+
+function inferTotalTargets(contextText: string, rowText: string, score?: number | null, winningScore?: number | null, seriesScores: number[] = []): TotalTargetsInference | null {
+  if (score === null || score === undefined || textDisallowsTotalTargetsInference(rowText) || textDisallowsTotalTargetsInference(contextText)) return null;
+  const explicit = explicitTargetCountFromText(contextText);
+  if (explicit !== null && score <= explicit && (winningScore === null || winningScore === undefined || winningScore <= explicit || winningScore <= Math.ceil(explicit * 1.05))) {
+    return { totalTargets: explicit, source: "titleTargetCount", confidence: "high" };
+  }
+  return totalTargetsInferenceFromSeriesScores(seriesScores, score, rowText);
+}
+
+function extractLikelyTotalTargets(text: string, score?: number | null, seriesScores: number[] = [], rowText = "") {
+  const explicit = explicitTargetCountFromText(text);
+  if (explicit) return explicit;
 
   if (rowText) {
     const inferredFromSeries = totalTargetsFromSeriesScores(seriesScores, score, rowText);
     if (inferredFromSeries !== null) return inferredFromSeries;
-
-    const likelySeries = seriesScores.filter((value) => value >= 15 && value <= 25);
-    if ((likelySeries.length === 2 || likelySeries.length === 3) && seriesSumConsistent(likelySeries, score)) {
-      return likelySeries.length * 25;
-    }
   }
 
+  const normalized = normalizeText(text);
   if (normalized.length < 220) {
-    const standalone = Array.from(normalized.matchAll(/\b(25|50|75|100|125|150|175|200)\b/g)).map((match) => Number(match[1]));
+    const standalone = Array.from(normalized.matchAll(/\b(25|50|75|100|125|130|150|175|200)\b/g)).map((match) => Number(match[1]));
     const plausible = standalone.filter((total) => !score || total >= score);
     if (plausible.length > 0) return plausible[0];
   }
@@ -1121,6 +1143,7 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[], select
   const hasOwnScore = raw.ownScore !== null;
   const hasCompleteScore = raw.ownScore !== null && raw.winningScore !== null && raw.totalTargets !== null;
   const parsedDiscipline = raw.discipline !== "Other";
+  const ambiguousInferredTargets = notes.some((note) => /totalTargetsSource=seriesPattern/.test(note) && /inferenceConfidence=(medium|low)/.test(note));
   const candidatePriority = computeCandidatePriority(raw);
   let confidence: LeirdueConfidence = "low";
   let category: LeirdueCategory = "review";
@@ -1129,10 +1152,14 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[], select
     category = "control";
     confidence = "low";
     notes.push(`Category reason: control flags triggered: ${Array.from(new Set(flags)).join(", ")}.`);
-  } else if (hasCompleteScore && raw.date !== null && parsedDiscipline) {
+  } else if (hasCompleteScore && raw.date !== null && parsedDiscipline && !ambiguousInferredTargets) {
     category = "recommended";
     confidence = "high";
     notes.push("Category reason: complete parsed result data from fetched liste_id page; direct result flags are not required.");
+  } else if (hasCompleteScore && raw.date !== null && parsedDiscipline) {
+    category = "review";
+    confidence = "medium";
+    notes.push("Category reason: complete row uses series-pattern total target inference, so review before import.");
   } else if (hasOwnScore) {
     category = "review";
     confidence = candidatePriority >= 40 ? "medium" : "low";
@@ -1188,13 +1215,15 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
   const candidateYear = parsedYear(candidateDate);
   incrementCounter(debug.candidatesByYear, candidateYear);
   const discipline = classifyDiscipline(context, input.disciplines);
-  const initialTotalTargets = extractLikelyTotalTargets(listTitle) ?? extractLikelyTotalTargets(title);
+  const targetContext = [listTitle, title, lines.slice(0, 25).join("\n")].join("\n");
+  const initialTotalTargets = extractLikelyTotalTargets(targetContext);
   const parsed = parseScoresFromLines(lines, page.html, input.shooterName, pageText, input.year, initialTotalTargets);
-  const seriesTotalTargets = totalTargetsFromSeriesScores(parsed.seriesScores, parsed.ownScore, parsed.scoreLine || "");
-  const totalTargets = initialTotalTargets ?? seriesTotalTargets ?? extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets(title, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores, parsed.scoreLine || "");
+  const totalTargetsInference = inferTotalTargets(targetContext, parsed.scoreLine || "", parsed.ownScore, parsed.winningScore, parsed.seriesScores);
+  const totalTargets = totalTargetsInference?.totalTargets ?? initialTotalTargets ?? extractLikelyTotalTargets(targetContext, parsed.ownScore, parsed.seriesScores, parsed.scoreLine || "");
   const snippet = findShooterSnippet(lines, input.shooterName);
   const listType = classifyListType(listTitle);
   const notes = [...discipline.notes, ...parsed.notes, `Source liste_id URL: ${page.url}.`, `List title/type: ${listTitle} / ${listType}.`];
+  if (totalTargetsInference) notes.push(`totalTargetsSource=${totalTargetsInference.source}; inferredTotalTargets=${totalTargetsInference.totalTargets}; inferenceConfidence=${totalTargetsInference.confidence}.`);
   const shootingGroundResult = extractShootingGround(title, lines.slice(0, 25).join("\n"));
   const shootingGround = shootingGroundResult.value;
   if (shootingGround) notes.push(`Shooting ground inferred from ${shootingGroundResult.source}: ${shootingGround}.`);
@@ -2222,10 +2251,14 @@ function classifyNormalizedCandidate(candidate: LeirdueCandidate, selectedYear: 
   if (flags.length > 0) {
     category = "control";
     confidence = "low";
-  } else if (completeCandidate(candidate)) {
+  } else if (completeCandidate(candidate) && !/totalTargetsSource=seriesPattern.*inferenceConfidence=(medium|low)/.test(candidate.notes)) {
     category = "recommended";
     confidence = "high";
     importRecommended = true;
+  } else if (completeCandidate(candidate)) {
+    category = "review";
+    confidence = "medium";
+    importRecommended = false;
   } else if (candidate.ownScore !== null) {
     category = "review";
     confidence = candidate.totalTargets !== null || candidate.winningScore !== null ? "medium" : "low";
@@ -2343,6 +2376,18 @@ function candidateHiddenFromNormalUi(candidate: LeirdueCandidate, selectedYear: 
   return candidate.category === "control" || isFutureDate(candidate.date) || outsideYear || percentageHeavy || summaryList || missingUsableScore;
 }
 
+function candidateHiddenReason(candidate: LeirdueCandidate, selectedYear: number | null) {
+  const text = normalizeText(`${candidate.name} ${candidate.listType || ""} ${candidate.notes}`);
+  if (candidate.category === "control") return "control";
+  if (isFutureDate(candidate.date)) return "future";
+  if (parsedYear(candidate.date) !== null && selectedYear !== null && parsedYear(candidate.date) !== selectedYear) return "outsideYear";
+  if (isPercentageHeavyText(text)) return "percentageHeavy";
+  if (/(cup sammenlagt|sammenlagt premiering)/.test(text)) return "cupSummary";
+  if (/(ranking|klasseføring|klasseforing)/.test(text)) return "rankingSummary";
+  if (candidate.ownScore === null || candidate.totalTargets === null) return "missingTotalTargets";
+  return null;
+}
+
 function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: LeirdueCandidate[]) {
   debug.candidateCategoryCounts = { recommended: 0, review: 0, control: 0 };
   debug.candidateConfidenceCounts = { high: 0, medium: 0, low: 0 };
@@ -2376,6 +2421,10 @@ function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: Leirdu
     if (candidate.category === "recommended" && candidate.ownScore !== null && candidate.winningScore !== null && candidate.totalTargets !== null) debug.recommendedWithCompleteScore += 1;
     const reason = candidate.notes.match(/Candidate debug: ([^.]+)/)?.[1] || candidate.notes.slice(0, 240);
     const shootingGroundSource = candidate.notes.match(/shootingGroundSource=([^;]+)/)?.[1] || "unknown";
+    const totalTargetsSource = candidate.notes.match(/totalTargetsSource=([^;]+)/)?.[1] || null;
+    const inferredTotalTargets = Number(candidate.notes.match(/inferredTotalTargets=(\d+)/)?.[1] || "");
+    const inferenceConfidence = candidate.notes.match(/inferenceConfidence=([^.;]+)/)?.[1] || null;
+    const hiddenReason = candidateHiddenReason(candidate, debug.selectedYear);
     debug.candidateDebugRows.push({
       url: candidate.leirdueUrl,
       name: candidate.name,
@@ -2391,6 +2440,10 @@ function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: Leirdu
       importRecommended: candidate.importRecommended,
       reason,
       hiddenFromNormalUi,
+      totalTargetsSource,
+      inferredTotalTargets: Number.isFinite(inferredTotalTargets) ? inferredTotalTargets : null,
+      inferenceConfidence,
+      hiddenReason,
       notes: candidate.notes,
     });
   }
@@ -2461,14 +2514,16 @@ function debugParseLeirdueHtml(params: { url: string; status: number | null; htm
   const listTitle = `${eventTitle} ${pageTitle || ""}`.trim();
   const date = parseDate(`${eventTitle}\n${pageText}`, year);
   const discipline = classifyDiscipline(`${eventTitle}\n${pageText}`, selectedDisciplines);
-  const initialTotalTargets = extractLikelyTotalTargets(listTitle) ?? extractLikelyTotalTargets(eventTitle);
+  const targetContext = [listTitle, eventTitle, lines.slice(0, 25).join("\n")].join("\n");
+  const initialTotalTargets = extractLikelyTotalTargets(targetContext);
   const parsed = parseScoresFromLines(lines, html, shooterName, pageText, year, initialTotalTargets);
-  const seriesTotalTargets = totalTargetsFromSeriesScores(parsed.seriesScores, parsed.ownScore, parsed.scoreLine || "");
-  const totalTargets = initialTotalTargets ?? seriesTotalTargets ?? extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets(eventTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores, parsed.scoreLine || "");
+  const totalTargetsInference = inferTotalTargets(targetContext, parsed.scoreLine || "", parsed.ownScore, parsed.winningScore, parsed.seriesScores);
+  const totalTargets = totalTargetsInference?.totalTargets ?? initialTotalTargets ?? extractLikelyTotalTargets(targetContext, parsed.ownScore, parsed.seriesScores, parsed.scoreLine || "");
   const rowDebug = debugCandidateRows(lines, html, shooterName, year, totalTargets);
   const rawSnippet = findShooterSnippet(lines, shooterName) || (shooterFound ? usefulSnippet(pageText, shooterName) : null);
   const shootingGroundResult = extractShootingGround(eventTitle, lines.slice(0, 25).join("\n"));
   const parserNotes = [...discipline.notes, ...parsed.notes];
+  if (totalTargetsInference) parserNotes.push(`totalTargetsSource=${totalTargetsInference.source}; inferredTotalTargets=${totalTargetsInference.totalTargets}; inferenceConfidence=${totalTargetsInference.confidence}.`);
   if (rawSnippet) parserNotes.push(`Raw snippet: ${rawSnippet}`);
   if (!shootingGroundResult.value) parserNotes.push("Could not infer shooting ground.");
 

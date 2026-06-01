@@ -315,7 +315,7 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
           <ul className="small muted">
             {debug.candidateDebugRows.slice(0, 20).map((item) => (
               <li key={`${item.url}-${item.date}-${item.ownScore}`}>
-                {item.date || "no date"} — {item.name} — {item.discipline} — {item.shootingGround || "unknown ground"} ({item.shootingGroundSource}) — {item.ownScore ?? "?"}/{item.totalTargets ?? "?"} winner {item.winningScore ?? "?"} — {item.category}/{item.confidence} — {item.importRecommended ? "recommended" : "not checked"} — {item.hiddenFromNormalUi ? "hidden/debug" : "visible"} — {item.url} — {item.reason} — {item.notes.slice(0, 260)}
+                {item.date || "no date"} — {item.name} — {item.discipline} — {item.shootingGround || "unknown ground"} ({item.shootingGroundSource}) — {item.ownScore ?? "?"}/{item.totalTargets ?? "?"} winner {item.winningScore ?? "?"} — {item.category}/{item.confidence} — {item.importRecommended ? "recommended" : "not checked"} — {item.hiddenFromNormalUi ? `hidden/debug${item.hiddenReason ? ` (${item.hiddenReason})` : ""}` : "visible"} — targets {item.inferredTotalTargets ?? "?"} via {item.totalTargetsSource || "existingParser"}/{item.inferenceConfidence || "n/a"} — {item.url} — {item.reason} — {item.notes.slice(0, 260)}
               </li>
             ))}
           </ul>
