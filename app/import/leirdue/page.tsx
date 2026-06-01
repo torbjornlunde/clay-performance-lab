@@ -9,6 +9,11 @@ import type { LeirdueCandidate, LeirdueCategory, LeirdueSearchDebug } from "@/li
 const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduesti", "Sporting"];
 const OPTIONAL_DISCIPLINES = ["Trap", "Skeet", "Other"];
 const DISCIPLINE_CHOICES = [...DEFAULT_DISCIPLINES, ...OPTIONAL_DISCIPLINES];
+const MAX_AUTO_BATCHES = 20;
+const MAX_AUTO_LISTE_ID_SCANNED = 400;
+const MAX_AUTO_SEARCH_MS = 5 * 60 * 1000;
+const MAX_EMPTY_AUTO_BATCHES = 2;
+const BATCH_TIMEOUT_MS = 35_000;
 const SECTION_LABELS: Record<LeirdueCategory, string> = {
   recommended: "Recommended imports",
   review: "Review before import",
@@ -25,8 +30,24 @@ type SaveResponse = {
 type SearchResponse = {
   candidates?: LeirdueCandidate[];
   debug?: LeirdueSearchDebug;
+  continuationToken?: string | null;
   error?: string;
 };
+
+
+function isLowQualitySummaryCandidate(candidate: LeirdueCandidate) {
+  const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes}`.toLowerCase();
+  const percentageHeavy = /\b\d{1,3}(?:[,.]\d+)?\s*%/.test(text);
+  const summaryList = /(ranking|prosent|cup sammenlagt|sammenlagt premiering|klasseføring|klasseforing|sesong|season)/.test(text);
+  const missingUsableScore = candidate.ownScore === null || candidate.totalTargets === null;
+  return candidate.category === "control" || percentageHeavy || summaryList || missingUsableScore;
+}
+
+function visibleImportCandidate(candidate: EditableCandidate) {
+  if (candidate.category === "recommended") return !isLowQualitySummaryCandidate(candidate);
+  if (candidate.category === "review") return candidate.ownScore !== null && candidate.totalTargets !== null && !isLowQualitySummaryCandidate(candidate);
+  return false;
+}
 
 function candidateSelectedByDefault(candidate: LeirdueCandidate) {
   return candidate.category === "recommended" && (candidate.confidence === "high" || candidate.confidence === "medium") && candidate.importRecommended;
@@ -41,8 +62,75 @@ function toEditable(candidate: LeirdueCandidate, index: number): EditableCandida
   return { ...candidate, selected: candidateSelectedByDefault(candidate), localId: `${candidate.leirdueUrl}-${candidate.date}-${index}` };
 }
 
+function candidateEventId(candidate: LeirdueCandidate) {
+  try {
+    return new URL(candidate.leirdueUrl).searchParams.get("stevne") || candidate.leirdueUrl;
+  } catch {
+    return candidate.leirdueUrl;
+  }
+}
+
+function candidateMergeKey(candidate: LeirdueCandidate) {
+  return [candidateEventId(candidate), candidate.date || "no-date", candidate.ownScore ?? "?", candidate.totalTargets ?? "?"].join("|");
+}
+
+function candidateQualityRank(candidate: LeirdueCandidate) {
+  const completeScore = candidate.ownScore !== null && candidate.totalTargets !== null && candidate.winningScore !== null;
+  if (candidate.category === "recommended" && candidate.confidence === "high" && completeScore) return 5;
+  if (candidate.category === "recommended" && completeScore) return 4;
+  if (candidate.category === "review" && completeScore) return 3;
+  if (candidate.ownScore !== null || candidate.totalTargets !== null) return 2;
+  return 1;
+}
+
+function visibleCandidateCount(candidates: EditableCandidate[]) {
+  return candidates.filter(visibleImportCandidate).length;
+}
+
+function mergeCandidates(current: EditableCandidate[], incoming: LeirdueCandidate[]) {
+  const merged = new Map(current.map((candidate) => [candidateMergeKey(candidate), candidate]));
+  incoming.forEach((candidate, index) => {
+    const key = candidateMergeKey(candidate);
+    const existing = merged.get(key);
+    const editable = toEditable(candidate, current.length + index);
+    if (!existing) {
+      merged.set(key, editable);
+      return;
+    }
+    if (candidateQualityRank(candidate) > candidateQualityRank(existing)) {
+      merged.set(key, { ...editable, selected: existing.selected, localId: existing.localId, saveStatus: existing.saveStatus, saveMessage: existing.saveMessage });
+    }
+  });
+  return Array.from(merged.values());
+}
+
 function normalizeSaveError(response: SaveResponse) {
   return response.error || "Could not save selected Leirdue results.";
+}
+
+function hasLikelySelectedYearWork(debug?: LeirdueSearchDebug) {
+  if (!debug) return true;
+  return debug.pendingListeIdQueueRemaining > 0 || debug.confirmedSelectedYearEventsRemaining > 0 || debug.likelySelectedYearEventsRemaining > 0;
+}
+
+function estimatedSearchProgress(debug: LeirdueSearchDebug | undefined, batchIndex: number, visibleCount: number, finished = false) {
+  if (finished) return 100;
+  const batchProgress = Math.min(batchIndex / MAX_AUTO_BATCHES, 1) * 55;
+  const scanProgress = Math.min((debug?.scannedListeIdTotal || 0) / MAX_AUTO_LISTE_ID_SCANNED, 1) * 25;
+  const candidateProgress = Math.min(visibleCount / Math.max(debug?.expectedCandidateTarget || 16, 1), 1) * 15;
+  return Math.max(10, Math.min(95, Math.round(5 + batchProgress + scanProgress + candidateProgress)));
+}
+
+function autoSearchStopMessage(visibleCount: number, year: string, reason: "safetyTimeLimitReached" | "maxAutoBatchesReached" | "selectedYearWorkExhausted" | "onlyOldFallbackRemains" | "realError" | "partial" = "partial") {
+  if (reason === "safetyTimeLimitReached") return `Søket stoppet etter tidsgrensen. Vi fant ${visibleCount} sannsynlige resultat${visibleCount === 1 ? "" : "er"}. Du kan gå gjennom disse nå, eller kjøre et dypere søk senere.`;
+  if (reason === "maxAutoBatchesReached") return `Søket stoppet etter sikkerhetsgrensen for automatisk søk. Vi fant ${visibleCount} sannsynlige resultat${visibleCount === 1 ? "" : "er"}. Du kan gå gjennom disse nå, eller kjøre et dypere søk senere.`;
+  if (reason === "selectedYearWorkExhausted") return `Søket er ferdig. Vi fant ${visibleCount} sannsynlige resultat${visibleCount === 1 ? "" : "er"} for ${year}. Ingen flere sannsynlige ${year}-resultater ble funnet automatisk.`;
+  if (reason === "onlyOldFallbackRemains") return `Søket er ferdig. Vi fant ${visibleCount} sannsynlige resultat${visibleCount === 1 ? "" : "er"} for ${year}. Eldre/arkiverte sider ble hoppet over.`;
+  return `Søket stoppet etter å ha funnet ${visibleCount} sannsynlige resultat${visibleCount === 1 ? "" : "er"} for ${year}. Det kan fortsatt finnes resultater som Leirdue.net ikke gjorde mulig å hente automatisk.`;
+}
+
+function autoSearchCompleteMessage(visibleCount: number, year: string) {
+  return `Søket er ferdig. Vi fant ${visibleCount} sannsynlige resultat${visibleCount === 1 ? "" : "er"} for ${year}.`;
 }
 
 function CandidateCard({ candidate, onChange }: { candidate: EditableCandidate; onChange: (candidate: EditableCandidate) => void }) {
@@ -60,6 +148,7 @@ function CandidateCard({ candidate, onChange }: { candidate: EditableCandidate; 
           <span>{candidate.selected ? "Import" : "Skip"}</span>
         </label>
         <div className="candidateBadges">
+          <span className={`badge ${candidate.category === "recommended" ? "badgeGreen" : candidate.category === "review" ? "badgeGold" : "badgeBlue"}`}>{candidate.category}</span>
           <span className={`badge ${candidate.confidence === "high" ? "badgeGreen" : candidate.confidence === "medium" ? "badgeGold" : "badgeBlue"}`}>{candidate.confidence} confidence</span>
           {candidate.alreadyImported || candidate.saveStatus === "duplicate" ? <span className="badge badgeBlue">Already imported</span> : null}
           {candidate.saveStatus === "saved" ? <span className="badge badgeGreen">Saved</span> : null}
@@ -91,15 +180,15 @@ function CandidateCard({ candidate, onChange }: { candidate: EditableCandidate; 
       <div className="row threeColumnRow">
         <div>
           <label>Own score</label>
-          <input type="number" min="0" inputMode="numeric" value={candidate.ownScore ?? ""} onChange={(event) => update("ownScore", Number(event.target.value))} />
+          <input type="number" min="0" inputMode="numeric" value={candidate.ownScore ?? ""} onChange={(event) => update("ownScore", event.target.value === "" ? null : Number(event.target.value))} />
         </div>
         <div>
           <label>Total targets</label>
-          <input type="number" min="1" inputMode="numeric" value={candidate.totalTargets ?? ""} onChange={(event) => update("totalTargets", Number(event.target.value))} />
+          <input type="number" min="1" inputMode="numeric" value={candidate.totalTargets ?? ""} onChange={(event) => update("totalTargets", event.target.value === "" ? null : Number(event.target.value))} />
         </div>
         <div>
           <label>Winning score</label>
-          <input type="number" min="1" inputMode="numeric" value={candidate.winningScore ?? ""} onChange={(event) => update("winningScore", Number(event.target.value))} />
+          <input type="number" min="1" inputMode="numeric" value={candidate.winningScore ?? ""} onChange={(event) => update("winningScore", event.target.value === "" ? null : Number(event.target.value))} />
         </div>
       </div>
 
@@ -131,13 +220,27 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
     <details className="card" open={candidatesFound === 0}>
       <summary>Debug details</summary>
       <div className="metricsRow">
+        <span className="metricChip"><strong>{debug.selectedYear ?? "?"}</strong> selected year</span>
+        <span className="metricChip"><strong>{debug.normalizedSearchName || "?"}</strong> normalized name</span>
         <span className="metricChip"><strong>{debug.fetchedUrls.length}</strong> pages fetched</span>
         <span className="metricChip"><strong>{debug.eventInfoPagesFetched}</strong> event info pages</span>
         <span className="metricChip"><strong>{debug.eventResultMenuPagesFetched}</strong> result menu pages</span>
+        <span className="metricChip"><strong>{debug.resultMenusBeforeFirstListeIdScan}</strong> menus before first liste_id scan</span>
         <span className="metricChip"><strong>{debug.listeIdLinksExtracted}</strong> liste_id links</span>
         <span className="metricChip"><strong>{debug.listeIdLinksFromResultMenus}</strong> from result menus</span>
+        <span className="metricChip"><strong>{debug.listeIdPagesQueued}</strong> liste_id pages queued</span>
+        <span className="metricChip"><strong>{debug.listeIdPagesScannedForName}</strong> liste_id pages scanned for name</span>
         <span className="metricChip"><strong>{debug.listeIdPagesFetched}</strong> liste_id pages fetched</span>
         <span className="metricChip"><strong>{debug.listeIdShooterPagesFound}</strong> liste_id shooter pages</span>
+        <span className="metricChip"><strong>{debug.shooterPagesParsed}</strong> shooter pages parsed</span>
+        <span className="metricChip"><strong>{debug.completedEventsInspected}</strong> completed events inspected</span>
+        <span className={`metricChip ${debug.timedOut ? "danger" : ""}`}><strong>{debug.timedOut ? debug.timedOutAtPhase || "yes" : "no"}</strong> timed out</span>
+        <span className={`metricChip ${debug.timedOutBeforeFirstListeIdScan ? "danger" : ""}`}><strong>{debug.timedOutBeforeFirstListeIdScan ? "yes" : "no"}</strong> timeout before liste_id scan</span>
+        <span className="metricChip"><strong>{debug.selectedYearEventIdsCount}</strong> selected-year events</span>
+        <span className={`metricChip ${debug.limitReached ? "danger" : ""}`}><strong>{debug.limitReached ? debug.whichLimit || "yes" : "no"}</strong> limit reached</span>
+        <span className={`metricChip ${debug.overviewYearMismatch ? "danger" : ""}`}><strong>{debug.overviewYearMismatch ? "yes" : "no"}</strong> overview year mismatch</span>
+        <span className="metricChip"><strong>{debug.futureEventsSkipped}</strong> future events skipped</span>
+        <span className="metricChip"><strong>{debug.skippedOutsideSelectedYear}</strong> outside-year skipped</span>
         <span className="metricChip"><strong>{debug.candidateRowsCreated}</strong> candidates created</span>
         <span className="metricChip"><strong>{debug.candidateCategoryCounts.recommended}/{debug.candidateCategoryCounts.review}/{debug.candidateCategoryCounts.control}</strong> rec/review/control</span>
         <span className="metricChip"><strong>{debug.candidateConfidenceCounts.high}/{debug.candidateConfidenceCounts.medium}/{debug.candidateConfidenceCounts.low}</strong> high/med/low</span>
@@ -148,6 +251,15 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         <span className="metricChip"><strong>{debug.candidatesWithShootingGround}</strong> shooting ground</span>
         <span className="metricChip"><strong>{debug.recommendedWithShootingGround}</strong> recommended ground</span>
         <span className="metricChip"><strong>{debug.recommendedWithCompleteScore}</strong> recommended complete score</span>
+        <span className="metricChip"><strong>{debug.hiddenControlCandidates}</strong> debug/control hidden from useful sections</span>
+        <span className={`metricChip ${debug.continuationAvailable ? "badgeGold" : ""}`}><strong>{debug.continuationAvailable ? "yes" : "no"}</strong> continuation</span>
+        <span className="metricChip"><strong>{debug.batchNumber}</strong> batch</span>
+        <span className="metricChip"><strong>{debug.scannedListeIdTotal}</strong> total liste_id scanned</span>
+        <span className="metricChip"><strong>{debug.scannedEventTotal}</strong> total events scanned</span>
+        <span className="metricChip"><strong>{debug.remainingEventQueueCount}</strong> remaining events</span>
+        <span className="metricChip"><strong>{debug.confirmedSelectedYearEventsRemaining}/{debug.likelySelectedYearEventsRemaining}/{debug.unknownYearEventsRemaining}/{debug.outsideYearFallbackEventsRemaining}/{debug.pendingListeIdQueueRemaining}</strong> confirmed/likely/unknown/outside/pending</span>
+        <span className="metricChip"><strong>{debug.oldYearEventsSkippedThisBatch}/{debug.likelySelectedYearEventsProcessedThisBatch}</strong> old skipped / likely processed</span>
+        <span className={`metricChip ${debug.autoStoppedBecauseOnlyOldFallbackRemains ? "badgeGold" : ""}`}><strong>{debug.autoStoppedBecauseOnlyOldFallbackRemains ? "yes" : "no"}</strong> old-fallback stop</span>
       </div>
       {candidatesFound === 0 ? <p className="small muted">No candidates found. Try broader filters or add result manually.</p> : null}
       {recentStatuses.length > 0 ? (
@@ -160,8 +272,32 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
           </ul>
         </>
       ) : null}
+      {debug.message ? <p className="small muted">Search warning: {debug.message}</p> : null}
+      {debug.errorMessage ? <p className="small muted">Last error: {debug.errorMessage}</p> : null}
+      {debug.lastFetchUrl ? <p className="small muted">Last fetch URL: {debug.lastFetchUrl}</p> : null}
       {debug.listInspectionLimitReached ? <p className="small muted">Result list inspection limit reached.</p> : null}
       {debug.validationUrlsInspected > 0 ? <p className="small muted">Validation URLs inspected: {debug.validationUrlsInspected}; validation shooter matches: {debug.validationShooterMatches}</p> : null}
+      <p className="small muted">Guessed overview URLs tried: {debug.guessedYearOverviewUrlsTried.join("; ") || "none"}</p>
+      <p className="small muted">Selected-year overview URL used: {debug.selectedYearOverviewUrlUsed || "none"}</p>
+      <p className="small muted">Event overview URLs: {debug.eventOverviewUrls.join("; ") || "none"}</p>
+      <p className="small muted">Discovered year links: {debug.discoveredYearLinks.slice(0, 15).map((item) => `${item.text || "link"} -> ${item.url}`).join("; ") || "none"}</p>
+      <p className="small muted">Selected-year links found: {debug.selectedYearLinksFound.slice(0, 15).map((item) => `${item.text || "link"} -> ${item.url}`).join("; ") || "none"}</p>
+      {debug.overviewDiagnostics.length > 0 ? <p className="small muted">Overview diagnostics: {debug.overviewDiagnostics.map((item) => `${item.url} selectedYear=${item.containsSelectedYear ? "yes" : "no"} selectedYearLinks=${item.selectedYearLinkCount}: ${item.snippet.slice(0, 220)}`).join(" | ")}</p> : null}
+      {debug.noSelectedYearEventsReason ? <p className="small muted">No selected-year events reason: {debug.noSelectedYearEventsReason}</p> : null}
+      <p className="small muted">Selected discipline filters: {debug.selectedDisciplineFilters.join(", ") || "none"}</p>
+      <p className="small muted">Events before filtering: {debug.eventsFoundBeforeFiltering}; after soft filter: {debug.selectedYearEventLinksAfterSoftFilter}; fallback added: {debug.genericFallbackEventsAdded}; relevant inspected: {debug.relevantEventsInspected}; selected-year event links: {debug.selectedYearEventLinksCount}; actual selected-year events: {debug.actualSelectedYearEventsCount}; unknown-year fallbacks: {debug.unknownYearFallbackEventsCount}; actual-year mismatches skipped: {debug.actualYearMismatchSkippedCount}; hard skipped unselected: {debug.hardSkippedUnselectedDiscipline}; hard skipped ranking/control: {debug.hardSkippedRankingOrControl}; skipped: {JSON.stringify(debug.eventLinksSkippedByReason)}</p>
+      <p className="small muted">Phase: {debug.phaseReached || "unknown"}; scan stopped: {debug.scanStoppedReason || "unknown"}; event stop: {debug.eventStopReason || "unknown"}; quality stop: {debug.candidateQualityStopReason || "unknown"}; target complete candidates: {debug.expectedCandidateTarget}; continuation reason: {debug.continuationReason || "none"}; disabled: {debug.continuationDisabledReason || "none"}; totals complete/visible/hidden: {debug.completeCandidatesFoundTotal}/{debug.visibleCandidatesCountTotal}/{debug.hiddenLowQualityCandidatesCountTotal}; complete total/visible/hidden/importable: {debug.completeCandidatesTotal}/{debug.visibleCompleteCandidates}/{debug.hiddenCompleteCandidates}/{debug.importableCompleteCandidates}; target reached by: {debug.targetReachedBy || "none"}; auto stop: {debug.autoStopReason || "none"}; selected-year work remaining: {debug.selectedYearWorkRemaining ? "yes" : "no"}; pending auto-continue: {debug.autoContinuedBecausePendingQueue ? "yes" : "no"}; safety limit: {debug.safetyLimitReached ? "yes" : "no"}; previous/returned visible: {debug.previousVisibleCandidatesCount}/{debug.returnedVisibleCandidatesCount}; accumulated complete: {debug.accumulatedCompleteCandidatesCount}; batch queued/scanned/fetched/menus: {debug.queuedThisBatch}/{debug.scannedThisBatch}/{debug.fetchedThisBatch}/{debug.eventMenusFetchedThisBatch}; pending queue start/end: {debug.pendingListeIdQueueAtStart}/{debug.pendingListeIdQueueAtEnd}; liste_ids queued/scanned this batch: {debug.listeIdsQueuedThisBatch}/{debug.listeIdsScannedThisBatch}; scan-first: {debug.scanFirstMode ? "yes" : "no"}; time budget: {debug.timeBudgetReason || "none"}; continuation stop: {debug.continuationStopReason || "none"}; batch stop: {debug.batchStopReason || "none"}; event batches: {debug.eventBatchesProcessed}; event queue remaining: {debug.eventQueueRemainingWhenStopped}; candidates per batch: {debug.candidatesFoundPerBatch.join(", ") || "none"}; liste_id scanned per batch: {debug.listeIdPagesScannedPerBatch.join(", ") || "none"}; candidate quality complete/partial/low/percent: {debug.completeCandidatesFound}/{debug.partialCandidatesFound}/{debug.lowQualityCandidatesFound}/{debug.percentageHeavyCandidates}; visible/hidden low-quality: {debug.visibleCandidatesCount}/{debug.hiddenLowQualityCandidatesCount}; complete list: {debug.completeCandidatesFoundList.map((item) => `${item.date || "no date"} ${item.name} ${item.ownScore ?? "?"}/${item.totalTargets ?? "?"}`).join(" | ") || "none"}; continued after low-quality only: {debug.searchContinuedBecauseOnlyLowQualityCandidates ? "yes" : "no"}; candidates after discovery/scan/final: {debug.candidatesFoundAfterDiscovery}/{debug.candidatesFoundAfterScan}/{debug.candidatesFoundBeforeTimeout}; high-priority liste_id pages fetched: {debug.highPriorityListeIdPagesFetched}; low-priority liste_id skipped: {debug.lowPriorityListeIdPagesSkipped}</p>
+      {debug.prioritizedEventLinks.length > 0 ? <p className="small muted">Top event priorities: {debug.prioritizedEventLinks.slice(0, 20).map((item) => `${item.eventId} ${item.score}: ${item.title} [actualYear ${item.actualEventYear ?? "unknown"}; overviewYear ${item.overviewMatchedYear ? "yes" : "no"}; ${item.inspected ? "inspected" : "not inspected"}; ${item.skippedReason || "not skipped"}; ${item.titleParseSource || "unknown"}; matches ${(item.selectedDisciplineMatches || []).join("/") || "none"}] (${item.reason})`).join(" | ")}</p> : null}
+      {debug.nextUnscannedEventQueue.length > 0 ? <p className="small muted">Next unscanned events: {debug.nextUnscannedEventQueue.map((item) => `${item.eventId} ${item.priority}: ${item.title} [actualYear ${item.actualEventYear ?? "unknown"}] (${item.reason})`).join(" | ")}</p> : null}
+      {debug.eventTitleDebugRows.length > 0 ? <p className="small muted">Parsed event titles: {debug.eventTitleDebugRows.slice(0, 20).map((item) => `${item.eventId} ${item.priority}: ${item.title} (${item.titleParseSource}; actualYear ${item.actualEventYear ?? "unknown"}; ${item.inspected ? "inspected" : "not inspected"}; ${item.skippedReason || "not skipped"}; ${item.selectedDisciplineMatches.join("/") || "no discipline match"}; ${item.rawRowSnippet.slice(0, 120)})`).join(" | ")}</p> : null}
+      {debug.prioritizedListeIdLinks.length > 0 ? <p className="small muted">Top liste_id priorities: {debug.prioritizedListeIdLinks.slice(0, 10).map((item) => `${item.score}: ${item.title} (${item.reason})`).join(" | ")}</p> : null}
+      {debug.resultMenuDebug.length > 0 ? <p className="small muted">Result menu liste_id counts: {debug.resultMenuDebug.slice(0, 10).map((item) => `${item.eventId}: ${item.listeIdCount} (${item.firstListeIdUrls.slice(0, 3).join(", ")})`).join(" | ")}</p> : null}
+      {debug.knownTorbjorn2025Debug.length > 0 ? <p className="small muted">Regression priority: {debug.regressionPriorityApplied ? "applied" : "not applied"}; boosted: {debug.regressionEventsBoosted.join(", ") || "none"}. Torbjørn 2025 debug assertions: {debug.knownTorbjorn2025Debug.map((item) => `${item.eventId}/${item.listeId}: discovered=${item.discovered ? "yes" : "no"}, inspected=${item.inspected ? "yes" : "no"}, resultMenu=${item.resultMenuFetched ? "yes" : "no"}, listeIds=[${item.listeIdsFound.join(",") || "none"}], queued=${item.listeQueued ? "yes" : "no"}, scanned=${item.listeScanned ? "yes" : "no"}${item.reason ? `, reason=${item.reason}` : ""}`).join(" | ")}</p> : null}
+      <p className="small muted">Event IDs found: {debug.eventIdsFound.slice(0, 40).join(", ") || "none"}</p>
+      <p className="small muted">Event IDs inspected: {debug.eventIdsInspected.slice(0, 40).join(", ") || "none"}</p>
+      <p className="small muted">Event years found: {JSON.stringify(debug.eventYearsFound)}; inspected: {JSON.stringify(debug.eventYearsInspected)}; candidates by year: {JSON.stringify(debug.candidatesByYear)}</p>
+      <p className="small muted">Skipped outside selected year: {debug.eventIdsSkippedOutsideYear.slice(0, 20).join(", ") || "none"}; skipped future: {debug.eventIdsSkippedFuture.slice(0, 20).join(", ") || "none"}</p>
+      {debug.shooterMatchSnippets.length > 0 ? <p className="small muted">Shooter snippets: {debug.shooterMatchSnippets.slice(0, 5).map((item) => `${item.url}: ${item.snippet.slice(0, 220)}`).join(" | ")}</p> : null}
       {debug.resultMenuDiagnostics.length > 0 ? <p className="small muted">Result menu diagnostics: {debug.resultMenuDiagnostics.map((item) => `${item.eventUrl} contains ${Object.entries(item.contains).filter(([, value]) => value).map(([key]) => key).join(", ") || "none"}: ${item.snippet.slice(0, 240)}`).join(" | ")}</p> : null}
 
       {debug.validationChecklist.length > 0 ? (
@@ -183,7 +319,7 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
           <ul className="small muted">
             {debug.candidateDebugRows.slice(0, 20).map((item) => (
               <li key={`${item.url}-${item.date}-${item.ownScore}`}>
-                {item.date || "no date"} — {item.name} — {item.discipline} — {item.shootingGround || "unknown ground"} ({item.shootingGroundSource}) — {item.ownScore ?? "?"}/{item.totalTargets ?? "?"} winner {item.winningScore ?? "?"} — {item.category}/{item.confidence} — {item.importRecommended ? "recommended" : "not checked"} — {item.url} — {item.reason}
+                {item.date || "no date"} — {item.name} — {item.discipline} — {item.shootingGround || "unknown ground"} ({item.shootingGroundSource}) — {item.ownScore ?? "?"}/{item.totalTargets ?? "?"} winner {item.winningScore ?? "?"} — {item.category}/{item.confidence} — {item.importRecommended ? "recommended" : "not checked"} — {item.hiddenFromNormalUi ? `hidden/debug${item.hiddenReason ? ` (${item.hiddenReason})` : ""}` : "visible"} — targets {item.inferredTotalTargets ?? "?"} via {item.totalTargetsSource || "existingParser"}/{item.inferenceConfidence || "n/a"} — {item.url} — {item.reason}{item.nmRowContextBefore || item.nmRowContextAfter ? ` — NM context before: ${item.nmRowContextBefore || "n/a"} — after: ${item.nmRowContextAfter || "n/a"}` : ""} — {item.notes.slice(0, 260)}
               </li>
             ))}
           </ul>
@@ -208,16 +344,24 @@ export default function LeirdueImportPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [debug, setDebug] = useState<LeirdueSearchDebug | null>(null);
+  const [continuationToken, setContinuationToken] = useState<string | null>(null);
+  const [searchProgress, setSearchProgress] = useState(0);
+  const [searchStatus, setSearchStatus] = useState("");
+  const [searchCounterText, setSearchCounterText] = useState("");
+  const [isAutoContinuingLeirdue, setIsAutoContinuingLeirdue] = useState(false);
+  const [leirdueBatchNumber, setLeirdueBatchNumber] = useState(0);
+  const [leirdueVisibleCandidatesCount, setLeirdueVisibleCandidatesCount] = useState(0);
+  const [leirdueTotalListeIdScanned, setLeirdueTotalListeIdScanned] = useState(0);
 
   const groupedCandidates = useMemo(() => {
     return {
-      recommended: candidates.filter((candidate) => candidate.category === "recommended"),
-      review: candidates.filter((candidate) => candidate.category === "review"),
-      control: candidates.filter((candidate) => candidate.category === "control"),
-    } satisfies Record<LeirdueCategory, EditableCandidate[]>;
+      recommended: candidates.filter((candidate) => candidate.category === "recommended" && visibleImportCandidate(candidate)),
+      review: candidates.filter((candidate) => candidate.category === "review" && visibleImportCandidate(candidate)),
+    } satisfies Record<"recommended" | "review", EditableCandidate[]>;
   }, [candidates]);
+  const hiddenFromNormalListCount = candidates.length - groupedCandidates.recommended.length - groupedCandidates.review.length;
 
-  const selectedCount = candidates.filter((candidate) => candidate.selected).length;
+  const selectedCount = candidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate)).length;
 
   function toggleDiscipline(discipline: string) {
     setDisciplines((current) => (current.includes(discipline) ? current.filter((item) => item !== discipline) : [...current, discipline]));
@@ -227,37 +371,154 @@ export default function LeirdueImportPage() {
     setCandidates((current) => current.map((candidate) => (candidate.localId === updated.localId ? updated : candidate)));
   }
 
-  async function search(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function fetchSearchBatch(token: string | null) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), BATCH_TIMEOUT_MS);
+    try {
+      const response = await fetch("/api/leirdue/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shooterName, year: Number(year), disciplines, continuationToken: token }),
+        signal: controller.signal,
+      });
+      const data = (await response.json()) as SearchResponse;
+      return { response, data };
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
+  async function runAutoSearch(startToken: string | null, reset: boolean) {
+    if (searching) return;
+
     setError("");
     setSuccess("");
     setSearching(true);
-    setCandidates([]);
-    setDebug(null);
-
-    const response = await fetch("/api/leirdue/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shooterName, year: Number(year), disciplines }),
-    });
-    const data = (await response.json()) as SearchResponse;
-    setSearching(false);
-
-    setDebug(data.debug || null);
-
-    if (!response.ok) {
-      setError(data.error || "Could not fetch Leirdue results right now.");
-      return;
+    setSearchProgress(reset ? 5 : Math.max(searchProgress, 15));
+    setSearchStatus(reset ? "Finner relevante stevner..." : "Fortsetter søket etter flere resultater...");
+    setSearchCounterText("");
+    setIsAutoContinuingLeirdue(false);
+    if (reset) {
+      setLeirdueBatchNumber(0);
+      setLeirdueVisibleCandidatesCount(0);
+      setLeirdueTotalListeIdScanned(0);
     }
 
-    setCandidates((data.candidates || []).map(toEditable));
-    if (!data.candidates?.length) setSuccess("No candidates found. Try broader filters or add result manually.");
+    let token = startToken;
+    let batchCount = 0;
+    let consecutiveEmptyBatches = 0;
+    let stoppedInsideLoop = false;
+    let currentCandidates = reset ? [] : candidates;
+    const startedAt = Date.now();
+
+    if (reset) {
+      setCandidates([]);
+      setDebug(null);
+      setContinuationToken(null);
+    }
+
+    try {
+      while (batchCount < MAX_AUTO_BATCHES) {
+        batchCount += 1;
+        const batchLabel = token ? `batch ${batchCount + (debug?.batchNumber || 0)}` : "batch 1";
+        setIsAutoContinuingLeirdue(Boolean(token));
+        setSearchStatus(token ? "Fortsetter søket etter flere resultater..." : "Finner relevante stevner...");
+        setSearchCounterText(`${batchLabel} — ${leirdueTotalListeIdScanned} resultatlister sjekket — ${visibleCandidateCount(currentCandidates)} resultater funnet så langt`);
+
+        const { response, data } = await fetchSearchBatch(token);
+        setDebug(data.debug || null);
+
+        if (!response.ok) {
+          setError(data.error || "Kunne ikke hente Leirdue-resultater akkurat nå.");
+          setContinuationToken(token);
+          stoppedInsideLoop = true;
+          break;
+        }
+
+        setSearchStatus("Søker etter navnet ditt i resultatlistene...");
+        const beforeVisible = visibleCandidateCount(currentCandidates);
+        currentCandidates = reset && batchCount === 1 ? (data.candidates || []).map(toEditable) : mergeCandidates(currentCandidates, data.candidates || []);
+        const afterVisible = visibleCandidateCount(currentCandidates);
+        const newVisible = afterVisible - beforeVisible;
+        setCandidates(currentCandidates);
+
+        const nextToken = data.continuationToken || null;
+        const target = data.debug?.expectedCandidateTarget || 16;
+        const completeTotal = data.debug?.completeCandidatesFoundTotal ?? afterVisible;
+        const likelyWorkRemains = hasLikelySelectedYearWork(data.debug);
+        const apiAllowsContinuation = data.debug?.continuationAvailable !== false;
+        const shouldContinue = Boolean(nextToken && apiAllowsContinuation && likelyWorkRemains && completeTotal < target);
+        setContinuationToken(shouldContinue ? nextToken : null);
+        setSearchProgress(estimatedSearchProgress(data.debug, batchCount, afterVisible, !shouldContinue));
+        setLeirdueBatchNumber(data.debug?.batchNumber || batchCount);
+        setLeirdueVisibleCandidatesCount(afterVisible);
+        setLeirdueTotalListeIdScanned(data.debug?.scannedListeIdTotal || 0);
+        setSearchCounterText(`Batch ${data.debug?.batchNumber || batchCount} — ${data.debug?.scannedListeIdTotal || 0} resultatlister sjekket — ${afterVisible} resultater funnet så langt`);
+
+        if (newVisible <= 0 && !likelyWorkRemains) consecutiveEmptyBatches += 1;
+        else consecutiveEmptyBatches = 0;
+
+        if (!shouldContinue) {
+          setSearchStatus("Klargjør importlisten...");
+          if (data.debug?.message) setSuccess(data.debug.message);
+          else if (afterVisible === 0 && reset) setSuccess("Fant ingen kandidater. Prøv bredere filtre eller legg til resultat manuelt.");
+          else if (completeTotal >= target) setSuccess(autoSearchCompleteMessage(afterVisible, year));
+          else setSuccess(autoSearchStopMessage(afterVisible, year, data.debug?.autoStopReason === "onlyOldFallbackRemains" ? "onlyOldFallbackRemains" : data.debug?.autoStopReason === "selectedYearWorkExhausted" ? "selectedYearWorkExhausted" : data.debug?.autoStopReason === "safetyTimeLimitReached" ? "safetyTimeLimitReached" : "selectedYearWorkExhausted"));
+          stoppedInsideLoop = true;
+          break;
+        }
+
+        token = nextToken;
+        const scannedTooManyLists = (data.debug?.scannedListeIdTotal || 0) >= MAX_AUTO_LISTE_ID_SCANNED;
+        const searchedTooLong = Date.now() - startedAt >= MAX_AUTO_SEARCH_MS;
+        const noVisibleProgress = consecutiveEmptyBatches >= MAX_EMPTY_AUTO_BATCHES;
+        if (scannedTooManyLists || searchedTooLong || noVisibleProgress) {
+          setContinuationToken(nextToken);
+          setSearchStatus("Klargjør importlisten...");
+          setSuccess(autoSearchStopMessage(afterVisible, year, searchedTooLong ? "safetyTimeLimitReached" : "partial"));
+          setSearchProgress(100);
+          stoppedInsideLoop = true;
+          break;
+        }
+
+        setSearchStatus("Henter resultatlister...");
+      }
+
+      if (batchCount >= MAX_AUTO_BATCHES && !stoppedInsideLoop) {
+        const visibleCount = visibleCandidateCount(currentCandidates);
+        setSuccess(autoSearchStopMessage(visibleCount, year, "maxAutoBatchesReached"));
+        setSearchStatus("Klargjør importlisten...");
+        setSearchProgress(100);
+      }
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === "AbortError") {
+        const visibleCount = visibleCandidateCount(currentCandidates);
+        if (visibleCount > 0) setSuccess(autoSearchStopMessage(visibleCount, year, "safetyTimeLimitReached"));
+        else setError("Leirdue-søket tok for lang tid før vi fant kandidater. Prøv igjen eller velg et smalere år.");
+      } else {
+        setError("Kunne ikke hente Leirdue-resultater akkurat nå.");
+      }
+    } finally {
+      setSearching(false);
+      setIsAutoContinuingLeirdue(false);
+      setSearchProgress((progress) => (progress > 0 ? Math.max(progress, 100) : progress));
+    }
+  }
+
+  async function search(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await runAutoSearch(null, true);
+  }
+
+  async function continueSearch() {
+    if (!continuationToken) return;
+    await runAutoSearch(continuationToken, false);
   }
 
   async function saveSelected() {
     setError("");
     setSuccess("");
-    const selected = candidates.filter((candidate) => candidate.selected);
+    const selected = candidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate));
     if (selected.length === 0) {
       setError("Select at least one candidate to save.");
       return;
@@ -315,7 +576,7 @@ export default function LeirdueImportPage() {
         </div>
 
         <label>Shooter name</label>
-        <input value={shooterName} onChange={(event) => setShooterName(event.target.value)} placeholder="Torbjørn Lunde" required />
+        <input value={shooterName} onChange={(event) => setShooterName(event.target.value)} placeholder="Enter shooter name" required />
 
         <label>Year</label>
         <input value={year} onChange={(event) => setYear(event.target.value)} type="number" min="1990" max={new Date().getFullYear() + 1} required />
@@ -336,9 +597,23 @@ export default function LeirdueImportPage() {
 
         {error ? <div className="error">{error}</div> : null}
         {success ? <div className="success">{success} {success.includes("saved") ? <Link href="/stats">Open Stats</Link> : null}</div> : null}
+        {searching || searchStatus ? (
+          <div className="searchProgressPanel" aria-live="polite">
+            {searching ? <p className="small">Dette søket kan ta noen minutter. Ikke lukk siden eller oppdater mens vi henter resultater fra Leirdue.net.</p> : null}
+            <div className="progressHeader">
+              <span>Estimert fremdrift</span>
+              <strong>{Math.round(searchProgress)}%</strong>
+            </div>
+            <progress value={searchProgress} max={100} />
+            {searchStatus ? <p className="small muted">{searchStatus}</p> : null}
+            <p className="small muted">Batch {leirdueBatchNumber || debug?.batchNumber || 0} — {leirdueTotalListeIdScanned || debug?.scannedListeIdTotal || 0} resultatlister sjekket — {leirdueVisibleCandidatesCount || visibleCandidateCount(candidates)} resultater funnet så langt{isAutoContinuingLeirdue ? " — fortsetter automatisk" : ""}</p>
+            {searchCounterText ? <p className="small muted">{searchCounterText}</p> : null}
+          </div>
+        ) : null}
 
         <div className="btns">
-          <button disabled={searching || disciplines.length === 0}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
+          <button disabled={searching || disciplines.length === 0}>{searching ? "Søker..." : "Search Leirdue.net"}</button>
+          {continuationToken && !searching ? <button type="button" className="secondary" onClick={continueSearch}>Continue search</button> : null}
           <Link className="button secondary" href="/results/new">Add result manually</Link>
           <Link className="button secondary" href="/dashboard">Dashboard</Link>
         </div>
@@ -346,15 +621,15 @@ export default function LeirdueImportPage() {
 
       <DebugDetails debug={debug} candidatesFound={candidates.length} />
 
-      {candidates.length > 0 ? (
+      {groupedCandidates.recommended.length + groupedCandidates.review.length > 0 ? (
         <div className="card">
           <div className="sectionHeader">
             <div>
               <p className="eyebrow">Review before save</p>
               <h2>Candidate results</h2>
-              <p className="small muted">Edit any field before saving. Only checked candidates will be imported as result-only sessions.</p>
+              <p className="small muted">Edit any field before saving. Only checked candidates will be imported as result-only sessions. Low-quality percentage/cup-summary matches are hidden from this list and remain in debug details.</p>
             </div>
-            <span className="countPill">{selectedCount} selected</span>
+            <span className="countPill">{selectedCount} selected{hiddenFromNormalListCount > 0 ? ` · ${hiddenFromNormalListCount} debug-only hidden` : ""}</span>
           </div>
           <div className="btns">
             <button onClick={saveSelected} disabled={saving || selectedCount === 0}>{saving ? "Saving..." : "Save selected candidates"}</button>
@@ -363,7 +638,7 @@ export default function LeirdueImportPage() {
         </div>
       ) : null}
 
-      {(["recommended", "review", "control"] as LeirdueCategory[]).map((category) => (
+      {(["recommended", "review"] as const).map((category) => (
         groupedCandidates[category].length > 0 ? (
           <section key={category} className="sessionGroup">
             <div className="groupHeader">
@@ -372,9 +647,7 @@ export default function LeirdueImportPage() {
                 <p className="small muted">
                   {category === "recommended"
                     ? "Direct-looking competition results with enough score context."
-                    : category === "review"
-                      ? "Possible matches that need manual attention before import."
-                      : "Cup/control/final/team/percentage/combined lists are shown for control and are not selected by default."}
+                    : "Possible matches with usable score and target context that need manual attention before import."}
                 </p>
               </div>
               <span className="countPill">{groupedCandidates[category].length}</span>
