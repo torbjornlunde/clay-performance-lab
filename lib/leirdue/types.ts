@@ -108,6 +108,10 @@ export type LeirdueSearchDebug = {
   lowQualityCandidatesFound: number;
   searchContinuedBecauseOnlyLowQualityCandidates: boolean;
   percentageHeavyCandidates: number;
+  expectedCandidateTarget: number;
+  visibleCandidatesCount: number;
+  hiddenLowQualityCandidatesCount: number;
+  completeCandidatesFoundList: { url: string; name: string; date: string | null; ownScore: number | null; totalTargets: number | null; winningScore: number | null }[];
   candidateQualityStopReason: "completeCandidatesFound" | "timeout" | "scanLimit" | "eventQueueExhausted" | "shooterPageLimit" | "resultMenuLimit" | null;
   selectedDisciplineFilters: string[];
   eventsFoundBeforeFiltering: number;
