@@ -28,6 +28,21 @@ type SearchResponse = {
   error?: string;
 };
 
+
+function isLowQualitySummaryCandidate(candidate: LeirdueCandidate) {
+  const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes}`.toLowerCase();
+  const percentageHeavy = /\b\d{1,3}(?:[,.]\d+)?\s*%/.test(text);
+  const summaryList = /(ranking|prosent|cup sammenlagt|sammenlagt premiering|klasseføring|klasseforing|sesong|season)/.test(text);
+  const missingUsableScore = candidate.ownScore === null || candidate.totalTargets === null;
+  return candidate.category === "control" || percentageHeavy || summaryList || missingUsableScore;
+}
+
+function visibleImportCandidate(candidate: EditableCandidate) {
+  if (candidate.category === "recommended") return !isLowQualitySummaryCandidate(candidate);
+  if (candidate.category === "review") return candidate.ownScore !== null && candidate.totalTargets !== null && !isLowQualitySummaryCandidate(candidate);
+  return false;
+}
+
 function candidateSelectedByDefault(candidate: LeirdueCandidate) {
   return candidate.category === "recommended" && (candidate.confidence === "high" || candidate.confidence === "medium") && candidate.importRecommended;
 }
@@ -250,13 +265,13 @@ export default function LeirdueImportPage() {
 
   const groupedCandidates = useMemo(() => {
     return {
-      recommended: candidates.filter((candidate) => candidate.category === "recommended"),
-      review: candidates.filter((candidate) => candidate.category === "review"),
-      control: candidates.filter((candidate) => candidate.category === "control"),
-    } satisfies Record<LeirdueCategory, EditableCandidate[]>;
+      recommended: candidates.filter((candidate) => candidate.category === "recommended" && visibleImportCandidate(candidate)),
+      review: candidates.filter((candidate) => candidate.category === "review" && visibleImportCandidate(candidate)),
+    } satisfies Record<"recommended" | "review", EditableCandidate[]>;
   }, [candidates]);
+  const hiddenFromNormalListCount = candidates.length - groupedCandidates.recommended.length - groupedCandidates.review.length;
 
-  const selectedCount = candidates.filter((candidate) => candidate.selected).length;
+  const selectedCount = candidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate)).length;
 
   function toggleDiscipline(discipline: string) {
     setDisciplines((current) => (current.includes(discipline) ? current.filter((item) => item !== discipline) : [...current, discipline]));
@@ -310,7 +325,7 @@ export default function LeirdueImportPage() {
   async function saveSelected() {
     setError("");
     setSuccess("");
-    const selected = candidates.filter((candidate) => candidate.selected);
+    const selected = candidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate));
     if (selected.length === 0) {
       setError("Select at least one candidate to save.");
       return;
@@ -399,15 +414,15 @@ export default function LeirdueImportPage() {
 
       <DebugDetails debug={debug} candidatesFound={candidates.length} />
 
-      {candidates.length > 0 ? (
+      {groupedCandidates.recommended.length + groupedCandidates.review.length > 0 ? (
         <div className="card">
           <div className="sectionHeader">
             <div>
               <p className="eyebrow">Review before save</p>
               <h2>Candidate results</h2>
-              <p className="small muted">Edit any field before saving. Only checked candidates will be imported as result-only sessions.</p>
+              <p className="small muted">Edit any field before saving. Only checked candidates will be imported as result-only sessions. Low-quality percentage/cup-summary matches are hidden from this list and remain in debug details.</p>
             </div>
-            <span className="countPill">{selectedCount} selected</span>
+            <span className="countPill">{selectedCount} selected{hiddenFromNormalListCount > 0 ? ` · ${hiddenFromNormalListCount} debug-only hidden` : ""}</span>
           </div>
           <div className="btns">
             <button onClick={saveSelected} disabled={saving || selectedCount === 0}>{saving ? "Saving..." : "Save selected candidates"}</button>
@@ -416,7 +431,7 @@ export default function LeirdueImportPage() {
         </div>
       ) : null}
 
-      {(["recommended", "review", "control"] as LeirdueCategory[]).map((category) => (
+      {(["recommended", "review"] as const).map((category) => (
         groupedCandidates[category].length > 0 ? (
           <section key={category} className="sessionGroup">
             <div className="groupHeader">
@@ -425,9 +440,7 @@ export default function LeirdueImportPage() {
                 <p className="small muted">
                   {category === "recommended"
                     ? "Direct-looking competition results with enough score context."
-                    : category === "review"
-                      ? "Possible matches that need manual attention before import."
-                      : "Cup/control/final/team/percentage/combined lists are shown for control and are not selected by default."}
+                    : "Possible matches with usable score and target context that need manual attention before import."}
                 </p>
               </div>
               <span className="countPill">{groupedCandidates[category].length}</span>
