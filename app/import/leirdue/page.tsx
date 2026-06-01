@@ -288,6 +288,7 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
       {debug.eventTitleDebugRows.length > 0 ? <p className="small muted">Parsed event titles: {debug.eventTitleDebugRows.slice(0, 20).map((item) => `${item.eventId} ${item.priority}: ${item.title} (${item.titleParseSource}; actualYear ${item.actualEventYear ?? "unknown"}; ${item.inspected ? "inspected" : "not inspected"}; ${item.skippedReason || "not skipped"}; ${item.selectedDisciplineMatches.join("/") || "no discipline match"}; ${item.rawRowSnippet.slice(0, 120)})`).join(" | ")}</p> : null}
       {debug.prioritizedListeIdLinks.length > 0 ? <p className="small muted">Top liste_id priorities: {debug.prioritizedListeIdLinks.slice(0, 10).map((item) => `${item.score}: ${item.title} (${item.reason})`).join(" | ")}</p> : null}
       {debug.resultMenuDebug.length > 0 ? <p className="small muted">Result menu liste_id counts: {debug.resultMenuDebug.slice(0, 10).map((item) => `${item.eventId}: ${item.listeIdCount} (${item.firstListeIdUrls.slice(0, 3).join(", ")})`).join(" | ")}</p> : null}
+      {debug.indexStatus ? <p className="small muted">Leirdue index: status {debug.indexStatus}; events {debug.indexedEventsForYear ?? 0}; liste_ids {debug.indexedListeIdsForYear ?? 0}; rows {debug.indexedRowsForYear ?? 0}; shooter rows {debug.indexedShooterRowsFound ?? 0}; importable {debug.importableRowsFound ?? 0}; hidden {debug.hiddenRowsFound ?? 0}; coverage {debug.indexCoverageEstimatePercent ?? "unknown"}%; updated {debug.indexLastUpdatedAt || "never"}; missing reason {debug.missingReason || "none"}</p> : null}
       {debug.knownTorbjorn2025Debug.length > 0 ? <p className="small muted">Regression priority: {debug.regressionPriorityApplied ? "applied" : "not applied"}; boosted: {debug.regressionEventsBoosted.join(", ") || "none"}. Torbjørn 2025 debug assertions: {debug.knownTorbjorn2025Debug.map((item) => `${item.eventId}/${item.listeId}: discovered=${item.discovered ? "yes" : "no"}, inspected=${item.inspected ? "yes" : "no"}, resultMenu=${item.resultMenuFetched ? "yes" : "no"}, listeIds=[${item.listeIdsFound.join(",") || "none"}], queued=${item.listeQueued ? "yes" : "no"}, scanned=${item.listeScanned ? "yes" : "no"}${item.reason ? `, reason=${item.reason}` : ""}`).join(" | ")}</p> : null}
       <p className="small muted">Event IDs found: {debug.eventIdsFound.slice(0, 40).join(", ") || "none"}</p>
       <p className="small muted">Event IDs inspected: {debug.eventIdsInspected.slice(0, 40).join(", ") || "none"}</p>
@@ -418,7 +419,7 @@ export default function LeirdueImportPage() {
         batchCount += 1;
         const batchLabel = token ? `batch ${batchCount + (debug?.batchNumber || 0)}` : "batch 1";
         setIsAutoContinuingLeirdue(Boolean(token));
-        setSearchStatus(token ? "Fortsetter søket etter flere resultater..." : "Finner relevante stevner...");
+        setSearchStatus(token ? "Bygger Leirdue-indeks for " + year + ". Dette kan ta noen minutter." : "Finner relevante stevner...");
         setSearchCounterText(`${batchLabel} — ${leirdueTotalListeIdScanned} resultatlister sjekket — ${visibleCandidateCount(currentCandidates)} resultater funnet så langt`);
 
         const { response, data } = await fetchSearchBatch(token);
@@ -431,7 +432,7 @@ export default function LeirdueImportPage() {
           break;
         }
 
-        setSearchStatus("Søker etter navnet ditt i resultatlistene...");
+        setSearchStatus(data.debug?.indexStatus === "running" || data.debug?.indexStatus === "partial" ? `Bygger Leirdue-indeks for ${year}. Dette kan ta noen minutter.` : "Søker etter navnet ditt i resultatlistene...");
         const beforeVisible = visibleCandidateCount(currentCandidates);
         currentCandidates = reset && batchCount === 1 ? (data.candidates || []).map(toEditable) : mergeCandidates(currentCandidates, data.candidates || []);
         const afterVisible = visibleCandidateCount(currentCandidates);
@@ -449,7 +450,7 @@ export default function LeirdueImportPage() {
         setLeirdueBatchNumber(data.debug?.batchNumber || batchCount);
         setLeirdueVisibleCandidatesCount(afterVisible);
         setLeirdueTotalListeIdScanned(data.debug?.scannedListeIdTotal || 0);
-        setSearchCounterText(`Batch ${data.debug?.batchNumber || batchCount} — ${data.debug?.scannedListeIdTotal || 0} resultatlister sjekket — ${afterVisible} resultater funnet så langt`);
+        setSearchCounterText(`Batch ${data.debug?.batchNumber || batchCount} — ${data.debug?.indexedEventsForYear ?? data.debug?.selectedYearEventLinksCount ?? 0} stevner indeksert — ${data.debug?.indexedListeIdsForYear ?? data.debug?.scannedListeIdTotal ?? 0} resultatlister skannet — ${data.debug?.indexedRowsForYear ?? 0} rader tolket — ${data.debug?.indexedShooterRowsFound ?? afterVisible} treff for skytter`);
 
         if (newVisible <= 0 && (data.debug?.pendingListeIdQueueRemaining || 0) === 0) consecutiveEmptyBatches += 1;
         else consecutiveEmptyBatches = 0;
@@ -457,6 +458,7 @@ export default function LeirdueImportPage() {
         if (!shouldContinue) {
           setSearchStatus("Klargjør importlisten...");
           if (data.debug?.message) setSuccess(data.debug.message);
+          else if (data.debug?.indexStatus === "complete") setSuccess(`Fant ${afterVisible} resultater fra Leirdue-indeksen.`);
           else if (afterVisible === 0 && reset) setSuccess("Fant ingen kandidater. Prøv bredere filtre eller legg til resultat manuelt.");
           else if (completeTotal >= target) setSuccess(autoSearchCompleteMessage(afterVisible, year));
           else setSuccess(`${autoSearchCompleteMessage(afterVisible, year)} Eldre/arkiverte sider ble hoppet over.`);
@@ -604,6 +606,9 @@ export default function LeirdueImportPage() {
             {searchStatus ? <p className="small muted">{searchStatus}</p> : null}
             <p className="small muted">Batch {leirdueBatchNumber || debug?.batchNumber || 0} — {leirdueTotalListeIdScanned || debug?.scannedListeIdTotal || 0} resultatlister sjekket — {leirdueVisibleCandidatesCount || visibleCandidateCount(candidates)} resultater funnet så langt{isAutoContinuingLeirdue ? " — fortsetter automatisk" : ""}</p>
             {searchCounterText ? <p className="small muted">{searchCounterText}</p> : null}
+            {debug?.indexStatus === "complete" ? <p className="small success">Fant {leirdueVisibleCandidatesCount} resultater fra Leirdue-indeksen.</p> : null}
+            {debug && debug.indexStatus !== "complete" && (debug.indexStatus === "running" || debug.indexStatus === "partial") ? <p className="small muted">Bygger Leirdue-indeks for {year}. Dette kan ta noen minutter.</p> : null}
+            {debug?.missingReason ? <p className="small muted">{debug.missingReason}</p> : null}
           </div>
         ) : null}
 

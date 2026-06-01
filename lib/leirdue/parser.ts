@@ -150,7 +150,7 @@ function markFetchError(debug: LeirdueSearchDebug, url: string, note: string) {
   debug.rejectedReasons.push(`${url}: ${note}`);
 }
 
-function emptyDebug(): LeirdueSearchDebug {
+export function createEmptyLeirdueSearchDebug(): LeirdueSearchDebug {
   return {
     fetchedUrls: [],
     selectedYear: null,
@@ -2666,7 +2666,7 @@ function mergeLeirdueCandidatesForContinuation(candidates: LeirdueCandidate[], d
 }
 
 export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promise<LeirdueSearchResult> {
-  const debug = emptyDebug();
+  const debug = createEmptyLeirdueSearchDebug();
   const continuation = continuationTokenPayload(input, input.continuationToken);
   debug.selectedYear = input.year;
   debug.normalizedSearchName = normalizeName(input.shooterName);
