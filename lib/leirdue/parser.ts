@@ -597,7 +597,7 @@ function totalTargetsFromSeriesScores(seriesScores: number[], score?: number | n
 
 function extractLikelyTotalTargets(text: string, score?: number | null, seriesScores: number[] = [], rowText = "") {
   const normalized = normalizeText(text);
-  const explicit = normalized.match(/\b(25|50|75|100|125|150|175|200)\s*(?:sk|skudd|duer|duers|targets|mal|mål|compak|compact|kompakt)\b/);
+  const explicit = normalized.match(/\b(25|50|75|100|125|150|175|200)\s*(?:sk|skudd|skudds|skot|skots|duer|duers|targets|mal|mål|compak|compact|kompakt)\b/);
   if (explicit) return Number(explicit[1]);
   const named = normalized.match(/\b(25|50|75|100|125|150|175|200)\b(?=\s*(?:compak|compact|kompakt|sporting|leirduesti|sti))/);
   if (named) return Number(named[1]);
@@ -1146,7 +1146,8 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
   const discipline = classifyDiscipline(context, input.disciplines);
   const initialTotalTargets = extractLikelyTotalTargets(listTitle) ?? extractLikelyTotalTargets(title);
   const parsed = parseScoresFromLines(lines, page.html, input.shooterName, pageText, input.year, initialTotalTargets);
-  const totalTargets = initialTotalTargets ?? extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets(title, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores, parsed.scoreLine || "");
+  const seriesTotalTargets = totalTargetsFromSeriesScores(parsed.seriesScores, parsed.ownScore, parsed.scoreLine || "");
+  const totalTargets = initialTotalTargets ?? seriesTotalTargets ?? extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets(title, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores, parsed.scoreLine || "");
   const snippet = findShooterSnippet(lines, input.shooterName);
   const listType = classifyListType(listTitle);
   const notes = [...discipline.notes, ...parsed.notes, `Source liste_id URL: ${page.url}.`, `List title/type: ${listTitle} / ${listType}.`];
@@ -2430,7 +2431,8 @@ function debugParseLeirdueHtml(params: { url: string; status: number | null; htm
   const discipline = classifyDiscipline(`${eventTitle}\n${pageText}`, selectedDisciplines);
   const initialTotalTargets = extractLikelyTotalTargets(listTitle) ?? extractLikelyTotalTargets(eventTitle);
   const parsed = parseScoresFromLines(lines, html, shooterName, pageText, year, initialTotalTargets);
-  const totalTargets = initialTotalTargets ?? extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets(eventTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores, parsed.scoreLine || "");
+  const seriesTotalTargets = totalTargetsFromSeriesScores(parsed.seriesScores, parsed.ownScore, parsed.scoreLine || "");
+  const totalTargets = initialTotalTargets ?? seriesTotalTargets ?? extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets(eventTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores, parsed.scoreLine || "");
   const rowDebug = debugCandidateRows(lines, html, shooterName, year, totalTargets);
   const rawSnippet = findShooterSnippet(lines, shooterName) || (shooterFound ? usefulSnippet(pageText, shooterName) : null);
   const shootingGroundResult = extractShootingGround(eventTitle, lines.slice(0, 25).join("\n"));
