@@ -113,6 +113,15 @@ export type LeirdueSearchDebug = {
   hiddenLowQualityCandidatesCount: number;
   completeCandidatesFoundList: { url: string; name: string; date: string | null; ownScore: number | null; totalTargets: number | null; winningScore: number | null }[];
   nextUnscannedEventQueue: { eventId: string; title: string; actualEventYear: number | null; priority: number; reason: string }[];
+  continuationAvailable: boolean;
+  continuationReason: string | null;
+  scannedListeIdTotal: number;
+  scannedEventTotal: number;
+  remainingEventQueueCount: number;
+  batchNumber: number;
+  completeCandidatesFoundTotal: number;
+  visibleCandidatesCountTotal: number;
+  hiddenLowQualityCandidatesCountTotal: number;
   candidateQualityStopReason: "completeCandidatesFound" | "timeout" | "scanLimit" | "eventQueueExhausted" | "shooterPageLimit" | "resultMenuLimit" | null;
   selectedDisciplineFilters: string[];
   eventsFoundBeforeFiltering: number;
@@ -197,4 +206,5 @@ export type LeirdueSearchDebug = {
 export type LeirdueSearchResult = {
   candidates: LeirdueCandidate[];
   debug: LeirdueSearchDebug;
+  continuationToken?: string | null;
 };

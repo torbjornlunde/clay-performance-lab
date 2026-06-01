@@ -25,6 +25,7 @@ type SaveResponse = {
 type SearchResponse = {
   candidates?: LeirdueCandidate[];
   debug?: LeirdueSearchDebug;
+  continuationToken?: string | null;
   error?: string;
 };
 
@@ -54,6 +55,44 @@ function performance(candidate: EditableCandidate) {
 
 function toEditable(candidate: LeirdueCandidate, index: number): EditableCandidate {
   return { ...candidate, selected: candidateSelectedByDefault(candidate), localId: `${candidate.leirdueUrl}-${candidate.date}-${index}` };
+}
+
+function candidateEventId(candidate: LeirdueCandidate) {
+  try {
+    return new URL(candidate.leirdueUrl).searchParams.get("stevne") || candidate.leirdueUrl;
+  } catch {
+    return candidate.leirdueUrl;
+  }
+}
+
+function candidateMergeKey(candidate: LeirdueCandidate) {
+  return [candidateEventId(candidate), candidate.date || "no-date", candidate.ownScore ?? "?", candidate.totalTargets ?? "?"].join("|");
+}
+
+function candidateQualityRank(candidate: LeirdueCandidate) {
+  const completeScore = candidate.ownScore !== null && candidate.totalTargets !== null && candidate.winningScore !== null;
+  if (candidate.category === "recommended" && candidate.confidence === "high" && completeScore) return 5;
+  if (candidate.category === "recommended" && completeScore) return 4;
+  if (candidate.category === "review" && completeScore) return 3;
+  if (candidate.ownScore !== null || candidate.totalTargets !== null) return 2;
+  return 1;
+}
+
+function mergeCandidates(current: EditableCandidate[], incoming: LeirdueCandidate[]) {
+  const merged = new Map(current.map((candidate) => [candidateMergeKey(candidate), candidate]));
+  incoming.forEach((candidate, index) => {
+    const key = candidateMergeKey(candidate);
+    const existing = merged.get(key);
+    const editable = toEditable(candidate, current.length + index);
+    if (!existing) {
+      merged.set(key, editable);
+      return;
+    }
+    if (candidateQualityRank(candidate) > candidateQualityRank(existing)) {
+      merged.set(key, { ...editable, selected: existing.selected, localId: existing.localId, saveStatus: existing.saveStatus, saveMessage: existing.saveMessage });
+    }
+  });
+  return Array.from(merged.values());
 }
 
 function normalizeSaveError(response: SaveResponse) {
@@ -179,6 +218,11 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         <span className="metricChip"><strong>{debug.recommendedWithShootingGround}</strong> recommended ground</span>
         <span className="metricChip"><strong>{debug.recommendedWithCompleteScore}</strong> recommended complete score</span>
         <span className="metricChip"><strong>{debug.hiddenControlCandidates}</strong> debug/control hidden from useful sections</span>
+        <span className={`metricChip ${debug.continuationAvailable ? "badgeGold" : ""}`}><strong>{debug.continuationAvailable ? "yes" : "no"}</strong> continuation</span>
+        <span className="metricChip"><strong>{debug.batchNumber}</strong> batch</span>
+        <span className="metricChip"><strong>{debug.scannedListeIdTotal}</strong> total liste_id scanned</span>
+        <span className="metricChip"><strong>{debug.scannedEventTotal}</strong> total events scanned</span>
+        <span className="metricChip"><strong>{debug.remainingEventQueueCount}</strong> remaining events</span>
       </div>
       {candidatesFound === 0 ? <p className="small muted">No candidates found. Try broader filters or add result manually.</p> : null}
       {recentStatuses.length > 0 ? (
@@ -205,7 +249,7 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
       {debug.noSelectedYearEventsReason ? <p className="small muted">No selected-year events reason: {debug.noSelectedYearEventsReason}</p> : null}
       <p className="small muted">Selected discipline filters: {debug.selectedDisciplineFilters.join(", ") || "none"}</p>
       <p className="small muted">Events before filtering: {debug.eventsFoundBeforeFiltering}; after soft filter: {debug.selectedYearEventLinksAfterSoftFilter}; fallback added: {debug.genericFallbackEventsAdded}; relevant inspected: {debug.relevantEventsInspected}; selected-year event links: {debug.selectedYearEventLinksCount}; actual selected-year events: {debug.actualSelectedYearEventsCount}; unknown-year fallbacks: {debug.unknownYearFallbackEventsCount}; actual-year mismatches skipped: {debug.actualYearMismatchSkippedCount}; hard skipped unselected: {debug.hardSkippedUnselectedDiscipline}; hard skipped ranking/control: {debug.hardSkippedRankingOrControl}; skipped: {JSON.stringify(debug.eventLinksSkippedByReason)}</p>
-      <p className="small muted">Phase: {debug.phaseReached || "unknown"}; scan stopped: {debug.scanStoppedReason || "unknown"}; event stop: {debug.eventStopReason || "unknown"}; quality stop: {debug.candidateQualityStopReason || "unknown"}; target complete candidates: {debug.expectedCandidateTarget}; event batches: {debug.eventBatchesProcessed}; event queue remaining: {debug.eventQueueRemainingWhenStopped}; candidates per batch: {debug.candidatesFoundPerBatch.join(", ") || "none"}; liste_id scanned per batch: {debug.listeIdPagesScannedPerBatch.join(", ") || "none"}; candidate quality complete/partial/low/percent: {debug.completeCandidatesFound}/{debug.partialCandidatesFound}/{debug.lowQualityCandidatesFound}/{debug.percentageHeavyCandidates}; visible/hidden low-quality: {debug.visibleCandidatesCount}/{debug.hiddenLowQualityCandidatesCount}; complete list: {debug.completeCandidatesFoundList.map((item) => `${item.date || "no date"} ${item.name} ${item.ownScore ?? "?"}/${item.totalTargets ?? "?"}`).join(" | ") || "none"}; continued after low-quality only: {debug.searchContinuedBecauseOnlyLowQualityCandidates ? "yes" : "no"}; candidates after discovery/scan/final: {debug.candidatesFoundAfterDiscovery}/{debug.candidatesFoundAfterScan}/{debug.candidatesFoundBeforeTimeout}; high-priority liste_id pages fetched: {debug.highPriorityListeIdPagesFetched}; low-priority liste_id skipped: {debug.lowPriorityListeIdPagesSkipped}</p>
+      <p className="small muted">Phase: {debug.phaseReached || "unknown"}; scan stopped: {debug.scanStoppedReason || "unknown"}; event stop: {debug.eventStopReason || "unknown"}; quality stop: {debug.candidateQualityStopReason || "unknown"}; target complete candidates: {debug.expectedCandidateTarget}; continuation reason: {debug.continuationReason || "none"}; totals complete/visible/hidden: {debug.completeCandidatesFoundTotal}/{debug.visibleCandidatesCountTotal}/{debug.hiddenLowQualityCandidatesCountTotal}; event batches: {debug.eventBatchesProcessed}; event queue remaining: {debug.eventQueueRemainingWhenStopped}; candidates per batch: {debug.candidatesFoundPerBatch.join(", ") || "none"}; liste_id scanned per batch: {debug.listeIdPagesScannedPerBatch.join(", ") || "none"}; candidate quality complete/partial/low/percent: {debug.completeCandidatesFound}/{debug.partialCandidatesFound}/{debug.lowQualityCandidatesFound}/{debug.percentageHeavyCandidates}; visible/hidden low-quality: {debug.visibleCandidatesCount}/{debug.hiddenLowQualityCandidatesCount}; complete list: {debug.completeCandidatesFoundList.map((item) => `${item.date || "no date"} ${item.name} ${item.ownScore ?? "?"}/${item.totalTargets ?? "?"}`).join(" | ") || "none"}; continued after low-quality only: {debug.searchContinuedBecauseOnlyLowQualityCandidates ? "yes" : "no"}; candidates after discovery/scan/final: {debug.candidatesFoundAfterDiscovery}/{debug.candidatesFoundAfterScan}/{debug.candidatesFoundBeforeTimeout}; high-priority liste_id pages fetched: {debug.highPriorityListeIdPagesFetched}; low-priority liste_id skipped: {debug.lowPriorityListeIdPagesSkipped}</p>
       {debug.prioritizedEventLinks.length > 0 ? <p className="small muted">Top event priorities: {debug.prioritizedEventLinks.slice(0, 20).map((item) => `${item.eventId} ${item.score}: ${item.title} [actualYear ${item.actualEventYear ?? "unknown"}; overviewYear ${item.overviewMatchedYear ? "yes" : "no"}; ${item.inspected ? "inspected" : "not inspected"}; ${item.skippedReason || "not skipped"}; ${item.titleParseSource || "unknown"}; matches ${(item.selectedDisciplineMatches || []).join("/") || "none"}] (${item.reason})`).join(" | ")}</p> : null}
       {debug.nextUnscannedEventQueue.length > 0 ? <p className="small muted">Next unscanned events: {debug.nextUnscannedEventQueue.map((item) => `${item.eventId} ${item.priority}: ${item.title} [actualYear ${item.actualEventYear ?? "unknown"}] (${item.reason})`).join(" | ")}</p> : null}
       {debug.eventTitleDebugRows.length > 0 ? <p className="small muted">Parsed event titles: {debug.eventTitleDebugRows.slice(0, 20).map((item) => `${item.eventId} ${item.priority}: ${item.title} (${item.titleParseSource}; actualYear ${item.actualEventYear ?? "unknown"}; ${item.inspected ? "inspected" : "not inspected"}; ${item.skippedReason || "not skipped"}; ${item.selectedDisciplineMatches.join("/") || "no discipline match"}; ${item.rawRowSnippet.slice(0, 120)})`).join(" | ")}</p> : null}
@@ -263,6 +307,7 @@ export default function LeirdueImportPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [debug, setDebug] = useState<LeirdueSearchDebug | null>(null);
+  const [continuationToken, setContinuationToken] = useState<string | null>(null);
 
   const groupedCandidates = useMemo(() => {
     return {
@@ -282,13 +327,15 @@ export default function LeirdueImportPage() {
     setCandidates((current) => current.map((candidate) => (candidate.localId === updated.localId ? updated : candidate)));
   }
 
-  async function search(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function runSearchBatch(token: string | null, reset: boolean) {
     setError("");
     setSuccess("");
     setSearching(true);
-    setCandidates([]);
-    setDebug(null);
+    if (reset) {
+      setCandidates([]);
+      setDebug(null);
+      setContinuationToken(null);
+    }
 
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), 35_000);
@@ -297,23 +344,29 @@ export default function LeirdueImportPage() {
       const response = await fetch("/api/leirdue/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shooterName, year: Number(year), disciplines }),
+        body: JSON.stringify({ shooterName, year: Number(year), disciplines, continuationToken: token }),
         signal: controller.signal,
       });
       const data = (await response.json()) as SearchResponse;
       setDebug(data.debug || null);
+      setContinuationToken(data.continuationToken || null);
 
       if (!response.ok) {
         setError(data.error || "Could not fetch Leirdue results right now.");
         return;
       }
 
-      setCandidates((data.candidates || []).map(toEditable));
-      if (data.debug?.timedOut || data.debug?.limitReached) setError(data.debug.message || "Leirdue search returned partial results due to a timeout or crawl limit.");
-      if (!data.candidates?.length) setSuccess("No candidates found. Try broader filters or add result manually.");
+      setCandidates((current) => (reset ? (data.candidates || []).map(toEditable) : mergeCandidates(current, data.candidates || [])));
+      if (data.continuationToken && data.debug?.completeCandidatesFoundTotal !== undefined && data.debug.completeCandidatesFoundTotal < data.debug.expectedCandidateTarget) {
+        setSuccess("More Leirdue results may exist. Use Continue search to scan the next batch without losing selected candidates.");
+      } else if (data.debug?.timedOut || data.debug?.limitReached) {
+        setError(data.debug.message || "Leirdue search returned partial results due to a timeout or crawl limit.");
+      } else if (!data.candidates?.length && reset) {
+        setSuccess("No candidates found. Try broader filters or add result manually.");
+      }
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
-        setError("Leirdue search took too long. Try a narrower search or another year.");
+        setError("Leirdue search took too long. Continue the search if a continuation is available, or try another year.");
       } else {
         setError("Could not fetch Leirdue results right now.");
       }
@@ -321,6 +374,16 @@ export default function LeirdueImportPage() {
       window.clearTimeout(timeoutId);
       setSearching(false);
     }
+  }
+
+  async function search(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await runSearchBatch(null, true);
+  }
+
+  async function continueSearch() {
+    if (!continuationToken) return;
+    await runSearchBatch(continuationToken, false);
   }
 
   async function saveSelected() {
@@ -408,6 +471,7 @@ export default function LeirdueImportPage() {
 
         <div className="btns">
           <button disabled={searching || disciplines.length === 0}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
+          {continuationToken ? <button type="button" className="secondary" disabled={searching} onClick={continueSearch}>{searching ? "Continuing..." : "Continue search"}</button> : null}
           <Link className="button secondary" href="/results/new">Add result manually</Link>
           <Link className="button secondary" href="/dashboard">Dashboard</Link>
         </div>
