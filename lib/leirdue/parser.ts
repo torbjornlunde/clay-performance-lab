@@ -105,6 +105,8 @@ function emptyDebug(): LeirdueSearchDebug {
     unknownYearFallbackEventsCount: 0,
     actualYearMismatchSkippedCount: 0,
     knownTorbjorn2025Debug: [],
+    regressionPriorityApplied: false,
+    regressionEventsBoosted: [],
     eventBatchesProcessed: 0,
     eventQueueRemainingWhenStopped: 0,
     eventStopReason: null,
@@ -541,12 +543,33 @@ function refreshKnownTorbjorn2025Debug(input: LeirdueSearchInput, debug: Leirdue
   if (assertions.length === 0) return;
   debug.knownTorbjorn2025Debug = assertions.map((item) => {
     const key = `liste:${item.eventId}:${item.listeId}`;
+    const discovered = eventLinks.has(item.eventId);
+    const resultMenuFetched = debug.eventIdsInspected.includes(item.eventId);
+    const listeIdsFound = Array.from(listeIdLinks.values())
+      .filter((link) => extractStevneId(link.href) === item.eventId)
+      .map((link) => extractListeId(link.href))
+      .filter((listeId): listeId is string => Boolean(listeId));
+    const listeQueued = listeIdLinks.has(key);
+    const listeScanned = scannedKeys.has(key);
+    const fetchFailure = debug.fetchedUrls.find((fetchItem) => fetchItem.url === eventResultMenuUrl(item.eventId) && !fetchItem.ok)?.note;
+    const reason = !discovered
+      ? "event not discovered"
+      : !resultMenuFetched
+        ? fetchFailure || "result menu not fetched before stop"
+        : !listeQueued
+          ? "liste_id not found on result menu"
+          : !listeScanned
+            ? "liste_id queued but not scanned"
+            : null;
     return {
       ...item,
-      discovered: eventLinks.has(item.eventId),
-      inspected: debug.eventIdsInspected.includes(item.eventId),
-      listeQueued: listeIdLinks.has(key),
-      listeScanned: scannedKeys.has(key),
+      discovered,
+      inspected: resultMenuFetched,
+      resultMenuFetched,
+      listeIdsFound: Array.from(new Set(listeIdsFound)),
+      listeQueued,
+      listeScanned,
+      reason,
     };
   });
 }
@@ -599,14 +622,27 @@ function recordEventBatchScan(debug: LeirdueSearchDebug, beforeScanned: number, 
   debug.candidatesFoundPerBatch.push(candidates);
 }
 
-function appendKnownTorbjorn2025Events(input: LeirdueSearchInput, rankedEvents: EventLinkMeta[], eventLinks: Map<string, EventLinkMeta>) {
+function isTorbjornLunde2025RegressionEvent(input: LeirdueSearchInput, eventId: string | null) {
+  return Boolean(eventId) && isTorbjornLunde2025DebugSearch(input) && knownTorbjorn2025Assertions(input).some((item) => item.eventId === eventId);
+}
+
+function isTorbjornLunde2025RegressionListe(input: LeirdueSearchInput, href: string) {
+  if (!isTorbjornLunde2025DebugSearch(input)) return false;
+  const eventId = extractStevneId(href);
+  const listeId = extractListeId(href);
+  return knownTorbjorn2025Assertions(input).some((item) => item.eventId === eventId && item.listeId === listeId);
+}
+
+function boostKnownTorbjorn2025Events(input: LeirdueSearchInput, rankedEvents: EventLinkMeta[], eventLinks: Map<string, EventLinkMeta>, debug: LeirdueSearchDebug) {
   if (!isTorbjornLunde2025DebugSearch(input)) return rankedEvents;
-  const withKnown = rankedEvents.slice();
-  for (const { eventId } of knownTorbjorn2025Assertions(input)) {
-    const event = eventLinks.get(eventId);
-    if (event && !withKnown.some((item) => item.eventId === eventId)) withKnown.push(event);
-  }
-  return withKnown;
+  const boosted = knownTorbjorn2025Assertions(input)
+    .map((item) => eventLinks.get(item.eventId))
+    .filter((event): event is EventLinkMeta => Boolean(event));
+  debug.regressionEventsBoosted = boosted.map((event) => event.eventId);
+  debug.regressionPriorityApplied = boosted.length > 0;
+  if (boosted.length === 0) return rankedEvents;
+  const boostedIds = new Set(boosted.map((event) => event.eventId));
+  return [...boosted, ...rankedEvents.filter((event) => !boostedIds.has(event.eventId))];
 }
 
 function eventQueueSortRank(event: EventLinkMeta, selectedYear: number) {
@@ -1563,6 +1599,7 @@ function listeIdPriorityDetail(link: Link, input: LeirdueSearchInput) {
   if (selectedDisciplineMatches(text, input)) { score += 20; reasons.push("matches selected disciplines"); }
   if (text.includes("liste_id")) score += 10;
   if (link.source === "validation") { score += 500; reasons.push("validation"); }
+  if (isTorbjornLunde2025RegressionListe(input, link.href)) { score += 1000; reasons.push("Torbjørn 2025 regression liste_id priority"); }
   if (text.includes("klassedelt")) { score -= 20; reasons.push("class split"); }
   if (/(lagskyting|lagliste|finaleliste|finale|cup sammenlagt|sammenlagt premiering|ranking|prosent|klasseføring|klasseforing|uttak|flere stevner|sesong|season|%)/.test(text)) { score -= 180; reasons.push("control/summary/percentage list"); }
   return { score, reason: reasons.join(", ") || "generic liste_id" };
@@ -1734,7 +1771,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
 
   const allRankedEvents = rankedEventsAcrossYear(relevantEventLinks, input);
   setEventQueueDebugRows(debug, allRankedEvents, input);
-  const rankedEvents = appendKnownTorbjorn2025Events(input, allRankedEvents.slice(0, MAX_EVENT_PAGES_INSPECTED), eventLinks);
+  const rankedEvents = boostKnownTorbjorn2025Events(input, allRankedEvents.slice(0, MAX_EVENT_PAGES_INSPECTED), eventLinks, debug);
   if (relevantEventLinks.length > rankedEvents.length) {
     markLimitReached(debug, "max relevant selected-year event links");
     debug.eventLinksSkippedByReason.limit += relevantEventLinks.length - rankedEvents.length;
@@ -1814,6 +1851,23 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     if (rawMatches === 0 && extractedUrls.length === 0) addResultMenuDiagnostic(debug, resultMenuUrl, resultHtml);
     refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
     setEventQueueDebugRows(debug, allRankedEvents, input);
+
+    if (isTorbjornLunde2025RegressionEvent(input, event.eventId) && listeIdLinks.size > scannedListeIdKeys.size) {
+      if (!firstListeIdScanStarted) {
+        firstListeIdScanStarted = true;
+        debug.resultMenusBeforeFirstListeIdScan = debug.eventResultMenuPagesFetched;
+      }
+      const beforeScanned = debug.listeIdPagesScannedForName;
+      const beforeShooterPages = debug.listeIdShooterPagesFound;
+      await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, 20);
+      recordEventBatchScan(debug, beforeScanned, beforeShooterPages);
+      refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
+      menusSinceLastScan = 0;
+      if (debug.completeCandidatesFound >= 2) { debug.eventStopReason = "completeCandidatesFound"; debug.candidateQualityStopReason = "completeCandidatesFound"; break; }
+      if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; debug.candidateQualityStopReason = "scanLimit"; break; }
+      if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) { debug.eventStopReason = "max shooter pages"; debug.candidateQualityStopReason = "shooterPageLimit"; break; }
+      if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; debug.candidateQualityStopReason = "timeout"; break; }
+    }
 
     if (listeIdLinks.size > scannedListeIdKeys.size && menusSinceLastScan >= RESULT_MENU_BATCH_SIZE) {
       if (!firstListeIdScanStarted) {
