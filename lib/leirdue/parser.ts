@@ -581,17 +581,35 @@ function isRegistrationOnlyText(text: string) {
   return normalized.includes("påmelding") || normalized.includes("pamelding") || normalized.includes("deltakerliste") || normalized.includes("deltagarliste") || normalized.includes("deltakere") || normalized.includes("participant");
 }
 
-function extractLikelyTotalTargets(text: string, score?: number | null, seriesScores: number[] = []) {
+function seriesSumConsistent(seriesScores: number[], score?: number | null) {
+  if (score === null || score === undefined) return false;
+  const sum = seriesScores.reduce((total, value) => total + value, 0);
+  return Math.abs(sum - score) <= 1;
+}
+
+function totalTargetsFromSeriesScores(seriesScores: number[], score?: number | null, rowText = "") {
+  if (seriesScores.length === 0 || percentageTokenCount(rowText) > 0 || !seriesSumConsistent(seriesScores, score)) return null;
+  if (seriesScores.length === 10 && seriesScores.every((value) => value >= 0 && value <= 10)) return 100;
+  if (seriesScores.length === 3 && seriesScores.every((value) => value >= 0 && value <= 25)) return 75;
+  if (seriesScores.length === 2 && seriesScores.every((value) => value >= 0 && value <= 25)) return 50;
+  return null;
+}
+
+function extractLikelyTotalTargets(text: string, score?: number | null, seriesScores: number[] = [], rowText = "") {
   const normalized = normalizeText(text);
   const explicit = normalized.match(/\b(25|50|75|100|125|150|175|200)\s*(?:sk|skudd|duer|duers|targets|mal|mål|compak|compact|kompakt)\b/);
   if (explicit) return Number(explicit[1]);
   const named = normalized.match(/\b(25|50|75|100|125|150|175|200)\b(?=\s*(?:compak|compact|kompakt|sporting|leirduesti|sti))/);
   if (named) return Number(named[1]);
 
-  const likelySeries = seriesScores.filter((value) => value >= 15 && value <= 25);
-  if (likelySeries.length >= 2) {
-    const inferred = likelySeries.length * 25;
-    if ([25, 50, 75, 100, 150, 200].includes(inferred)) return inferred;
+  if (rowText) {
+    const inferredFromSeries = totalTargetsFromSeriesScores(seriesScores, score, rowText);
+    if (inferredFromSeries !== null) return inferredFromSeries;
+
+    const likelySeries = seriesScores.filter((value) => value >= 15 && value <= 25);
+    if ((likelySeries.length === 2 || likelySeries.length === 3) && seriesSumConsistent(likelySeries, score)) {
+      return likelySeries.length * 25;
+    }
   }
 
   if (normalized.length < 220) {
@@ -1128,7 +1146,7 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
   const discipline = classifyDiscipline(context, input.disciplines);
   const initialTotalTargets = extractLikelyTotalTargets(listTitle) ?? extractLikelyTotalTargets(title);
   const parsed = parseScoresFromLines(lines, page.html, input.shooterName, pageText, input.year, initialTotalTargets);
-  const totalTargets = initialTotalTargets ?? extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets(title, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores);
+  const totalTargets = initialTotalTargets ?? extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets(title, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores, parsed.scoreLine || "");
   const snippet = findShooterSnippet(lines, input.shooterName);
   const listType = classifyListType(listTitle);
   const notes = [...discipline.notes, ...parsed.notes, `Source liste_id URL: ${page.url}.`, `List title/type: ${listTitle} / ${listType}.`];
@@ -2412,7 +2430,7 @@ function debugParseLeirdueHtml(params: { url: string; status: number | null; htm
   const discipline = classifyDiscipline(`${eventTitle}\n${pageText}`, selectedDisciplines);
   const initialTotalTargets = extractLikelyTotalTargets(listTitle) ?? extractLikelyTotalTargets(eventTitle);
   const parsed = parseScoresFromLines(lines, html, shooterName, pageText, year, initialTotalTargets);
-  const totalTargets = initialTotalTargets ?? extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets(eventTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores);
+  const totalTargets = initialTotalTargets ?? extractLikelyTotalTargets(listTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets(eventTitle, parsed.ownScore, parsed.seriesScores) ?? extractLikelyTotalTargets("", parsed.ownScore, parsed.seriesScores, parsed.scoreLine || "");
   const rowDebug = debugCandidateRows(lines, html, shooterName, year, totalTargets);
   const rawSnippet = findShooterSnippet(lines, shooterName) || (shooterFound ? usefulSnippet(pageText, shooterName) : null);
   const shootingGroundResult = extractShootingGround(eventTitle, lines.slice(0, 25).join("\n"));
