@@ -122,6 +122,7 @@ function emptyDebug(): LeirdueSearchDebug {
     visibleCandidatesCount: 0,
     hiddenLowQualityCandidatesCount: 0,
     completeCandidatesFoundList: [],
+    nextUnscannedEventQueue: [],
     candidateQualityStopReason: null,
     selectedDisciplineFilters: [],
     eventsFoundBeforeFiltering: 0,
@@ -696,6 +697,22 @@ function setEventQueueDebugRows(debug: LeirdueSearchDebug, events: EventLinkMeta
   });
 }
 
+function setNextUnscannedEventQueueDebug(debug: LeirdueSearchDebug, events: EventLinkMeta[], input: LeirdueSearchInput) {
+  debug.nextUnscannedEventQueue = events
+    .filter((event) => !event.inspected && !event.skippedReason)
+    .slice(0, 20)
+    .map((event) => {
+      const priority = eventPriorityDetail(event, input);
+      return {
+        eventId: event.eventId,
+        title: event.eventTitle,
+        actualEventYear: event.actualEventYear,
+        priority: priority.score,
+        reason: priority.reason,
+      };
+    });
+}
+
 function meaningfulLabel(value: string) {
   const cleaned = cleanShootingGround(value).replace(/debug validation url for torbjørn lunde 2026/i, "").replace(/\s+/g, " ").trim();
   if (!cleaned || /^leirdue result$/i.test(cleaned) || /^result list$/i.test(cleaned)) return null;
@@ -1246,12 +1263,12 @@ async function scanQueuedListeIdPages(
     if (scannedThisPass >= maxPages) break;
     if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) {
       markLimitReached(debug, "max liste_id scan pages");
-      debug.scanStoppedReason ||= "max scan pages";
+      debug.scanStoppedReason ||= "scanLimit";
       break;
     }
     if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) {
       markLimitReached(debug, "max shooter pages parsed");
-      debug.scanStoppedReason ||= "max shooter pages";
+      debug.scanStoppedReason ||= "shooterPageLimit";
       break;
     }
     if (shouldStopCrawl(debug, state)) {
@@ -1776,6 +1793,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
 
   const allRankedEvents = rankedEventsAcrossYear(relevantEventLinks, input);
   setEventQueueDebugRows(debug, allRankedEvents, input);
+  setNextUnscannedEventQueueDebug(debug, allRankedEvents, input);
   const rankedEvents = boostKnownTorbjorn2025Events(input, allRankedEvents.slice(0, MAX_EVENT_PAGES_INSPECTED), eventLinks, debug);
   if (relevantEventLinks.length > rankedEvents.length) {
     markLimitReached(debug, "max relevant selected-year event links");
@@ -1840,6 +1858,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
       debug.eventLinksSkippedByReason.outsideYear += 1;
       addUnique(debug.eventIdsSkippedOutsideYear, event.eventId);
       setEventQueueDebugRows(debug, allRankedEvents, input);
+      setNextUnscannedEventQueueDebug(debug, allRankedEvents, input);
       continue;
     }
     if (event.actualEventYear === input.year) debug.actualSelectedYearEventsCount += 1;
@@ -1856,6 +1875,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     if (rawMatches === 0 && extractedUrls.length === 0) addResultMenuDiagnostic(debug, resultMenuUrl, resultHtml);
     refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
     setEventQueueDebugRows(debug, allRankedEvents, input);
+    setNextUnscannedEventQueueDebug(debug, allRankedEvents, input);
 
     if (isTorbjornLunde2025RegressionEvent(input, event.eventId) && listeIdLinks.size > scannedListeIdKeys.size) {
       if (!firstListeIdScanStarted) {
@@ -1937,15 +1957,17 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     debug.message = "Timed out before result list pages were inspected";
   }
   if (!debug.scanStoppedReason) {
-    if (debug.timedOut) debug.scanStoppedReason = "timeout";
-    else if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) debug.scanStoppedReason = "max scan pages";
-    else if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) debug.scanStoppedReason = "max shooter pages";
-    else debug.scanStoppedReason = "completed queue";
+    if (debug.completeCandidatesFound >= TARGET_COMPLETE_CANDIDATES) debug.scanStoppedReason = "targetReached";
+    else if (debug.timedOut) debug.scanStoppedReason = "timeout";
+    else if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) debug.scanStoppedReason = "scanLimit";
+    else if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) debug.scanStoppedReason = "shooterPageLimit";
+    else debug.scanStoppedReason = "eventQueueExhausted";
   }
   if (debug.timedOut) debug.phaseReached = "timeout";
   else if (debug.listeIdPagesFetched > 0) debug.phaseReached = "phase2";
   refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
   setEventQueueDebugRows(debug, allRankedEvents, input);
+  setNextUnscannedEventQueueDebug(debug, allRankedEvents, input);
   debug.selectedYearEventLinks = relevantEventLinks.map((event) => ({ eventId: event.eventId, url: event.url, titleText: event.titleText, eventTitle: event.eventTitle, organizerText: event.organizerText, dateText: event.dateText, rawRowSnippet: event.rawRowSnippet, titleParseSource: event.titleParseSource, date: event.date, parsedYear: event.parsedYear, overviewMatchedYear: event.overviewMatchedYear, actualEventYear: event.actualEventYear, actualEventDate: event.actualEventDate, actualDateText: event.actualDateText, inspected: event.inspected, skippedReason: event.skippedReason }));
   if (debug.completeCandidatesFound >= TARGET_COMPLETE_CANDIDATES) { debug.eventStopReason = "completeCandidatesFound"; debug.candidateQualityStopReason = "completeCandidatesFound"; }
   else if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; debug.candidateQualityStopReason = "scanLimit"; }

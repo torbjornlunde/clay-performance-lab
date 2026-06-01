@@ -112,6 +112,7 @@ export type LeirdueSearchDebug = {
   visibleCandidatesCount: number;
   hiddenLowQualityCandidatesCount: number;
   completeCandidatesFoundList: { url: string; name: string; date: string | null; ownScore: number | null; totalTargets: number | null; winningScore: number | null }[];
+  nextUnscannedEventQueue: { eventId: string; title: string; actualEventYear: number | null; priority: number; reason: string }[];
   candidateQualityStopReason: "completeCandidatesFound" | "timeout" | "scanLimit" | "eventQueueExhausted" | "shooterPageLimit" | "resultMenuLimit" | null;
   selectedDisciplineFilters: string[];
   eventsFoundBeforeFiltering: number;
@@ -133,7 +134,7 @@ export type LeirdueSearchDebug = {
   listeIdPagesQueued: number;
   listeIdPagesScannedForName: number;
   shooterPagesParsed: number;
-  scanStoppedReason: "timeout" | "max scan pages" | "max shooter pages" | "completed queue" | null;
+  scanStoppedReason: "targetReached" | "timeout" | "scanLimit" | "shooterPageLimit" | "eventQueueExhausted" | null;
   candidatesFoundAfterDiscovery: number;
   candidatesFoundAfterScan: number;
   resultMenusBeforeFirstListeIdScan: number;
