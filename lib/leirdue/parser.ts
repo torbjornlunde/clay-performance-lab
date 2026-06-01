@@ -38,6 +38,7 @@ type LeirdueContinuationState = {
   completeCandidatesFoundTotal: number;
   visibleCandidatesCountTotal: number;
   hiddenLowQualityCandidatesCountTotal: number;
+  candidates: LeirdueCandidate[];
 };
 
 type Link = { href: string; text: string; source?: "anchor" | "raw" | "validation" };
@@ -116,6 +117,7 @@ function continuationTokenPayload(input: LeirdueSearchInput, token: string | nul
       completeCandidatesFoundTotal: Number.isInteger(parsed.completeCandidatesFoundTotal) ? Math.max(0, Number(parsed.completeCandidatesFoundTotal)) : 0,
       visibleCandidatesCountTotal: Number.isInteger(parsed.visibleCandidatesCountTotal) ? Math.max(0, Number(parsed.visibleCandidatesCountTotal)) : 0,
       hiddenLowQualityCandidatesCountTotal: Number.isInteger(parsed.hiddenLowQualityCandidatesCountTotal) ? Math.max(0, Number(parsed.hiddenLowQualityCandidatesCountTotal)) : 0,
+      candidates: Array.isArray(parsed.candidates) ? parsed.candidates.filter(isLeirdueCandidate) : [],
     };
   } catch {
     return null;
@@ -124,6 +126,12 @@ function continuationTokenPayload(input: LeirdueSearchInput, token: string | nul
 
 function encodeContinuationToken(state: LeirdueContinuationState) {
   return Buffer.from(JSON.stringify(state), "utf8").toString("base64url");
+}
+
+function isLeirdueCandidate(value: unknown): value is LeirdueCandidate {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<LeirdueCandidate>;
+  return typeof candidate.name === "string" && typeof candidate.leirdueUrl === "string" && typeof candidate.discipline === "string";
 }
 
 function markFetchError(debug: LeirdueSearchDebug, url: string, note: string) {
@@ -178,6 +186,15 @@ function emptyDebug(): LeirdueSearchDebug {
     completeCandidatesFoundTotal: 0,
     visibleCandidatesCountTotal: 0,
     hiddenLowQualityCandidatesCountTotal: 0,
+    previousVisibleCandidatesCount: 0,
+    returnedVisibleCandidatesCount: 0,
+    accumulatedCompleteCandidatesCount: 0,
+    queuedThisBatch: 0,
+    scannedThisBatch: 0,
+    fetchedThisBatch: 0,
+    eventMenusFetchedThisBatch: 0,
+    timeBudgetReason: null,
+    continuationStopReason: null,
     candidateQualityStopReason: null,
     selectedDisciplineFilters: [],
     eventsFoundBeforeFiltering: 0,
@@ -1306,6 +1323,7 @@ async function scanQueuedListeIdPages(
   const queueItems = listeIdQueueItems(links, eventsById, input);
   updateListeIdQueueDebug(debug, queueItems);
   const pendingItems = queueItems.filter((item) => !scannedKeys.has(item.key) && !listPages.has(item.key));
+  debug.queuedThisBatch = Math.max(debug.queuedThisBatch, pendingItems.length);
   if (queueItems.length > MAX_LISTE_ID_PAGES_SCANNED) {
     debug.listInspectionLimitReached = true;
     markLimitReached(debug, "max liste_id scan pages");
@@ -1339,6 +1357,8 @@ async function scanQueuedListeIdPages(
     scannedThisPass += 1;
     debug.listeIdPagesFetched += 1;
     debug.listeIdPagesScannedForName += 1;
+    debug.fetchedThisBatch += 1;
+    debug.scannedThisBatch += 1;
     if (item.priority >= 80) debug.highPriorityListeIdPagesFetched += 1;
 
     const pageText = stripTags(html);
@@ -1873,8 +1893,10 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     }
 
     const elapsed = Date.now() - crawlStartedAt;
-    const menuBudgetSpent = elapsed >= RESULT_MENU_PHASE_BUDGET_MS || remainingCrawlMs(state) <= MIN_LIST_SCAN_RESERVE_MS || debug.eventResultMenuPagesFetched >= MAX_RESULT_MENUS_BEFORE_FIRST_SCAN;
+    const menuBudgetReason = elapsed >= RESULT_MENU_PHASE_BUDGET_MS ? "resultMenuPhaseBudget" : remainingCrawlMs(state) <= MIN_LIST_SCAN_RESERVE_MS ? "scanReserve" : debug.eventResultMenuPagesFetched >= MAX_RESULT_MENUS_BEFORE_FIRST_SCAN ? "menuCountBeforeFirstScan" : null;
+    const menuBudgetSpent = menuBudgetReason !== null;
     if (menuBudgetSpent && listeIdLinks.size > scannedListeIdKeys.size) {
+      debug.timeBudgetReason ||= menuBudgetReason;
       if (!firstListeIdScanStarted) {
         firstListeIdScanStarted = true;
         debug.resultMenusBeforeFirstListeIdScan = debug.eventResultMenuPagesFetched;
@@ -1898,6 +1920,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     if (!resultHtml) continue;
     debug.eventPagesFetched += 1;
     debug.eventResultMenuPagesFetched += 1;
+    debug.eventMenusFetchedThisBatch += 1;
     menusSinceLastScan += 1;
 
     const actualInfo = extractActualEventInfoFromResultMenu(resultHtml, event, input.year);
@@ -1951,14 +1974,14 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
       if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; debug.candidateQualityStopReason = "timeout"; break; }
     }
 
-    if (listeIdLinks.size > scannedListeIdKeys.size && menusSinceLastScan >= RESULT_MENU_BATCH_SIZE) {
+    if (listeIdLinks.size > scannedListeIdKeys.size && (continuation || menusSinceLastScan >= RESULT_MENU_BATCH_SIZE)) {
       if (!firstListeIdScanStarted) {
         firstListeIdScanStarted = true;
         debug.resultMenusBeforeFirstListeIdScan = debug.eventResultMenuPagesFetched;
       }
       const beforeScanned = debug.listeIdPagesScannedForName;
       const beforeShooterPages = debug.listeIdShooterPagesFound;
-      await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, 40);
+      await scanQueuedListeIdPages(input, debug, state, listeIdLinks, eventLinks, scannedListeIdKeys, listPages, continuation ? 20 : 40);
       recordEventBatchScan(debug, beforeScanned, beforeShooterPages);
       refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
       menusSinceLastScan = 0;
@@ -2422,6 +2445,10 @@ export async function debugParseLeirdueResultUrl(input: LeirdueDebugParseInput):
   }
 }
 
+function mergeLeirdueCandidatesForContinuation(candidates: LeirdueCandidate[], debug: LeirdueSearchDebug) {
+  return dedupeCandidates(candidates, debug).sort((a, b) => candidateQuality(b) - candidateQuality(a) || (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99"));
+}
+
 export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promise<LeirdueSearchResult> {
   const debug = emptyDebug();
   const continuation = continuationTokenPayload(input, input.continuationToken);
@@ -2458,14 +2485,18 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
     }
   }
   const normalized = normalizeLeirdueCandidates(candidates, input, debug);
+  const returnedCandidates = mergeLeirdueCandidatesForContinuation([...(continuation?.candidates ?? []), ...normalized], debug);
   debug.candidateRowsCreated = normalized.length;
   debug.candidatesFoundAfterScan = normalized.length;
   debug.candidatesFoundBeforeTimeout = normalized.length;
-  updateCandidateDebugStats(debug, normalized);
-  debug.completeCandidatesFoundTotal = (continuation?.completeCandidatesFoundTotal ?? 0) + debug.completeCandidatesFound;
-  debug.visibleCandidatesCountTotal = (continuation?.visibleCandidatesCountTotal ?? 0) + debug.visibleCandidatesCount;
-  debug.hiddenLowQualityCandidatesCountTotal = (continuation?.hiddenLowQualityCandidatesCountTotal ?? 0) + debug.hiddenLowQualityCandidatesCount;
-  const canContinue = debug.completeCandidatesFoundTotal < TARGET_COMPLETE_CANDIDATES && debug.remainingEventQueueCount > 0 && debug.candidateQualityStopReason !== "eventQueueExhausted";
+  debug.previousVisibleCandidatesCount = continuation?.visibleCandidatesCountTotal ?? 0;
+  updateCandidateDebugStats(debug, returnedCandidates);
+  debug.returnedVisibleCandidatesCount = debug.visibleCandidatesCount;
+  debug.accumulatedCompleteCandidatesCount = debug.completeCandidatesFoundList.length;
+  debug.completeCandidatesFoundTotal = debug.accumulatedCompleteCandidatesCount;
+  debug.visibleCandidatesCountTotal = debug.visibleCandidatesCount;
+  debug.hiddenLowQualityCandidatesCountTotal = debug.hiddenLowQualityCandidatesCount;
+  const canContinue = debug.completeCandidatesFoundTotal < TARGET_COMPLETE_CANDIDATES && debug.remainingEventQueueCount > 0;
   debug.continuationAvailable = canContinue;
   debug.continuationReason = canContinue
     ? debug.timedOut
@@ -2478,6 +2509,7 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
       : debug.remainingEventQueueCount === 0
         ? "eventQueueExhausted"
         : null;
+  debug.continuationStopReason = debug.continuationReason || debug.scanStoppedReason;
   if (canContinue && debug.timedOut) debug.scanStoppedReason = "timeout";
   else if (canContinue && debug.candidateQualityStopReason === "scanLimit") debug.scanStoppedReason = "scanLimit";
   if (normalized.length === 0 && isTorbjornLunde2025DebugSearch(input)) {
@@ -2497,9 +2529,10 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
         completeCandidatesFoundTotal: debug.completeCandidatesFoundTotal,
         visibleCandidatesCountTotal: debug.visibleCandidatesCountTotal,
         hiddenLowQualityCandidatesCountTotal: debug.hiddenLowQualityCandidatesCountTotal,
+        candidates: returnedCandidates,
       })
     : null;
-  return { candidates: normalized, debug, continuationToken };
+  return { candidates: returnedCandidates, debug, continuationToken };
 }
 
 export { FETCH_ERROR_MESSAGE };

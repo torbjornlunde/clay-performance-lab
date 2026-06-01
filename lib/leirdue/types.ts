@@ -122,6 +122,15 @@ export type LeirdueSearchDebug = {
   completeCandidatesFoundTotal: number;
   visibleCandidatesCountTotal: number;
   hiddenLowQualityCandidatesCountTotal: number;
+  previousVisibleCandidatesCount: number;
+  returnedVisibleCandidatesCount: number;
+  accumulatedCompleteCandidatesCount: number;
+  queuedThisBatch: number;
+  scannedThisBatch: number;
+  fetchedThisBatch: number;
+  eventMenusFetchedThisBatch: number;
+  timeBudgetReason: string | null;
+  continuationStopReason: string | null;
   candidateQualityStopReason: "completeCandidatesFound" | "timeout" | "scanLimit" | "eventQueueExhausted" | "shooterPageLimit" | "resultMenuLimit" | null;
   selectedDisciplineFilters: string[];
   eventsFoundBeforeFiltering: number;
