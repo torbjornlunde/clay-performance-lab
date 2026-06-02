@@ -2140,3 +2140,381 @@ html, body {
     min-width: 0;
   }
 }
+
+.schemeViewActions,
+.fitascFullscreenActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.schemeModeToggle {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(7, 11, 17, 0.72);
+}
+
+.schemeModeToggle button {
+  min-height: 36px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.schemeModeToggleCompact button {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.wakeLockToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(7, 11, 17, 0.72);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.wakeLockToggle input {
+  width: 14px;
+  min-height: 14px;
+  margin: 0;
+  accent-color: var(--gold);
+}
+
+.wakeLockToggleActive {
+  border-color: var(--lineStrong);
+  color: var(--gold2);
+}
+
+.standView {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.standViewTopline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.standViewTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.standViewTitle .eyebrow,
+.standViewTitle .small {
+  white-space: nowrap;
+}
+
+.standViewTopline h3 {
+  margin: 0;
+  font-size: clamp(22px, 5vw, 34px);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.standDirectSelector {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.standNumberButton {
+  width: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-radius: 12px;
+  font-size: 16px;
+}
+
+.standPresentationList {
+  display: grid;
+  gap: 6px;
+}
+
+.standPresentationCard {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.34fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-height: 48px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(12, 18, 27, 0.88);
+}
+
+.standPresentationType,
+.standMachineLabel {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(7, 11, 17, 0.72);
+  padding: 7px 9px;
+}
+
+.standPresentationType {
+  color: var(--muted);
+  font-size: clamp(14px, 3.2vw, 20px);
+  font-weight: 900;
+  line-height: 1.05;
+}
+
+.standMachineLabel {
+  justify-content: center;
+  color: var(--text);
+  font-size: clamp(24px, 7vw, 44px);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.standNavigation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.standNavigation button {
+  min-height: 48px;
+  font-size: 15px;
+}
+
+.fitascFullscreenBodyStand {
+  display: flex;
+  overflow: hidden;
+}
+
+.standView.schemeOverviewFullscreen {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  gap: clamp(4px, 1vh, 8px);
+}
+
+.standView.schemeOverviewFullscreen .standViewTopline {
+  flex: 0 0 auto;
+}
+
+.standView.schemeOverviewFullscreen .standViewTitle .eyebrow {
+  display: none;
+}
+
+.standView.schemeOverviewFullscreen .standViewTopline h3 {
+  font-size: clamp(20px, 4.2vh, 32px);
+}
+
+.standView.schemeOverviewFullscreen .standPresentationList {
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: clamp(3px, 0.8vh, 6px);
+}
+
+.standView.schemeOverviewFullscreen .standPresentationCard {
+  min-height: 0;
+  padding: clamp(3px, 0.8vh, 6px);
+}
+
+.standView.schemeOverviewFullscreen .standPresentationType,
+.standView.schemeOverviewFullscreen .standMachineLabel {
+  min-height: 0;
+  height: 100%;
+  padding: clamp(4px, 0.9vh, 8px) clamp(6px, 1vw, 10px);
+}
+
+.standView.schemeOverviewFullscreen .standPresentationType {
+  font-size: clamp(13px, 2.4vh, 20px);
+}
+
+.standView.schemeOverviewFullscreen .standMachineLabel {
+  font-size: clamp(24px, 6vh, 58px);
+}
+
+.standView.schemeOverviewFullscreen .standNavigation {
+  flex: 0 0 auto;
+}
+
+.standView.schemeOverviewFullscreen .standNavigation button {
+  min-height: clamp(42px, 7vh, 58px);
+  font-size: clamp(14px, 2.3vh, 18px);
+}
+
+@media (max-width: 720px) {
+  .schemeViewActions {
+    justify-content: stretch;
+  }
+
+  .schemeViewActions,
+  .schemeModeToggle,
+  .schemeViewActions button {
+    width: 100%;
+  }
+
+  .schemeModeToggle button {
+    flex: 1 1 0;
+  }
+
+  .standViewTopline {
+    grid-template-columns: 1fr;
+  }
+
+  .standViewTitle {
+    justify-content: space-between;
+  }
+
+  .standViewTitle .eyebrow {
+    display: none;
+  }
+
+  .standDirectSelector {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .standNumberButton {
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+  }
+
+  .standPresentationList {
+    gap: 5px;
+  }
+
+  .standPresentationCard {
+    grid-template-columns: minmax(62px, 0.28fr) minmax(0, 1fr);
+    gap: 5px;
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .standPresentationType,
+  .standMachineLabel {
+    min-height: 34px;
+    padding: 6px 7px;
+  }
+
+  .standNavigation {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .standNavigation span {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    text-align: center;
+  }
+
+  .standNavigation button {
+    min-height: 46px;
+  }
+}
+
+@media (orientation: landscape) {
+  .fitascFullscreenBodyStand {
+    padding: 3px;
+  }
+
+  .standView.schemeOverviewFullscreen {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(132px, 0.22fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .standView.schemeOverviewFullscreen .standViewTopline {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .standView.schemeOverviewFullscreen .standDirectSelector {
+    display: flex;
+  }
+
+  .standView.schemeOverviewFullscreen .standNumberButton {
+    width: clamp(30px, 7vh, 40px);
+    min-width: clamp(30px, 7vh, 40px);
+    min-height: clamp(30px, 7vh, 40px);
+    border-radius: 9px;
+    font-size: clamp(13px, 3vh, 16px);
+  }
+
+  .standView.schemeOverviewFullscreen .standPresentationList {
+    grid-column: 1;
+  }
+
+  .standView.schemeOverviewFullscreen .standNavigation {
+    grid-column: 2;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto 1fr;
+    height: 100%;
+  }
+
+  .standView.schemeOverviewFullscreen .standNavigation button {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .standView.schemeOverviewFullscreen .standPresentationCard {
+    grid-template-columns: minmax(82px, 0.24fr) minmax(0, 1fr);
+  }
+
+  .standView.schemeOverviewFullscreen .standPresentationType {
+    font-size: clamp(12px, 4vh, 19px);
+  }
+
+  .standView.schemeOverviewFullscreen .standMachineLabel {
+    font-size: clamp(24px, 11vh, 56px);
+  }
+}
+
+@media (max-width: 720px) and (orientation: landscape) {
+  .fitascFullscreenActions {
+    gap: 4px;
+  }
+
+  .wakeLockToggle {
+    min-height: 28px;
+    padding: 4px 7px;
+    font-size: 11px;
+  }
+
+  .schemeModeToggleCompact {
+    width: auto;
+  }
+
+  .schemeModeToggleCompact button {
+    width: auto;
+    min-height: 28px;
+    padding: 4px 6px;
+  }
+}
