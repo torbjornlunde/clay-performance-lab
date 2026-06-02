@@ -2140,3 +2140,488 @@ html, body {
     min-width: 0;
   }
 }
+
+.schemeViewActions,
+.fitascFullscreenActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.schemeModeToggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(7, 11, 17, 0.72);
+}
+
+.schemeModeToggle button {
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.schemeModeToggleCompact button {
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
+.standView {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+
+.standViewTopline {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.standViewTopline h3 {
+  margin: 2px 0 4px;
+  font-size: clamp(28px, 6vw, 44px);
+  line-height: 1;
+}
+
+.standViewTopline p {
+  margin: 0;
+}
+
+.standDirectSelector {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.standNumberButton {
+  width: 46px;
+  min-width: 46px;
+  min-height: 46px;
+  padding: 0;
+  border-radius: 14px;
+  font-size: 18px;
+}
+
+.standPresentationList {
+  display: grid;
+  gap: 10px;
+}
+
+.standPresentationCard {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.45fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(12, 18, 27, 0.88);
+}
+
+.standPresentationType,
+.standMachineLabel {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(7, 11, 17, 0.72);
+  padding: 14px;
+}
+
+.standPresentationType {
+  color: var(--muted);
+  font-size: clamp(15px, 3.7vw, 24px);
+  font-weight: 900;
+}
+
+.standMachineLabel {
+  justify-content: center;
+  color: var(--text);
+  font-size: clamp(34px, 12vw, 76px);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  min-height: 92px;
+  text-align: center;
+}
+
+.standNavigation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.standNavigation button {
+  min-height: 56px;
+  font-size: 16px;
+}
+
+.standView.schemeOverviewFullscreen {
+  min-width: 0;
+  min-height: 100%;
+}
+
+.standView.schemeOverviewFullscreen .standPresentationList {
+  flex: 1 1 auto;
+  grid-auto-rows: minmax(0, 1fr);
+}
+
+.standView.schemeOverviewFullscreen .standPresentationCard {
+  min-height: 0;
+}
+
+.standView.schemeOverviewFullscreen .standMachineLabel {
+  font-size: clamp(48px, 13vw, 120px);
+}
+
+.standView.schemeOverviewFullscreen .standNavigation button {
+  min-height: 64px;
+  font-size: 18px;
+}
+
+@media (max-width: 720px) {
+  .schemeViewActions {
+    justify-content: stretch;
+  }
+
+  .schemeViewActions,
+  .schemeModeToggle,
+  .schemeViewActions button {
+    width: 100%;
+  }
+
+  .schemeModeToggle button {
+    flex: 1 1 0;
+  }
+
+  .standViewTopline {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .standDirectSelector {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .standNumberButton {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .standPresentationList {
+    gap: 8px;
+  }
+
+  .standPresentationCard {
+    grid-template-columns: 1fr;
+    gap: 7px;
+    padding: 8px;
+  }
+
+  .standPresentationType,
+  .standMachineLabel {
+    justify-content: center;
+    padding: 10px;
+  }
+
+  .standMachineLabel {
+    min-height: 76px;
+  }
+
+  .standNavigation {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .standNavigation span {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    text-align: center;
+  }
+}
+
+@media (orientation: landscape) {
+  .standView.schemeOverviewFullscreen {
+    gap: 6px;
+  }
+
+  .standView.schemeOverviewFullscreen .standViewTopline {
+    align-items: center;
+  }
+
+  .standView.schemeOverviewFullscreen .standViewTopline h3 {
+    font-size: clamp(21px, 8vh, 34px);
+  }
+
+  .standView.schemeOverviewFullscreen .standPresentationList {
+    gap: 5px;
+  }
+
+  .standView.schemeOverviewFullscreen .standPresentationCard {
+    gap: 5px;
+    padding: 5px;
+  }
+
+  .standView.schemeOverviewFullscreen .standPresentationType,
+  .standView.schemeOverviewFullscreen .standMachineLabel {
+    border-radius: 9px;
+    padding: 5px 8px;
+  }
+
+  .standView.schemeOverviewFullscreen .standPresentationType {
+    font-size: clamp(12px, 4vh, 18px);
+  }
+
+  .standView.schemeOverviewFullscreen .standMachineLabel {
+    min-height: 0;
+    font-size: clamp(28px, 14vh, 64px);
+  }
+
+  .standView.schemeOverviewFullscreen .standNavigation button {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 720px) and (orientation: landscape) {
+  .fitascFullscreenActions {
+    gap: 5px;
+  }
+
+  .schemeModeToggleCompact {
+    width: auto;
+  }
+
+  .schemeModeToggleCompact button {
+    width: auto;
+    min-height: 30px;
+    padding: 5px 7px;
+  }
+
+  .standView.schemeOverviewFullscreen .standViewTopline {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .standView.schemeOverviewFullscreen .standDirectSelector {
+    display: flex;
+  }
+
+  .standView.schemeOverviewFullscreen .standNumberButton {
+    width: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    border-radius: 10px;
+    font-size: 15px;
+  }
+}
+
+.fitascFullscreenPanelStand .fitascFullscreenHeader {
+  min-height: 38px;
+  padding: 4px 6px;
+}
+
+.fitascFullscreenPanelStand .fitascFullscreenHeader > div {
+  align-items: center;
+}
+
+.fitascFullscreenPanelStand .fitascFullscreenHeader h2 {
+  font-size: clamp(14px, 4vw, 18px);
+  margin: 0;
+}
+
+.fitascFullscreenPanelStand .fitascFullscreenActions {
+  gap: 5px;
+  flex-wrap: nowrap;
+}
+
+.fitascFullscreenPanelStand .schemeModeToggle {
+  flex: 0 0 auto;
+  gap: 2px;
+  width: auto;
+  padding: 2px;
+}
+
+.fitascFullscreenPanelStand .schemeModeToggle button {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 30px;
+  padding: 4px 7px;
+  font-size: 11px;
+}
+
+.fitascFullscreenPanelStand .fitascCloseIcon {
+  width: 32px;
+  min-width: 32px;
+  min-height: 30px;
+  border-radius: 10px;
+  font-size: 20px;
+}
+
+.fitascFullscreenPanelStand .fitascFullscreenBody {
+  overflow: hidden;
+  padding: 4px;
+}
+
+.fitascFullscreenPanelStand .standView.schemeOverviewFullscreen {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 4px;
+  min-height: 0;
+  height: 100%;
+}
+
+.fitascFullscreenPanelStand .standViewTopline {
+  display: block;
+}
+
+.fitascFullscreenPanelStand .standViewTopline > div:first-child {
+  display: none;
+}
+
+.fitascFullscreenPanelStand .standViewTopline .eyebrow,
+.fitascFullscreenPanelStand .standViewTopline .small {
+  display: none;
+}
+
+.fitascFullscreenPanelStand .standViewTopline h3 {
+  margin: 0;
+  font-size: clamp(16px, 5vw, 22px);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.fitascFullscreenPanelStand .standDirectSelector {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 3px;
+  min-width: 0;
+}
+
+.fitascFullscreenPanelStand .standNumberButton {
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  border-radius: 9px;
+  font-size: 14px;
+}
+
+.fitascFullscreenPanelStand .standPresentationList {
+  display: grid;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 3px;
+  min-height: 0;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.fitascFullscreenPanelStand .standPresentationCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  min-height: 0;
+  padding: 3px;
+  border-radius: 10px;
+}
+
+.fitascFullscreenPanelStand .standMachineLabel,
+.fitascFullscreenPanelStand .standPresentationType {
+  min-height: 0;
+  height: 100%;
+  border-radius: 8px;
+  padding: 1px 5px;
+}
+
+.fitascFullscreenPanelStand .standMachineLabel {
+  color: #17130a;
+  background: linear-gradient(135deg, var(--gold2), var(--gold));
+  border-color: rgba(245, 207, 106, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 0 18px rgba(216, 165, 58, 0.18);
+  font-size: clamp(48px, 22vw, 92px);
+  font-weight: 1000;
+  letter-spacing: -0.06em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.fitascFullscreenPanelStand .standPresentationType {
+  justify-content: center;
+  font-size: clamp(20px, 6.5vw, 34px);
+  font-weight: 950;
+  line-height: 1;
+}
+
+.fitascFullscreenPanelStand .standNavigation {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.fitascFullscreenPanelStand .standNavigation span {
+  display: none;
+}
+
+.fitascFullscreenPanelStand .standNavigation button {
+  min-height: 34px;
+  border-radius: 10px;
+  font-size: 14px;
+  padding: 5px 9px;
+}
+
+@media (max-width: 390px) and (orientation: portrait) {
+  .fitascFullscreenPanelStand .fitascFullscreenHeader {
+    min-height: 34px;
+  }
+
+  .fitascFullscreenPanelStand .fitascFullscreenHeader h2 {
+    font-size: 13px;
+  }
+
+  .fitascFullscreenPanelStand .schemeModeToggle button {
+    min-height: 28px;
+    padding: 3px 5px;
+    font-size: 10px;
+  }
+
+  .fitascFullscreenPanelStand .standView.schemeOverviewFullscreen {
+    gap: 4px;
+  }
+
+  .fitascFullscreenPanelStand .standViewTopline h3 {
+    font-size: 15px;
+  }
+
+  .fitascFullscreenPanelStand .standNumberButton {
+    min-height: 27px;
+  }
+
+  .fitascFullscreenPanelStand .standPresentationList {
+    gap: 3px;
+  }
+
+  .fitascFullscreenPanelStand .standPresentationCard {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .fitascFullscreenPanelStand .standMachineLabel {
+    font-size: clamp(42px, 19vw, 78px);
+  }
+
+  .fitascFullscreenPanelStand .standPresentationType {
+    font-size: clamp(18px, 5.8vw, 29px);
+  }
+
+  .fitascFullscreenPanelStand .standNavigation button {
+    min-height: 32px;
+  }
+}
