@@ -121,12 +121,20 @@ function estimatedSearchProgress(debug: LeirdueSearchDebug | undefined, batchInd
   return Math.max(10, Math.min(95, Math.round(5 + batchProgress + scanProgress + candidateProgress)));
 }
 
-function autoSearchStopMessage(visibleCount: number, year: string) {
-  return `Søket stoppet etter å ha funnet ${visibleCount} sannsynlige resultat${visibleCount === 1 ? "" : "er"} for ${year}. Det kan fortsatt finnes resultater som Leirdue.net ikke gjorde mulig å hente automatisk.`;
+function likelyResultsLabel(count: number) {
+  return `${count} likely result${count === 1 ? "" : "s"}`;
 }
 
-function autoSearchCompleteMessage(visibleCount: number, year: string) {
-  return `Søket er ferdig. Vi fant ${visibleCount} sannsynlige resultat${visibleCount === 1 ? "" : "er"} for ${year}.`;
+function autoSearchStopMessage(visibleCount: number) {
+  return `Search stopped after the safety limit. We found ${likelyResultsLabel(visibleCount)}. Some results may still be missing.`;
+}
+
+function autoSearchCompleteMessage(visibleCount: number) {
+  return `Found ${likelyResultsLabel(visibleCount)}. Some results may still be missing. Please review the list before saving.`;
+}
+
+function searchCounterMessage(batchLabel: string, scannedListCount: number, foundCount: number, autoContinuing = false) {
+  return `${batchLabel} — ${scannedListCount} result lists checked — ${foundCount} results found so far${autoContinuing ? " — continuing automatically" : ""}`;
 }
 
 function CandidateCard({ candidate, onChange }: { candidate: EditableCandidate; onChange: (candidate: EditableCandidate) => void }) {
@@ -391,7 +399,7 @@ export default function LeirdueImportPage() {
     setSuccess("");
     setSearching(true);
     setSearchProgress(reset ? 5 : Math.max(searchProgress, 15));
-    setSearchStatus(reset ? "Finner relevante stevner..." : "Fortsetter søket etter flere resultater...");
+    setSearchStatus(reset ? "Finding relevant events..." : "Continuing the search for more results...");
     setSearchCounterText("");
     setIsAutoContinuingLeirdue(false);
     if (reset) {
@@ -418,20 +426,20 @@ export default function LeirdueImportPage() {
         batchCount += 1;
         const batchLabel = token ? `batch ${batchCount + (debug?.batchNumber || 0)}` : "batch 1";
         setIsAutoContinuingLeirdue(Boolean(token));
-        setSearchStatus(token ? "Fortsetter søket etter flere resultater..." : "Finner relevante stevner...");
-        setSearchCounterText(`${batchLabel} — ${leirdueTotalListeIdScanned} resultatlister sjekket — ${visibleCandidateCount(currentCandidates)} resultater funnet så langt`);
+        setSearchStatus(token ? "Continuing the search for more results..." : "Finding relevant events...");
+        setSearchCounterText(searchCounterMessage(batchLabel, leirdueTotalListeIdScanned, visibleCandidateCount(currentCandidates)));
 
         const { response, data } = await fetchSearchBatch(token);
         setDebug(data.debug || null);
 
         if (!response.ok) {
-          setError(data.error || "Kunne ikke hente Leirdue-resultater akkurat nå.");
+          setError(data.error || "Could not fetch Leirdue results right now.");
           setContinuationToken(token);
           stoppedInsideLoop = true;
           break;
         }
 
-        setSearchStatus("Søker etter navnet ditt i resultatlistene...");
+        setSearchStatus("Searching for your name in result lists...");
         const beforeVisible = visibleCandidateCount(currentCandidates);
         currentCandidates = reset && batchCount === 1 ? (data.candidates || []).map(toEditable) : mergeCandidates(currentCandidates, data.candidates || []);
         const afterVisible = visibleCandidateCount(currentCandidates);
@@ -449,17 +457,16 @@ export default function LeirdueImportPage() {
         setLeirdueBatchNumber(data.debug?.batchNumber || batchCount);
         setLeirdueVisibleCandidatesCount(afterVisible);
         setLeirdueTotalListeIdScanned(data.debug?.scannedListeIdTotal || 0);
-        setSearchCounterText(`Batch ${data.debug?.batchNumber || batchCount} — ${data.debug?.scannedListeIdTotal || 0} resultatlister sjekket — ${afterVisible} resultater funnet så langt`);
+        setSearchCounterText(searchCounterMessage(`Batch ${data.debug?.batchNumber || batchCount}`, data.debug?.scannedListeIdTotal || 0, afterVisible));
 
         if (newVisible <= 0 && (data.debug?.pendingListeIdQueueRemaining || 0) === 0) consecutiveEmptyBatches += 1;
         else consecutiveEmptyBatches = 0;
 
         if (!shouldContinue) {
-          setSearchStatus("Klargjør importlisten...");
-          if (data.debug?.message) setSuccess(data.debug.message);
-          else if (afterVisible === 0 && reset) setSuccess("Fant ingen kandidater. Prøv bredere filtre eller legg til resultat manuelt.");
-          else if (completeTotal >= target) setSuccess(autoSearchCompleteMessage(afterVisible, year));
-          else setSuccess(`${autoSearchCompleteMessage(afterVisible, year)} Eldre/arkiverte sider ble hoppet over.`);
+          setSearchStatus("Preparing the import list...");
+          if (afterVisible === 0 && reset) setSuccess("No candidates found. Try broader filters or add a result manually.");
+          else if (completeTotal >= target) setSuccess(autoSearchCompleteMessage(afterVisible));
+          else setSuccess(`${autoSearchCompleteMessage(afterVisible)} Older or archived pages were skipped.`);
           stoppedInsideLoop = true;
           break;
         }
@@ -470,29 +477,29 @@ export default function LeirdueImportPage() {
         const noVisibleProgress = consecutiveEmptyBatches >= MAX_EMPTY_AUTO_BATCHES;
         if (scannedTooManyLists || searchedTooLong || noVisibleProgress) {
           setContinuationToken(nextToken);
-          setSearchStatus("Klargjør importlisten...");
-          setSuccess(autoSearchStopMessage(afterVisible, year));
+          setSearchStatus("Preparing the import list...");
+          setSuccess(autoSearchStopMessage(afterVisible));
           setSearchProgress(100);
           stoppedInsideLoop = true;
           break;
         }
 
-        setSearchStatus("Henter resultatlister...");
+        setSearchStatus("Fetching result lists...");
       }
 
       if (batchCount >= MAX_AUTO_BATCHES && !stoppedInsideLoop) {
         const visibleCount = visibleCandidateCount(currentCandidates);
-        setSuccess(autoSearchStopMessage(visibleCount, year));
-        setSearchStatus("Klargjør importlisten...");
+        setSuccess(autoSearchStopMessage(visibleCount));
+        setSearchStatus("Preparing the import list...");
         setSearchProgress(100);
       }
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
         const visibleCount = visibleCandidateCount(currentCandidates);
-        if (visibleCount > 0) setSuccess(autoSearchStopMessage(visibleCount, year));
-        else setError("Leirdue-søket tok for lang tid før vi fant kandidater. Prøv igjen eller velg et smalere år.");
+        if (visibleCount > 0) setSuccess(autoSearchStopMessage(visibleCount));
+        else setError("The Leirdue search took too long before finding candidates. Try again or choose a narrower year.");
       } else {
-        setError("Kunne ikke hente Leirdue-resultater akkurat nå.");
+        setError("Could not fetch Leirdue results right now.");
       }
     } finally {
       setSearching(false);
@@ -568,7 +575,10 @@ export default function LeirdueImportPage() {
         <h2>Import from Leirdue.net</h2>
         <p>Find old competition results and review before saving.</p>
         <div className="notice small">
-          This v1 imports result-only sessions after your review. It does not import misses, bom data, scorecard photos, finals or control lists automatically.
+          Leirdue import is currently in beta. It can save time by finding many results automatically, but it may not find every result yet. Please review the imported results before saving, and add any missing results manually.
+        </div>
+        <div className="notice small">
+          This v1 imports result-only sessions after your review. It does not import misses, target-by-target miss data, scorecard photos, finals or control lists automatically.
         </div>
 
         <label>Shooter name</label>
@@ -595,20 +605,20 @@ export default function LeirdueImportPage() {
         {success ? <div className="success">{success} {success.includes("saved") ? <Link href="/stats">Open Stats</Link> : null}</div> : null}
         {searching || searchStatus ? (
           <div className="searchProgressPanel" aria-live="polite">
-            {searching ? <p className="small">Dette søket kan ta noen minutter. Ikke lukk siden eller oppdater mens vi henter resultater fra Leirdue.net.</p> : null}
+            {searching ? <p className="small">This search can take a few minutes. Do not close or refresh the page while we fetch results from Leirdue.net.</p> : null}
             <div className="progressHeader">
-              <span>Estimert fremdrift</span>
+              <span>Estimated progress</span>
               <strong>{Math.round(searchProgress)}%</strong>
             </div>
             <progress value={searchProgress} max={100} />
             {searchStatus ? <p className="small muted">{searchStatus}</p> : null}
-            <p className="small muted">Batch {leirdueBatchNumber || debug?.batchNumber || 0} — {leirdueTotalListeIdScanned || debug?.scannedListeIdTotal || 0} resultatlister sjekket — {leirdueVisibleCandidatesCount || visibleCandidateCount(candidates)} resultater funnet så langt{isAutoContinuingLeirdue ? " — fortsetter automatisk" : ""}</p>
+            <p className="small muted">{searchCounterMessage(`Batch ${leirdueBatchNumber || debug?.batchNumber || 0}`, leirdueTotalListeIdScanned || debug?.scannedListeIdTotal || 0, leirdueVisibleCandidatesCount || visibleCandidateCount(candidates), isAutoContinuingLeirdue)}</p>
             {searchCounterText ? <p className="small muted">{searchCounterText}</p> : null}
           </div>
         ) : null}
 
         <div className="btns">
-          <button disabled={searching || disciplines.length === 0}>{searching ? "Søker..." : "Search Leirdue.net"}</button>
+          <button disabled={searching || disciplines.length === 0}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
           {continuationToken && !searching ? <button type="button" className="secondary" onClick={continueSearch}>Continue search</button> : null}
           <Link className="button secondary" href="/results/new">Add result manually</Link>
           <Link className="button secondary" href="/dashboard">Dashboard</Link>
