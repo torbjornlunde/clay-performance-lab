@@ -632,16 +632,20 @@ export default function DashboardPage() {
         <div>
           <p className="eyebrow">Shooter workspace</p>
           <h2>Dashboard</h2>
-          <p className="dashboardHeroCopy">Log a new session or add a competition score in seconds.</p>
+          <p className="dashboardHeroCopy">Log sessions, import scores, or open schemes in seconds.</p>
         </div>
         <div className="dashboardPrimaryActions">
           <Link href="/sessions/new" className="dashboardActionCard primaryAction">
             <span>New shooting log</span>
             <small>Track misses and training patterns.</small>
           </Link>
-          <Link href="/results/new" className="dashboardActionCard secondaryAction">
-            <span>Add result only</span>
-            <small>Save score vs winning score.</small>
+          <Link href="/import/leirdue" className="dashboardActionCard secondaryAction">
+            <span>Import from Leirdue</span>
+            <small>Find old competition results.</small>
+          </Link>
+          <Link href="/fitasc" className="dashboardActionCard secondaryAction">
+            <span>FITASC schemes</span>
+            <small>Open Compak schemes fast at the ground.</small>
           </Link>
         </div>
       </div>
