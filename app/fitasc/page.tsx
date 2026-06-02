@@ -64,7 +64,7 @@ export default function FitascPage() {
     setStandSwipeDirection(direction);
     swipeAnimationTimeoutRef.current = setTimeout(() => {
       setStandSwipeDirection(null);
-    }, 220);
+    }, 260);
   }
 
   function vibrateOnStandChange() {
@@ -272,7 +272,7 @@ export default function FitascPage() {
         <div className="fitascFullscreenOverlay" role="dialog" aria-modal="true" aria-labelledby="fitasc-fullscreen-title">
           <div className={viewMode === "stand" ? "fitascFullscreenPanel fitascFullscreenPanelStand" : "fitascFullscreenPanel"}>
             <div className="fitascFullscreenHeader">
-              <div>
+              <div className="fitascFullscreenTitleBlock">
                 <p className="eyebrow">FITASC Compak fullscreen</p>
                 <h2 id="fitasc-fullscreen-title">
                   {viewMode === "stand" ? `${schemeTitle} · Stand ${selectedStand}/${standNumbers.length}` : schemeTitle}

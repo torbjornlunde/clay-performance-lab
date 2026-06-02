@@ -3088,3 +3088,164 @@ html, body {
     font-size: clamp(2rem, 7.2vw, 4rem);
   }
 }
+
+/* Mobile fullscreen layout fix: stable one-row header and scoped full-scheme scrolling. */
+.fitascFullscreenPanel {
+  display: grid;
+  grid-template-rows: minmax(30px, auto) minmax(0, 1fr);
+}
+
+.fitascFullscreenHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 2px 4px;
+}
+
+.fitascFullscreenTitleBlock {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.fitascFullscreenTitleBlock h2,
+.fitascFullscreenTitleBlock .small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fitascFullscreenTitleBlock h2 {
+  flex: 0 1 auto;
+  margin: 0;
+}
+
+.fitascFullscreenTitleBlock .small {
+  flex: 1 1 auto;
+}
+
+.fitascFullscreenActions {
+  display: grid;
+  grid-template-columns: auto 30px;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.fitascFullscreenActions .schemeModeToggleCompact {
+  width: auto;
+  max-width: 48vw;
+}
+
+.fitascFullscreenActions .schemeModeToggleCompact button {
+  width: auto;
+  min-height: 26px;
+  padding: 2px 6px;
+  font-size: 10px;
+}
+
+.fitascCloseIcon {
+  width: 30px;
+  min-width: 30px;
+  min-height: 28px;
+  border-radius: 9px;
+}
+
+.fitascFullscreenBody {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.fitascFullscreenPanelStand .standView.schemeOverviewFullscreen {
+  grid-template-rows: 24px minmax(0, 1fr) 32px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.fitascFullscreenPanelStand .standPresentationList {
+  min-height: 0;
+  max-height: 100%;
+}
+
+.fitascFullscreenPanelStand .standNavigation {
+  min-height: 32px;
+}
+
+.fitascFullscreenPanelStand .standNavigation button {
+  min-height: 32px;
+  height: 32px;
+}
+
+.fitascFullscreenPanelStand .standSwipeNext {
+  animation: standSlideFadeNext 240ms ease-out;
+}
+
+.fitascFullscreenPanelStand .standSwipePrevious {
+  animation: standSlideFadePrevious 240ms ease-out;
+}
+
+@media (orientation: portrait) {
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .fitascFullscreenBody {
+    overflow: hidden;
+  }
+
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-inline: contain;
+    padding-bottom: 2px;
+  }
+
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeGridHeader,
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeRowCard {
+    width: max(620px, 100%);
+  }
+
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeMachineCell {
+    font-size: clamp(2.2rem, 10vw, 3.5rem);
+  }
+
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemePresentationLabel {
+    font-size: clamp(1rem, 4.5vw, 1.45rem);
+  }
+}
+
+@media (orientation: landscape) {
+  .fitascFullscreenHeader {
+    min-height: 28px;
+    padding: 1px 4px;
+  }
+
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen {
+    overflow: hidden;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeGridHeader,
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeRowCard {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 430px) {
+  .fitascFullscreenTitleBlock .small {
+    display: none;
+  }
+
+  .fitascFullscreenActions .schemeModeToggleCompact {
+    max-width: 56vw;
+  }
+}
