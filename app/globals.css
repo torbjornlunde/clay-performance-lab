@@ -2625,3 +2625,108 @@ html, body {
     min-height: 32px;
   }
 }
+
+.fitascFullscreenPanelStand .standPresentationList {
+  cursor: grab;
+  transform: translateX(var(--stand-swipe-offset, 0));
+  will-change: transform;
+}
+
+.fitascFullscreenPanelStand .standPresentationList:active {
+  cursor: grabbing;
+}
+
+.fitascFullscreenPanelStand .standPresentationListSettling {
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.fitascFullscreenPanelStand .standSwipeNext {
+  animation: standSwipeInNext 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.fitascFullscreenPanelStand .standSwipePrevious {
+  animation: standSwipeInPrevious 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes standSwipeInNext {
+  from {
+    opacity: 0.58;
+    transform: translateX(9%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes standSwipeInPrevious {
+  from {
+    opacity: 0.58;
+    transform: translateX(-9%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.fitascFullscreenPanelStand .standMachineLabel {
+  font-size: clamp(56px, 24vw, 104px);
+  line-height: 0.86;
+  white-space: nowrap;
+}
+
+.fitascFullscreenPanelStand .standPresentationType {
+  font-size: clamp(22px, 7vw, 38px);
+  line-height: 0.92;
+  text-align: center;
+}
+
+.schemeOverviewFullscreen .schemeMachineCell {
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(245, 207, 106, 0.18), rgba(7, 11, 17, 0.78));
+  border-color: rgba(245, 207, 106, 0.34);
+  font-size: clamp(19px, 3vw, 34px);
+  font-weight: 1000;
+  letter-spacing: -0.05em;
+  line-height: 0.95;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.42);
+}
+
+.schemeOverviewFullscreen .schemePresentationLabel {
+  color: var(--muted);
+  font-size: clamp(12px, 1.5vw, 16px);
+  font-weight: 900;
+}
+
+.schemeOverviewFullscreen .schemeGridHeader strong {
+  color: var(--muted);
+  font-size: clamp(10px, 1.2vw, 13px);
+}
+
+@media (orientation: landscape) {
+  .schemeOverviewFullscreen .schemeMachineCell {
+    font-size: clamp(19px, 7vh, 36px);
+  }
+
+  .schemeOverviewFullscreen .schemePresentationLabel {
+    font-size: clamp(10px, 3.4vh, 14px);
+  }
+
+  .schemeOverviewFullscreen .schemeGridHeader strong {
+    font-size: clamp(9px, 2.6vh, 11px);
+    padding: 1px 3px;
+  }
+}
+
+@media (max-width: 390px) and (orientation: portrait) {
+  .fitascFullscreenPanelStand .standMachineLabel {
+    font-size: clamp(48px, 22vw, 88px);
+  }
+
+  .fitascFullscreenPanelStand .standPresentationType {
+    font-size: clamp(20px, 6.2vw, 32px);
+  }
+}
