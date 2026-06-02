@@ -2524,11 +2524,11 @@ html, body {
 
 .fitascFullscreenPanelStand .standPresentationCard {
   display: grid;
-  grid-template-columns: minmax(72px, 0.46fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   min-height: 0;
-  padding: 4px;
+  padding: 3px;
   border-radius: 11px;
 }
 
@@ -2537,7 +2537,7 @@ html, body {
   min-height: 0;
   height: 100%;
   border-radius: 8px;
-  padding: 3px 7px;
+  padding: 2px 6px;
 }
 
 .fitascFullscreenPanelStand .standMachineLabel {
@@ -2545,16 +2545,20 @@ html, body {
   background: linear-gradient(135deg, var(--gold2), var(--gold));
   border-color: rgba(245, 207, 106, 0.72);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 0 18px rgba(216, 165, 58, 0.18);
-  font-size: clamp(36px, 16vw, 68px);
+  font-size: clamp(52px, 22vw, 96px);
   font-weight: 1000;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.08em;
+  line-height: 0.82;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
 .fitascFullscreenPanelStand .standPresentationType {
-  justify-content: flex-start;
-  font-size: clamp(13px, 3.7vw, 18px);
-  line-height: 1;
+  justify-content: center;
+  color: var(--text);
+  font-size: clamp(22px, 6.4vw, 38px);
+  font-weight: 950;
+  line-height: 0.96;
+  text-align: center;
 }
 
 .fitascFullscreenPanelStand .standNavigation {
@@ -2606,11 +2610,17 @@ html, body {
   }
 
   .fitascFullscreenPanelStand .standPresentationCard {
-    grid-template-columns: minmax(64px, 0.44fr) minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px;
+    padding: 2px;
   }
 
   .fitascFullscreenPanelStand .standMachineLabel {
-    font-size: clamp(32px, 14.5vw, 56px);
+    font-size: clamp(46px, 20vw, 82px);
+  }
+
+  .fitascFullscreenPanelStand .standPresentationType {
+    font-size: clamp(20px, 5.8vw, 32px);
   }
 
   .fitascFullscreenPanelStand .standNavigation button {
