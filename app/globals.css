@@ -1921,117 +1921,190 @@ html, body {
   inset: 0;
   z-index: 100;
   display: flex;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   background:
-    radial-gradient(circle at 16% 0%, rgba(216, 165, 58, 0.16), transparent 30%),
-    rgba(5, 7, 11, 0.97);
-  padding: clamp(10px, 2vw, 22px);
+    radial-gradient(circle at 16% 0%, rgba(216, 165, 58, 0.14), transparent 30%),
+    rgba(5, 7, 11, 0.98);
+  padding: clamp(6px, 1.2vw, 14px);
 }
 
 .fitascFullscreenPanel {
   display: flex;
   flex-direction: column;
   width: 100%;
+  height: 100%;
   max-width: 1280px;
   max-height: 100%;
   margin: auto;
   overflow: hidden;
   border: 1px solid var(--lineStrong);
-  border-radius: clamp(16px, 2.8vw, 26px);
+  border-radius: clamp(12px, 2vw, 20px);
   background: linear-gradient(180deg, rgba(18, 25, 35, 0.98), rgba(7, 10, 15, 0.98));
   box-shadow: 0 22px 80px rgba(0, 0, 0, 0.62);
 }
 
 .fitascFullscreenHeader {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: clamp(14px, 2vw, 22px);
+  gap: 10px;
+  flex: 0 0 auto;
+  min-height: 46px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--line);
 }
 
-.fitascFullscreenActions {
+.fitascFullscreenHeader > div {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fitascFullscreenHeader .eyebrow {
+  display: none;
+}
+
+.fitascFullscreenHeader h2 {
+  flex: 0 0 auto;
+  font-size: clamp(16px, 3.6vw, 22px);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.fitascFullscreenHeader .small {
+  font-size: clamp(11px, 2vw, 13px);
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fitascCloseIcon {
-  width: 42px;
-  min-width: 42px;
+  width: 40px;
+  min-width: 40px;
+  min-height: 38px;
   padding: 0;
   font-size: 24px;
   line-height: 1;
 }
 
 .fitascFullscreenBody {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: clamp(12px, 2vw, 22px);
+  padding: clamp(8px, 1.5vw, 14px);
 }
 
 .schemeOverviewFullscreen {
   min-width: min(820px, 100%);
-  gap: clamp(6px, 1vw, 10px);
+  min-height: 100%;
+  gap: clamp(4px, 0.8vw, 8px);
 }
 
 .schemeOverviewFullscreen .schemeGridHeader,
 .schemeOverviewFullscreen .schemeRowCard {
-  grid-template-columns: minmax(118px, 0.75fr) repeat(5, minmax(86px, 1fr));
-  gap: clamp(5px, 0.8vw, 9px);
+  grid-template-columns: minmax(104px, 0.7fr) repeat(5, minmax(72px, 1fr));
+  gap: clamp(4px, 0.7vw, 7px);
 }
 
 .schemeOverviewFullscreen .schemeGridHeader strong,
 .schemeOverviewFullscreen .schemePresentationLabel,
 .schemeOverviewFullscreen .schemeMachineCell {
-  padding: clamp(8px, 1.2vw, 14px) clamp(6px, 1vw, 12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(6px, 1vw, 11px) clamp(5px, 0.8vw, 10px);
 }
 
 .schemeOverviewFullscreen .schemePresentationLabel,
 .schemeOverviewFullscreen .schemeMachineCell {
-  font-size: clamp(14px, 1.8vw, 20px);
-}
-
-.fitascRotateHint {
-  margin-top: 6px !important;
+  font-size: clamp(13px, 1.7vw, 19px);
+  line-height: 1.05;
 }
 
 @media (orientation: landscape) {
   .fitascFullscreenOverlay {
-    padding: 8px;
+    padding: 4px;
+  }
+
+  .fitascFullscreenPanel {
+    border-radius: 12px;
   }
 
   .fitascFullscreenHeader {
-    padding-block: 10px;
+    min-height: 34px;
+    padding: 4px 6px;
+  }
+
+  .fitascFullscreenHeader h2 {
+    font-size: clamp(15px, 4.2vh, 18px);
+  }
+
+  .fitascFullscreenHeader .small {
+    font-size: clamp(10px, 3vh, 12px);
+  }
+
+  .fitascCloseIcon {
+    width: 34px;
+    min-width: 34px;
+    min-height: 30px;
+    border-radius: 10px;
+    font-size: 22px;
   }
 
   .fitascFullscreenBody {
-    padding-block: 10px;
+    overflow: hidden;
+    padding: 4px;
+  }
+
+  .schemeOverviewFullscreen {
+    height: 100%;
+    min-width: 0;
+    gap: 3px;
+    grid-auto-rows: minmax(0, 1fr);
+  }
+
+  .schemeOverviewFullscreen .schemeGridHeader,
+  .schemeOverviewFullscreen .schemeRowCard {
+    grid-template-columns: minmax(76px, 0.62fr) repeat(5, minmax(54px, 1fr));
+    gap: 3px;
+    min-height: 0;
+  }
+
+  .schemeOverviewFullscreen .schemeGridHeader strong,
+  .schemeOverviewFullscreen .schemePresentationLabel,
+  .schemeOverviewFullscreen .schemeMachineCell {
+    min-height: 0;
+    border-radius: 7px;
+    padding: 2px 4px;
+  }
+
+  .schemeOverviewFullscreen .schemeGridHeader {
+    font-size: clamp(9px, 2.8vh, 11px);
   }
 
   .schemeOverviewFullscreen .schemePresentationLabel,
   .schemeOverviewFullscreen .schemeMachineCell {
-    font-size: clamp(13px, 2.2vh, 18px);
+    font-size: clamp(10px, 4vh, 15px);
+  }
+
+  .schemeOverviewFullscreen .schemePresentationLabel {
+    overflow-wrap: normal;
   }
 }
 
 @media (max-width: 720px) {
-  .schemeViewHeader,
-  .fitascFullscreenHeader {
+  .schemeViewHeader {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .schemeViewHeader button,
-  .fitascFullscreenActions button:not(.fitascCloseIcon) {
+  .schemeViewHeader button {
     width: 100%;
-  }
-
-  .fitascFullscreenActions {
-    width: 100%;
-    justify-content: space-between;
   }
 
   .fitascFullscreenBody {
@@ -2040,5 +2113,22 @@ html, body {
 
   .schemeOverviewFullscreen {
     min-width: 620px;
+  }
+
+  .fitascFullscreenHeader {
+    gap: 6px;
+  }
+
+}
+
+@media (max-width: 720px) and (orientation: landscape) {
+  .fitascFullscreenHeader > div {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .schemeOverviewFullscreen {
+    min-width: 0;
   }
 }

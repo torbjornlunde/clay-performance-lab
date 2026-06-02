@@ -110,25 +110,15 @@ export default function FitascPage() {
                 <p className="eyebrow">FITASC Compak fullscreen</p>
                 <h2 id="fitasc-fullscreen-title">{schemeTitle}</h2>
                 <p className="small muted">{schemeDescription}</p>
-                <p className="small muted fitascRotateHint">Rotate your phone for a wider view.</p>
               </div>
-              <div className="fitascFullscreenActions">
-                <button
-                  type="button"
-                  className="secondary smallButton fitascCloseIcon"
-                  onClick={() => setIsFullscreen(false)}
-                  aria-label="Close fullscreen scheme view"
-                >
-                  ×
-                </button>
-                <button
-                  type="button"
-                  className="smallButton"
-                  onClick={() => setIsFullscreen(false)}
-                >
-                  Exit fullscreen
-                </button>
-              </div>
+              <button
+                type="button"
+                className="secondary smallButton fitascCloseIcon"
+                onClick={() => setIsFullscreen(false)}
+                aria-label="Close fullscreen"
+              >
+                ×
+              </button>
             </div>
             <div className="fitascFullscreenBody">
               {loading ? <p>Loading...</p> : renderSchemeOverview("schemeOverviewFullscreen")}
