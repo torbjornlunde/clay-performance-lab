@@ -1,8 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getAllSchemeNumbers, getCompakSchemeType, getExpectedPresentationRows, getMachineLabelFromRow, getPresentationLabel, type CompakSchemeRow } from "@/lib/fitasc/compakSchemes";
 import { supabase } from "@/lib/supabase/client";
+
+type ScreenWakeLockSentinel = EventTarget & {
+  released: boolean;
+  release: () => Promise<void>;
+};
+
+type WakeLockNavigator = Navigator & {
+  wakeLock?: {
+    request: (type: "screen") => Promise<ScreenWakeLockSentinel>;
+  };
+};
 
 export default function FitascPage() {
   const [scheme, setScheme] = useState(1);
@@ -11,6 +22,10 @@ export default function FitascPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewMode, setViewMode] = useState<"full" | "stand">("full");
   const [selectedStand, setSelectedStand] = useState(1);
+  const [supportsWakeLock, setSupportsWakeLock] = useState(false);
+  const [keepScreenAwake, setKeepScreenAwake] = useState(false);
+  const [wakeLockActive, setWakeLockActive] = useState(false);
+  const wakeLockRef = useRef<ScreenWakeLockSentinel | null>(null);
   const standNumbers = [1, 2, 3, 4, 5];
   const expectedRows = useMemo(() => getExpectedPresentationRows(scheme), [scheme]);
   const schemeTitle = `Scheme ${scheme}`;
@@ -25,6 +40,10 @@ export default function FitascPage() {
     }
     load();
   }, [scheme]);
+
+  useEffect(() => {
+    setSupportsWakeLock("wakeLock" in navigator);
+  }, []);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -46,6 +65,66 @@ export default function FitascPage() {
     };
   }, [isFullscreen]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    function clearWakeLockState() {
+      wakeLockRef.current = null;
+      setWakeLockActive(false);
+    }
+
+    async function releaseWakeLock() {
+      const wakeLock = wakeLockRef.current;
+      clearWakeLockState();
+      if (!wakeLock || wakeLock.released) return;
+
+      try {
+        await wakeLock.release();
+      } catch {
+        // Wake lock release can fail if the browser already released it.
+      }
+    }
+
+    async function requestWakeLock() {
+      if (!isFullscreen || !keepScreenAwake || document.visibilityState !== "visible") return;
+      if (wakeLockRef.current && !wakeLockRef.current.released) return;
+
+      const wakeLock = (navigator as WakeLockNavigator).wakeLock;
+      if (!wakeLock) return;
+
+      try {
+        const lock = await wakeLock.request("screen");
+        if (cancelled) {
+          await lock.release().catch(() => undefined);
+          return;
+        }
+
+        wakeLockRef.current = lock;
+        setWakeLockActive(true);
+        lock.addEventListener("release", clearWakeLockState, { once: true });
+      } catch {
+        clearWakeLockState();
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void requestWakeLock();
+      } else {
+        clearWakeLockState();
+      }
+    }
+
+    void requestWakeLock();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      void releaseWakeLock();
+    };
+  }, [isFullscreen, keepScreenAwake]);
+
   function renderViewModeToggle(className = "") {
     return (
       <div className={`schemeModeToggle ${className}`.trim()} role="group" aria-label="Scheme view mode">
@@ -66,6 +145,21 @@ export default function FitascPage() {
           Stand view
         </button>
       </div>
+    );
+  }
+
+  function renderWakeLockToggle() {
+    if (!supportsWakeLock) return null;
+
+    return (
+      <label className={`wakeLockToggle ${wakeLockActive ? "wakeLockToggleActive" : ""}`.trim()}>
+        <input
+          type="checkbox"
+          checked={keepScreenAwake}
+          onChange={(event) => setKeepScreenAwake(event.target.checked)}
+        />
+        Keep screen awake
+      </label>
     );
   }
 
@@ -95,6 +189,25 @@ export default function FitascPage() {
   }
 
 
+  function renderStandSelector() {
+    return (
+      <div className="standDirectSelector" role="group" aria-label="Select stand">
+        {standNumbers.map((standNumber) => (
+          <button
+            type="button"
+            className={standNumber === selectedStand ? "standNumberButton" : "secondary standNumberButton"}
+            key={standNumber}
+            onClick={() => setSelectedStand(standNumber)}
+            aria-label={`Show Stand ${standNumber}`}
+            aria-pressed={standNumber === selectedStand}
+          >
+            {standNumber}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   function renderStandView(className = "") {
     const isFirstStand = selectedStand === standNumbers[0];
     const isLastStand = selectedStand === standNumbers[standNumbers.length - 1];
@@ -102,25 +215,12 @@ export default function FitascPage() {
     return (
       <section className={`standView ${className}`.trim()} aria-label={`${schemeTitle} Stand ${selectedStand}`}>
         <div className="standViewTopline">
-          <div>
-            <p className="eyebrow">Stand view</p>
+          <div className="standViewTitle">
+            <span className="eyebrow">Stand view</span>
             <h3>Stand {selectedStand}</h3>
-            <p className="small muted">Only the targets for Stand {selectedStand} are shown.</p>
+            <span className="small muted">{schemeTitle}</span>
           </div>
-          <div className="standDirectSelector" role="group" aria-label="Select stand">
-            {standNumbers.map((standNumber) => (
-              <button
-                type="button"
-                className={standNumber === selectedStand ? "standNumberButton" : "secondary standNumberButton"}
-                key={standNumber}
-                onClick={() => setSelectedStand(standNumber)}
-                aria-label={`Show Stand ${standNumber}`}
-                aria-pressed={standNumber === selectedStand}
-              >
-                {standNumber}
-              </button>
-            ))}
-          </div>
+          {renderStandSelector()}
         </div>
 
         <div className="standPresentationList">
@@ -128,8 +228,8 @@ export default function FitascPage() {
             const row = rows.find((item) => item.event_number === rowIndex + 1 && item.plate_number === selectedStand);
             return (
               <div className="standPresentationCard" key={`${presentation}-${rowIndex}`}>
-                <span className="standPresentationType">{getPresentationLabel(presentation)}</span>
                 <strong className="standMachineLabel">{getMachineLabelFromRow(row)}</strong>
+                <span className="standPresentationType">{getPresentationLabel(presentation)}</span>
               </div>
             );
           })}
@@ -203,9 +303,10 @@ export default function FitascPage() {
               <div>
                 <p className="eyebrow">FITASC Compak fullscreen</p>
                 <h2 id="fitasc-fullscreen-title">{schemeTitle}</h2>
-                <p className="small muted">{schemeDescription}</p>
+                <p className="small muted">{viewMode === "stand" ? `Stand ${selectedStand}/${standNumbers.length}` : schemeDescription}</p>
               </div>
               <div className="fitascFullscreenActions">
+                {renderWakeLockToggle()}
                 {renderViewModeToggle("schemeModeToggleCompact")}
                 <button
                   type="button"
@@ -217,7 +318,7 @@ export default function FitascPage() {
                 </button>
               </div>
             </div>
-            <div className="fitascFullscreenBody">
+            <div className={`fitascFullscreenBody ${viewMode === "stand" ? "fitascFullscreenBodyStand" : ""}`.trim()}>
               {loading ? <p>Loading...</p> : renderSelectedSchemeView("schemeOverviewFullscreen")}
             </div>
           </div>
