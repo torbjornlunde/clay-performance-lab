@@ -11,13 +11,9 @@ export default function FitascPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewMode, setViewMode] = useState<"full" | "stand">("full");
   const [selectedStand, setSelectedStand] = useState(1);
-  const [swipeOffset, setSwipeOffset] = useState(0);
-  const [swipeProgress, setSwipeProgress] = useState(0);
-  const [isSwipeSettling, setIsSwipeSettling] = useState(false);
   const [standSwipeDirection, setStandSwipeDirection] = useState<"next" | "previous" | null>(null);
   const swipeStartRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
   const swipeAnimationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const swipeSettleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const standNumbers = [1, 2, 3, 4, 5];
   const expectedRows = useMemo(() => getExpectedPresentationRows(scheme), [scheme]);
   const schemeTitle = `Scheme ${scheme}`;
@@ -58,9 +54,6 @@ export default function FitascPage() {
       if (swipeAnimationTimeoutRef.current) {
         clearTimeout(swipeAnimationTimeoutRef.current);
       }
-      if (swipeSettleTimeoutRef.current) {
-        clearTimeout(swipeSettleTimeoutRef.current);
-      }
     };
   }, []);
 
@@ -84,7 +77,6 @@ export default function FitascPage() {
     const nextStand = Math.min(standNumbers[standNumbers.length - 1], Math.max(standNumbers[0], selectedStand + delta));
     if (nextStand === selectedStand) return false;
 
-    setSwipeProgress(0);
     setSelectedStand(nextStand);
     playStandTransition(delta > 0 ? "next" : "previous");
     vibrateOnStandChange();
@@ -101,65 +93,22 @@ export default function FitascPage() {
 
   function handleStandSwipeStart(event: PointerEvent<HTMLDivElement>) {
     swipeStartRef.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
-    setIsSwipeSettling(false);
-    setSwipeProgress(0);
     setStandSwipeDirection(null);
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-
-  function handleStandSwipeMove(event: PointerEvent<HTMLDivElement>) {
-    const swipeStart = swipeStartRef.current;
-    if (!swipeStart || swipeStart.pointerId !== event.pointerId) return;
-
-    const deltaX = event.clientX - swipeStart.x;
-    const deltaY = event.clientY - swipeStart.y;
-    if (Math.abs(deltaY) > Math.abs(deltaX) * 1.15 && Math.abs(deltaY) > 10) return;
-
-    if (Math.abs(deltaX) > 6) {
-      event.preventDefault();
-      const isBlockedEdge = (selectedStand === standNumbers[0] && deltaX > 0) || (selectedStand === standNumbers[standNumbers.length - 1] && deltaX < 0);
-      const resistedOffset = isBlockedEdge ? deltaX * 0.28 : deltaX;
-      const boundedOffset = Math.max(-118, Math.min(118, resistedOffset));
-      setSwipeOffset(boundedOffset);
-      setSwipeProgress(Math.min(1, Math.abs(boundedOffset) / 96));
-    }
   }
 
   function handleStandSwipeEnd(event: PointerEvent<HTMLDivElement>) {
     const swipeStart = swipeStartRef.current;
     swipeStartRef.current = null;
-    setIsSwipeSettling(true);
-    setSwipeProgress(0);
-    if (swipeSettleTimeoutRef.current) {
-      clearTimeout(swipeSettleTimeoutRef.current);
-    }
-    swipeSettleTimeoutRef.current = setTimeout(() => setIsSwipeSettling(false), 230);
-    if (!swipeStart || swipeStart.pointerId !== event.pointerId) {
-      setSwipeOffset(0);
-      return;
-    }
-
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
+    if (!swipeStart || swipeStart.pointerId !== event.pointerId) return;
 
     const deltaX = event.clientX - swipeStart.x;
     const deltaY = event.clientY - swipeStart.y;
     const direction = deltaX < 0 ? 1 : -1;
     const canChange = direction > 0 ? selectedStand < standNumbers[standNumbers.length - 1] : selectedStand > standNumbers[0];
-    const isHorizontalSwipe = Math.abs(deltaX) >= 62 && Math.abs(deltaX) > Math.abs(deltaY) * 1.35;
-    if (!isHorizontalSwipe || !canChange) {
-      setSwipeOffset(0);
-      return;
-    }
+    const isHorizontalSwipe = Math.abs(deltaX) >= 64 && Math.abs(deltaX) > Math.abs(deltaY) * 1.35;
+    if (!isHorizontalSwipe || !canChange) return;
 
-    setSwipeOffset(direction > 0 ? -140 : 140);
-    swipeSettleTimeoutRef.current = setTimeout(() => {
-      changeStandBy(direction as -1 | 1);
-      setSwipeOffset(direction > 0 ? 96 : -96);
-      requestAnimationFrame(() => setSwipeOffset(0));
-      swipeSettleTimeoutRef.current = setTimeout(() => setIsSwipeSettling(false), 210);
-    }, 105);
+    changeStandBy(direction as -1 | 1);
   }
 
   function renderViewModeToggle(className = "") {
@@ -240,28 +189,18 @@ export default function FitascPage() {
         </div>
 
         <div
-          className={`standPresentationList ${isSwipeSettling ? "standPresentationListSettling" : ""} ${standSwipeDirection ? `standSwipe${standSwipeDirection === "next" ? "Next" : "Previous"}` : ""}`.trim()}
-          style={{
-            "--stand-swipe-offset": `${swipeOffset}px`,
-            "--stand-swipe-scale": `${1 - swipeProgress * 0.018}`,
-            "--stand-swipe-opacity": `${1 - swipeProgress * 0.1}`,
-          } as CSSProperties}
+          className={`standPresentationList ${standSwipeDirection ? `standSwipe${standSwipeDirection === "next" ? "Next" : "Previous"}` : ""}`.trim()}
+          style={{ "--stand-row-count": expectedRows.length } as CSSProperties}
           onPointerDown={handleStandSwipeStart}
-          onPointerMove={handleStandSwipeMove}
-          onPointerCancel={() => {
-            swipeStartRef.current = null;
-            setSwipeOffset(0);
-            setSwipeProgress(0);
-            setIsSwipeSettling(true);
-            window.setTimeout(() => setIsSwipeSettling(false), 180);
-          }}
+          onPointerCancel={() => { swipeStartRef.current = null; }}
           onPointerUp={handleStandSwipeEnd}
         >
           {expectedRows.map((presentation, rowIndex) => {
             const row = rows.find((item) => item.event_number === rowIndex + 1 && item.plate_number === selectedStand);
+            const machineLabel = getMachineLabelFromRow(row);
             return (
               <div className="standPresentationCard" key={`${presentation}-${rowIndex}`}>
-                <strong className="standMachineLabel">{getMachineLabelFromRow(row)}</strong>
+                <strong className={machineLabel.includes("+") ? "standMachineLabel standMachineLabelPair" : "standMachineLabel"}>{machineLabel}</strong>
                 <span className="standPresentationType">{getPresentationLabel(presentation)}</span>
               </div>
             );
