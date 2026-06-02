@@ -166,11 +166,28 @@ function displayedTotalTargets(session: Row) {
   return session.total_targets || null;
 }
 
-function chartBounds(percentages: number[]) {
-  const highest = Math.max(...percentages);
-  const lowest = Math.min(...percentages);
-  const maxPercentage = Math.max(100, Math.ceil(highest / 5) * 5);
-  const minPercentage = lowest < 50 ? Math.min(50, Math.floor(lowest / 5) * 5 - 5) : 50;
+function adaptivePerformanceLowerBound(lowestPercentage: number) {
+  if (lowestPercentage >= 90) return 80;
+  if (lowestPercentage >= 80) return 70;
+  if (lowestPercentage >= 70) return 60;
+  if (lowestPercentage >= 60) return 50;
+  if (lowestPercentage >= 0) return 0;
+  return Math.floor(lowestPercentage / 10) * 10;
+}
+
+function chartBounds(percentages: number[], visiblePerformancePercentages = percentages) {
+  const validPercentages = percentages.filter(isUsableNumber);
+  const validVisiblePerformancePercentages = visiblePerformancePercentages.filter(isUsableNumber);
+
+  if (validPercentages.length === 0 || validVisiblePerformancePercentages.length === 0) {
+    return null;
+  }
+
+  const highest = Math.max(...validPercentages);
+  const lowestVisiblePerformance = Math.min(...validVisiblePerformancePercentages);
+  const maxPercentage = Math.max(100, Math.ceil(highest / 10) * 10);
+  const minPercentage = adaptivePerformanceLowerBound(lowestVisiblePerformance);
+
   return { minPercentage, maxPercentage, range: Math.max(maxPercentage - minPercentage, 1) };
 }
 
@@ -330,7 +347,11 @@ function PerformanceTrendCard({
       item.percentage,
       rollingAverages[index] ?? item.percentage,
     ]);
-    const { maxPercentage, range } = chartBounds(chartValues);
+    const bounds = chartBounds(chartValues, filteredScored.map((item) => item.percentage));
+
+    if (!bounds) return [];
+
+    const { maxPercentage, range } = bounds;
 
     return filteredScored.map((item, index) => {
       const rollingAveragePercentage = rollingAverages[index] ?? item.percentage;
@@ -359,7 +380,12 @@ function PerformanceTrendCard({
   const selectedPoint = points.find((point) => point.id === selectedPointId) || null;
   const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
   const rollingAveragePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.rollingAverageY}`).join(" ");
-  const bounds = points.length > 0 ? chartBounds(points.flatMap((point) => [point.performancePercentage, point.rollingAveragePercentage])) : null;
+  const bounds = points.length > 0
+    ? chartBounds(
+        points.flatMap((point) => [point.performancePercentage, point.rollingAveragePercentage]),
+        points.map((point) => point.performancePercentage),
+      )
+    : null;
   const width = 720;
   const height = 180;
   const padding = 30;
@@ -423,6 +449,7 @@ function PerformanceTrendCard({
             <text x={padding} y={Math.max(referenceY - 8, 14)} className="chartText">100%</text>
             <line x1={padding} x2={padding} y1={padding} y2={baselineY} className="chartAxis" />
             <line x1={padding} x2={width - padding} y1={baselineY} y2={baselineY} className="chartAxis" />
+            {bounds ? <text x={padding} y={baselineY - 8} className="chartText">{bounds.minPercentage}%</text> : null}
             <path d={rollingAveragePath} className="chartRollingLine" />
             <path d={path} className="chartLine" />
             {points.map((point) => (
@@ -441,6 +468,7 @@ function PerformanceTrendCard({
               </g>
             ))}
           </svg>
+          <p className="dashboardScaleNote">Scale adjusted to highlight variation.</p>
           {selectedPoint && (
             <div className="chartPreview" onClick={(event) => event.stopPropagation()}>
               <strong>{selectedPoint.name}</strong>
