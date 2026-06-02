@@ -12,10 +12,12 @@ export default function FitascPage() {
   const [viewMode, setViewMode] = useState<"full" | "stand">("full");
   const [selectedStand, setSelectedStand] = useState(1);
   const [swipeOffset, setSwipeOffset] = useState(0);
+  const [swipeProgress, setSwipeProgress] = useState(0);
   const [isSwipeSettling, setIsSwipeSettling] = useState(false);
   const [standSwipeDirection, setStandSwipeDirection] = useState<"next" | "previous" | null>(null);
   const swipeStartRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
   const swipeAnimationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const swipeSettleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const standNumbers = [1, 2, 3, 4, 5];
   const expectedRows = useMemo(() => getExpectedPresentationRows(scheme), [scheme]);
   const schemeTitle = `Scheme ${scheme}`;
@@ -56,6 +58,9 @@ export default function FitascPage() {
       if (swipeAnimationTimeoutRef.current) {
         clearTimeout(swipeAnimationTimeoutRef.current);
       }
+      if (swipeSettleTimeoutRef.current) {
+        clearTimeout(swipeSettleTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -79,6 +84,7 @@ export default function FitascPage() {
     const nextStand = Math.min(standNumbers[standNumbers.length - 1], Math.max(standNumbers[0], selectedStand + delta));
     if (nextStand === selectedStand) return false;
 
+    setSwipeProgress(0);
     setSelectedStand(nextStand);
     playStandTransition(delta > 0 ? "next" : "previous");
     vibrateOnStandChange();
@@ -96,6 +102,7 @@ export default function FitascPage() {
   function handleStandSwipeStart(event: PointerEvent<HTMLDivElement>) {
     swipeStartRef.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
     setIsSwipeSettling(false);
+    setSwipeProgress(0);
     setStandSwipeDirection(null);
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -110,7 +117,11 @@ export default function FitascPage() {
 
     if (Math.abs(deltaX) > 6) {
       event.preventDefault();
-      setSwipeOffset(Math.max(-90, Math.min(90, deltaX)));
+      const isBlockedEdge = (selectedStand === standNumbers[0] && deltaX > 0) || (selectedStand === standNumbers[standNumbers.length - 1] && deltaX < 0);
+      const resistedOffset = isBlockedEdge ? deltaX * 0.28 : deltaX;
+      const boundedOffset = Math.max(-118, Math.min(118, resistedOffset));
+      setSwipeOffset(boundedOffset);
+      setSwipeProgress(Math.min(1, Math.abs(boundedOffset) / 96));
     }
   }
 
@@ -118,9 +129,15 @@ export default function FitascPage() {
     const swipeStart = swipeStartRef.current;
     swipeStartRef.current = null;
     setIsSwipeSettling(true);
-    setSwipeOffset(0);
-    window.setTimeout(() => setIsSwipeSettling(false), 180);
-    if (!swipeStart || swipeStart.pointerId !== event.pointerId) return;
+    setSwipeProgress(0);
+    if (swipeSettleTimeoutRef.current) {
+      clearTimeout(swipeSettleTimeoutRef.current);
+    }
+    swipeSettleTimeoutRef.current = setTimeout(() => setIsSwipeSettling(false), 230);
+    if (!swipeStart || swipeStart.pointerId !== event.pointerId) {
+      setSwipeOffset(0);
+      return;
+    }
 
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -128,10 +145,21 @@ export default function FitascPage() {
 
     const deltaX = event.clientX - swipeStart.x;
     const deltaY = event.clientY - swipeStart.y;
-    const isHorizontalSwipe = Math.abs(deltaX) >= 56 && Math.abs(deltaX) > Math.abs(deltaY) * 1.35;
-    if (!isHorizontalSwipe) return;
+    const direction = deltaX < 0 ? 1 : -1;
+    const canChange = direction > 0 ? selectedStand < standNumbers[standNumbers.length - 1] : selectedStand > standNumbers[0];
+    const isHorizontalSwipe = Math.abs(deltaX) >= 62 && Math.abs(deltaX) > Math.abs(deltaY) * 1.35;
+    if (!isHorizontalSwipe || !canChange) {
+      setSwipeOffset(0);
+      return;
+    }
 
-    changeStandBy(deltaX < 0 ? 1 : -1);
+    setSwipeOffset(direction > 0 ? -140 : 140);
+    swipeSettleTimeoutRef.current = setTimeout(() => {
+      changeStandBy(direction as -1 | 1);
+      setSwipeOffset(direction > 0 ? 96 : -96);
+      requestAnimationFrame(() => setSwipeOffset(0));
+      swipeSettleTimeoutRef.current = setTimeout(() => setIsSwipeSettling(false), 210);
+    }, 105);
   }
 
   function renderViewModeToggle(className = "") {
@@ -213,12 +241,17 @@ export default function FitascPage() {
 
         <div
           className={`standPresentationList ${isSwipeSettling ? "standPresentationListSettling" : ""} ${standSwipeDirection ? `standSwipe${standSwipeDirection === "next" ? "Next" : "Previous"}` : ""}`.trim()}
-          style={{ "--stand-swipe-offset": `${swipeOffset}px` } as CSSProperties}
+          style={{
+            "--stand-swipe-offset": `${swipeOffset}px`,
+            "--stand-swipe-scale": `${1 - swipeProgress * 0.018}`,
+            "--stand-swipe-opacity": `${1 - swipeProgress * 0.1}`,
+          } as CSSProperties}
           onPointerDown={handleStandSwipeStart}
           onPointerMove={handleStandSwipeMove}
           onPointerCancel={() => {
             swipeStartRef.current = null;
             setSwipeOffset(0);
+            setSwipeProgress(0);
             setIsSwipeSettling(true);
             window.setTimeout(() => setIsSwipeSettling(false), 180);
           }}
