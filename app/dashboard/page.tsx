@@ -632,20 +632,20 @@ export default function DashboardPage() {
         <div>
           <p className="eyebrow">Shooter workspace</p>
           <h2>Dashboard</h2>
-          <p className="dashboardHeroCopy">Log sessions, import scores, or open schemes in seconds.</p>
+          <p className="dashboardHeroCopy">Log sessions, save quick results, or open schemes in seconds.</p>
         </div>
         <div className="dashboardPrimaryActions">
           <Link href="/sessions/new" className="dashboardActionCard primaryAction">
             <span>New shooting log</span>
             <small>Track misses and training patterns.</small>
           </Link>
-          <Link href="/import/leirdue" className="dashboardActionCard secondaryAction">
-            <span>Import from Leirdue</span>
-            <small>Find old competition results.</small>
+          <Link href="/results/new" className="dashboardActionCard secondaryAction">
+            <span>Quick result</span>
+            <small>Save a score in seconds.</small>
           </Link>
           <Link href="/fitasc" className="dashboardActionCard secondaryAction">
             <span>FITASC schemes</span>
-            <small>Open Compak schemes fast at the ground.</small>
+            <small>Open schemes fast at the ground.</small>
           </Link>
         </div>
       </div>
@@ -724,7 +724,7 @@ export default function DashboardPage() {
         </div>
         <div className="moreActionsGrid subduedActionsGrid">
           <Link href="/import/leirdue" className="compactAction">
-            <span>Import from Leirdue.net</span>
+            <span>Import from Leirdue</span>
             <small>Find old competition results.</small>
           </Link>
           <Link href="/fitasc" className="compactAction"><span>FITASC schemes</span></Link>
