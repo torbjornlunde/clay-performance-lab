@@ -3361,3 +3361,223 @@ html, body {
     font-size: clamp(9px, 2.6vh, 11px);
   }
 }
+
+.sessionSummaryCard {
+  display: grid;
+  gap: 12px;
+}
+
+.sessionSummaryHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.sessionSummaryHeader h2,
+.actionsCard h2 {
+  margin-bottom: 0;
+}
+
+.metadataLine {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.scoreSummaryLine {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.scoreSummaryLine span,
+.compactMetricTile span,
+.detailRow span {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.scoreSummaryLine strong {
+  color: #fff;
+  font-size: clamp(28px, 10vw, 48px);
+  line-height: 1;
+}
+
+.supportingSummaryLine {
+  margin: 0;
+}
+
+.supportingSummaryLine strong {
+  color: var(--text);
+}
+
+.compactNotice {
+  background: rgba(216, 164, 58, 0.09);
+  border: 1px solid rgba(216, 165, 58, 0.3);
+  border-left: 4px solid var(--gold);
+  border-radius: 14px;
+  color: #f6e4b7;
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 9px 11px;
+}
+
+.compactMetricGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.compactMetricTile,
+.detailRow {
+  background: rgba(10, 16, 24, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 11px;
+}
+
+.compactMetricTile strong,
+.detailRow strong {
+  color: #fff;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.primaryActionGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1.2fr 1fr 1fr;
+}
+
+.sessionDetailSections {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.detailAccordion {
+  background: linear-gradient(180deg, rgba(21, 30, 42, 0.96), rgba(13, 20, 29, 0.96));
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.detailAccordion summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-weight: 900;
+  gap: 10px;
+  justify-content: space-between;
+  list-style: none;
+  min-height: 52px;
+  padding: 14px 16px;
+}
+
+.detailAccordion summary::-webkit-details-marker {
+  display: none;
+}
+
+.detailAccordion summary::after {
+  color: var(--gold2);
+  content: "+";
+  font-size: 20px;
+  line-height: 1;
+}
+
+.detailAccordion[open] summary::after {
+  content: "−";
+}
+
+.detailAccordionBody {
+  border-top: 1px solid var(--line);
+  padding: 12px;
+}
+
+.compactMissList,
+.targetDefinitionList {
+  display: grid;
+  gap: 10px;
+}
+
+.compactMissCard {
+  background: rgba(10, 16, 24, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.missCompactMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.missCompactMeta span {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 6px 9px;
+}
+
+.missCompactMeta strong {
+  color: var(--text);
+}
+
+.missCompactNote,
+.detailNote {
+  margin-bottom: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.detailRowsGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.singleColumnRows {
+  grid-template-columns: 1fr;
+}
+
+.compactEmptyState {
+  margin: 0;
+}
+
+@media (min-width: 760px) {
+  .compactMetricGrid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .sessionSummaryCard,
+  .actionsCard {
+    padding: 14px;
+  }
+
+  .scoreSummaryLine,
+  .primaryActionGrid,
+  .detailRowsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .primaryActionGrid .button {
+    width: 100%;
+  }
+
+  .scoreSummaryLine strong {
+    font-size: clamp(26px, 11vw, 38px);
+  }
+}
