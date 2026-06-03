@@ -7,7 +7,7 @@ export default function HomePage() {
         <div>
           <p className="eyebrow">Clay Performance Lab</p>
           <h2>Your clay shooting results, schemes, and training insights in one place.</h2>
-          <p>Log training and competition misses, save result-only scores, and review performance against winning scores.</p>
+          <p>Plan sessions, view schemes, log misses, save results, and track your progress over time.</p>
         </div>
         <div className="btns heroActions">
           <Link href="/login" className="button">
