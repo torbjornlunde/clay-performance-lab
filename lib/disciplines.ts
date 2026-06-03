@@ -10,6 +10,7 @@ export const DISCIPLINE_OPTIONS = [
   LEIRDUESTI,
   "FITASC Sporting",
   "Sporting",
+  "Jegertrap / Nordisk trap",
   "Trap",
   "Skeet",
   "Other",

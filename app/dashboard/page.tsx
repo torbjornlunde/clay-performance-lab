@@ -723,6 +723,10 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="moreActionsGrid subduedActionsGrid">
+          <Link href="/profile" className="compactAction">
+            <span>Shooter profile</span>
+            <small>Manage your name, country, and disciplines.</small>
+          </Link>
           <Link href="/import/leirdue" className="compactAction">
             <span>Import from Leirdue</span>
             <small>Find old competition results.</small>

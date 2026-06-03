@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
+import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase/client";
 
 export default function NewResultPage() {
@@ -19,6 +20,34 @@ export default function NewResultPage() {
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const [myDisciplines, setMyDisciplines] = useState<string[]>([]);
+  const disciplineOptions = useMemo(
+    () => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, myDisciplines),
+    [myDisciplines],
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadPreferredDisciplines() {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!active || !userData.user) return;
+
+      const { data } = await supabase
+        .from("shooter_profiles")
+        .select("my_disciplines")
+        .eq("user_id", userData.user.id)
+        .maybeSingle<Pick<ShooterProfile, "my_disciplines">>();
+
+      if (active) setMyDisciplines(normalizeDisciplines(data?.my_disciplines));
+    }
+
+    loadPreferredDisciplines();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,7 +101,7 @@ export default function NewResultPage() {
           <div>
             <label>Discipline</label>
             <select value={discipline} onChange={(e) => setDiscipline(e.target.value)}>
-              {DISCIPLINE_OPTIONS.map((option) => (
+              {disciplineOptions.map((option) => (
                 <option key={option}>{option}</option>
               ))}
             </select>

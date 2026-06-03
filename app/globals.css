@@ -3586,3 +3586,37 @@ html, body {
     font-size: clamp(26px, 11vw, 38px);
   }
 }
+
+.profileFieldGroup {
+  margin-top: 16px;
+}
+
+.disciplineChoiceGrid {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-top: 9px;
+}
+
+.disciplineChoice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 50px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(10, 16, 24, 0.78);
+  color: var(--text);
+}
+
+.disciplineChoice input {
+  width: 18px;
+  min-height: 18px;
+  flex: 0 0 auto;
+}
+
+.disciplineChoice span {
+  font-weight: 850;
+}

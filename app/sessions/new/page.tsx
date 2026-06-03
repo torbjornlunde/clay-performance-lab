@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DISCIPLINE_OPTIONS, isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
+import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 import { defaultStartPlateForShooter, getSchemeOptions, plateRotation } from "@/lib/fitasc/schemes";
 import { supabase } from "@/lib/supabase/client";
 
@@ -50,6 +51,34 @@ export default function NewSessionPage() {
   const [winningScore, setWinningScore] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const [myDisciplines, setMyDisciplines] = useState<string[]>([]);
+  const disciplineOptions = useMemo(
+    () => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, myDisciplines),
+    [myDisciplines],
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadPreferredDisciplines() {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!active || !userData.user) return;
+
+      const { data } = await supabase
+        .from("shooter_profiles")
+        .select("my_disciplines")
+        .eq("user_id", userData.user.id)
+        .maybeSingle<Pick<ShooterProfile, "my_disciplines">>();
+
+      if (active) setMyDisciplines(normalizeDisciplines(data?.my_disciplines));
+    }
+
+    loadPreferredDisciplines();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function setCourseCount(n: number) {
     setCount(n);
@@ -158,7 +187,7 @@ export default function NewSessionPage() {
           <div>
             <label>Discipline</label>
             <select value={discipline} onChange={(e) => setDiscipline(e.target.value)}>
-              {DISCIPLINE_OPTIONS.map((option) => (
+              {disciplineOptions.map((option) => (
                 <option key={option}>{option}</option>
               ))}
             </select>
