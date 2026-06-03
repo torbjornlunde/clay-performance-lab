@@ -75,7 +75,7 @@ export default function ShooterProfilePage() {
 
     const { data, error: profileError } = await supabase
       .from("shooter_profiles")
-      .select("user_id,shooter_name,country,my_disciplines,created_at,updated_at")
+      .select("id,user_id,shooter_name,country,my_disciplines,created_at,updated_at")
       .eq("user_id", userData.user.id)
       .maybeSingle<ShooterProfile>();
 
@@ -113,12 +113,15 @@ export default function ShooterProfilePage() {
     setError("");
     setSuccess("");
 
-    const { error: saveError } = await supabase.from("shooter_profiles").upsert({
-      user_id: userId,
-      shooter_name: form.shooterName.trim() || null,
-      country: form.country.trim() || null,
-      my_disciplines: form.myDisciplines,
-    });
+    const { error: saveError } = await supabase.from("shooter_profiles").upsert(
+      {
+        user_id: userId,
+        shooter_name: form.shooterName.trim() || null,
+        country: form.country.trim() || null,
+        my_disciplines: form.myDisciplines,
+      },
+      { onConflict: "user_id" },
+    );
 
     setSaving(false);
 

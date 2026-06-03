@@ -1,4 +1,5 @@
 export type ShooterProfile = {
+  id?: string;
   user_id: string;
   shooter_name: string | null;
   country: string | null;

@@ -1,10 +1,14 @@
+create extension if not exists "pgcrypto";
+
 create table if not exists public.shooter_profiles (
-  user_id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
   shooter_name text,
   country text,
   my_disciplines text[] not null default '{}',
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  unique (user_id)
 );
 
 create or replace function public.set_updated_at()

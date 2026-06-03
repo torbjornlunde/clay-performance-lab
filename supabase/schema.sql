@@ -141,13 +141,16 @@ create policy "course_overrides_update_own" on public.session_course_overrides f
 drop policy if exists "course_overrides_delete_own" on public.session_course_overrides;
 create policy "course_overrides_delete_own" on public.session_course_overrides for delete using (exists(select 1 from public.sessions s where s.id=session_course_overrides.session_id and s.user_id=auth.uid()));
 
+
 create table if not exists public.shooter_profiles (
-  user_id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
   shooter_name text,
   country text,
   my_disciplines text[] not null default '{}',
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  unique (user_id)
 );
 
 create or replace function public.set_updated_at()
