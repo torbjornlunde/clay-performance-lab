@@ -3089,15 +3089,15 @@ html, body {
   }
 }
 
-/* Orientation-specific FITASC fullscreen tool polish. */
+/* FITASC fullscreen v1 stabilization: keep the working layout, fix footer fit, and align visual language. */
 .fitascFullscreenOverlay {
-  padding: max(2px, env(safe-area-inset-top)) max(2px, env(safe-area-inset-right)) max(2px, env(safe-area-inset-bottom)) max(2px, env(safe-area-inset-left));
+  padding: max(4px, env(safe-area-inset-top)) max(4px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left));
 }
 
 .fitascFullscreenHeader {
   flex-wrap: nowrap;
-  min-height: 32px;
-  padding: 2px 4px;
+  min-height: 36px;
+  padding: 4px 6px;
 }
 
 .fitascFullscreenHeader > div:first-child {
@@ -3115,263 +3115,223 @@ html, body {
 .fitascFullscreenActions {
   flex: 0 0 auto;
   flex-wrap: nowrap;
-  gap: 4px;
+  gap: 5px;
 }
 
 .fitascFullscreenActions .schemeModeToggle {
   width: auto;
   flex: 0 0 auto;
-  padding: 1px;
+  padding: 2px;
 }
 
 .fitascFullscreenActions .schemeModeToggle button {
   width: auto;
-  min-height: 26px;
-  padding: 2px 6px;
-  font-size: 10px;
+  min-height: 30px;
+  padding: 4px 7px;
+  font-size: 11px;
 }
 
 .fitascFullscreenActions .fitascCloseIcon {
-  width: 30px;
-  min-width: 30px;
-  min-height: 28px;
+  width: 34px;
+  min-width: 34px;
+  min-height: 32px;
 }
 
-.fitascFullscreenBody {
+.fitascFullscreenPanelStand .fitascFullscreenBody {
+  overflow: hidden;
+  padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+}
+
+.fitascFullscreenPanelStand .standView.schemeOverviewFullscreen {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 5px;
   min-height: 0;
+  height: 100%;
+}
+
+.fitascFullscreenPanelStand .standDirectSelector {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  min-width: 0;
+}
+
+.fitascFullscreenPanelStand .standNumberButton {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.fitascFullscreenPanelStand .standPresentationList {
+  display: grid;
+  grid-template-rows: repeat(var(--stand-row-count, 5), minmax(0, 1fr));
+  gap: 4px;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.fitascFullscreenPanelStand .standPresentationCard {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 4px;
+  min-height: 0;
+  padding: 3px;
+  border-radius: 11px;
+  background: rgba(12, 18, 27, 0.88);
+  border: 1px solid var(--line);
 }
 
 .fitascFullscreenPanelStand .standMachineLabel,
 .schemeOverviewFullscreen .schemeMachineCell {
   color: #17130a;
   background: linear-gradient(135deg, var(--gold2), var(--gold));
-  border-color: rgba(245, 207, 106, 0.78);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 0 14px rgba(216, 165, 58, 0.16);
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.22);
+  border-color: rgba(245, 207, 106, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 0 18px rgba(216, 165, 58, 0.18);
+  font-weight: 1000;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
 .fitascFullscreenPanelStand .standPresentationType,
 .schemeOverviewFullscreen .schemePresentationLabel,
 .schemeOverviewFullscreen .schemeGridHeader strong {
   color: var(--text);
-  background: rgba(7, 11, 17, 0.82);
+  background: rgba(7, 11, 17, 0.78);
   border-color: rgba(132, 153, 178, 0.28);
 }
 
-/* Portrait: Stand view uses fixed chrome and equal rows; Full scheme pans horizontally inside the grid. */
+.fitascFullscreenPanelStand .standMachineLabel,
+.fitascFullscreenPanelStand .standPresentationType {
+  min-height: 0;
+  height: 100%;
+  border-radius: 8px;
+  padding: 2px 6px;
+  text-align: center;
+}
+
+.fitascFullscreenPanelStand .standMachineLabel {
+  font-size: clamp(48px, 22vw, 92px);
+  line-height: 0.86;
+  letter-spacing: -0.06em;
+  white-space: nowrap;
+}
+
+.fitascFullscreenPanelStand .standMachineLabelPair {
+  font-size: clamp(36px, 13vw, 68px);
+  letter-spacing: -0.06em;
+}
+
+.fitascFullscreenPanelStand .standPresentationType {
+  justify-content: center;
+  font-size: clamp(20px, 6.5vw, 34px);
+  font-weight: 950;
+  line-height: 1;
+}
+
+.fitascFullscreenPanelStand .standNavigation {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.fitascFullscreenPanelStand .standNavigation span {
+  display: none;
+}
+
+.fitascFullscreenPanelStand .standNavigation button {
+  min-height: 42px;
+  border-radius: 12px;
+  font-size: 15px;
+  padding: 7px 10px;
+}
+
+.fitascFullscreenPanelStand .standSwipeNext {
+  animation: standSwipeInNext 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.fitascFullscreenPanelStand .standSwipePrevious {
+  animation: standSwipeInPrevious 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .fitascFullscreenBody {
+  padding: 4px;
+}
+
+.schemeOverviewFullscreen {
+  gap: 4px;
+}
+
+.schemeOverviewFullscreen .schemeGridHeader,
+.schemeOverviewFullscreen .schemeRowCard {
+  gap: 4px;
+}
+
+.schemeOverviewFullscreen .schemeMachineCell {
+  font-size: clamp(18px, 3vw, 34px);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+.schemeOverviewFullscreen .schemePresentationLabel {
+  font-size: clamp(12px, 1.7vw, 18px);
+  font-weight: 900;
+}
+
+.schemeOverviewFullscreen .schemeGridHeader strong {
+  font-size: clamp(10px, 1.2vw, 13px);
+  font-weight: 900;
+}
+
 @media (orientation: portrait) {
-  .fitascFullscreenPanel {
-    border-radius: 10px;
-  }
-
-  .fitascFullscreenHeader {
-    min-height: 30px;
-  }
-
-  .fitascFullscreenHeader h2 {
-    font-size: clamp(12px, 3.7vw, 16px);
-  }
-
-  .fitascFullscreenHeader .small {
-    max-width: 34vw;
-    font-size: clamp(9px, 2.5vw, 11px);
-  }
-
-  .fitascFullscreenPanelStand .fitascFullscreenBody {
-    overflow: hidden;
-    padding: 2px;
-  }
-
-  .fitascFullscreenPanelStand .standView.schemeOverviewFullscreen {
-    grid-template-rows: 24px minmax(0, 1fr) 31px;
-    gap: 2px;
-    height: 100%;
-    min-height: 0;
-  }
-
-  .fitascFullscreenPanelStand .standDirectSelector {
-    height: 24px;
-    gap: 2px;
-  }
-
-  .fitascFullscreenPanelStand .standNumberButton {
-    min-height: 24px;
-    height: 24px;
-    border-radius: 7px;
-    font-size: 12px;
-  }
-
-  .fitascFullscreenPanelStand .standPresentationList {
-    grid-template-rows: repeat(var(--stand-row-count, 5), minmax(0, 1fr));
-    gap: 2px;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .fitascFullscreenPanelStand .standPresentationCard {
-    grid-template-columns: 1fr 1fr;
-    gap: 2px;
-    padding: 1px;
-    border-radius: 8px;
-  }
-
-  .fitascFullscreenPanelStand .standMachineLabel,
-  .fitascFullscreenPanelStand .standPresentationType {
-    border-radius: 6px;
-    padding: 0 2px;
-  }
-
-  .fitascFullscreenPanelStand .standMachineLabel {
-    font-size: clamp(4.8rem, 21vw, 8.8rem);
-    line-height: 0.78;
-    letter-spacing: -0.095em;
-  }
-
-  .fitascFullscreenPanelStand .standMachineLabelPair {
-    font-size: clamp(3.7rem, 13.5vw, 6.8rem);
-    letter-spacing: -0.085em;
-  }
-
-  .fitascFullscreenPanelStand .standPresentationType {
-    font-size: clamp(2.35rem, 9vw, 4.8rem);
-    line-height: 0.88;
-  }
-
-  .fitascFullscreenPanelStand .standNavigation {
-    gap: 2px;
-  }
-
-  .fitascFullscreenPanelStand .standNavigation button {
-    min-height: 31px;
-    height: 31px;
-    padding: 2px 8px;
-  }
-
   .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .fitascFullscreenBody {
     overflow: hidden;
-    padding: 2px;
   }
 
   .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen {
-    height: 100%;
     min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: 3px;
-    scrollbar-color: rgba(245, 207, 106, 0.62) rgba(7, 11, 17, 0.6);
-  }
-
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen::after {
-    content: "Swipe sideways to see all plates";
-    position: sticky;
-    left: 0;
-    display: block;
-    width: max-content;
-    color: var(--muted);
-    font-size: 10px;
-    font-weight: 800;
-    padding: 2px 4px 0;
   }
 
   .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeGridHeader,
   .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeRowCard {
-    width: max(720px, 138vw);
-    grid-template-columns: minmax(98px, 0.7fr) repeat(5, minmax(112px, 1fr));
-    gap: 2px;
-  }
-
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeMachineCell {
-    font-size: clamp(2rem, 11vw, 4.5rem);
-    line-height: 0.88;
-    padding: 1px 2px;
-  }
-
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemePresentationLabel {
-    font-size: clamp(1rem, 4.8vw, 2rem);
-    line-height: 0.95;
-    padding: 1px 2px;
-  }
-
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeGridHeader strong {
-    font-size: clamp(0.72rem, 3vw, 0.95rem);
-    padding: 1px 2px;
+    width: max(640px, 132vw);
+    grid-template-columns: minmax(82px, 0.65fr) repeat(5, minmax(96px, 1fr));
   }
 }
 
-/* Landscape: Full scheme should fit, Stand view uses width while staying compact vertically. */
 @media (orientation: landscape) {
   .fitascFullscreenHeader {
-    min-height: 28px;
-    padding: 2px 4px;
-  }
-
-  .fitascFullscreenHeader h2 {
-    font-size: clamp(12px, 3.2vh, 16px);
-  }
-
-  .fitascFullscreenActions .schemeModeToggle button {
-    min-height: 24px;
-    padding: 2px 6px;
-  }
-
-  .fitascFullscreenActions .fitascCloseIcon {
-    min-height: 26px;
-    width: 28px;
-    min-width: 28px;
-  }
-
-  .fitascFullscreenPanelStand .fitascFullscreenBody,
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .fitascFullscreenBody {
-    overflow: hidden;
-    padding: 2px;
-  }
-
-  .fitascFullscreenPanelStand .standView.schemeOverviewFullscreen {
-    grid-template-rows: 24px minmax(0, 1fr) 28px;
-    gap: 2px;
-  }
-
-  .fitascFullscreenPanelStand .standDirectSelector {
-    height: 24px;
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 3px;
-  }
-
-  .fitascFullscreenPanelStand .standNumberButton {
-    width: 100%;
-    min-height: 24px;
-    height: 24px;
-  }
-
-  .fitascFullscreenPanelStand .standPresentationList {
-    gap: 2px;
-  }
-
-  .fitascFullscreenPanelStand .standPresentationCard {
-    grid-template-columns: 1fr 1fr;
-    gap: 3px;
-    padding: 1px;
-  }
-
-  .fitascFullscreenPanelStand .standMachineLabel {
-    font-size: clamp(3.6rem, 17vh, 7rem);
-    line-height: 0.82;
-  }
-
-  .fitascFullscreenPanelStand .standMachineLabelPair {
-    font-size: clamp(2.8rem, 12vh, 5.5rem);
-  }
-
-  .fitascFullscreenPanelStand .standPresentationType {
-    font-size: clamp(2rem, 9vh, 4rem);
-    line-height: 0.9;
+    min-height: 32px;
+    padding: 3px 5px;
   }
 
   .fitascFullscreenPanelStand .standNavigation button {
-    min-height: 28px;
-    height: 28px;
+    min-height: 38px;
+  }
+
+  .fitascFullscreenPanelStand .standMachineLabel {
+    font-size: clamp(34px, 14vh, 64px);
+  }
+
+  .fitascFullscreenPanelStand .standMachineLabelPair {
+    font-size: clamp(28px, 10vh, 52px);
+  }
+
+  .fitascFullscreenPanelStand .standPresentationType {
+    font-size: clamp(18px, 7vh, 32px);
+  }
+
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .fitascFullscreenBody {
+    overflow: hidden;
+    padding: 3px;
   }
 
   .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen {
@@ -3379,49 +3339,25 @@ html, body {
     height: 100%;
     overflow: hidden;
     grid-auto-rows: minmax(0, 1fr);
-    gap: 2px;
+    gap: 3px;
   }
 
   .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeGridHeader,
   .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeRowCard {
     min-width: 0;
-    grid-template-columns: minmax(78px, 0.6fr) repeat(5, minmax(0, 1fr));
-    gap: 2px;
-  }
-
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeMachineCell {
-    font-size: clamp(2.4rem, 9.5vh, 5.4rem);
-    line-height: 0.86;
-    padding: 1px 2px;
-  }
-
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemePresentationLabel {
-    font-size: clamp(1rem, 4vh, 2rem);
-    line-height: 0.92;
-    padding: 1px 2px;
-  }
-
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeGridHeader strong {
-    font-size: clamp(0.7rem, 2.35vh, 0.9rem);
-    padding: 1px 2px;
-  }
-}
-
-/* Larger displays get calmer maximums while retaining the same tile language. */
-@media (min-width: 900px) and (min-height: 700px) {
-  .fitascFullscreenPanelStand .standMachineLabel {
-    font-size: clamp(5rem, 10vw, 9rem);
-  }
-
-  .fitascFullscreenPanelStand .standMachineLabelPair {
-    font-size: clamp(3.8rem, 7vw, 7rem);
-  }
-
-  .fitascFullscreenPanelStand .standPresentationType {
-    font-size: clamp(2.6rem, 5vw, 5rem);
+    grid-template-columns: minmax(76px, 0.62fr) repeat(5, minmax(54px, 1fr));
+    gap: 3px;
   }
 
   .schemeOverviewFullscreen .schemeMachineCell {
-    font-size: clamp(2.8rem, 4.2vw, 5.8rem);
+    font-size: clamp(18px, 6.5vh, 34px);
+  }
+
+  .schemeOverviewFullscreen .schemePresentationLabel {
+    font-size: clamp(10px, 3.4vh, 15px);
+  }
+
+  .schemeOverviewFullscreen .schemeGridHeader strong {
+    font-size: clamp(9px, 2.6vh, 11px);
   }
 }
