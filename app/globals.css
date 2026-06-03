@@ -3361,3 +3361,190 @@ html, body {
     font-size: clamp(9px, 2.6vh, 11px);
   }
 }
+
+.sessionSummaryCard {
+  border-color: var(--lineStrong);
+  background:
+    linear-gradient(135deg, rgba(216, 165, 58, 0.12), transparent 38%),
+    linear-gradient(180deg, rgba(21, 30, 42, 0.98), rgba(11, 17, 25, 0.98));
+}
+
+.sessionSummaryHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.sessionSummaryHeader h2 {
+  margin-bottom: 0;
+}
+
+.sessionSummaryPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 12px 0 10px;
+}
+
+.topSummaryGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  margin: 12px 0;
+}
+
+.heroSummaryStat {
+  border-color: rgba(216, 165, 58, 0.44);
+  background: rgba(216, 165, 58, 0.1);
+}
+
+.summaryHint {
+  margin: 6px 0 0;
+}
+
+.compactEmptyState {
+  margin-bottom: 0;
+}
+
+.detailAccordionStack {
+  display: grid;
+  gap: 12px;
+}
+
+.detailAccordion {
+  background: linear-gradient(180deg, rgba(21, 30, 42, 0.96), rgba(13, 20, 29, 0.96));
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.detailAccordion > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  list-style: none;
+  min-height: 56px;
+  padding: 16px 18px;
+  touch-action: manipulation;
+}
+
+.detailAccordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+.detailAccordion > summary::after {
+  color: var(--gold2);
+  content: "▾";
+  font-size: 18px;
+  font-weight: 900;
+  transition: transform 0.15s ease;
+}
+
+.detailAccordion[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.detailAccordion > summary span:first-child {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.accordionBadge {
+  background: rgba(216, 165, 58, 0.13);
+  border: 1px solid rgba(216, 165, 58, 0.38);
+  border-radius: 999px;
+  color: #ffe2a0;
+  font-size: 12px;
+  font-weight: 900;
+  margin-left: auto;
+  padding: 5px 9px;
+}
+
+.detailAccordionBody {
+  border-top: 1px solid var(--line);
+  padding: 14px 18px 18px;
+}
+
+.detailSummaryGrid {
+  margin-top: 0;
+}
+
+.detailMetaList {
+  margin-top: 0;
+}
+
+.compactMissList {
+  gap: 10px;
+}
+
+.compactMissCard {
+  margin: 0;
+}
+
+.compactMissGrid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.targetDefinitionList {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.targetDefinitionHeader {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.targetDefinitionGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.targetDefinitionNotes,
+.notesBlock {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
+.sourceLink {
+  margin-top: 12px;
+}
+
+@media (max-width: 640px) {
+  .sessionSummaryHeader {
+    flex-direction: column;
+  }
+
+  .sessionSummaryHeader .badge {
+    align-self: flex-start;
+  }
+
+  .topSummaryGrid,
+  .detailSummaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detailAccordion > summary {
+    min-height: 58px;
+    padding: 15px;
+  }
+
+  .detailAccordionBody {
+    padding: 12px;
+  }
+
+  .compactMissGrid,
+  .targetDefinitionGrid {
+    grid-template-columns: 1fr;
+  }
+}
