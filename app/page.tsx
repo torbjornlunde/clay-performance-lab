@@ -6,7 +6,7 @@ export default function HomePage() {
       <div className="heroCard publicHero">
         <div>
           <p className="eyebrow">Clay Performance Lab</p>
-          <h2>Mobile-first performance logging for clay target shooters.</h2>
+          <h2>Your clay shooting results, schemes, and training insights in one place.</h2>
           <p>Log training and competition misses, save result-only scores, and review performance against winning scores.</p>
         </div>
         <div className="btns heroActions">

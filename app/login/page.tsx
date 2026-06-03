@@ -53,7 +53,7 @@ export default function LoginPage() {
             <h2>{mode === "signIn" ? "Login" : "Create account"}</h2>
           </div>
         </div>
-        <p className="compactCopy">Track training, competition misses and performance trends in one focused shooting log.</p>
+        <p className="compactCopy">Your clay shooting results, schemes, and training insights in one place.</p>
         <label htmlFor="email">Email</label>
         <input id="email" value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="email" />
         <label htmlFor="password">Password</label>
