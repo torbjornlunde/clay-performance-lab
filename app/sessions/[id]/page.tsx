@@ -182,6 +182,15 @@ export default function Page() {
     session.shooting_format && !isSporttrap ? session.shooting_format : null,
   ].filter(Boolean);
   const showSourceDetails = Boolean(session.leirdue_result_url || (typeof session.notes === "string" && session.notes.toLowerCase().includes("leirdue")));
+  const summaryMetrics = [
+    { label: "Targets", value: totalTargets, show: totalTargets !== null && totalTargets !== undefined },
+    { label: "Misses", value: count, show: true },
+    { label: "Calculated", value: calculatedScore, show: calculatedScore !== null && calculatedScore !== undefined },
+    { label: "Official", value: session.own_score, show: typeof session.own_score === "number" },
+    { label: "Winner", value: session.winning_score, show: typeof session.winning_score === "number" },
+    { label: "Vs winner", value: performanceLine, show: Boolean(performanceLine) },
+  ].filter((metric) => metric.show);
+  const hasAdvancedDetails = isSporttrap || isLeirduesti || (isCompact && courses.length > 0);
 
   return (
     <main>
@@ -216,12 +225,9 @@ export default function Page() {
           <div className="compactNotice">Manual score differs from logged misses. This can happen if not all misses were logged.</div>
         )}
         <div className="compactMetricGrid" aria-label="Session metrics">
-          <DetailMetric label="Targets" value={totalTargets} />
-          <DetailMetric label="Misses" value={count} />
-          <DetailMetric label="Calculated" value={calculatedScore} />
-          <DetailMetric label="Official" value={session.own_score} />
-          <DetailMetric label="Winner" value={session.winning_score} />
-          <DetailMetric label="Vs winner" value={performanceLine || "-"} />
+          {summaryMetrics.map((metric) => (
+            <DetailMetric key={metric.label} label={metric.label} value={metric.value} />
+          ))}
         </div>
       </div>
 
@@ -269,7 +275,7 @@ export default function Page() {
           )}
         </DetailSection>
 
-        <DetailSection title="Result details">
+        <DetailSection title="Result details" badge="Full">
           <div className="detailRowsGrid">
             <ResultRow label="Total targets">{value(totalTargets)}</ResultRow>
             <ResultRow label="Registered misses">{count}</ResultRow>
@@ -307,13 +313,13 @@ export default function Page() {
         )}
 
         {session.notes && (
-          <DetailSection title="Notes">
+          <DetailSection title="Notes" badge="Saved">
             <p className="detailNote">{session.notes}</p>
           </DetailSection>
         )}
 
         {showSourceDetails && (
-          <DetailSection title="Source / import details">
+          <DetailSection title="Source / import details" badge="Import">
             <div className="detailRowsGrid singleColumnRows">
               <ResultRow label="Source">Leirdue import</ResultRow>
               {session.leirdue_result_url && (
@@ -323,45 +329,48 @@ export default function Page() {
           </DetailSection>
         )}
 
-        <DetailSection title="Advanced details">
-            {isSporttrap && (
-              <div className="subcard">
-                <strong>Sporttrap setup</strong>
-                <div className="small muted">Number of 25-target series: {sporttrapSeriesCount ?? "-"}</div>
-                <div className="small muted">Total targets: {totalTargets ?? "-"}</div>
-                <div className="small muted">Stand/shooter number: {sporttrapStand ?? "-"}</div>
-              </div>
-            )}
-            {isLeirduesti && (
-              <div className="subcard">
-                <strong>Leirduesti setup</strong>
-                <div className="small muted">Number of posts: {leirduestiPostCount ?? "-"}</div>
-                <div className="small muted">Targets per post: {leirduestiTargetsPerPost ?? "-"}</div>
-                <div className="small muted">Total targets: {totalTargets ?? "-"}</div>
-              </div>
-            )}
-            {isCompact && courses.length > 0 && (
-              <>
+        {hasAdvancedDetails && (
+          <DetailSection title="Advanced details">
+              {isSporttrap && (
                 <div className="subcard">
-                  <strong>{session.discipline}</strong>
-                  <div className="small muted">Number of courses/layouts: {session.course_count || courses.length}</div>
+                  <strong>Sporttrap setup</strong>
+                  <div className="small muted">Number of 25-target series: {sporttrapSeriesCount ?? "-"}</div>
+                  <div className="small muted">Total targets: {totalTargets ?? "-"}</div>
+                  <div className="small muted">Stand/shooter number: {sporttrapStand ?? "-"}</div>
+                </div>
+              )}
+              {isLeirduesti && (
+                <div className="subcard">
+                  <strong>Leirduesti setup</strong>
+                  <div className="small muted">Number of posts: {leirduestiPostCount ?? "-"}</div>
+                  <div className="small muted">Targets per post: {leirduestiTargetsPerPost ?? "-"}</div>
                   <div className="small muted">Total targets: {totalTargets ?? "-"}</div>
                 </div>
-                {courses.map((course) => (
-                  <div className="subcard" key={course.id}>
-                    <strong>Course {course.course_number}</strong>
-                    <div className="small muted">{course.fitasc_scheme ? `Scheme ${course.fitasc_scheme} — ${getSchemeType(course.fitasc_scheme)}` : "FITASC scheme not set yet"}</div>
-                    {session.shooting_format === "Squad" && course.start_plate && <div className="small muted">Shooter {course.shooter_number} · starts plate {course.start_plate} · rotation {plateRotation(course.start_plate).join(" → ")}</div>}
+              )}
+              {isCompact && courses.length > 0 && (
+                <>
+                  <div className="subcard">
+                    <strong>{session.discipline}</strong>
+                    <div className="small muted">Number of courses/layouts: {session.course_count || courses.length}</div>
+                    <div className="small muted">Total targets: {totalTargets ?? "-"}</div>
                   </div>
-                ))}
-              </>
-            )}
-            <div className="btns compactActions">
-              <Link href={`/sessions/${session.id}/edit`} className="button secondary smallButton">Edit setup</Link>
-              {isCompact && <Link href={`/sessions/${session.id}/targets`} className="button secondary smallButton">Target definitions</Link>}
-              <Link href="/dashboard" className="button secondary smallButton">Dashboard</Link>
-            </div>
-          </DetailSection>
+                  {courses.map((course) => (
+                    <div className="subcard" key={course.id}>
+                      <strong>Course {course.course_number}</strong>
+                      <div className="small muted">{course.fitasc_scheme ? `Scheme ${course.fitasc_scheme} — ${getSchemeType(course.fitasc_scheme)}` : "FITASC scheme not set yet"}</div>
+                      {session.shooting_format === "Squad" && course.start_plate && <div className="small muted">Shooter {course.shooter_number} · starts plate {course.start_plate} · rotation {plateRotation(course.start_plate).join(" → ")}</div>}
+                    </div>
+                  ))}
+                </>
+              )}
+            </DetailSection>
+        )}
+
+        <div className="btns compactActions sessionUtilityActions" aria-label="Session utility actions">
+          <Link href={`/sessions/${session.id}/edit`} className="button secondary smallButton">Edit setup</Link>
+          {isCompact && <Link href={`/sessions/${session.id}/targets`} className="button secondary smallButton">Target definitions</Link>}
+          <Link href="/dashboard" className="button secondary smallButton">Dashboard</Link>
+        </div>
       </div>
     </main>
   );

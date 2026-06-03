@@ -3555,6 +3555,11 @@ html, body {
   margin: 0;
 }
 
+.sessionUtilityActions {
+  justify-content: flex-start;
+  margin-top: 2px;
+}
+
 @media (min-width: 760px) {
   .compactMetricGrid {
     grid-template-columns: repeat(6, minmax(0, 1fr));
