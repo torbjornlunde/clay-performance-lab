@@ -1,4 +1,4 @@
-export const leirduestiSituationOptions = ["Single", "Report pair", "Simo pair", "Reversed report pair", "Unknown"];
+export const leirduestiSituationOptions = ["Single", "Report pair", "Simo pair", "Reversed report pair", "Reversed simo pair", "Unknown"];
 
 export function normalizeLeirduestiLabel(value?: string | null) {
   if (!value) return value || "";

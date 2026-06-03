@@ -25,6 +25,17 @@ export function normalizePresentation(value: string | null | undefined) {
   return cleaned;
 }
 
+export function formatPresentationLabel(
+  value: string | null | undefined,
+  reversed = false,
+) {
+  const normalized = normalizePresentation(value);
+  if (!reversed) return normalized;
+  if (normalized === "Report pair") return "Reversed report pair";
+  if (normalized === "Simo pair") return "Reversed simo pair";
+  return normalized;
+}
+
 export function isPairPresentation(value: string | null | undefined) {
   return normalizePresentation(value) !== "Single";
 }

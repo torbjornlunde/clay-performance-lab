@@ -23,6 +23,7 @@ import {
 } from "@/lib/misses/labels";
 import {
   actualPresentationOptions,
+  formatPresentationLabel,
   normalizePresentation,
   orderedPairMachines,
   orderLabel,
@@ -189,7 +190,6 @@ export default function LogPage() {
     sporttrapEvent.presentation,
   );
   const sporttrapTargetLabel = getSporttrapMachineLabel(sporttrapEvent);
-  const sporttrapSequenceText = `${sporttrapTargetType} ${sporttrapTargetLabel}`;
   const basePresentation = isSporttrap
     ? sporttrapTargetType
     : isLeirduesti
@@ -242,12 +242,14 @@ export default function LogPage() {
   const secondMachine = orderedMachines.second;
   const isSinglePresentation = targetType === "Single";
   const shouldAskMissedTarget = !isSinglePresentation;
+  const targetTypeLabel = formatPresentationLabel(targetType, isReversedOrder);
+  const basePresentationLabel = formatPresentationLabel(basePresentation);
   const calculatedText = isSporttrap
-    ? `Calculated: ${sporttrapSequenceText}`
+    ? `Calculated: ${targetTypeLabel} ${sporttrapTargetLabel}`
     : isLeirduesti
-      ? `Post ${courseNumber} · ${targetType} · Pair / sequence ${targetNumber}`
+      ? `Post ${courseNumber} · ${targetTypeLabel} · Pair / sequence ${targetNumber}`
       : schemeRow
-        ? `Calculated: ${getMachineLabelFromRow(schemeRow)} · ${basePresentation}${targetType !== basePresentation ? ` → actual ${targetType}` : ""}`
+        ? `Calculated: ${getMachineLabelFromRow(schemeRow)} · ${basePresentationLabel}${targetType !== basePresentation || isReversedOrder ? ` → actual ${targetTypeLabel}` : ""}`
         : "Machine unavailable for this plate and target / pair selection.";
 
   useEffect(() => {
@@ -717,19 +719,19 @@ export default function LogPage() {
   }
 
   function recentLocation(miss: RecentMiss) {
-    const targetTypeLabel =
+    const fallbackTargetTypeLabel =
       normalizeLeirduestiLabel(miss.target_type) || "Situation unknown";
-    const actual = normalizePresentation(
+    const actual = formatPresentationLabel(
       miss.actual_presentation || miss.target_type,
+      Boolean(miss.is_reversed_order),
     );
-    const reversed = miss.is_reversed_order ? " · Reversed order" : "";
     const pair =
       miss.presented_pair_label || miss.target_label || "Machine unknown";
     if (isSporttrap)
-      return `Series ${miss.course_number ?? "-"} · Stand ${miss.plate ?? "-"} · ${pair} · ${actual}${reversed}`.trim();
+      return `Series ${miss.course_number ?? "-"} · Stand ${miss.plate ?? "-"} · ${pair} · ${actual}`.trim();
     if (isLeirduesti)
-      return `Post ${miss.course_number ?? "-"} · ${actual || targetTypeLabel}${reversed}`;
-    return `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${pair} · ${actual}${reversed}`;
+      return `Post ${miss.course_number ?? "-"} · ${actual || fallbackTargetTypeLabel}`;
+    return `Course ${miss.course_number ?? "-"} · Plate ${miss.plate ?? "-"} · ${pair} · ${actual}`;
   }
 
   function renderRecentDetail(miss: RecentMiss, target: "first" | "second") {
@@ -1139,10 +1141,10 @@ export default function LogPage() {
                   <strong>{recentLocation(miss)}</strong>
                   <div className="recentPills">
                     <span>
-                      {normalizePresentation(
+                      {formatPresentationLabel(
                         miss.actual_presentation || miss.target_type,
+                        Boolean(miss.is_reversed_order),
                       )}
-                      {miss.is_reversed_order ? " · Reversed order" : ""}
                     </span>
                     <span>{recentMissedTargetLabel(miss)}</span>
                     <span>
