@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
@@ -121,6 +121,7 @@ const reasonOptions = [
   "Wind/weather",
   "Unknown",
 ];
+const successMessage = "Miss saved. Ready for the next one.";
 
 export default function LogPage() {
   const params = useParams<{ id: string }>();
@@ -145,6 +146,7 @@ export default function LogPage() {
   const [secondDetail, setSecondDetail] = useState<MissDetail>(defaultDetail);
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -275,6 +277,14 @@ export default function LogPage() {
     else if (missedTarget === "Single target")
       setMissedTarget("Second target in pair");
   }, [isSinglePresentation, missedTarget, targetType]);
+
+  useEffect(() => {
+    if (msg !== successMessage) return;
+
+    const timeout = window.setTimeout(() => setMsg(""), 3500);
+
+    return () => window.clearTimeout(timeout);
+  }, [msg]);
 
   async function load() {
     const { data: u } = await supabase.auth.getUser();
@@ -426,7 +436,22 @@ export default function LogPage() {
       .join("\n");
   }
 
+  function nextMissedTargetDefault() {
+    if (isSinglePresentation) return "Single target";
+    if (targetType === "Unknown") return "Unknown";
+    return "Second target in pair";
+  }
+
+  function resetMissSpecificFields() {
+    setMissedTarget(nextMissedTargetDefault());
+    setGenericDetail(defaultDetail());
+    setFirstDetail(defaultDetail());
+    setSecondDetail(defaultDetail());
+  }
+
   async function save() {
+    if (savingRef.current) return;
+
     setMsg("");
     if (!session) {
       setMsg("Session missing.");
@@ -441,6 +466,7 @@ export default function LogPage() {
       ? combinedBothComment()
       : primaryDetail.comment.trim();
 
+    savingRef.current = true;
     setSaving(true);
     const { error } = await supabase.from("misses").insert({
       session_id: session.id,
@@ -476,9 +502,10 @@ export default function LogPage() {
       second_comment:
         isSecond || isBoth ? secondDetail.comment.trim() || null : null,
     });
-    setSaving(false);
 
     if (error) {
+      savingRef.current = false;
+      setSaving(false);
       setMsg(error.message);
       return;
     }
@@ -519,11 +546,11 @@ export default function LogPage() {
       ]);
     }
 
-    setGenericDetail((detail) => ({ ...detail, comment: "" }));
-    setFirstDetail((detail) => ({ ...detail, comment: "" }));
-    setSecondDetail((detail) => ({ ...detail, comment: "" }));
-    setMsg("Miss saved");
+    resetMissSpecificFields();
+    setMsg(successMessage);
     await loadRecentMisses();
+    savingRef.current = false;
+    setSaving(false);
   }
 
   async function deleteMiss(id: string) {
@@ -1057,17 +1084,22 @@ export default function LogPage() {
             <div>
               <h3>Save</h3>
               <p className="small muted">
-                After saving, setup and quick selections stay in place; only
-                comments clear.
+                After saving, this session context stays in place while the
+                miss-specific fields reset for the next entry.
               </p>
             </div>
           </div>
           {msg && (
-            <div className={msg === "Miss saved" ? "success" : "error"}>
+            <div className={msg === successMessage ? "success" : "error"}>
               {msg}
             </div>
           )}
-          <button className="saveMissButton" onClick={save} disabled={saving}>
+          <button
+            type="button"
+            className="saveMissButton"
+            onClick={save}
+            disabled={saving}
+          >
             {saving ? "Saving..." : "Save miss"}
           </button>
           <div className="btns compactActions">
