@@ -6,6 +6,7 @@ import ShooterProfileForm from "@/app/components/ShooterProfileForm";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import {
   emptyShooterProfileForm,
+  isShooterProfileComplete,
   normalizeDisciplines,
   shooterProfileToForm,
   type ShooterProfile,
@@ -13,7 +14,17 @@ import {
 } from "@/lib/profile";
 import { supabase } from "@/lib/supabase/client";
 
-export default function ShooterProfilePage() {
+type ValidationErrors = Partial<Record<"shooterName" | "country" | "myDisciplines", string>>;
+
+function validate(form: ShooterProfileFormState): ValidationErrors {
+  const errors: ValidationErrors = {};
+  if (!form.shooterName.trim()) errors.shooterName = "Enter your shooter name.";
+  if (!form.country.trim()) errors.country = "Select your country.";
+  if (form.myDisciplines.length === 0) errors.myDisciplines = "Select at least one discipline.";
+  return errors;
+}
+
+export default function OnboardingProfilePage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
@@ -21,7 +32,7 @@ export default function ShooterProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
 
   useEffect(() => {
     loadProfile();
@@ -30,6 +41,7 @@ export default function ShooterProfilePage() {
   async function loadProfile() {
     setLoading(true);
     setError("");
+
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError) {
       setError(userError.message);
@@ -37,7 +49,7 @@ export default function ShooterProfilePage() {
       return;
     }
     if (!userData.user) {
-      router.push("/login");
+      router.replace("/login");
       return;
     }
 
@@ -56,12 +68,19 @@ export default function ShooterProfilePage() {
       return;
     }
 
-    setForm({
+    const nextForm = {
       ...shooterProfileToForm(data),
       myDisciplines: normalizeDisciplines(data?.my_disciplines).filter((discipline) =>
         DISCIPLINE_OPTIONS.includes(discipline),
       ),
-    });
+    };
+
+    if (isShooterProfileComplete(nextFormToProfile(nextForm))) {
+      router.replace("/dashboard");
+      return;
+    }
+
+    setForm(nextForm);
     setLoading(false);
   }
 
@@ -69,15 +88,19 @@ export default function ShooterProfilePage() {
     event.preventDefault();
     if (!userId || saving) return;
 
-    setSaving(true);
+    const nextValidationErrors = validate(form);
+    setValidationErrors(nextValidationErrors);
     setError("");
-    setSuccess("");
+
+    if (Object.keys(nextValidationErrors).length > 0) return;
+
+    setSaving(true);
 
     const { error: saveError } = await supabase.from("shooter_profiles").upsert(
       {
         user_id: userId,
-        shooter_name: form.shooterName.trim() || null,
-        country: form.country.trim() || null,
+        shooter_name: form.shooterName.trim(),
+        country: form.country.trim(),
         my_disciplines: form.myDisciplines,
       },
       { onConflict: "user_id" },
@@ -90,26 +113,35 @@ export default function ShooterProfilePage() {
       return;
     }
 
-    setSuccess("Profile saved.");
+    router.replace("/dashboard");
   }
 
   return (
     <main>
       <ShooterProfileForm
         accountEmail={accountEmail}
-        body="Manage your basic shooter name, country, and preferred clay target disciplines."
+        body="Set your name, country, and preferred disciplines so the app can personalize logging and results."
         error={error}
         form={form}
         loading={loading}
         onSubmit={save}
         saving={saving}
-        setForm={setForm}
-        setSuccess={setSuccess}
-        showBackToDashboard
-        submitLabel="Save profile"
-        success={success}
-        title="Shooter profile"
+        setForm={(update) => {
+          setValidationErrors({});
+          setForm(update);
+        }}
+        submitLabel="Save and continue"
+        title="Complete your shooter profile"
+        validationErrors={validationErrors}
       />
     </main>
   );
+}
+
+function nextFormToProfile(form: ShooterProfileFormState) {
+  return {
+    shooter_name: form.shooterName,
+    country: form.country,
+    my_disciplines: form.myDisciplines,
+  };
 }
