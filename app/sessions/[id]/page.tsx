@@ -57,6 +57,10 @@ function value(text: string | number | null | undefined) {
   return text === null || text === undefined || text === "" ? "-" : text;
 }
 
+function firstValue(...items: Array<string | null | undefined>) {
+  return items.find((item) => item !== null && item !== undefined && item !== "") || null;
+}
+
 function compactDateTime(valueToFormat: string) {
   return new Date(valueToFormat).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
@@ -262,12 +266,13 @@ export default function Page() {
                   </div>
                   <div className="missCompactMeta">
                     <span>Missed: <strong>{shortMissedTarget(miss.missed_target)}</strong></span>
-                    <span>Reason: <strong>{value(miss.main_reason || miss.first_main_reason || miss.second_main_reason)}</strong></span>
-                    <span>Where: <strong>{value(miss.where_miss || miss.first_where_miss || miss.second_where_miss)}</strong></span>
+                    <span>Reason: <strong>{value(firstValue(miss.main_reason, miss.first_main_reason, miss.second_main_reason))}</strong></span>
+                    <span>Where: <strong>{value(firstValue(miss.where_miss, miss.first_where_miss, miss.second_where_miss))}</strong></span>
+                    <span>Read: <strong>{value(firstValue(miss.target_read, miss.first_target_read, miss.second_target_read))}</strong></span>
                     {miss.shooting_order_label && <span>Order: <strong>{miss.shooting_order_label}{miss.is_reversed_order ? " · Reversed" : ""}</strong></span>}
                   </div>
-                  {(miss.comment || miss.first_comment || miss.second_comment) && (
-                    <p className="small muted missCompactNote">{miss.comment || miss.first_comment || miss.second_comment}</p>
+                  {firstValue(miss.comment, miss.first_comment, miss.second_comment) && (
+                    <p className="small muted missCompactNote">{firstValue(miss.comment, miss.first_comment, miss.second_comment)}</p>
                   )}
                 </div>
               ))}
