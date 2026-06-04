@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DISCIPLINE_OPTIONS, isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
@@ -170,6 +171,7 @@ export default function NewSessionPage() {
     <main>
       <div className="card">
         <h2>New shooting log</h2>
+        <p className="small muted">Need a multi-shooter post score sheet instead? <Link href="/training-score-sheets/new">Open Training Score Sheet</Link>.</p>
         <label>Session name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Session name" />
         <label>Date</label>

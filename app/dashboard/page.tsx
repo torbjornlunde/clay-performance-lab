@@ -34,6 +34,19 @@ type Row = {
 
 type MissRow = { session_id: string };
 
+type TrainingScoreSheetRow = {
+  id: string;
+  title: string;
+  session_date: string;
+  location: string | null;
+  discipline: string;
+  session_type: string;
+  number_of_posts: number;
+  targets_per_post: number;
+  total_targets: number;
+  created_at: string;
+};
+
 type ExportCourseRow = ExportCourse;
 type ExportMissRow = ExportMiss;
 type ExportTargetDefinitionRow = ExportTargetDefinition;
@@ -244,6 +257,32 @@ function ResultCard({ session, missCounts }: { session: Row; missCounts: Record<
       </div>
       <div className="sessionActions">
         <Link href={`/sessions/${session.id}`} className="button secondary smallButton">Open</Link>
+      </div>
+    </article>
+  );
+}
+
+function TrainingScoreSheetCard({ sheet }: { sheet: TrainingScoreSheetRow }) {
+  return (
+    <article className="sessionItem dashboardListItem">
+      <div className="sessionContent">
+        <div className="sessionTopline compactTopline">
+          <strong>{sheet.title}</strong>
+          <span className="badge badgeGreen">Training score sheet</span>
+        </div>
+        <div className="small muted sessionMeta compactMeta">
+          <span>{formatDate(sheet.session_date)}</span>
+          <span>{sheet.discipline}</span>
+          {sheet.location && <span>{sheet.location}</span>}
+        </div>
+        <div className="resultMetrics">
+          <span>Posts <strong>{sheet.number_of_posts}</strong></span>
+          <span>Targets <strong>{sheet.total_targets}</strong></span>
+          <span>Type <strong>{sheet.session_type === "shared_training" ? "Shared training" : "Training"}</strong></span>
+        </div>
+      </div>
+      <div className="sessionActions">
+        <Link href={`/training-score-sheets/${sheet.id}`} className="button secondary smallButton">Open</Link>
       </div>
     </article>
   );
@@ -498,6 +537,7 @@ function PerformanceTrendCard({
 export default function DashboardPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState<Row[]>([]);
+  const [trainingScoreSheets, setTrainingScoreSheets] = useState<TrainingScoreSheetRow[]>([]);
   const [missCounts, setMissCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -526,6 +566,12 @@ export default function DashboardPage() {
       .from("misses")
       .select("session_id")
       .returns<MissRow[]>();
+    const { data: scoreSheets } = await supabase
+      .from("training_score_sheets")
+      .select("id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,created_at")
+      .order("session_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .returns<TrainingScoreSheetRow[]>();
     const counts = (misses || []).reduce<Record<string, number>>(
       (acc, miss) => {
         acc[miss.session_id] = (acc[miss.session_id] || 0) + 1;
@@ -535,6 +581,7 @@ export default function DashboardPage() {
     );
 
     setSessions((data || []).slice().sort(sortNewestFirst));
+    setTrainingScoreSheets(scoreSheets || []);
     setMissCounts(counts);
     setLoading(false);
   }
@@ -624,7 +671,8 @@ export default function DashboardPage() {
   const results = useMemo(() => sessions.filter(isResultSession).sort(sortNewestFirst), [sessions]);
   const training = useMemo(() => sessions.filter(isTrainingSession).sort(sortNewestFirst), [sessions]);
   const visibleResults = showAllResults ? results : results.slice(0, 3);
-  const visibleTraining = showAllTraining ? training : training.slice(0, 3);
+  const visibleTrainingScoreSheets = showAllTraining ? trainingScoreSheets : trainingScoreSheets.slice(0, 3);
+  const visibleTraining = showAllTraining ? training : training.slice(0, Math.max(3 - visibleTrainingScoreSheets.length, 0));
 
   return (
     <main className="dashboardMain">
@@ -638,6 +686,10 @@ export default function DashboardPage() {
           <Link href="/sessions/new" className="dashboardActionCard primaryAction">
             <span>New shooting log</span>
             <small>Track misses and training patterns.</small>
+          </Link>
+          <Link href="/training-score-sheets/new" className="dashboardActionCard secondaryAction">
+            <span>Training Score Sheet</span>
+            <small>Score multiple shooters by post.</small>
           </Link>
           <Link href="/results/new" className="dashboardActionCard secondaryAction">
             <span>Quick result</span>
@@ -690,23 +742,27 @@ export default function DashboardPage() {
             <p className="eyebrow">Practice logs</p>
             <h2 id="training-heading">Training</h2>
           </div>
-          {!loading && <span className="countPill">{training.length}</span>}
+          {!loading && <span className="countPill">{training.length + trainingScoreSheets.length}</span>}
         </div>
         {loading ? (
           <p>Loading...</p>
-        ) : training.length === 0 ? (
+        ) : training.length === 0 && trainingScoreSheets.length === 0 ? (
           <div className="emptyState compactEmptyState">
-            <p>Create a shooting log to start tracking misses and training patterns.</p>
+            <p>Create a shooting log or training score sheet to start tracking practice.</p>
             <div className="btns compactEmptyActions">
               <Link href="/sessions/new" className="button smallButton">New shooting log</Link>
+              <Link href="/training-score-sheets/new" className="button secondary smallButton">Training Score Sheet</Link>
             </div>
           </div>
         ) : (
           <>
+            {visibleTrainingScoreSheets.map((sheet) => (
+              <TrainingScoreSheetCard key={sheet.id} sheet={sheet} />
+            ))}
             {visibleTraining.map((session) => (
               <TrainingCard key={session.id} session={session} missCounts={missCounts} />
             ))}
-            {training.length > 3 && (
+            {training.length + trainingScoreSheets.length > 3 && (
               <button type="button" className="button secondary showMoreButton" onClick={() => setShowAllTraining((value) => !value)}>
                 {showAllTraining ? "Show less" : "Show more training"}
               </button>
@@ -732,6 +788,7 @@ export default function DashboardPage() {
             <small>Find old competition results.</small>
           </Link>
           <Link href="/fitasc" className="compactAction"><span>FITASC schemes</span></Link>
+          <Link href="/training-score-sheets/new" className="compactAction"><span>Training Score Sheet</span></Link>
           <button className="compactAction" onClick={exportMyData} disabled={exporting || loading}>
             <span>{exporting ? "Exporting..." : "Export my data"}</span>
           </button>
