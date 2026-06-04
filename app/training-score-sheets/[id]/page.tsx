@@ -66,10 +66,6 @@ function makeScores(postCount: number, existing: number[] = []) {
   return Array.from({ length: postCount }, (_, index) => existing[index] ?? 0);
 }
 
-function makeShooter(name = ""): ShooterDraft {
-  return { localId: crypto.randomUUID(), name, scores: makeScores(5) };
-}
-
 function capitalizeNamePart(part: string) {
   if (!part) return part;
   const [firstCharacter, ...rest] = Array.from(part);
@@ -151,10 +147,11 @@ export default function TrainingScoreSheetPage() {
   const [sessionType, setSessionType] = useState("training");
   const [numberOfPosts, setNumberOfPosts] = useState(5);
   const [targetsPerPost, setTargetsPerPost] = useState(10);
-  const [shooters, setShooters] = useState<ShooterDraft[]>([makeShooter()]);
+  const [shooters, setShooters] = useState<ShooterDraft[]>([]);
   const [targetResults, setTargetResults] = useState<TargetResultMap>({});
   const [inputHistory, setInputHistory] = useState<InputHistoryItem[]>([]);
   const [liveMode, setLiveMode] = useState(false);
+  const [showSetupDuringLive, setShowSetupDuringLive] = useState(false);
   const [currentShooterId, setCurrentShooterId] = useState("");
   const [currentPost, setCurrentPost] = useState(1);
   const [currentTarget, setCurrentTarget] = useState(1);
@@ -169,6 +166,7 @@ export default function TrainingScoreSheetPage() {
     [numberOfPosts],
   );
   const sheetTotalTargets = numberOfPosts * targetsPerPost;
+  const setupSectionsOpen = !liveMode || showSetupDuringLive;
   const hasEnteredScores = shooters.some((shooter) =>
     shooter.scores.some(
       (score, index) => displayedPostScore(shooter, index, targetResults) > 0,
@@ -340,7 +338,7 @@ export default function TrainingScoreSheetPage() {
       };
     });
 
-    setShooters(loadedShooters.length > 0 ? loadedShooters : [makeShooter()]);
+    setShooters(loadedShooters);
     setTargetResults(loadedTargetResults);
     setInputHistory([]);
     setLoading(false);
@@ -436,6 +434,11 @@ export default function TrainingScoreSheetPage() {
 
   function addShooter() {
     const name = formatShooterName(newShooterName);
+    if (!name) {
+      setErr("Enter a shooter name before adding a new shooter.");
+      return;
+    }
+    setErr("");
     setShooters((current) => [
       ...current,
       { localId: crypto.randomUUID(), name, scores: makeScores(numberOfPosts) },
@@ -445,9 +448,7 @@ export default function TrainingScoreSheetPage() {
 
   function removeShooter(localId: string) {
     setShooters((current) =>
-      current.length === 1
-        ? current
-        : current.filter((shooter) => shooter.localId !== localId),
+      current.filter((shooter) => shooter.localId !== localId),
     );
     setTargetResults((current) => {
       const next = { ...current };
@@ -521,6 +522,7 @@ export default function TrainingScoreSheetPage() {
   function toggleLiveMode() {
     setLiveMode((value) => {
       const nextValue = !value;
+      setShowSetupDuringLive(false);
       if (nextValue && validShooters.length > 0) {
         const orderedShooters = orderedShootersForPost(
           validShooters,
@@ -831,7 +833,27 @@ export default function TrainingScoreSheetPage() {
           </span>
         </div>
 
-        <details className="subcard collapsibleSubcard" open={!liveMode}>
+        {liveMode && (
+          <div className="setupVisibilityToggle">
+            <button
+              type="button"
+              className="secondary smallButton"
+              onClick={() => setShowSetupDuringLive((value) => !value)}
+            >
+              {showSetupDuringLive ? "Hide setup" : "Show setup"}
+            </button>
+            <span className="small muted">
+              Setup is hidden by default so live scoring stays front and center.
+            </span>
+          </div>
+        )}
+
+        <details
+          className={`subcard collapsibleSubcard ${
+            setupSectionsOpen ? "" : "setupSectionHidden"
+          }`}
+          open={setupSectionsOpen}
+        >
           <summary>
             <span>Training details</span>
             <span className="small muted">
@@ -931,51 +953,81 @@ export default function TrainingScoreSheetPage() {
           </p>
         </details>
 
-        <details className="subcard collapsibleSubcard" open={!liveMode}>
+        <details
+          className={`subcard collapsibleSubcard ${
+            setupSectionsOpen ? "" : "setupSectionHidden"
+          }`}
+          open={setupSectionsOpen}
+        >
           <summary>
-            <span>Shooters</span>
+            <span>Shooter setup</span>
             <span className="small muted">
               {validShooters.length || 0} ready
             </span>
           </summary>
+          <div className="shooterSetupHelp">
+            <h3>Add a new shooter</h3>
+            <p className="small muted">
+              Use this field only to add another shooter to the score sheet.
+              Existing shooters are edited in the numbered list below.
+            </p>
+          </div>
           <div className="addShooterRow">
-            <input
-              value={newShooterName}
-              onChange={(event) => setNewShooterName(event.target.value)}
-              placeholder="Shooter name"
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  addShooter();
-                }
-              }}
-            />
+            <label>
+              New shooter name
+              <input
+                value={newShooterName}
+                onChange={(event) => setNewShooterName(event.target.value)}
+                placeholder="Type a new shooter name"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addShooter();
+                  }
+                }}
+              />
+            </label>
             <button type="button" className="secondary" onClick={addShooter}>
               Add shooter
             </button>
           </div>
+          <div className="shooterSetupHelp editExistingShootersHeader">
+            <h3>Edit existing shooters</h3>
+            <p className="small muted">
+              Numbered rows are existing shooters. Edit a name here only when
+              correcting that shooter.
+            </p>
+          </div>
           <div className="shooterNameList">
-            {shooters.map((shooter, index) => (
-              <div className="shooterNameRow" key={shooter.localId}>
-                <span className="small muted">#{index + 1}</span>
-                <input
-                  value={shooter.name}
-                  onChange={(event) =>
-                    updateShooterName(shooter.localId, event.target.value)
-                  }
-                  onBlur={() => formatShooterNameInList(shooter.localId)}
-                  placeholder="Shooter name"
-                />
-                <button
-                  type="button"
-                  className="secondary smallButton"
-                  onClick={() => removeShooter(shooter.localId)}
-                  disabled={shooters.length === 1}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
+            {shooters.length === 0 ? (
+              <p className="emptyShooterListMessage">
+                No shooters added yet. Add the first shooter above.
+              </p>
+            ) : (
+              shooters.map((shooter, index) => (
+                <div className="shooterNameRow" key={shooter.localId}>
+                  <span className="small muted">#{index + 1}</span>
+                  <label>
+                    Existing shooter {index + 1}
+                    <input
+                      value={shooter.name}
+                      onChange={(event) =>
+                        updateShooterName(shooter.localId, event.target.value)
+                      }
+                      onBlur={() => formatShooterNameInList(shooter.localId)}
+                      placeholder={`Edit shooter ${index + 1} name`}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="secondary smallButton"
+                    onClick={() => removeShooter(shooter.localId)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         </details>
 
@@ -1199,7 +1251,12 @@ export default function TrainingScoreSheetPage() {
           )}
         </div>
 
-        <details className="subcard collapsibleSubcard" open={!liveMode}>
+        <details
+          className={`subcard collapsibleSubcard ${
+            setupSectionsOpen ? "" : "setupSectionHidden"
+          }`}
+          open={setupSectionsOpen}
+        >
           <summary>
             <span>Scores by post</span>
             <span className="small muted">Post-total overview</span>
