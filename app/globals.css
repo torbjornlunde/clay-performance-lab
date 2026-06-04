@@ -3845,3 +3845,117 @@ html, body {
   padding: 18px !important;
   text-align: center !important;
 }
+
+.liveScoringCard .compactSectionHeader {
+  align-items: center;
+}
+
+.liveScoringPanel {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.liveScoringStatus {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.liveScoringStatus > div {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(10, 16, 24, 0.7);
+  padding: 12px;
+}
+
+.liveScoringStatus strong {
+  font-size: clamp(22px, 5vw, 36px);
+  line-height: 1;
+}
+
+.liveScoringSelectors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.liveScoringActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.liveScoringActions button {
+  min-height: 108px;
+  font-size: clamp(28px, 7vw, 44px);
+  font-weight: 950;
+}
+
+.hitButton {
+  background: linear-gradient(180deg, rgba(107, 208, 140, 0.95), rgba(48, 148, 82, 0.95)) !important;
+  border-color: rgba(186, 255, 204, 0.45) !important;
+  color: #06130a !important;
+}
+
+.missButton {
+  background: linear-gradient(180deg, rgba(239, 118, 95, 0.96), rgba(170, 62, 45, 0.96)) !important;
+  border-color: rgba(255, 207, 198, 0.45) !important;
+  color: #fff7f4 !important;
+}
+
+.targetCorrectionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(62px, 1fr));
+  gap: 8px;
+}
+
+.targetCorrectionButton {
+  min-height: 62px;
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  align-content: center;
+  background: rgba(10, 16, 24, 0.78) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--text) !important;
+  padding: 8px !important;
+}
+
+.targetCorrectionButton span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.targetCorrectionButton strong {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.targetCorrectionButton.hit {
+  border-color: rgba(107, 208, 140, 0.54) !important;
+  background: rgba(107, 208, 140, 0.14) !important;
+  color: #c8ffd8 !important;
+}
+
+.targetCorrectionButton.miss {
+  border-color: rgba(239, 118, 95, 0.56) !important;
+  background: rgba(239, 118, 95, 0.14) !important;
+  color: #ffd0c8 !important;
+}
+
+.targetCorrectionButton.selected {
+  box-shadow: 0 0 0 3px rgba(216, 165, 58, 0.42);
+  border-color: var(--gold) !important;
+}
+
+@media (max-width: 720px) {
+  .liveScoringStatus,
+  .liveScoringSelectors,
+  .liveScoringActions {
+    grid-template-columns: 1fr;
+  }
+}
