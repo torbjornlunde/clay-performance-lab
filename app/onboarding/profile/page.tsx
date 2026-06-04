@@ -7,6 +7,8 @@ import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import {
   emptyShooterProfileForm,
   isShooterProfileComplete,
+  isValidCountryCode,
+  normalizeCountryCode,
   normalizeDisciplines,
   shooterProfileToForm,
   type ShooterProfile,
@@ -19,7 +21,7 @@ type ValidationErrors = Partial<Record<"shooterName" | "country" | "myDiscipline
 function validate(form: ShooterProfileFormState): ValidationErrors {
   const errors: ValidationErrors = {};
   if (!form.shooterName.trim()) errors.shooterName = "Enter your shooter name.";
-  if (!form.country.trim()) errors.country = "Select your country.";
+  if (!isValidCountryCode(form.country)) errors.country = "Select your country.";
   if (form.myDisciplines.length === 0) errors.myDisciplines = "Select at least one discipline.";
   return errors;
 }
@@ -100,7 +102,7 @@ export default function OnboardingProfilePage() {
       {
         user_id: userId,
         shooter_name: form.shooterName.trim(),
-        country: form.country.trim(),
+        country: normalizeCountryCode(form.country),
         my_disciplines: form.myDisciplines,
       },
       { onConflict: "user_id" },

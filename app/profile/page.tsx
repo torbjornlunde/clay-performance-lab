@@ -6,12 +6,22 @@ import ShooterProfileForm from "@/app/components/ShooterProfileForm";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import {
   emptyShooterProfileForm,
+  isValidCountryCode,
+  normalizeCountryCode,
   normalizeDisciplines,
   shooterProfileToForm,
   type ShooterProfile,
   type ShooterProfileFormState,
 } from "@/lib/profile";
 import { supabase } from "@/lib/supabase/client";
+
+type ValidationErrors = Partial<Record<"shooterName" | "country" | "myDisciplines", string>>;
+
+function validate(form: ShooterProfileFormState): ValidationErrors {
+  const errors: ValidationErrors = {};
+  if (!isValidCountryCode(form.country)) errors.country = "Select your country.";
+  return errors;
+}
 
 export default function ShooterProfilePage() {
   const router = useRouter();
@@ -22,6 +32,7 @@ export default function ShooterProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
 
   useEffect(() => {
     loadProfile();
@@ -69,15 +80,20 @@ export default function ShooterProfilePage() {
     event.preventDefault();
     if (!userId || saving) return;
 
-    setSaving(true);
+    const nextValidationErrors = validate(form);
+    setValidationErrors(nextValidationErrors);
     setError("");
     setSuccess("");
+
+    if (Object.keys(nextValidationErrors).length > 0) return;
+
+    setSaving(true);
 
     const { error: saveError } = await supabase.from("shooter_profiles").upsert(
       {
         user_id: userId,
         shooter_name: form.shooterName.trim() || null,
-        country: form.country.trim() || null,
+        country: normalizeCountryCode(form.country) || null,
         my_disciplines: form.myDisciplines,
       },
       { onConflict: "user_id" },
@@ -103,12 +119,16 @@ export default function ShooterProfilePage() {
         loading={loading}
         onSubmit={save}
         saving={saving}
-        setForm={setForm}
+        setForm={(update) => {
+          setValidationErrors({});
+          setForm(update);
+        }}
         setSuccess={setSuccess}
         showBackToDashboard
         submitLabel="Save profile"
         success={success}
         title="Shooter profile"
+        validationErrors={validationErrors}
       />
     </main>
   );

@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import CountryPicker from "@/app/components/CountryPicker";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
-import { COUNTRIES, type ShooterProfileFormState } from "@/lib/profile";
+import { type ShooterProfileFormState } from "@/lib/profile";
 
 type ShooterProfileFormProps = {
   accountEmail?: string | null;
@@ -79,25 +80,16 @@ export default function ShooterProfileForm({
           {validationErrors.shooterName && <p id="shooter-name-error" className="error compactValidation">{validationErrors.shooterName}</p>}
           <p className="small muted">Used for your profile and future result matching.</p>
 
-          <label htmlFor="country">Country</label>
-          <input
-            id="country"
+          <label id="country-label" htmlFor="country">Country</label>
+          <CountryPicker
             value={form.country}
-            onChange={(event) => {
+            error={validationErrors.country}
+            onChange={(country) => {
               clearSuccess();
-              setForm((current) => ({ ...current, country: event.target.value }));
+              setForm((current) => ({ ...current, country }));
             }}
-            placeholder="Select or type a country"
-            list="country-options"
-            aria-describedby={validationErrors.country ? "country-error" : undefined}
-            aria-invalid={Boolean(validationErrors.country)}
           />
           {validationErrors.country && <p id="country-error" className="error compactValidation">{validationErrors.country}</p>}
-          <datalist id="country-options">
-            {COUNTRIES.map((country) => (
-              <option key={country} value={country} />
-            ))}
-          </datalist>
 
           <div className="profileFieldGroup">
             <label>My disciplines</label>
