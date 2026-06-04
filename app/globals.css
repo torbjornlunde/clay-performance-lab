@@ -3790,9 +3790,12 @@ html, body {
 }
 
 .trainingScoreTable input {
-  min-width: 72px;
-  padding: 12px 10px;
+  min-width: 86px;
+  min-height: 56px;
+  padding: 14px 12px;
   text-align: center;
+  font-size: 18px;
+  font-weight: 900;
 }
 
 .scoreTotalCell {
@@ -3825,8 +3828,20 @@ html, body {
     min-width: 640px;
   }
 
+  .trainingScoreTable input {
+    min-width: 90px;
+    min-height: 58px;
+  }
+
   .trainingScoreTable th,
   .trainingScoreTable td {
     padding: 8px;
   }
+}
+
+.emptyScoreGridCell {
+  color: var(--muted);
+  font-weight: 800;
+  padding: 18px !important;
+  text-align: center !important;
 }

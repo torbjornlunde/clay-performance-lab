@@ -49,6 +49,26 @@ function makeShooter(name = ""): ShooterDraft {
   return { localId: crypto.randomUUID(), name, scores: makeScores(5) };
 }
 
+function capitalizeNamePart(part: string) {
+  if (!part) return part;
+  const [firstCharacter, ...rest] = Array.from(part);
+  return `${firstCharacter.toLocaleUpperCase()}${rest.join("").toLocaleLowerCase()}`;
+}
+
+function formatShooterName(name: string) {
+  return name
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.split("-").map(capitalizeNamePart).join("-"))
+    .join(" ");
+}
+
+function sessionTypeLabel(value: string) {
+  return value === "shared_training" ? "Shared training" : "Training";
+}
+
 function clampScore(value: number, max: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.min(Math.max(Math.trunc(value), 0), max);
@@ -84,6 +104,13 @@ export default function TrainingScoreSheetPage() {
   );
   const sheetTotalTargets = numberOfPosts * targetsPerPost;
   const hasEnteredScores = shooters.some((shooter) => shooter.scores.some((score) => score > 0));
+  const validShooters = useMemo(
+    () =>
+      shooters
+        .map((shooter) => ({ ...shooter, displayName: formatShooterName(shooter.name) }))
+        .filter((shooter) => shooter.displayName.length > 0),
+    [shooters],
+  );
 
   useEffect(() => {
     if (isNew) return;
@@ -149,7 +176,7 @@ export default function TrainingScoreSheetPage() {
             scores[score.post_number - 1] = clampScore(score.score, sheet.targets_per_post || 10);
           }
         });
-      return { localId: shooter.id, name: shooter.shooter_name, scores };
+      return { localId: shooter.id, name: formatShooterName(shooter.shooter_name), scores };
     });
 
     setShooters(loadedShooters.length > 0 ? loadedShooters : [makeShooter()]);
@@ -177,6 +204,16 @@ export default function TrainingScoreSheetPage() {
     setShooters((current) => current.map((shooter) => (shooter.localId === localId ? { ...shooter, name } : shooter)));
   }
 
+  function formatShooterNameInList(localId: string) {
+    setShooters((current) => current.map((shooter) => (shooter.localId === localId ? { ...shooter, name: formatShooterName(shooter.name) } : shooter)));
+  }
+
+  function focusNextScoreField(scoreIndex: number) {
+    const nextField = document.querySelector<HTMLInputElement>(`[data-score-index="${scoreIndex + 1}"]`);
+    nextField?.focus();
+    nextField?.select();
+  }
+
   function updateScore(localId: string, postIndex: number, value: string) {
     const score = value === "" ? 0 : clampScore(Number(value), targetsPerPost);
     setShooters((current) =>
@@ -190,7 +227,7 @@ export default function TrainingScoreSheetPage() {
   }
 
   function addShooter() {
-    const name = newShooterName.trim();
+    const name = formatShooterName(newShooterName);
     setShooters((current) => [...current, { localId: crypto.randomUUID(), name, scores: makeScores(numberOfPosts) }]);
     setNewShooterName("");
   }
@@ -200,16 +237,16 @@ export default function TrainingScoreSheetPage() {
   }
 
   function validate() {
-    const namedShooters = shooters.filter((shooter) => shooter.name.trim());
+    const namedShooters = shooters.filter((shooter) => formatShooterName(shooter.name));
     if (!title.trim()) return "Add a training name.";
     if (!sessionDate) return "Choose a date.";
     if (!discipline) return "Choose a discipline.";
     if (numberOfPosts < 1) return "Add at least one post.";
     if (targetsPerPost < 1) return "Targets per post must be at least 1.";
-    if (namedShooters.length === 0) return "Add at least one shooter name.";
+    if (namedShooters.length === 0) return "Add at least one shooter.";
     for (const shooter of namedShooters) {
       for (const score of shooter.scores) {
-        if (score > targetsPerPost) return `${shooter.name} has a score above ${targetsPerPost}.`;
+        if (score > targetsPerPost) return `${formatShooterName(shooter.name)} has a score above ${targetsPerPost}.`;
       }
     }
     return "";
@@ -276,10 +313,13 @@ export default function TrainingScoreSheetPage() {
       }
     }
 
-    const namedShooters = shooters.filter((shooter) => shooter.name.trim());
+    const namedShooters = shooters
+      .map((shooter) => ({ ...shooter, displayName: formatShooterName(shooter.name) }))
+      .filter((shooter) => shooter.displayName);
+    setShooters((current) => current.map((shooter) => ({ ...shooter, name: formatShooterName(shooter.name) })));
     const shooterRows = namedShooters.map((shooter, index) => ({
       score_sheet_id: savedSheet.id,
-      shooter_name: shooter.name.trim(),
+      shooter_name: shooter.displayName,
       display_order: index + 1,
       total_score: totalFor(shooter),
     }));
@@ -336,7 +376,7 @@ export default function TrainingScoreSheetPage() {
             <h2>{isNew ? "New training score sheet" : title}</h2>
             <p className="small muted">Fast post-by-post scoring for one organizer and multiple shooters.</p>
           </div>
-          <span className="badge badgeGreen">Training</span>
+          <span className="badge badgeGreen">{sessionTypeLabel(sessionType)}</span>
         </div>
 
         <div className="subcard">
@@ -364,8 +404,8 @@ export default function TrainingScoreSheetPage() {
             <div>
               <label>Session type</label>
               <select value={sessionType} onChange={(event) => setSessionType(event.target.value)}>
-                <option value="training">training</option>
-                <option value="shared_training">shared_training</option>
+                <option value="training">Training</option>
+                <option value="shared_training">Shared training</option>
               </select>
             </div>
           </div>
@@ -398,7 +438,12 @@ export default function TrainingScoreSheetPage() {
             {shooters.map((shooter, index) => (
               <div className="shooterNameRow" key={shooter.localId}>
                 <span className="small muted">#{index + 1}</span>
-                <input value={shooter.name} onChange={(event) => updateShooterName(shooter.localId, event.target.value)} placeholder="Shooter name" />
+                <input
+                  value={shooter.name}
+                  onChange={(event) => updateShooterName(shooter.localId, event.target.value)}
+                  onBlur={() => formatShooterNameInList(shooter.localId)}
+                  placeholder="Shooter name"
+                />
                 <button type="button" className="secondary smallButton" onClick={() => removeShooter(shooter.localId)} disabled={shooters.length === 1}>Remove</button>
               </div>
             ))}
@@ -422,22 +467,38 @@ export default function TrainingScoreSheetPage() {
                 </tr>
               </thead>
               <tbody>
-                {shooters.map((shooter) => (
+                {validShooters.length === 0 ? (
+                  <tr>
+                    <td colSpan={postNumbers.length + 2} className="emptyScoreGridCell">Add at least one shooter.</td>
+                  </tr>
+                ) : validShooters.map((shooter, shooterIndex) => (
                   <tr key={shooter.localId}>
-                    <th scope="row">{shooter.name.trim() || "Unnamed"}</th>
-                    {postNumbers.map((post, index) => (
-                      <td key={post}>
-                        <input
-                          aria-label={`${shooter.name || "Shooter"} post ${post}`}
-                          value={shooter.scores[index] || ""}
-                          onChange={(event) => updateScore(shooter.localId, index, event.target.value)}
-                          type="number"
-                          min="0"
-                          max={targetsPerPost}
-                          inputMode="numeric"
-                        />
-                      </td>
-                    ))}
+                    <th scope="row">{shooter.displayName}</th>
+                    {postNumbers.map((post, index) => {
+                      const scoreIndex = shooterIndex * numberOfPosts + index;
+                      return (
+                        <td key={post}>
+                          <input
+                            aria-label={`${shooter.displayName} post ${post}`}
+                            data-score-index={scoreIndex}
+                            value={shooter.scores[index] || ""}
+                            onChange={(event) => updateScore(shooter.localId, index, event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                focusNextScoreField(scoreIndex);
+                              }
+                            }}
+                            type="number"
+                            min="0"
+                            max={targetsPerPost}
+                            inputMode="numeric"
+                            enterKeyHint="next"
+                            pattern="[0-9]*"
+                          />
+                        </td>
+                      );
+                    })}
                     <td className="scoreTotalCell">{totalFor(shooter)} / {sheetTotalTargets}</td>
                   </tr>
                 ))}
