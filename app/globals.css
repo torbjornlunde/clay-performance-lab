@@ -3959,3 +3959,222 @@ html, body {
     grid-template-columns: 1fr;
   }
 }
+
+.collapsibleSubcard summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 950;
+  list-style: none;
+}
+
+.collapsibleSubcard summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsibleSubcard summary::after {
+  content: "Open";
+  color: var(--gold2);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.collapsibleSubcard[open] summary {
+  margin-bottom: 12px;
+}
+
+.collapsibleSubcard[open] summary::after {
+  content: "Close";
+}
+
+.liveHero,
+.liveScoringStatus {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.liveHero > div,
+.liveScoringStatus > div,
+.postShootingOrder,
+.targetProgressPanel {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(10, 16, 24, 0.7);
+  padding: 12px;
+}
+
+.liveHero > div,
+.liveScoringStatus > div {
+  display: grid;
+  gap: 6px;
+}
+
+.liveHero strong {
+  font-size: clamp(24px, 6vw, 42px);
+  line-height: 1.02;
+}
+
+.postShootingOrder h4,
+.compactPanelHeader h4 {
+  margin: 0;
+}
+
+.postShootingOrder ol {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.postShootingOrder li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.postShootingOrder li > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-weight: 950;
+}
+
+.postShootingOrder button {
+  width: 100%;
+  min-height: 44px;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--text) !important;
+  text-align: left;
+}
+
+.postShootingOrder li.active > span,
+.postShootingOrder li.active button {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 2px rgba(216, 165, 58, 0.22);
+}
+
+.postShootingOrder li.active button {
+  background: rgba(216, 165, 58, 0.16) !important;
+  color: #ffe2a0 !important;
+}
+
+.liveNavigationControls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.compactPanelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 720px) {
+  .collapsibleSubcard {
+    padding: 10px 12px;
+  }
+
+  .collapsibleSubcard summary {
+    font-size: 15px;
+  }
+
+  .liveHero,
+  .liveScoringStatus,
+  .liveScoringSelectors,
+  .liveScoringActions {
+    grid-template-columns: 1fr;
+  }
+
+  .liveHero strong {
+    font-size: clamp(26px, 9vw, 38px);
+  }
+
+  .liveScoringActions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .liveScoringActions button {
+    min-height: 86px;
+    font-size: clamp(24px, 9vw, 36px);
+  }
+
+  .liveNavigationControls {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .compactPanelHeader {
+    display: grid;
+    gap: 3px;
+  }
+
+  .targetCorrectionGrid {
+    grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
+  }
+
+  .targetCorrectionButton {
+    min-height: 54px;
+    padding: 6px !important;
+  }
+}
+
+.setupVisibilityToggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.setupSectionHidden {
+  display: none;
+}
+
+.shooterSetupHelp h3 {
+  margin: 0 0 4px;
+}
+
+.shooterSetupHelp p {
+  margin-top: 0;
+}
+
+.editExistingShootersHeader {
+  margin-top: 16px;
+}
+
+.addShooterRow label,
+.shooterNameRow label {
+  margin: 0;
+}
+
+.emptyShooterListMessage {
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  color: var(--muted);
+  font-weight: 800;
+  margin: 0;
+  padding: 14px;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .setupVisibilityToggle {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

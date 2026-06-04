@@ -66,10 +66,6 @@ function makeScores(postCount: number, existing: number[] = []) {
   return Array.from({ length: postCount }, (_, index) => existing[index] ?? 0);
 }
 
-function makeShooter(name = ""): ShooterDraft {
-  return { localId: crypto.randomUUID(), name, scores: makeScores(5) };
-}
-
 function capitalizeNamePart(part: string) {
   if (!part) return part;
   const [firstCharacter, ...rest] = Array.from(part);
@@ -132,6 +128,12 @@ function totalFor(shooter: ShooterDraft, targetResults: TargetResultMap) {
   );
 }
 
+function orderedShootersForPost<T>(shooters: T[], postNumber: number) {
+  if (shooters.length === 0) return shooters;
+  const startIndex = (Math.max(postNumber, 1) - 1) % shooters.length;
+  return shooters.slice(startIndex).concat(shooters.slice(0, startIndex));
+}
+
 export default function TrainingScoreSheetPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -145,10 +147,11 @@ export default function TrainingScoreSheetPage() {
   const [sessionType, setSessionType] = useState("training");
   const [numberOfPosts, setNumberOfPosts] = useState(5);
   const [targetsPerPost, setTargetsPerPost] = useState(10);
-  const [shooters, setShooters] = useState<ShooterDraft[]>([makeShooter()]);
+  const [shooters, setShooters] = useState<ShooterDraft[]>([]);
   const [targetResults, setTargetResults] = useState<TargetResultMap>({});
   const [inputHistory, setInputHistory] = useState<InputHistoryItem[]>([]);
   const [liveMode, setLiveMode] = useState(false);
+  const [showSetupDuringLive, setShowSetupDuringLive] = useState(false);
   const [currentShooterId, setCurrentShooterId] = useState("");
   const [currentPost, setCurrentPost] = useState(1);
   const [currentTarget, setCurrentTarget] = useState(1);
@@ -163,6 +166,7 @@ export default function TrainingScoreSheetPage() {
     [numberOfPosts],
   );
   const sheetTotalTargets = numberOfPosts * targetsPerPost;
+  const setupSectionsOpen = !liveMode || showSetupDuringLive;
   const hasEnteredScores = shooters.some((shooter) =>
     shooter.scores.some(
       (score, index) => displayedPostScore(shooter, index, targetResults) > 0,
@@ -182,8 +186,29 @@ export default function TrainingScoreSheetPage() {
     () => Array.from({ length: targetsPerPost }, (_, index) => index + 1),
     [targetsPerPost],
   );
+  const currentPostShooters = useMemo(
+    () => orderedShootersForPost(validShooters, currentPost),
+    [currentPost, validShooters],
+  );
   const currentShooter = validShooters.find(
     (shooter) => shooter.localId === currentShooterId,
+  );
+  const currentShooterOrderIndex = currentPostShooters.findIndex(
+    (shooter) => shooter.localId === currentShooterId,
+  );
+  const currentPostResults = currentShooter
+    ? targetResults[currentShooter.localId]?.[currentPost] || {}
+    : {};
+  const currentShooterPostScore = currentShooter
+    ? displayedPostScore(currentShooter, currentPost - 1, targetResults)
+    : 0;
+  const currentShooterTotal = currentShooter
+    ? totalFor(currentShooter, targetResults)
+    : 0;
+  const currentShooterScoredTargets = Object.keys(currentPostResults).length;
+  const currentShooterRemainingTargets = Math.max(
+    targetsPerPost - currentShooterScoredTargets,
+    0,
   );
 
   useEffect(() => {
@@ -200,9 +225,11 @@ export default function TrainingScoreSheetPage() {
     if (
       !validShooters.some((shooter) => shooter.localId === currentShooterId)
     ) {
-      setCurrentShooterId(validShooters[0].localId);
+      setCurrentShooterId(
+        orderedShootersForPost(validShooters, currentPost)[0].localId,
+      );
     }
-  }, [currentShooterId, validShooters]);
+  }, [currentPost, currentShooterId, validShooters]);
 
   useEffect(() => {
     setCurrentPost((value) => Math.min(Math.max(value, 1), numberOfPosts));
@@ -311,7 +338,7 @@ export default function TrainingScoreSheetPage() {
       };
     });
 
-    setShooters(loadedShooters.length > 0 ? loadedShooters : [makeShooter()]);
+    setShooters(loadedShooters);
     setTargetResults(loadedTargetResults);
     setInputHistory([]);
     setLoading(false);
@@ -407,6 +434,11 @@ export default function TrainingScoreSheetPage() {
 
   function addShooter() {
     const name = formatShooterName(newShooterName);
+    if (!name) {
+      setErr("Enter a shooter name before adding a new shooter.");
+      return;
+    }
+    setErr("");
     setShooters((current) => [
       ...current,
       { localId: crypto.randomUUID(), name, scores: makeScores(numberOfPosts) },
@@ -416,9 +448,7 @@ export default function TrainingScoreSheetPage() {
 
   function removeShooter(localId: string) {
     setShooters((current) =>
-      current.length === 1
-        ? current
-        : current.filter((shooter) => shooter.localId !== localId),
+      current.filter((shooter) => shooter.localId !== localId),
     );
     setTargetResults((current) => {
       const next = { ...current };
@@ -446,25 +476,64 @@ export default function TrainingScoreSheetPage() {
     );
   }
 
+  function setPostAndStartingShooter(postNumber: number) {
+    const safePost = Math.min(Math.max(postNumber, 1), numberOfPosts);
+    setCurrentPost(safePost);
+    const orderedShooters = orderedShootersForPost(validShooters, safePost);
+    if (orderedShooters[0]) setCurrentShooterId(orderedShooters[0].localId);
+    setCurrentTarget(1);
+  }
+
+  function goToAdjacentShooter(direction: 1 | -1) {
+    if (currentPostShooters.length === 0) return;
+    const activeIndex =
+      currentShooterOrderIndex >= 0 ? currentShooterOrderIndex : 0;
+    const nextIndex =
+      (activeIndex + direction + currentPostShooters.length) %
+      currentPostShooters.length;
+    setCurrentShooterId(currentPostShooters[nextIndex].localId);
+    setCurrentTarget(1);
+  }
+
   function advanceLiveCursor() {
-    const shooterIndex = validShooters.findIndex(
-      (shooter) => shooter.localId === currentShooterId,
-    );
-    if (shooterIndex < 0) return;
+    if (currentShooterOrderIndex < 0) return;
     if (currentTarget < targetsPerPost) {
       setCurrentTarget((value) => value + 1);
       return;
     }
-    if (shooterIndex < validShooters.length - 1) {
-      setCurrentShooterId(validShooters[shooterIndex + 1].localId);
+    if (currentShooterOrderIndex < currentPostShooters.length - 1) {
+      setCurrentShooterId(
+        currentPostShooters[currentShooterOrderIndex + 1].localId,
+      );
       setCurrentTarget(1);
       return;
     }
     if (currentPost < numberOfPosts) {
-      setCurrentPost((value) => value + 1);
-      setCurrentShooterId(validShooters[0].localId);
+      const nextPost = currentPost + 1;
+      setCurrentPost(nextPost);
+      const nextPostShooters = orderedShootersForPost(validShooters, nextPost);
+      if (nextPostShooters[0]) {
+        setCurrentShooterId(nextPostShooters[0].localId);
+      }
       setCurrentTarget(1);
     }
+  }
+
+  function toggleLiveMode() {
+    setLiveMode((value) => {
+      const nextValue = !value;
+      setShowSetupDuringLive(false);
+      if (nextValue && validShooters.length > 0) {
+        const orderedShooters = orderedShootersForPost(
+          validShooters,
+          currentPost,
+        );
+        if (orderedShooters[0]) {
+          setCurrentShooterId(orderedShooters[0].localId);
+        }
+      }
+      return nextValue;
+    });
   }
 
   function markTarget(result: TargetResultValue) {
@@ -764,7 +833,33 @@ export default function TrainingScoreSheetPage() {
           </span>
         </div>
 
-        <div className="subcard">
+        {liveMode && (
+          <div className="setupVisibilityToggle">
+            <button
+              type="button"
+              className="secondary smallButton"
+              onClick={() => setShowSetupDuringLive((value) => !value)}
+            >
+              {showSetupDuringLive ? "Hide setup" : "Show setup"}
+            </button>
+            <span className="small muted">
+              Setup is hidden by default so live scoring stays front and center.
+            </span>
+          </div>
+        )}
+
+        <details
+          className={`subcard collapsibleSubcard ${
+            setupSectionsOpen ? "" : "setupSectionHidden"
+          }`}
+          open={setupSectionsOpen}
+        >
+          <summary>
+            <span>Training details</span>
+            <span className="small muted">
+              {numberOfPosts} posts × {targetsPerPost} targets
+            </span>
+          </summary>
           <div className="row">
             <div>
               <label>Training name</label>
@@ -856,50 +951,85 @@ export default function TrainingScoreSheetPage() {
           <p className="small muted">
             Total targets per shooter: {sheetTotalTargets}
           </p>
-        </div>
+        </details>
 
-        <div className="subcard">
-          <h3>Shooters</h3>
+        <details
+          className={`subcard collapsibleSubcard ${
+            setupSectionsOpen ? "" : "setupSectionHidden"
+          }`}
+          open={setupSectionsOpen}
+        >
+          <summary>
+            <span>Shooter setup</span>
+            <span className="small muted">
+              {validShooters.length || 0} ready
+            </span>
+          </summary>
+          <div className="shooterSetupHelp">
+            <h3>Add a new shooter</h3>
+            <p className="small muted">
+              Use this field only to add another shooter to the score sheet.
+              Existing shooters are edited in the numbered list below.
+            </p>
+          </div>
           <div className="addShooterRow">
-            <input
-              value={newShooterName}
-              onChange={(event) => setNewShooterName(event.target.value)}
-              placeholder="Shooter name"
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  addShooter();
-                }
-              }}
-            />
+            <label>
+              New shooter name
+              <input
+                value={newShooterName}
+                onChange={(event) => setNewShooterName(event.target.value)}
+                placeholder="Type a new shooter name"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addShooter();
+                  }
+                }}
+              />
+            </label>
             <button type="button" className="secondary" onClick={addShooter}>
               Add shooter
             </button>
           </div>
-          <div className="shooterNameList">
-            {shooters.map((shooter, index) => (
-              <div className="shooterNameRow" key={shooter.localId}>
-                <span className="small muted">#{index + 1}</span>
-                <input
-                  value={shooter.name}
-                  onChange={(event) =>
-                    updateShooterName(shooter.localId, event.target.value)
-                  }
-                  onBlur={() => formatShooterNameInList(shooter.localId)}
-                  placeholder="Shooter name"
-                />
-                <button
-                  type="button"
-                  className="secondary smallButton"
-                  onClick={() => removeShooter(shooter.localId)}
-                  disabled={shooters.length === 1}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
+          <div className="shooterSetupHelp editExistingShootersHeader">
+            <h3>Edit existing shooters</h3>
+            <p className="small muted">
+              Numbered rows are existing shooters. Edit a name here only when
+              correcting that shooter.
+            </p>
           </div>
-        </div>
+          <div className="shooterNameList">
+            {shooters.length === 0 ? (
+              <p className="emptyShooterListMessage">
+                No shooters added yet. Add the first shooter above.
+              </p>
+            ) : (
+              shooters.map((shooter, index) => (
+                <div className="shooterNameRow" key={shooter.localId}>
+                  <span className="small muted">#{index + 1}</span>
+                  <label>
+                    Existing shooter {index + 1}
+                    <input
+                      value={shooter.name}
+                      onChange={(event) =>
+                        updateShooterName(shooter.localId, event.target.value)
+                      }
+                      onBlur={() => formatShooterNameInList(shooter.localId)}
+                      placeholder={`Edit shooter ${index + 1} name`}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="secondary smallButton"
+                    onClick={() => removeShooter(shooter.localId)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </details>
 
         <div className="subcard liveScoringCard">
           <div className="sectionHeader compactSectionHeader">
@@ -913,14 +1043,18 @@ export default function TrainingScoreSheetPage() {
             <button
               type="button"
               className={liveMode ? "secondary" : ""}
-              onClick={() => setLiveMode((value) => !value)}
+              onClick={toggleLiveMode}
             >
               {liveMode ? "Hide live scoring" : "Start live scoring"}
             </button>
           </div>
           {liveMode && (
             <div className="liveScoringPanel">
-              <div className="liveScoringStatus">
+              <div className="liveHero">
+                <div>
+                  <span className="small muted">Current post</span>
+                  <strong>Post {currentPost}</strong>
+                </div>
                 <div>
                   <span className="small muted">Current shooter</span>
                   <strong>
@@ -928,13 +1062,51 @@ export default function TrainingScoreSheetPage() {
                   </strong>
                 </div>
                 <div>
-                  <span className="small muted">Current post</span>
-                  <strong>{currentPost}</strong>
+                  <span className="small muted">Current target</span>
+                  <strong>Target {currentTarget}</strong>
+                </div>
+              </div>
+              <div className="liveScoringStatus">
+                <div>
+                  <span className="small muted">Post score</span>
+                  <strong>
+                    {currentShooterPostScore} / {targetsPerPost}
+                  </strong>
                 </div>
                 <div>
-                  <span className="small muted">Current target</span>
-                  <strong>{currentTarget}</strong>
+                  <span className="small muted">Shooter total</span>
+                  <strong>
+                    {currentShooterTotal} / {sheetTotalTargets}
+                  </strong>
                 </div>
+                <div>
+                  <span className="small muted">Remaining targets</span>
+                  <strong>{currentShooterRemainingTargets}</strong>
+                </div>
+              </div>
+              <div className="postShootingOrder">
+                <h4>Post {currentPost} shooting order</h4>
+                <ol>
+                  {currentPostShooters.map((shooter, index) => (
+                    <li
+                      key={shooter.localId}
+                      className={
+                        shooter.localId === currentShooterId ? "active" : ""
+                      }
+                    >
+                      <span>{index + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurrentShooterId(shooter.localId);
+                          setCurrentTarget(1);
+                        }}
+                      >
+                        {shooter.displayName}
+                      </button>
+                    </li>
+                  ))}
+                </ol>
               </div>
               <div className="liveScoringSelectors">
                 <label>
@@ -945,7 +1117,7 @@ export default function TrainingScoreSheetPage() {
                       setCurrentShooterId(event.target.value)
                     }
                   >
-                    {validShooters.map((shooter) => (
+                    {currentPostShooters.map((shooter) => (
                       <option key={shooter.localId} value={shooter.localId}>
                         {shooter.displayName}
                       </option>
@@ -957,7 +1129,7 @@ export default function TrainingScoreSheetPage() {
                   <select
                     value={currentPost}
                     onChange={(event) =>
-                      setCurrentPost(Number(event.target.value))
+                      setPostAndStartingShooter(Number(event.target.value))
                     }
                   >
                     {postNumbers.map((post) => (
@@ -967,6 +1139,40 @@ export default function TrainingScoreSheetPage() {
                     ))}
                   </select>
                 </label>
+              </div>
+              <div className="liveNavigationControls">
+                <button
+                  type="button"
+                  className="secondary smallButton"
+                  onClick={() => setPostAndStartingShooter(currentPost - 1)}
+                  disabled={currentPost <= 1}
+                >
+                  Previous post
+                </button>
+                <button
+                  type="button"
+                  className="secondary smallButton"
+                  onClick={() => goToAdjacentShooter(-1)}
+                  disabled={currentPostShooters.length < 2}
+                >
+                  Previous shooter
+                </button>
+                <button
+                  type="button"
+                  className="secondary smallButton"
+                  onClick={() => goToAdjacentShooter(1)}
+                  disabled={currentPostShooters.length < 2}
+                >
+                  Next shooter
+                </button>
+                <button
+                  type="button"
+                  className="secondary smallButton"
+                  onClick={() => setPostAndStartingShooter(currentPost + 1)}
+                  disabled={currentPost >= numberOfPosts}
+                >
+                  Next post
+                </button>
               </div>
               <div className="liveScoringActions">
                 <button
@@ -997,50 +1203,64 @@ export default function TrainingScoreSheetPage() {
                 </button>
               </div>
               {currentShooter && (
-                <div
-                  className="targetCorrectionGrid"
-                  aria-label="Target correction grid"
-                >
-                  {targetNumbers.map((targetNumber) => {
-                    const result =
-                      targetResults[currentShooter.localId]?.[currentPost]?.[
-                        targetNumber
-                      ];
-                    const isCurrentTarget = targetNumber === currentTarget;
-                    return (
-                      <button
-                        key={targetNumber}
-                        type="button"
-                        className={`targetCorrectionButton ${result || "empty"} ${
-                          isCurrentTarget ? "selected" : ""
-                        }`}
-                        onClick={() =>
-                          correctTarget(
-                            currentShooter.localId,
-                            currentPost,
-                            targetNumber,
-                          )
-                        }
-                        aria-label={`${currentShooter.displayName} post ${currentPost} target ${targetNumber} ${result || "not scored"}`}
-                      >
-                        <span>{targetNumber}</span>
-                        <strong>
-                          {result === "hit"
-                            ? "H"
-                            : result === "miss"
-                              ? "M"
-                              : "—"}
-                        </strong>
-                      </button>
-                    );
-                  })}
+                <div className="targetProgressPanel">
+                  <div className="compactPanelHeader">
+                    <h4>{currentShooter.displayName} target progress</h4>
+                    <span className="small muted">
+                      Tap a scored target to correct it.
+                    </span>
+                  </div>
+                  <div
+                    className="targetCorrectionGrid"
+                    aria-label="Target correction grid"
+                  >
+                    {targetNumbers.map((targetNumber) => {
+                      const result = currentPostResults[targetNumber];
+                      const isCurrentTarget = targetNumber === currentTarget;
+                      return (
+                        <button
+                          key={targetNumber}
+                          type="button"
+                          className={`targetCorrectionButton ${result || "empty"} ${
+                            isCurrentTarget ? "selected" : ""
+                          }`}
+                          onClick={() =>
+                            correctTarget(
+                              currentShooter.localId,
+                              currentPost,
+                              targetNumber,
+                            )
+                          }
+                          aria-label={`${currentShooter.displayName} post ${currentPost} target ${targetNumber} ${result || "not scored"}`}
+                        >
+                          <span>{targetNumber}</span>
+                          <strong>
+                            {result === "hit"
+                              ? "H"
+                              : result === "miss"
+                                ? "M"
+                                : "—"}
+                          </strong>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
           )}
         </div>
 
-        <div className="subcard">
+        <details
+          className={`subcard collapsibleSubcard ${
+            setupSectionsOpen ? "" : "setupSectionHidden"
+          }`}
+          open={setupSectionsOpen}
+        >
+          <summary>
+            <span>Scores by post</span>
+            <span className="small muted">Post-total overview</span>
+          </summary>
           <div className="sectionHeader compactSectionHeader">
             <div>
               <h3>Scores by post</h3>
@@ -1140,7 +1360,7 @@ export default function TrainingScoreSheetPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </details>
 
         {err && <div className="error">{err}</div>}
         {savedMessage && <div className="successMessage">{savedMessage}</div>}
