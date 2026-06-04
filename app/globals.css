@@ -3579,6 +3579,7 @@ html, body {
   }
 
   .primaryActionGrid .button {
+    min-height: 48px;
     width: 100%;
   }
 
