@@ -371,7 +371,9 @@ export default function TrainingScoreSheetPage() {
     ? validShooters.findIndex((shooter) => shooter.localId === currentShooterId) + 1
     : 0;
   const currentCompakStartStand = isCompak
-    ? compakStartPlateForOrderNumber(currentShooterNumber)
+    ? compakShootingMode === "Squad"
+      ? 1
+      : compakStartPlateForOrderNumber(currentShooterNumber)
     : 1;
   const currentCompakProgram = useMemo(
     () =>
@@ -382,7 +384,13 @@ export default function TrainingScoreSheetPage() {
             compakSchemeRows,
           )
         : [],
-    [compakSchemeId, compakSchemeRows, currentCompakStartStand, isCompak],
+    [
+      compakSchemeId,
+      compakSchemeRows,
+      compakShootingMode,
+      currentCompakStartStand,
+      isCompak,
+    ],
   );
   const currentCompakSequence = isCompak
     ? currentCompakProgram[currentCompakSequenceIndex] || null
@@ -1372,7 +1380,7 @@ export default function TrainingScoreSheetPage() {
                   : "No verified target-machine grid is stored for this scheme yet; live scoring follows the expected Compak presentation structure as a safe placeholder."}
                 {compakShootingMode === "Inline"
                   ? " Inline mode is a basic per-shooter scheme flow until full field movement rules are added."
-                  : " Squad mode rotates shooters after every scheme sequence."}
+                  : " Squad mode scores one plate sequence for every shooter before moving to the next sequence."}
               </p>
             </div>
           )}
