@@ -4178,3 +4178,117 @@ html, body {
     flex-direction: column;
   }
 }
+
+.compakSettingsPanel,
+.compakLiveProgram {
+  border: 1px solid rgba(216, 165, 58, 0.32);
+  border-radius: 16px;
+  background: rgba(216, 165, 58, 0.08);
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.compakSettingsPanel h3 {
+  margin: 0 0 4px;
+}
+
+.compakSettingsPanel p {
+  margin: 0 0 10px;
+}
+
+.shooterOrderBadge {
+  display: grid;
+  gap: 2px;
+  color: #ffe2a0;
+  font-size: 12px;
+  font-weight: 950;
+  min-width: 86px;
+  text-transform: uppercase;
+}
+
+.shooterOrderBadge small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: none;
+}
+
+.shooterOrderControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.compakLiveProgram {
+  display: grid;
+  gap: 4px;
+  margin-top: 0;
+}
+
+.compakLiveProgram strong {
+  color: #ffe2a0;
+  font-size: 20px;
+}
+
+@media (min-width: 721px) {
+  .shooterNameRow {
+    grid-template-columns: auto minmax(160px, 1fr) minmax(240px, auto);
+  }
+}
+
+@media (max-width: 720px) {
+  .shooterOrderControls {
+    justify-content: stretch;
+  }
+
+  .shooterOrderControls .smallButton {
+    flex: 1 1 30%;
+  }
+}
+
+.compakRoundCompleteList,
+.compakOverviewGrid,
+.compakStandBreakdown {
+  display: grid;
+  gap: 10px;
+}
+
+.compakRoundCompleteList {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.compakRoundCompleteList span,
+.compakOverviewCard,
+.compakStandRow {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(10, 16, 24, 0.5);
+  padding: 10px;
+}
+
+.compakStandRow {
+  display: grid;
+  gap: 8px;
+}
+
+.compakStandTargets {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(42px, 1fr));
+  gap: 6px;
+}
+
+.compactTargetButton {
+  min-height: 46px;
+  padding: 5px !important;
+}
+
+.compactTargetButton strong {
+  font-size: 18px;
+}
+
+@media (max-width: 720px) {
+  .compakStandTargets {
+    grid-template-columns: repeat(5, minmax(36px, 1fr));
+  }
+}
