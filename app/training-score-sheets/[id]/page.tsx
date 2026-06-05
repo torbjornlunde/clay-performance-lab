@@ -235,6 +235,12 @@ function generateTrainingScoreSheetTitle(
   return titleParts.join(" – ");
 }
 
+function nextRoundTitle(currentTitle: string, fallbackTitle: string) {
+  const match = currentTitle.match(/^(.*) – Round (\d+)$/);
+  if (match) return `${match[1]} – Round ${Number(match[2]) + 1}`;
+  return `${currentTitle || fallbackTitle} – Round 2`;
+}
+
 function makeScores(postCount: number, existing: number[] = []) {
   return Array.from({ length: postCount }, (_, index) => existing[index] ?? 0);
 }
@@ -1064,13 +1070,15 @@ export default function TrainingScoreSheetPage() {
     return "";
   }
 
-  async function save() {
+  async function save(options: { navigate?: boolean; reload?: boolean } = {}) {
+    const shouldNavigate = options.navigate ?? true;
+    const shouldReload = options.reload ?? true;
     setErr("");
     setSavedMessage("");
     const validationError = validate();
     if (validationError) {
       setErr(validationError);
-      return;
+      return null;
     }
 
     setSaving(true);
@@ -1078,11 +1086,11 @@ export default function TrainingScoreSheetPage() {
     if (userError) {
       setErr(userError.message);
       setSaving(false);
-      return;
+      return null;
     }
     if (!userData.user) {
       router.push("/login");
-      return;
+      return null;
     }
 
     const sheetPayload = {
@@ -1115,7 +1123,7 @@ export default function TrainingScoreSheetPage() {
     if (sheetError || !savedSheet) {
       setErr(sheetError?.message || "Could not save training score sheet.");
       setSaving(false);
-      return;
+      return null;
     }
 
     const namedShooters = shooters
@@ -1156,7 +1164,7 @@ export default function TrainingScoreSheetPage() {
             "Could not replace old scores.",
         );
         setSaving(false);
-        return;
+        return null;
       }
     }
 
@@ -1175,7 +1183,7 @@ export default function TrainingScoreSheetPage() {
     if (shooterError) {
       setErr(shooterError.message || "Could not save shooters.");
       setSaving(false);
-      return;
+      return null;
     }
 
     const scoreRows = namedShooters.flatMap((shooter) =>
@@ -1197,7 +1205,7 @@ export default function TrainingScoreSheetPage() {
     if (scoresError) {
       setErr(scoresError.message);
       setSaving(false);
-      return;
+      return null;
     }
 
     const targetRows = namedShooters.flatMap((shooter) =>
@@ -1220,14 +1228,108 @@ export default function TrainingScoreSheetPage() {
       if (targetError) {
         setErr(targetError.message);
         setSaving(false);
-        return;
+        return null;
       }
     }
 
     setSaving(false);
     setSavedMessage("Training score sheet saved.");
-    if (isNew) router.replace(`/training-score-sheets/${savedSheet.id}`);
-    else loadScoreSheet();
+    if (isNew && shouldNavigate) router.replace(`/training-score-sheets/${savedSheet.id}`);
+    else if (!isNew && shouldReload) loadScoreSheet();
+    return savedSheet.id;
+  }
+
+  async function createCopiedRound(changeDiscipline: boolean) {
+    setErr("");
+    setSavedMessage("");
+    const savedCurrentId = await save({ navigate: false, reload: false });
+    if (!savedCurrentId) return;
+
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError) {
+      setErr(userError.message);
+      return;
+    }
+    if (!userData.user) {
+      router.push("/login");
+      return;
+    }
+
+    const nextDiscipline = changeDiscipline ? "Sporting" : discipline;
+    const nextIsCompak = isCompakSporting(nextDiscipline);
+    const fallbackTitle = generateTrainingScoreSheetTitle(
+      nextDiscipline,
+      location,
+      sessionDate,
+    );
+    const nextTitle = changeDiscipline
+      ? `${fallbackTitle} – Round 2`
+      : nextRoundTitle(title.trim(), fallbackTitle);
+    const nextPostCount = nextIsCompak ? COMPAK_DEFAULT_STANDS : numberOfPosts;
+    const nextTargetsPerPost = nextIsCompak
+      ? COMPAK_TARGETS_PER_STAND
+      : targetsPerPost;
+
+    const { data: newSheet, error: sheetError } = await supabase
+      .from("training_score_sheets")
+      .insert({
+        owner_user_id: userData.user.id,
+        title: nextTitle,
+        session_date: sessionDate,
+        location: location.trim() || null,
+        discipline: nextDiscipline,
+        session_type: sessionType,
+        number_of_posts: nextPostCount,
+        targets_per_post: nextTargetsPerPost,
+        total_targets: nextPostCount * nextTargetsPerPost,
+        compak_scheme_id: nextIsCompak ? String(compakSchemeId) : null,
+        compak_shooting_mode: nextIsCompak ? compakShootingMode : null,
+        compak_rotation_mode: nextIsCompak ? compakRotationMode : null,
+      })
+      .select("id")
+      .single<{ id: string }>();
+
+    if (sheetError || !newSheet) {
+      setErr(sheetError?.message || "Could not create the next round.");
+      return;
+    }
+
+    const namedShooters = validShooters.map((shooter, index) => ({
+      id: crypto.randomUUID(),
+      score_sheet_id: newSheet.id,
+      shooter_name: shooter.displayName,
+      display_order: index + 1,
+      total_score: 0,
+    }));
+
+    if (namedShooters.length > 0) {
+      const { error: shooterError } = await supabase
+        .from("training_score_sheet_shooters")
+        .insert(namedShooters);
+      if (shooterError) {
+        setErr(shooterError.message);
+        return;
+      }
+
+      const scoreRows = namedShooters.flatMap((shooter) =>
+        Array.from({ length: nextPostCount }, (_, index) => ({
+          score_sheet_id: newSheet.id,
+          shooter_id: shooter.id,
+          post_number: index + 1,
+          score: 0,
+          max_score: nextTargetsPerPost,
+        })),
+      );
+      const { error: scoresError } = await supabase
+        .from("training_score_sheet_scores")
+        .insert(scoreRows);
+      if (scoresError) {
+        setErr(scoresError.message);
+        return;
+      }
+    }
+
+    router.push(`/training-score-sheets/${newSheet.id}`);
   }
 
   if (loading) {
@@ -1669,6 +1771,25 @@ export default function TrainingScoreSheetPage() {
                     >
                       Edit / correct scores
                     </button>
+                    <button
+                      type="button"
+                      className="smallButton"
+                      onClick={() => createCopiedRound(false)}
+                      disabled={saving}
+                    >
+                      Start new round
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary smallButton"
+                      onClick={() => createCopiedRound(true)}
+                      disabled={saving}
+                    >
+                      Change discipline
+                    </button>
+                    <Link href="/dashboard" className="button secondary smallButton">
+                      Back to dashboard
+                    </Link>
                   </div>
                   <span className="small muted">
                     {savedMessage || (saving ? "Saving..." : "Save when corrections are finished.")}
@@ -2066,7 +2187,7 @@ export default function TrainingScoreSheetPage() {
         {err && <div className="error">{err}</div>}
         {savedMessage && <div className="successMessage">{savedMessage}</div>}
         <div className="btns stackedOnMobile">
-          <button type="button" onClick={save} disabled={saving}>
+          <button type="button" onClick={() => save()} disabled={saving}>
             {saving ? "Saving..." : "Save training score sheet"}
           </button>
           <Link href="/dashboard" className="button secondary">
