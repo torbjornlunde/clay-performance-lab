@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { DISCIPLINE_OPTIONS, LEIRDUESTI } from "@/lib/disciplines";
+import { COMPAK_SPORTING, DISCIPLINE_OPTIONS, LEIRDUESTI } from "@/lib/disciplines";
+import {
+  type CompakSchemeRow,
+  getAllSchemeNumbers,
+  getCompakSchemeType,
+  getExpectedPresentationRows,
+  getMachineLabelFromRow,
+  getPresentationLabel,
+} from "@/lib/fitasc/compakSchemes";
 import { supabase } from "@/lib/supabase/client";
 
 type ShooterDraft = {
@@ -36,6 +44,7 @@ type ScoreSheetRow = {
   number_of_posts: number;
   targets_per_post: number;
   total_targets: number;
+  compak_scheme_id: string | null;
 };
 
 type ShooterRow = {
@@ -57,6 +66,80 @@ type TargetResultRow = {
   target_number: number;
   result: TargetResultValue;
 };
+
+type CompakTargetStep = {
+  eventNumber: number;
+  targetInEvent: number;
+  presentation: string | null;
+  firstMachine: string | null;
+  secondMachine: string | null;
+  hasSchemeData: boolean;
+};
+
+const COMPAK_DEFAULT_STANDS = 5;
+const COMPAK_TARGETS_PER_STAND = 5;
+const COMPAK_TOTAL_TARGETS = COMPAK_DEFAULT_STANDS * COMPAK_TARGETS_PER_STAND;
+const DEFAULT_COMPAK_SCHEME = 1;
+
+function isCompakSporting(discipline: string) {
+  return discipline.trim().toLowerCase() === COMPAK_SPORTING.toLowerCase();
+}
+
+function normalizeCompakSchemeId(value: string | number | null | undefined) {
+  const parsed = Number(value);
+  return getAllSchemeNumbers().includes(parsed) ? parsed : DEFAULT_COMPAK_SCHEME;
+}
+
+function targetsInPresentation(presentation: string | null | undefined) {
+  return presentation?.toLowerCase() === "report_pair" || presentation?.toLowerCase() === "simo_pair" ? 2 : 1;
+}
+
+function buildCompakStandProgram(
+  schemeNumber: number,
+  plateNumber: number,
+  schemeRows: CompakSchemeRow[],
+): CompakTargetStep[] {
+  const rowsForPlate = schemeRows
+    .filter((row) => row.scheme_number === schemeNumber && row.plate_number === plateNumber)
+    .sort((a, b) => a.event_number - b.event_number);
+  const sourceRows = rowsForPlate.length > 0
+    ? rowsForPlate
+    : getExpectedPresentationRows(schemeNumber).map((presentation, index) => ({
+        scheme_number: schemeNumber,
+        plate_number: plateNumber,
+        event_number: index + 1,
+        presentation,
+        first_machine: null,
+        second_machine: null,
+        is_verified: null,
+      }));
+  const steps = sourceRows.flatMap((row) =>
+    Array.from({ length: targetsInPresentation(row.presentation) }, (_, index) => ({
+      eventNumber: row.event_number,
+      targetInEvent: index + 1,
+      presentation: row.presentation,
+      firstMachine: row.first_machine,
+      secondMachine: row.second_machine,
+      hasSchemeData: rowsForPlate.length > 0,
+    })),
+  );
+  while (steps.length < COMPAK_TARGETS_PER_STAND) {
+    steps.push({
+      eventNumber: steps.length + 1,
+      targetInEvent: 1,
+      presentation: "unknown",
+      firstMachine: null,
+      secondMachine: null,
+      hasSchemeData: false,
+    });
+  }
+  return steps.slice(0, COMPAK_TARGETS_PER_STAND);
+}
+
+function compakStartPlateForOrder(orderNumber: number) {
+  if (orderNumber >= 1 && orderNumber <= COMPAK_DEFAULT_STANDS) return `Stand ${orderNumber}`;
+  return "Not assigned in v1";
+}
 
 function todayValue() {
   return new Date().toISOString().slice(0, 10);
@@ -147,6 +230,8 @@ export default function TrainingScoreSheetPage() {
   const [sessionType, setSessionType] = useState("training");
   const [numberOfPosts, setNumberOfPosts] = useState(5);
   const [targetsPerPost, setTargetsPerPost] = useState(10);
+  const [compakSchemeId, setCompakSchemeId] = useState(DEFAULT_COMPAK_SCHEME);
+  const [compakSchemeRows, setCompakSchemeRows] = useState<CompakSchemeRow[]>([]);
   const [shooters, setShooters] = useState<ShooterDraft[]>([]);
   const [targetResults, setTargetResults] = useState<TargetResultMap>({});
   const [inputHistory, setInputHistory] = useState<InputHistoryItem[]>([]);
@@ -165,6 +250,7 @@ export default function TrainingScoreSheetPage() {
     () => Array.from({ length: numberOfPosts }, (_, index) => index + 1),
     [numberOfPosts],
   );
+  const isCompak = isCompakSporting(discipline);
   const sheetTotalTargets = numberOfPosts * targetsPerPost;
   const setupSectionsOpen = !liveMode || showSetupDuringLive;
   const hasEnteredScores = shooters.some((shooter) =>
@@ -190,6 +276,19 @@ export default function TrainingScoreSheetPage() {
     () => orderedShootersForPost(validShooters, currentPost),
     [currentPost, validShooters],
   );
+  const currentShooterNumber = currentShooterId
+    ? validShooters.findIndex((shooter) => shooter.localId === currentShooterId) + 1
+    : 0;
+  const currentCompakProgram = useMemo(
+    () =>
+      isCompak
+        ? buildCompakStandProgram(compakSchemeId, currentPost, compakSchemeRows)
+        : [],
+    [compakSchemeId, compakSchemeRows, currentPost, isCompak],
+  );
+  const currentCompakStep = isCompak
+    ? currentCompakProgram[currentTarget - 1] || null
+    : null;
   const currentShooter = validShooters.find(
     (shooter) => shooter.localId === currentShooterId,
   );
@@ -249,7 +348,7 @@ export default function TrainingScoreSheetPage() {
     const { data: sheet, error: sheetError } = await supabase
       .from("training_score_sheets")
       .select(
-        "id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets",
+        "id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,compak_scheme_id",
       )
       .eq("id", sheetId)
       .single<ScoreSheetRow>();
@@ -297,6 +396,7 @@ export default function TrainingScoreSheetPage() {
     setSessionType(sheet.session_type || "training");
     setNumberOfPosts(sheet.number_of_posts || 5);
     setTargetsPerPost(sheet.targets_per_post || 10);
+    setCompakSchemeId(normalizeCompakSchemeId(sheet.compak_scheme_id));
 
     const loadedTargetResults: TargetResultMap = {};
     (targetRows || []).forEach((target) => {
@@ -341,7 +441,51 @@ export default function TrainingScoreSheetPage() {
     setShooters(loadedShooters);
     setTargetResults(loadedTargetResults);
     setInputHistory([]);
+    if (isCompakSporting(sheet.discipline || "")) {
+      await loadCompakSchemeRows(normalizeCompakSchemeId(sheet.compak_scheme_id));
+    }
     setLoading(false);
+  }
+
+  async function loadCompakSchemeRows(schemeNumber: number) {
+    const { data, error } = await supabase
+      .from("fitasc_compak_schemes")
+      .select("scheme_number,plate_number,event_number,presentation,first_machine,second_machine,is_verified")
+      .eq("scheme_number", schemeNumber)
+      .returns<CompakSchemeRow[]>();
+    if (!error) setCompakSchemeRows(data || []);
+  }
+
+  function applyCompakDefaults() {
+    setNumberOfPosts(COMPAK_DEFAULT_STANDS);
+    setTargetsPerPost(COMPAK_TARGETS_PER_STAND);
+    setSessionType((value) => (value === "shared_training" ? value : "training"));
+    setShooters((current) =>
+      current.map((shooter) => ({
+        ...shooter,
+        scores: makeScores(COMPAK_DEFAULT_STANDS, shooter.scores).map((score) =>
+          clampScore(score, COMPAK_TARGETS_PER_STAND),
+        ),
+      })),
+    );
+    setTargetResults((current) =>
+      trimTargetResults(current, COMPAK_DEFAULT_STANDS, COMPAK_TARGETS_PER_STAND),
+    );
+  }
+
+  function updateDiscipline(nextDiscipline: string) {
+    setDiscipline(nextDiscipline);
+    if (isCompakSporting(nextDiscipline)) {
+      applyCompakDefaults();
+      loadCompakSchemeRows(compakSchemeId);
+      if (title === "Sporting training") setTitle("Compak Sporting training");
+    }
+  }
+
+  function updateCompakScheme(nextScheme: number) {
+    const safeScheme = normalizeCompakSchemeId(nextScheme);
+    setCompakSchemeId(safeScheme);
+    loadCompakSchemeRows(safeScheme);
   }
 
   function updatePostCount(nextCount: number) {
@@ -430,6 +574,23 @@ export default function TrainingScoreSheetPage() {
         return { ...shooter, scores };
       }),
     );
+  }
+
+  function moveShooter(localId: string, direction: 1 | -1) {
+    if (hasEnteredScores) {
+      const confirmed = window.confirm(
+        "Scores stay attached to each shooter, but this changes the display order and Compak shooter numbers. Continue?",
+      );
+      if (!confirmed) return;
+    }
+    setShooters((current) => {
+      const index = current.findIndex((shooter) => shooter.localId === localId);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
+      const next = [...current];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
   }
 
   function addShooter() {
@@ -667,6 +828,7 @@ export default function TrainingScoreSheetPage() {
       number_of_posts: numberOfPosts,
       targets_per_post: targetsPerPost,
       total_targets: sheetTotalTargets,
+      compak_scheme_id: isCompak ? String(compakSchemeId) : null,
     };
 
     const { data: savedSheet, error: sheetError } = isNew
@@ -688,31 +850,6 @@ export default function TrainingScoreSheetPage() {
       return;
     }
 
-    if (!isNew) {
-      const { error: targetDeleteError } = await supabase
-        .from("training_score_sheet_target_results")
-        .delete()
-        .eq("score_sheet_id", savedSheet.id);
-      const { error: scoreDeleteError } = await supabase
-        .from("training_score_sheet_scores")
-        .delete()
-        .eq("score_sheet_id", savedSheet.id);
-      const { error: shooterDeleteError } = await supabase
-        .from("training_score_sheet_shooters")
-        .delete()
-        .eq("score_sheet_id", savedSheet.id);
-      if (targetDeleteError || scoreDeleteError || shooterDeleteError) {
-        setErr(
-          targetDeleteError?.message ||
-            scoreDeleteError?.message ||
-            shooterDeleteError?.message ||
-            "Could not replace old scores.",
-        );
-        setSaving(false);
-        return;
-      }
-    }
-
     const namedShooters = shooters
       .map((shooter) => ({
         ...shooter,
@@ -725,41 +862,65 @@ export default function TrainingScoreSheetPage() {
         name: formatShooterName(shooter.name),
       })),
     );
+
+    if (!isNew) {
+      const { error: targetDeleteError } = await supabase
+        .from("training_score_sheet_target_results")
+        .delete()
+        .eq("score_sheet_id", savedSheet.id);
+      const { error: scoreDeleteError } = await supabase
+        .from("training_score_sheet_scores")
+        .delete()
+        .eq("score_sheet_id", savedSheet.id);
+      const keptShooterIds = namedShooters.map((shooter) => shooter.localId);
+      const removedShooterDelete = supabase
+        .from("training_score_sheet_shooters")
+        .delete()
+        .eq("score_sheet_id", savedSheet.id);
+      const { error: shooterDeleteError } = keptShooterIds.length > 0
+        ? await removedShooterDelete.not("id", "in", `(${keptShooterIds.join(",")})`)
+        : await removedShooterDelete;
+      if (targetDeleteError || scoreDeleteError || shooterDeleteError) {
+        setErr(
+          targetDeleteError?.message ||
+            scoreDeleteError?.message ||
+            shooterDeleteError?.message ||
+            "Could not replace old scores.",
+        );
+        setSaving(false);
+        return;
+      }
+    }
+
     const shooterRows = namedShooters.map((shooter, index) => ({
+      id: shooter.localId,
       score_sheet_id: savedSheet.id,
       shooter_name: shooter.displayName,
       display_order: index + 1,
       total_score: totalFor(shooter, targetResults),
     }));
 
-    const { data: insertedShooters, error: shooterError } = await supabase
+    const { error: shooterError } = await supabase
       .from("training_score_sheet_shooters")
-      .insert(shooterRows)
-      .select("id,display_order")
-      .returns<Array<{ id: string; display_order: number }>>();
+      .upsert(shooterRows, { onConflict: "id" });
 
-    if (shooterError || !insertedShooters) {
-      setErr(shooterError?.message || "Could not save shooters.");
+    if (shooterError) {
+      setErr(shooterError.message || "Could not save shooters.");
       setSaving(false);
       return;
     }
 
-    const scoreRows = insertedShooters.flatMap(
-      (insertedShooter, shooterIndex) =>
-        namedShooters[shooterIndex].scores.map((score, scoreIndex) => ({
-          score_sheet_id: savedSheet.id,
-          shooter_id: insertedShooter.id,
-          post_number: scoreIndex + 1,
-          score: clampScore(
-            displayedPostScore(
-              namedShooters[shooterIndex],
-              scoreIndex,
-              targetResults,
-            ),
-            targetsPerPost,
-          ),
-          max_score: targetsPerPost,
-        })),
+    const scoreRows = namedShooters.flatMap((shooter) =>
+      shooter.scores.map((score, scoreIndex) => ({
+        score_sheet_id: savedSheet.id,
+        shooter_id: shooter.localId,
+        post_number: scoreIndex + 1,
+        score: clampScore(
+          displayedPostScore(shooter, scoreIndex, targetResults),
+          targetsPerPost,
+        ),
+        max_score: targetsPerPost,
+      })),
     );
 
     const { error: scoresError } = await supabase
@@ -771,26 +932,18 @@ export default function TrainingScoreSheetPage() {
       return;
     }
 
-    const shooterIdMap = new Map(
-      insertedShooters.map((insertedShooter, shooterIndex) => [
-        namedShooters[shooterIndex].localId,
-        insertedShooter.id,
-      ]),
-    );
-    const targetRows = namedShooters.flatMap((shooter) => {
-      const savedShooterId = shooterIdMap.get(shooter.localId);
-      if (!savedShooterId) return [];
-      return Object.entries(targetResults[shooter.localId] || {}).flatMap(
+    const targetRows = namedShooters.flatMap((shooter) =>
+      Object.entries(targetResults[shooter.localId] || {}).flatMap(
         ([postKey, targets]) =>
           Object.entries(targets).map(([targetKey, result]) => ({
             score_sheet_id: savedSheet.id,
-            shooter_id: savedShooterId,
+            shooter_id: shooter.localId,
             post_number: Number(postKey),
             target_number: Number(targetKey),
             result,
           })),
-      );
-    });
+      ),
+    );
 
     if (targetRows.length > 0) {
       const { error: targetError } = await supabase
@@ -857,7 +1010,7 @@ export default function TrainingScoreSheetPage() {
           <summary>
             <span>Training details</span>
             <span className="small muted">
-              {numberOfPosts} posts × {targetsPerPost} targets
+              {isCompak ? `${COMPAK_DEFAULT_STANDS} stands × ${COMPAK_TARGETS_PER_STAND} targets` : `${numberOfPosts} posts × ${targetsPerPost} targets`}
             </span>
           </summary>
           <div className="row">
@@ -890,7 +1043,7 @@ export default function TrainingScoreSheetPage() {
               <label>Discipline</label>
               <select
                 value={discipline}
-                onChange={(event) => setDiscipline(event.target.value)}
+                onChange={(event) => updateDiscipline(event.target.value)}
               >
                 {[
                   LEIRDUESTI,
@@ -922,6 +1075,7 @@ export default function TrainingScoreSheetPage() {
                 onChange={(event) =>
                   updatePostCount(Number(event.target.value))
                 }
+                disabled={isCompak}
                 type="number"
                 min="1"
                 max="20"
@@ -935,6 +1089,7 @@ export default function TrainingScoreSheetPage() {
                 onChange={(event) =>
                   updateTargetsPerPost(Number(event.target.value))
                 }
+                disabled={isCompak}
                 type="number"
                 min="1"
                 max="100"
@@ -942,6 +1097,41 @@ export default function TrainingScoreSheetPage() {
               />
             </div>
           </div>
+          {isCompak && (
+            <div className="compakSettingsPanel">
+              <div>
+                <h3>Compak Sporting settings</h3>
+                <p className="small muted">
+                  Compak training uses 5 stands, 5 targets per stand and a
+                  {COMPAK_TOTAL_TARGETS}-target round. Session type stays Training / Shared training.
+                </p>
+              </div>
+              <div className="row">
+                <div>
+                  <label>Compak scheme / program</label>
+                  <select
+                    value={compakSchemeId}
+                    onChange={(event) => updateCompakScheme(Number(event.target.value))}
+                  >
+                    {getAllSchemeNumbers().map((schemeNumber) => (
+                      <option key={schemeNumber} value={schemeNumber}>
+                        Scheme {schemeNumber} · {getCompakSchemeType(schemeNumber)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label>Stored scheme id</label>
+                  <input value={`Scheme ${compakSchemeId}`} disabled />
+                </div>
+              </div>
+              <p className="small muted">
+                {compakSchemeRows.length > 0
+                  ? "Loaded built-in FITASC/Compak scheme details for live target labels."
+                  : "No verified target-machine grid is stored for this scheme yet; live scoring uses the expected Compak presentation structure as a safe placeholder."}
+              </p>
+            </div>
+          )}
           {hasEnteredScores && (
             <p className="small muted">
               Changing post setup keeps existing scores where possible and
@@ -1006,7 +1196,12 @@ export default function TrainingScoreSheetPage() {
             ) : (
               shooters.map((shooter, index) => (
                 <div className="shooterNameRow" key={shooter.localId}>
-                  <span className="small muted">#{index + 1}</span>
+                  <span className="shooterOrderBadge">
+                    {isCompak ? `Shooter #${index + 1}` : `#${index + 1}`}
+                    {isCompak && (
+                      <small>{compakStartPlateForOrder(index + 1)}</small>
+                    )}
+                  </span>
                   <label>
                     Existing shooter {index + 1}
                     <input
@@ -1018,13 +1213,31 @@ export default function TrainingScoreSheetPage() {
                       placeholder={`Edit shooter ${index + 1} name`}
                     />
                   </label>
-                  <button
-                    type="button"
-                    className="secondary smallButton"
-                    onClick={() => removeShooter(shooter.localId)}
-                  >
-                    Remove
-                  </button>
+                  <div className="shooterOrderControls">
+                    <button
+                      type="button"
+                      className="secondary smallButton"
+                      onClick={() => moveShooter(shooter.localId, -1)}
+                      disabled={index === 0}
+                    >
+                      Move up
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary smallButton"
+                      onClick={() => moveShooter(shooter.localId, 1)}
+                      disabled={index === shooters.length - 1}
+                    >
+                      Move down
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary smallButton"
+                      onClick={() => removeShooter(shooter.localId)}
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -1052,18 +1265,29 @@ export default function TrainingScoreSheetPage() {
             <div className="liveScoringPanel">
               <div className="liveHero">
                 <div>
-                  <span className="small muted">Current post</span>
-                  <strong>Post {currentPost}</strong>
+                  <span className="small muted">{isCompak ? "Current stand / plate" : "Current post"}</span>
+                  <strong>{isCompak ? `Stand ${currentPost}` : `Post ${currentPost}`}</strong>
                 </div>
                 <div>
                   <span className="small muted">Current shooter</span>
                   <strong>
                     {currentShooter?.displayName || "Add a shooter"}
                   </strong>
+                  {isCompak && currentShooterNumber > 0 && (
+                    <span className="small muted">Shooter #{currentShooterNumber} · starts {compakStartPlateForOrder(currentShooterNumber)}</span>
+                  )}
                 </div>
                 <div>
                   <span className="small muted">Current target</span>
                   <strong>Target {currentTarget}</strong>
+                  {isCompak && currentCompakStep && (
+                    <span className="small muted">
+                      Event {currentCompakStep.eventNumber}
+                      {targetsInPresentation(currentCompakStep.presentation) > 1
+                        ? ` · ${getPresentationLabel(currentCompakStep.presentation)} target ${currentCompakStep.targetInEvent}`
+                        : ` · ${getPresentationLabel(currentCompakStep.presentation)}`}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="liveScoringStatus">
@@ -1084,8 +1308,24 @@ export default function TrainingScoreSheetPage() {
                   <strong>{currentShooterRemainingTargets}</strong>
                 </div>
               </div>
+              {isCompak && currentCompakStep && (
+                <div className="compakLiveProgram">
+                  <span className="small muted">Selected program</span>
+                  <strong>Scheme {compakSchemeId}</strong>
+                  <span>
+                    {currentCompakStep.hasSchemeData
+                      ? getMachineLabelFromRow({
+                          first_machine: currentCompakStep.firstMachine,
+                          second_machine: currentCompakStep.secondMachine,
+                        })
+                      : "Machine labels not stored yet"}
+                    {' · '}
+                    {getPresentationLabel(currentCompakStep.presentation)}
+                  </span>
+                </div>
+              )}
               <div className="postShootingOrder">
-                <h4>Post {currentPost} shooting order</h4>
+                <h4>{isCompak ? `Stand ${currentPost} shooting order` : `Post ${currentPost} shooting order`}</h4>
                 <ol>
                   {currentPostShooters.map((shooter, index) => (
                     <li
@@ -1094,7 +1334,7 @@ export default function TrainingScoreSheetPage() {
                         shooter.localId === currentShooterId ? "active" : ""
                       }
                     >
-                      <span>{index + 1}</span>
+                      <span>{isCompak ? validShooters.findIndex((item) => item.localId === shooter.localId) + 1 : index + 1}</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -1125,7 +1365,7 @@ export default function TrainingScoreSheetPage() {
                   </select>
                 </label>
                 <label>
-                  Post
+                  {isCompak ? "Stand / plate" : "Post"}
                   <select
                     value={currentPost}
                     onChange={(event) =>
@@ -1134,7 +1374,7 @@ export default function TrainingScoreSheetPage() {
                   >
                     {postNumbers.map((post) => (
                       <option key={post} value={post}>
-                        Post {post}
+                        {isCompak ? `Stand ${post}` : `Post ${post}`}
                       </option>
                     ))}
                   </select>
@@ -1147,7 +1387,7 @@ export default function TrainingScoreSheetPage() {
                   onClick={() => setPostAndStartingShooter(currentPost - 1)}
                   disabled={currentPost <= 1}
                 >
-                  Previous post
+                  {isCompak ? "Previous stand" : "Previous post"}
                 </button>
                 <button
                   type="button"
@@ -1171,7 +1411,7 @@ export default function TrainingScoreSheetPage() {
                   onClick={() => setPostAndStartingShooter(currentPost + 1)}
                   disabled={currentPost >= numberOfPosts}
                 >
-                  Next post
+                  {isCompak ? "Next stand" : "Next post"}
                 </button>
               </div>
               <div className="liveScoringActions">
@@ -1281,7 +1521,7 @@ export default function TrainingScoreSheetPage() {
                 <tr>
                   <th>Shooter</th>
                   {postNumbers.map((post) => (
-                    <th key={post}>Post {post}</th>
+                    <th key={post}>{isCompak ? `Stand ${post}` : `Post ${post}`}</th>
                   ))}
                   <th>Total</th>
                 </tr>
@@ -1305,7 +1545,7 @@ export default function TrainingScoreSheetPage() {
                         return (
                           <td key={post}>
                             <input
-                              aria-label={`${shooter.displayName} post ${post}`}
+                              aria-label={`${shooter.displayName} ${isCompak ? "stand" : "post"} ${post}`}
                               data-score-index={scoreIndex}
                               value={
                                 displayedPostScore(

@@ -189,6 +189,7 @@ create table if not exists public.training_score_sheets (
   number_of_posts integer not null,
   targets_per_post integer not null,
   total_targets integer not null,
+  compak_scheme_id text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint training_score_sheets_session_type_check check (session_type in ('training', 'shared_training')),

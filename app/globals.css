@@ -4178,3 +4178,71 @@ html, body {
     flex-direction: column;
   }
 }
+
+.compakSettingsPanel,
+.compakLiveProgram {
+  border: 1px solid rgba(216, 165, 58, 0.32);
+  border-radius: 16px;
+  background: rgba(216, 165, 58, 0.08);
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.compakSettingsPanel h3 {
+  margin: 0 0 4px;
+}
+
+.compakSettingsPanel p {
+  margin: 0 0 10px;
+}
+
+.shooterOrderBadge {
+  display: grid;
+  gap: 2px;
+  color: #ffe2a0;
+  font-size: 12px;
+  font-weight: 950;
+  min-width: 86px;
+  text-transform: uppercase;
+}
+
+.shooterOrderBadge small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: none;
+}
+
+.shooterOrderControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.compakLiveProgram {
+  display: grid;
+  gap: 4px;
+  margin-top: 0;
+}
+
+.compakLiveProgram strong {
+  color: #ffe2a0;
+  font-size: 20px;
+}
+
+@media (min-width: 721px) {
+  .shooterNameRow {
+    grid-template-columns: auto minmax(160px, 1fr) minmax(240px, auto);
+  }
+}
+
+@media (max-width: 720px) {
+  .shooterOrderControls {
+    justify-content: stretch;
+  }
+
+  .shooterOrderControls .smallButton {
+    flex: 1 1 30%;
+  }
+}
