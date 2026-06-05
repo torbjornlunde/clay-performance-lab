@@ -191,12 +191,14 @@ create table if not exists public.training_score_sheets (
   total_targets integer not null,
   compak_scheme_id text,
   compak_shooting_mode text,
+  compak_rotation_mode text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint training_score_sheets_session_type_check check (session_type in ('training', 'shared_training')),
   constraint training_score_sheets_posts_check check (number_of_posts > 0),
   constraint training_score_sheets_targets_check check (targets_per_post > 0 and total_targets > 0),
-  constraint training_score_sheets_compak_shooting_mode_check check (compak_shooting_mode is null or compak_shooting_mode in ('Squad', 'Inline'))
+  constraint training_score_sheets_compak_shooting_mode_check check (compak_shooting_mode is null or compak_shooting_mode in ('Squad', 'Inline')),
+  constraint training_score_sheets_compak_rotation_mode_check check (compak_rotation_mode is null or compak_rotation_mode in ('Waiting shooter', 'Continuous rotation'))
 );
 
 create table if not exists public.training_score_sheet_shooters (

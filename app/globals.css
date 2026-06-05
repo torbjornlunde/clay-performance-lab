@@ -4246,3 +4246,49 @@ html, body {
     flex: 1 1 30%;
   }
 }
+
+.compakRoundCompleteList,
+.compakOverviewGrid,
+.compakStandBreakdown {
+  display: grid;
+  gap: 10px;
+}
+
+.compakRoundCompleteList {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.compakRoundCompleteList span,
+.compakOverviewCard,
+.compakStandRow {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(10, 16, 24, 0.5);
+  padding: 10px;
+}
+
+.compakStandRow {
+  display: grid;
+  gap: 8px;
+}
+
+.compakStandTargets {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(42px, 1fr));
+  gap: 6px;
+}
+
+.compactTargetButton {
+  min-height: 46px;
+  padding: 5px !important;
+}
+
+.compactTargetButton strong {
+  font-size: 18px;
+}
+
+@media (max-width: 720px) {
+  .compakStandTargets {
+    grid-template-columns: repeat(5, minmax(36px, 1fr));
+  }
+}
