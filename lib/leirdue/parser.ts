@@ -1,4 +1,5 @@
 import { COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI } from "@/lib/disciplines";
+import { extractLeirdueSourceIdentifiers, normalizeLeirdueDisciplineLabel } from "@/lib/leirdue/normalize";
 import type { LeirdueCandidate, LeirdueCategory, LeirdueConfidence, LeirdueDebugParseInput, LeirdueDebugParseResult, LeirdueSearchDebug, LeirdueSearchResult, LeirdueValidationChecklistItem } from "@/lib/leirdue/types";
 
 const LEIRDUE_BASE_URL = "https://www.leirdue.net/";
@@ -451,24 +452,19 @@ async function fetchLeirdue(url: string, debug: LeirdueSearchDebug, state: Crawl
 function classifyDiscipline(text: string, selectedDisciplines: string[]) {
   const normalized = normalizeText(text);
   const notes: string[] = [];
-  let discipline = "Other";
+  const normalizedLabel = normalizeLeirdueDisciplineLabel(normalized);
+  let discipline = normalizedLabel.discipline;
 
+  // Prefer the app’s dedicated compact leirduesti value before the broader Compak Sporting alias.
   if (/\b(kompakt leirduesti|compact leirduesti|kompaktsti|compaksti|kompak leirduesti|kompakt sporting)\b/.test(normalized)) {
     discipline = KOMPAKT_LEIRDUESTI;
-  } else if (/\b(compak sporting|compak)\b/.test(normalized) && /\b(nsf|fitasc|compak|sporting|cup|resultat|stevne|duer|skudd)\b/.test(normalized)) {
+  } else if (/\b(compak sporting|compak|kompak)\b/.test(normalized) && /\b(nsf|fitasc|compak|kompak|sporting|cup|resultat|stevne|duer|skudd)\b/.test(normalized)) {
     discipline = COMPAK_SPORTING;
   } else if (normalized.includes("leirduesti")) {
     discipline = LEIRDUESTI;
-  } else if (normalized.includes("engelsk sporting") || /\bsporting\b/.test(normalized)) {
-    discipline = "Sporting";
-  } else if (/\btrap\b/.test(normalized)) {
-    discipline = "Trap";
-  } else if (/\bskeet\b/.test(normalized)) {
-    discipline = "Skeet";
-  } else {
-    notes.push("Discipline is uncertain from Leirdue title/page text.");
   }
 
+  if (normalizedLabel.warning && discipline === "Other") notes.push(normalizedLabel.warning);
   if (!selectedDisciplines.includes(discipline)) notes.push(`Discipline ${discipline} was not selected, so review is required.`);
   return { discipline, notes };
 }
@@ -1178,7 +1174,15 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[], select
     if (!selectedDiscipline) notes.push("Category reason: parsed discipline is not selected.");
   }
 
-  notes.push(`Candidate debug: category=${category}; confidence=${confidence}; candidatePriority=${candidatePriority}; controlFlags=${Array.from(new Set(flags)).join(", ") || "none"}; directResultFlags=${directFlags.join(", ") || "none"}; listTitle=${raw.listTitle}; shootingGroundSource=${raw.shootingGroundSource}; ownScore=${raw.ownScore ?? "unknown"}; winningScore=${raw.winningScore ?? "unknown"}; totalTargets=${raw.totalTargets ?? "unknown"}.`);
+  if (!raw.shooterClass) notes.push("Could not detect class.");
+  if (!raw.seriesScores || raw.seriesScores.length === 0) notes.push("Could not detect series breakdown.");
+  const sourceIds = extractLeirdueSourceIdentifiers(raw.leirdueUrl);
+  const warnings = [
+    ...notes.filter((note) => /Could not|uncertain|review is required|Unsupported|Possible duplicate/i.test(note)),
+    ...(raw.placement === null || raw.placement === undefined ? ["Could not detect placement."] : []),
+  ];
+
+  notes.push(`Candidate debug: category=${category}; confidence=${confidence}; candidatePriority=${candidatePriority}; controlFlags=${Array.from(new Set(flags)).join(", ") || "none"}; directResultFlags=${directFlags.join(", ") || "none"}; listTitle=${raw.listTitle}; shootingGroundSource=${raw.shootingGroundSource}; ownScore=${raw.ownScore ?? "unknown"}; winningScore=${raw.winningScore ?? "unknown"}; totalTargets=${raw.totalTargets ?? "unknown"}; stevne_id=${sourceIds.stevneId || "unknown"}; liste_id=${sourceIds.listeId || "unknown"}.`);
   notes.push(category === "recommended" ? "Import recommendation: checked by default." : "Import recommendation: not checked by default.");
 
   return {
@@ -1189,6 +1193,17 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[], select
     ownScore: raw.ownScore,
     totalTargets: raw.totalTargets,
     winningScore: raw.winningScore,
+    maxScore: raw.totalTargets,
+    placement: raw.placement ?? null,
+    seriesScores: raw.seriesScores || [],
+    shooterName: raw.shooterName || null,
+    shooterClass: raw.shooterClass || null,
+    stevneId: sourceIds.stevneId,
+    listeId: sourceIds.listeId,
+    warnings: Array.from(new Set(warnings)),
+    duplicateStatus: "new",
+    duplicateMatches: [],
+    shooterMatchStatus: null,
     leirdueUrl: raw.leirdueUrl,
     listType: raw.listType,
     confidence,
@@ -1250,6 +1265,11 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
     ownScore: parsed.ownScore,
     totalTargets,
     winningScore: parsed.winningScore,
+    maxScore: totalTargets,
+    placement: null,
+    seriesScores: parsed.seriesScores,
+    shooterName: input.shooterName,
+    shooterClass: null,
     leirdueUrl: page.url,
     listType,
     sourceText: pageText,
@@ -2596,6 +2616,11 @@ function debugParseLeirdueHtml(params: { url: string; status: number | null; htm
       ownScore: parsed.ownScore,
       totalTargets,
       winningScore: parsed.winningScore,
+      maxScore: totalTargets,
+      placement: null,
+      seriesScores: parsed.seriesScores,
+      shooterName,
+      shooterClass: null,
       leirdueUrl: url,
       listType: classifyListType(listTitle),
       sourceText: pageText,
