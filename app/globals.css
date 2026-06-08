@@ -4853,3 +4853,139 @@ html, body {
   font-size: 20px;
   transform: translateY(-1px);
 }
+
+.setupApplyPanel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid rgba(216, 165, 58, 0.32);
+  border-radius: 16px;
+  background: rgba(216, 165, 58, 0.08);
+}
+
+.setupApplyPanel > div {
+  display: grid;
+  flex: 1 1 260px;
+  gap: 4px;
+}
+
+.setupApplyPanel p {
+  margin: 0;
+}
+
+.compactMoreActions {
+  margin: 10px 0;
+  border: 1px solid rgba(216, 165, 58, 0.38);
+  border-radius: 16px;
+  background: rgba(8, 14, 22, 0.88);
+  padding: 8px;
+}
+
+.compactMoreActions > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-weight: 950;
+  list-style: none;
+  padding: 8px 10px;
+}
+
+.compactMoreActions > summary::-webkit-details-marker {
+  display: none;
+}
+
+.compactMoreActions > summary::after {
+  content: "More";
+  color: var(--gold2);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.compactMoreActionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  padding: 6px;
+}
+
+.compactMoreActions p {
+  margin: 4px 8px 8px;
+}
+
+@media (max-width: 720px) {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  main {
+    width: 100%;
+    padding-inline: 10px;
+  }
+
+  .trainingScoreSheetCard {
+    border-radius: 18px;
+    padding-inline: 10px;
+  }
+
+  .scoreSheetStatusBadges {
+    justify-content: flex-start;
+  }
+
+  .setupApplyPanel {
+    align-items: stretch;
+  }
+
+  .setupApplyPanel button {
+    width: 100%;
+  }
+
+  .compactMoreActionGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .liveScoringCard {
+    margin-inline: -2px;
+  }
+
+  .liveScoringPanel {
+    gap: 10px;
+  }
+
+  .liveContextHeader {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 8px;
+  }
+
+  .syncStatusPill,
+  .wakeLockStatus {
+    display: none !important;
+  }
+
+  .liveScoreOverview table {
+    font-size: 11px;
+  }
+
+  .liveScoreOverview th:first-child {
+    max-width: 68px;
+  }
+
+  .liveScoreOverview th:first-child,
+  .liveScoreOverview td:first-child,
+  .liveScoreOverview th[scope="row"] {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .targetCorrectionGrid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
