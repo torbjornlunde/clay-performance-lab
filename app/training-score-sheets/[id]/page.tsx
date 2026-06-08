@@ -604,9 +604,9 @@ export default function TrainingScoreSheetPage() {
     setupDraft.numberOfPosts !== String(numberOfPosts) ||
     setupDraft.targetsPerPost !== String(targetsPerPost);
   const setupDraftValid = Boolean(draftPostCount && draftTargetsPerPost);
-  const setupSectionsOpen = !liveMode || showSetupDuringLive;
+  const setupSectionsOpen =
+    !liveMode || showSetupDuringLive || (isCompak && showCompakSettingsDuringLive);
   const shooterSetupOpen = !liveMode || showShootersDuringLive;
-  const compakSettingsOpen = !liveMode || showCompakSettingsDuringLive;
   const fullScoreTableOpen = !liveMode || showFullScoreTableDuringLive;
   const resultsSummaryOpen = !liveMode || showResultsSummaryDuringLive;
   const hasEnteredScores = shooters.some((shooter) =>
@@ -755,6 +755,33 @@ export default function TrainingScoreSheetPage() {
       validShooters.length > 0 &&
       compakShooterStats.every((stats) => stats.scored >= COMPAK_TOTAL_TARGETS),
   );
+  const compakNextAction = useMemo(() => {
+    if (!isCompak) return nextShooter?.displayName || "—";
+    if (isCompakRoundComplete) return "Round complete";
+    if (!currentShooter || !currentCompakSequence) return "Add/select a shooter";
+    if (currentCompakTargetInSequence < currentCompakSequence.targets.length) {
+      const nextTarget = currentCompakSequence.targets[currentCompakTargetInSequence];
+      return `Next target ${nextTarget?.machine || nextTarget?.targetNumber || currentCompakTargetInSequence + 1}`;
+    }
+    if (currentShooterOrderIndex < currentPostShooters.length - 1) {
+      return currentPostShooters[currentShooterOrderIndex + 1]?.displayName || "Next shooter";
+    }
+    if (currentCompakSequenceIndex < currentCompakProgram.length - 1) {
+      return `${currentPostShooters[0]?.displayName || "First shooter"} · next sequence`;
+    }
+    return "Round complete when remaining targets are scored";
+  }, [
+    currentCompakProgram.length,
+    currentCompakSequence,
+    currentCompakSequenceIndex,
+    currentCompakTargetInSequence,
+    currentPostShooters,
+    currentShooter,
+    currentShooterOrderIndex,
+    isCompak,
+    isCompakRoundComplete,
+    nextShooter,
+  ]);
 
   const effectiveSheetId = persistedSheetId || (isNew ? "" : sheetId);
   const hasSavedSheet = Boolean(effectiveSheetId);
@@ -1248,6 +1275,8 @@ export default function TrainingScoreSheetPage() {
     if (isCompakSporting(nextDiscipline)) {
       const applied = applyCompakDefaults();
       if (!applied) return;
+      setCompakShootingMode("Squad");
+      setCompakRotationMode("waiting_shooter");
       loadCompakSchemeRows(compakSchemeId);
     }
     setDiscipline(nextDiscipline);
@@ -1677,12 +1706,16 @@ export default function TrainingScoreSheetPage() {
   }
 
   function buildResultsShareText() {
-    const headerParts = [`${discipline || "Training"} training`];
+    const headerParts = [title.trim() || `${discipline || "Training"} training`];
     const cleanLocation = location.trim();
     if (cleanLocation) headerParts.push(cleanLocation);
     if (sessionDate) headerParts.push(formatTitleDate(sessionDate));
 
-    const lines = [headerParts.join(" – "), ""];
+    const lines = [headerParts.join(" – ")];
+    if (discipline) {
+      lines.push(isCompak ? `${discipline} · Mode: ${compakShootingMode}` : discipline);
+    }
+    lines.push("");
     rankedShooters.forEach((shooter, index) => {
       lines.push(`${index + 1}. ${shooter.displayName} – ${shooter.totalScore}/${sheetTotalTargets}`);
     });
@@ -2413,95 +2446,31 @@ export default function TrainingScoreSheetPage() {
                 ))}
               </select>
             </div>
-            <div>
-              <label>Session type</label>
-              <select
-                value={sessionType}
-                onChange={(event) => setSessionType(event.target.value)}
-              >
-                <option value="training">Training</option>
-                <option value="shared_training">Shared training</option>
-              </select>
-            </div>
+            {!isCompak && (
+              <div>
+                <label>Session type</label>
+                <select
+                  value={sessionType}
+                  onChange={(event) => setSessionType(event.target.value)}
+                >
+                  <option value="training">Training</option>
+                  <option value="shared_training">Shared training</option>
+                </select>
+              </div>
+            )}
           </div>
-          <div className="row">
-            <div>
-              <label>{isCompak ? "Number of stands / plates" : "Number of posts / stations"}</label>
-              <input
-                value={setupDraft.numberOfPosts}
-                onChange={(event) =>
-                  updateSetupDraft("numberOfPosts", event.target.value)
-                }
-                disabled={isCompak}
-                type="number"
-                min="1"
-                max="20"
-                inputMode="numeric"
-              />
-            </div>
-            <div>
-              <label>{isCompak ? "Targets per stand" : "Targets per post"}</label>
-              <input
-                value={setupDraft.targetsPerPost}
-                onChange={(event) =>
-                  updateSetupDraft("targetsPerPost", event.target.value)
-                }
-                disabled={isCompak}
-                type="number"
-                min="1"
-                max="100"
-                inputMode="numeric"
-              />
-            </div>
-          </div>
-          <div className="setupApplyPanel">
-            <div>
-              <strong>Setup changes are staged until applied.</strong>
-              <p className="small muted">Typing partial values like “1” while entering “10” will not resize posts, targets, target results, or the live cursor.</p>
-              {setupDraftDirty && setupDraftValid && draftPostCount && draftTargetsPerPost && (
-                <p className="small muted">Pending setup: {draftPostCount} × {draftTargetsPerPost} ({draftPostCount * draftTargetsPerPost} targets per shooter).</p>
-              )}
-              {setupApplyMessage && <p className="small muted" role="status">{setupApplyMessage}</p>}
-            </div>
-            <button
-              type="button"
-              className="secondary smallButton"
-              onClick={applySetupDraftChanges}
-              disabled={isCompak || !setupDraftDirty || !setupDraftValid}
-            >
-              Apply setup changes
-            </button>
-          </div>
-          {setupDraftDirty && !setupDraftValid && (
-            <p className="small muted">Enter complete whole numbers before applying setup changes.</p>
-          )}
-          {isCompak && compakSettingsOpen && (
+
+          {isCompak ? (
             <div className="compakSettingsPanel">
               <div>
-                <h3>Compak Sporting training – basic scoring</h3>
+                <h3>Compak Sporting quick setup</h3>
                 <p className="small muted">
-                  Compak training uses 5 stands/plates, shooter numbers, start
-                  plates and a selected scheme/program for a {COMPAK_TOTAL_TARGETS}-target round.
-                  This mode reuses the target-by-target scoring engine while
-                  keeping Compak-specific setup separate from ordinary post scoring.
+                  5 plates · {COMPAK_TOTAL_TARGETS} targets · training mode. Training Score Sheet is in testing. Do not use as official competition scoring.
                 </p>
               </div>
               <div className="row">
                 <div>
-                  <label>Compak scheme / program</label>
-                  <select
-                    value={compakSchemeId}
-                    onChange={(event) => updateCompakScheme(Number(event.target.value))}
-                  >
-                    {getAllSchemeNumbers().map((schemeNumber) => (
-                      <option key={schemeNumber} value={schemeNumber}>
-                        Scheme {schemeNumber} · {getCompakSchemeType(schemeNumber)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label>Shooting mode</label>
+                  <label>Compak mode</label>
                   <select
                     value={compakShootingMode}
                     onChange={(event) =>
@@ -2513,47 +2482,110 @@ export default function TrainingScoreSheetPage() {
                     <option>Squad</option>
                     <option>Inline</option>
                   </select>
+                  <p className="small muted">
+                    {compakShootingMode === "Squad"
+                      ? "Squad distributes shooter #1–#5 across Plate 1–5. Extra shooters follow the selected waiting/continuous behavior."
+                      : "Inline keeps everyone on a Plate 1-first training flow before moving onward."}
+                  </p>
                 </div>
-              </div>
-              <div className="row">
                 <div>
-                  <label>Extra shooter flow</label>
+                  <label>Scheme / program</label>
                   <select
-                    value={compakRotationMode}
-                    onChange={(event) =>
-                      setCompakRotationMode(
-                        normalizeCompakRotationMode(event.target.value),
-                      )
-                    }
+                    value={compakSchemeId}
+                    onChange={(event) => updateCompakScheme(Number(event.target.value))}
                   >
-                    <option value="waiting_shooter">Waiting shooter</option>
-                    <option value="continuous_rotation">Continuous rotation</option>
+                    {getAllSchemeNumbers().map((schemeNumber) => (
+                      <option key={schemeNumber} value={schemeNumber}>
+                        Scheme {schemeNumber} · {getCompakSchemeType(schemeNumber)}
+                      </option>
+                    ))}
                   </select>
                 </div>
+              </div>
+              <details className="compactMoreActions compakMoreSettings" open={!liveMode && showCompakSettingsDuringLive}>
+                <summary>More Compak settings</summary>
+                <div className="row">
+                  <div>
+                    <label>Extra shooter flow</label>
+                    <select
+                      value={compakRotationMode}
+                      onChange={(event) =>
+                        setCompakRotationMode(
+                          normalizeCompakRotationMode(event.target.value),
+                        )
+                      }
+                    >
+                      <option value="waiting_shooter">Waiting shooter</option>
+                      <option value="continuous_rotation">Continuous rotation</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>Compak defaults</label>
+                    <input value={`${COMPAK_DEFAULT_STANDS} plates × ${COMPAK_TARGETS_PER_STAND} targets`} disabled />
+                  </div>
+                </div>
+                <p className="small muted">
+                  {compakSchemeRows.length > 0
+                    ? "Loaded built-in FITASC/Compak scheme details for scheme-driven target labels."
+                    : "No verified target-machine grid is stored for this scheme yet; live scoring follows the expected Compak presentation structure as a safe placeholder."}
+                  {compakRotationMode === "waiting_shooter"
+                    ? " Waiting shooter keeps shooter #6+ waiting on Plate 1 unless the organizer changes order."
+                    : " Continuous rotation assigns shooter #6+ to the next plate number cyclically."}
+                </p>
+              </details>
+            </div>
+          ) : (
+            <>
+              <div className="row">
                 <div>
-                  <label>Flow status</label>
+                  <label>Number of posts / stations</label>
                   <input
-                    value={`${compakRotationModeLabel(compakRotationMode)} · ${
-                      compakRotationMode === "waiting_shooter"
-                        ? "stable order; activate extras manually"
-                        : "stored for continuous training flow"
-                    }`}
-                    disabled
+                    value={setupDraft.numberOfPosts}
+                    onChange={(event) =>
+                      updateSetupDraft("numberOfPosts", event.target.value)
+                    }
+                    type="number"
+                    min="1"
+                    max="20"
+                    inputMode="numeric"
+                  />
+                </div>
+                <div>
+                  <label>Targets per post</label>
+                  <input
+                    value={setupDraft.targetsPerPost}
+                    onChange={(event) =>
+                      updateSetupDraft("targetsPerPost", event.target.value)
+                    }
+                    type="number"
+                    min="1"
+                    max="100"
+                    inputMode="numeric"
                   />
                 </div>
               </div>
-              <p className="small muted">
-                {compakSchemeRows.length > 0
-                  ? "Loaded built-in FITASC/Compak scheme details for scheme-driven target labels."
-                  : "No verified target-machine grid is stored for this scheme yet; live scoring follows the expected Compak presentation structure as a safe placeholder."}
-                {compakShootingMode === "Inline"
-                  ? " Inline mode keeps all shooters on the same plate-first sequence before advancing."
-                  : " Squad mode scores one plate sequence for every shooter before moving to the next sequence."}
-                {compakRotationMode === "waiting_shooter"
-                  ? " Waiting shooter mode keeps the active order stable until the organizer changes it."
-                  : " Continuous rotation is stored for this training flow, but this single-round sheet still stops at round complete."}
-              </p>
-            </div>
+              <div className="setupApplyPanel">
+                <div>
+                  <strong>Setup changes are staged until applied.</strong>
+                  <p className="small muted">Typing partial values like “1” while entering “10” will not resize posts, targets, target results, or the live cursor.</p>
+                  {setupDraftDirty && setupDraftValid && draftPostCount && draftTargetsPerPost && (
+                    <p className="small muted">Pending setup: {draftPostCount} × {draftTargetsPerPost} ({draftPostCount * draftTargetsPerPost} targets per shooter).</p>
+                  )}
+                  {setupApplyMessage && <p className="small muted" role="status">{setupApplyMessage}</p>}
+                </div>
+                <button
+                  type="button"
+                  className="secondary smallButton"
+                  onClick={applySetupDraftChanges}
+                  disabled={!setupDraftDirty || !setupDraftValid}
+                >
+                  Apply setup changes
+                </button>
+              </div>
+              {setupDraftDirty && !setupDraftValid && (
+                <p className="small muted">Enter complete whole numbers before applying setup changes.</p>
+              )}
+            </>
           )}
           {hasEnteredScores && (
             <p className="small muted">
@@ -2762,6 +2794,9 @@ export default function TrainingScoreSheetPage() {
                     <span>Score: {currentShooterTotal}/{COMPAK_TOTAL_TARGETS}</span>
                     <span>Mode: {compakShootingMode}</span>
                   </div>
+                  <div className="compakCurrentStatusMeta">
+                    <span>Next: {compakNextAction}</span>
+                  </div>
                 </div>
               )}
 
@@ -2770,10 +2805,32 @@ export default function TrainingScoreSheetPage() {
                   <span className="small muted">Round complete</span>
                   <strong>All shooters have scored {COMPAK_TOTAL_TARGETS} targets.</strong>
                   <div className="compakRoundCompleteList">
-                    {compakShooterStats.map((stats) => (
-                      <span key={stats.shooterId}>
-                        {stats.displayName}: {stats.hits}/{COMPAK_TOTAL_TARGETS} · {stats.misses} misses
-                      </span>
+                    {rankedShooters.map((shooter, index) => (
+                      <div className="compakRoundCompleteShooter" key={shooter.localId}>
+                        <strong>{index + 1}. {shooter.displayName} — {shooter.totalScore}/{COMPAK_TOTAL_TARGETS}</strong>
+                        <span className="small muted">{shooter.misses} misses</span>
+                        <div className="compakCompactPlateList">
+                          {postNumbers.map((standNumber) => (
+                            <div className="compakCompactPlateRow" key={standNumber}>
+                              <span>P{standNumber}:</span>
+                              <div className="compakCompactTargets" aria-label={`${shooter.displayName} plate ${standNumber} breakdown`}>
+                                {targetNumbers.map((targetNumber) => {
+                                  const result = targetResults[shooter.localId]?.[standNumber]?.[targetNumber];
+                                  return (
+                                    <span
+                                      key={targetNumber}
+                                      className={`compakDotTarget readonly ${result || "empty"}`}
+                                      aria-label={`target ${targetNumber} ${result || "not scored"}`}
+                                    >
+                                      <span aria-hidden="true">{result === "hit" ? "●" : result === "miss" ? "○" : "·"}</span>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                   <div className="btns">
@@ -2787,14 +2844,15 @@ export default function TrainingScoreSheetPage() {
                           ?.scrollIntoView({ behavior: "smooth", block: "start" });
                       }}
                     >
-                      Score overview
+                      Correct / edit
                     </button>
                     <button
                       type="button"
                       className="secondary smallButton"
-                      onClick={() => setShowSetupDuringLive(true)}
+                      onClick={copyResults}
+                      disabled={rankedShooters.length === 0}
                     >
-                      Edit / correct scores
+                      Copy results
                     </button>
                     <button
                       type="button"
@@ -2802,22 +2860,21 @@ export default function TrainingScoreSheetPage() {
                       onClick={() => createCopiedRound(false)}
                       disabled={saving}
                     >
-                      Start new round
+                      Start new round with same Compak settings
                     </button>
                     <button
                       type="button"
                       className="secondary smallButton"
-                      onClick={() => createCopiedRound(true)}
-                      disabled={saving}
+                      onClick={() => setShowResultsSummaryDuringLive(true)}
                     >
-                      Change discipline
+                      Back to results
                     </button>
                     <Link href="/dashboard" className="button secondary smallButton">
                       Back to dashboard
                     </Link>
                   </div>
                   <span className="small muted">
-                    {savedMessage || (saving ? "Saving..." : "Save when corrections are finished.")}
+                    {copyMessage || savedMessage || (saving ? "Saving..." : "Save when corrections are finished.")}
                   </span>
                 </div>
               )}
