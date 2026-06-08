@@ -742,7 +742,10 @@ export default function DashboardPage() {
             <p className="eyebrow">Practice logs</p>
             <h2 id="training-heading">Training</h2>
           </div>
-          {!loading && <span className="countPill">{training.length + trainingScoreSheets.length}</span>}
+          <div className="sectionHeaderActions">
+            {!loading && <span className="countPill">{training.length + trainingScoreSheets.length}</span>}
+            <Link href="/training-score-sheets" className="button secondary smallButton">Manage score sheets</Link>
+          </div>
         </div>
         {loading ? (
           <p>Loading...</p>
