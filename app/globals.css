@@ -5069,3 +5069,52 @@ html, body {
 .debugBuildInfo p {
   margin: 6px 0 0;
 }
+
+.quickStartPresetPanel {
+  display: grid;
+  gap: 14px;
+  background:
+    linear-gradient(135deg, rgba(245, 207, 106, 0.18), rgba(216, 165, 58, 0.05)),
+    rgba(12, 18, 27, 0.9);
+}
+
+.dashboardQuickStartPanel {
+  width: min(100%, 760px);
+  margin-top: 14px;
+}
+
+.quickStartPresetPanel h2,
+.quickStartPresetPanel h3 {
+  margin-bottom: 4px;
+}
+
+.quickStartPresetActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.quickStartPresetSummary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.quickStartPresetSummary > div {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.advancedSetupPanel {
+  margin-top: 12px;
+}
+
+.advancedSetupPanel > summary {
+  font-weight: 900;
+}

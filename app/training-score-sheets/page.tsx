@@ -457,11 +457,24 @@ export default function TrainingScoreSheetsPage() {
               Report issue
             </button>
             <Link href="/dashboard" className="button secondary smallButton">Dashboard</Link>
-            <Link href="/training-score-sheets/new" className="button smallButton">New score sheet</Link>
+            <Link href="/training-score-sheets/new?preset=custom" className="button smallButton">Custom score sheet</Link>
           </div>
         </div>
 
         <p className="small betaTestNote">{TRAINING_SCORE_SHEET_BETA_NOTE}</p>
+
+        <section className="subcard quickStartPresetPanel" aria-label="Training Score Sheet quick start presets">
+          <div>
+            <p className="eyebrow">Quick start</p>
+            <h2>Start the right training faster</h2>
+            <p className="small muted">Compak Sporting is first for NM testers. Presets keep setup compact; custom setup still has every option.</p>
+          </div>
+          <div className="quickStartPresetActions">
+            <Link href="/training-score-sheets/new?preset=compak" className="button primaryAction">New Compak Sporting training</Link>
+            <Link href="/training-score-sheets/new?preset=leirduesti" className="button secondary smallButton">New Leirduesti training</Link>
+            <Link href="/training-score-sheets/new?preset=custom" className="button secondary smallButton">Custom training score sheet</Link>
+          </div>
+        </section>
 
         <details className="subcard quickStartCard">
           <summary>
