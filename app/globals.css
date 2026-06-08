@@ -4619,3 +4619,104 @@ html, body {
 .compactMoreActions > summary::-webkit-details-marker {
   display: none;
 }
+
+.compakCurrentStatusCard {
+  position: sticky;
+  top: 10px;
+  z-index: 2;
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(216, 165, 58, 0.45);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(216, 165, 58, 0.2), rgba(10, 16, 24, 0.92));
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.22);
+  padding: 12px;
+}
+
+.compakCurrentStatusCard strong {
+  color: #ffe2a0;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.compakCurrentStatusMeta,
+.compakCompactShooterHeader {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+}
+
+.compakCurrentStatusMeta span:not(.small),
+.compakCompactPlateRow > span {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.compakCompactOverviewList,
+.compakCompactPlateList {
+  display: grid;
+  gap: 8px;
+}
+
+.compakCompactShooter {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(10, 16, 24, 0.48);
+  padding: 10px;
+}
+
+.compakCompactShooterHeader {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.compakCompactShooterHeader strong {
+  color: #ffe2a0;
+}
+
+.compakCompactPlateRow {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 6px;
+  align-items: center;
+}
+
+.compakCompactTargets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.compakDotTarget {
+  min-height: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  line-height: 1;
+}
+
+.compakDotTarget.hit {
+  border-color: rgba(64, 201, 120, 0.7);
+  color: #5ee08d;
+}
+
+.compakDotTarget.miss {
+  border-color: rgba(255, 112, 112, 0.75);
+  color: #ff8b8b;
+}
+
+.compakDotTarget.empty {
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.compakDotTarget span {
+  display: block;
+  font-size: 20px;
+  transform: translateY(-1px);
+}
