@@ -198,7 +198,7 @@ create table if not exists public.training_score_sheets (
   constraint training_score_sheets_posts_check check (number_of_posts > 0),
   constraint training_score_sheets_targets_check check (targets_per_post > 0 and total_targets > 0),
   constraint training_score_sheets_compak_shooting_mode_check check (compak_shooting_mode is null or compak_shooting_mode in ('Squad', 'Inline')),
-  constraint training_score_sheets_compak_rotation_mode_check check (compak_rotation_mode is null or compak_rotation_mode in ('Waiting shooter', 'Continuous rotation'))
+  constraint training_score_sheets_compak_rotation_mode_check check (compak_rotation_mode is null or compak_rotation_mode in ('waiting_shooter', 'continuous_rotation'))
 );
 
 create table if not exists public.training_score_sheet_shooters (

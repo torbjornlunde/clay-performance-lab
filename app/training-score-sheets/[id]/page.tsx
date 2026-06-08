@@ -77,7 +77,7 @@ type TargetResultRow = {
 };
 
 type CompakShootingMode = "Squad" | "Inline";
-type CompakRotationMode = "Waiting shooter" | "Continuous rotation";
+type CompakRotationMode = "waiting_shooter" | "continuous_rotation";
 
 
 type LocalSaveStatus = "idle" | "saved_local" | "syncing" | "synced" | "sync_failed" | "offline";
@@ -174,7 +174,12 @@ function normalizeCompakShootingMode(value: string | null | undefined): CompakSh
 }
 
 function normalizeCompakRotationMode(value: string | null | undefined): CompakRotationMode {
-  return value === "Continuous rotation" ? "Continuous rotation" : "Waiting shooter";
+  if (value === "continuous_rotation" || value === "Continuous rotation") return "continuous_rotation";
+  return "waiting_shooter";
+}
+
+function compakRotationModeLabel(value: CompakRotationMode) {
+  return value === "continuous_rotation" ? "Continuous rotation" : "Waiting shooter";
 }
 
 function buildCompakStandSequences(
@@ -265,14 +270,26 @@ function plateRotation(start: number) {
   );
 }
 
-function compakStartPlateForOrderNumber(orderNumber: number) {
+function compakStartPlateForOrderNumber(
+  orderNumber: number,
+  rotationMode: CompakRotationMode = "waiting_shooter",
+) {
   if (orderNumber >= 1 && orderNumber <= COMPAK_DEFAULT_STANDS) return orderNumber;
+  if (rotationMode === "continuous_rotation") {
+    return ((Math.max(orderNumber, 1) - 1) % COMPAK_DEFAULT_STANDS) + 1;
+  }
   return 1;
 }
 
-function compakStartPlateForOrder(orderNumber: number) {
-  if (orderNumber >= 1 && orderNumber <= COMPAK_DEFAULT_STANDS) return `Stand ${orderNumber}`;
-  return "Stand 1 (basic v1 fallback)";
+function compakStartPlateForOrder(
+  orderNumber: number,
+  rotationMode: CompakRotationMode = "waiting_shooter",
+) {
+  const plate = compakStartPlateForOrderNumber(orderNumber, rotationMode);
+  if (orderNumber >= 1 && orderNumber <= COMPAK_DEFAULT_STANDS) return `Plate ${plate}`;
+  return rotationMode === "continuous_rotation"
+    ? `Plate ${plate} (continuous rotation)`
+    : `Plate ${plate} (waiting shooter)`;
 }
 
 
@@ -445,7 +462,7 @@ export default function TrainingScoreSheetPage() {
   const [targetsPerPost, setTargetsPerPost] = useState(10);
   const [compakSchemeId, setCompakSchemeId] = useState(DEFAULT_COMPAK_SCHEME);
   const [compakShootingMode, setCompakShootingMode] = useState<CompakShootingMode>("Squad");
-  const [compakRotationMode, setCompakRotationMode] = useState<CompakRotationMode>("Waiting shooter");
+  const [compakRotationMode, setCompakRotationMode] = useState<CompakRotationMode>("waiting_shooter");
   const [compakSchemeRows, setCompakSchemeRows] = useState<CompakSchemeRow[]>([]);
   const [shooters, setShooters] = useState<ShooterDraft[]>([]);
   const [targetResults, setTargetResults] = useState<TargetResultMap>({});
@@ -453,6 +470,7 @@ export default function TrainingScoreSheetPage() {
   const [liveMode, setLiveMode] = useState(false);
   const [showSetupDuringLive, setShowSetupDuringLive] = useState(false);
   const [showShootersDuringLive, setShowShootersDuringLive] = useState(false);
+  const [showCompakSettingsDuringLive, setShowCompakSettingsDuringLive] = useState(false);
   const [showFullScoreTableDuringLive, setShowFullScoreTableDuringLive] = useState(false);
   const [postComplete, setPostComplete] = useState<PostCompleteState | null>(null);
   const [wakeLockActive, setWakeLockActive] = useState(false);
@@ -487,7 +505,8 @@ export default function TrainingScoreSheetPage() {
   const isCompak = isCompakSporting(discipline);
   const sheetTotalTargets = numberOfPosts * targetsPerPost;
   const setupSectionsOpen = !liveMode || showSetupDuringLive;
-  const shooterSetupOpen = !liveMode || showShootersDuringLive;
+  const shooterSetupOpen = !liveMode || (isCompak ? showSetupDuringLive : showShootersDuringLive);
+  const compakSettingsOpen = !liveMode || showCompakSettingsDuringLive;
   const fullScoreTableOpen = !liveMode || showFullScoreTableDuringLive;
   const hasEnteredScores = shooters.some((shooter) =>
     shooter.scores.some(
@@ -518,8 +537,8 @@ export default function TrainingScoreSheetPage() {
     : 0;
   const currentCompakStartStand = isCompak
     ? compakShootingMode === "Squad"
-      ? 1
-      : compakStartPlateForOrderNumber(currentShooterNumber)
+      ? compakStartPlateForOrderNumber(currentShooterNumber, compakRotationMode)
+      : 1
     : 1;
   const currentCompakProgram = useMemo(
     () =>
@@ -1296,16 +1315,16 @@ export default function TrainingScoreSheetPage() {
       return;
     }
 
-    // Inline mode is intentionally separate: one shooter advances through the
-    // scheme sequence before moving to the next shooter. Full FITASC inline
-    // field movement can be refined later without changing target storage.
-    if (currentCompakSequenceIndex < currentCompakProgram.length - 1) {
-      setCurrentCompakSequenceIndex((value) => value + 1);
-      return;
-    }
+    // Inline mode is intentionally separate from Squad: every shooter uses the
+    // same plate-1-first program, so the group completes the active sequence
+    // before the cursor advances to the next sequence.
     if (currentShooterOrderIndex < currentPostShooters.length - 1) {
       setCurrentShooterId(currentPostShooters[currentShooterOrderIndex + 1].localId);
-      setCurrentCompakSequenceIndex(0);
+      return;
+    }
+    if (currentCompakSequenceIndex < currentCompakProgram.length - 1) {
+      setCurrentShooterId(currentPostShooters[0]?.localId || "");
+      setCurrentCompakSequenceIndex((value) => value + 1);
     }
   }
 
@@ -1342,6 +1361,7 @@ export default function TrainingScoreSheetPage() {
       const nextValue = !value;
       setShowSetupDuringLive(false);
       setShowShootersDuringLive(false);
+      setShowCompakSettingsDuringLive(false);
       setShowFullScoreTableDuringLive(false);
       setPostComplete(null);
       if (nextValue && validShooters.length > 0) {
@@ -1441,7 +1461,9 @@ export default function TrainingScoreSheetPage() {
         validShooters.findIndex((shooter) => shooter.localId === shooterId) + 1;
       const program = buildCompakRoundProgram(
         compakSchemeId,
-        compakStartPlateForOrderNumber(shooterOrder),
+        compakShootingMode === "Squad"
+          ? compakStartPlateForOrderNumber(shooterOrder, compakRotationMode)
+          : 1,
         compakSchemeRows,
       );
       const sequenceIndex = program.findIndex(
@@ -1974,13 +1996,23 @@ export default function TrainingScoreSheetPage() {
             >
               {showSetupDuringLive ? "Hide setup" : "Show setup"}
             </button>
-            <button
-              type="button"
-              className="secondary smallButton"
-              onClick={() => setShowShootersDuringLive((value) => !value)}
-            >
-              {showShootersDuringLive ? "Hide shooters" : "Show shooters"}
-            </button>
+            {isCompak ? (
+              <button
+                type="button"
+                className="secondary smallButton"
+                onClick={() => setShowCompakSettingsDuringLive((value) => !value)}
+              >
+                {showCompakSettingsDuringLive ? "Hide Compak settings" : "Show Compak settings"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="secondary smallButton"
+                onClick={() => setShowShootersDuringLive((value) => !value)}
+              >
+                {showShootersDuringLive ? "Hide shooters" : "Show shooters"}
+              </button>
+            )}
             <button
               type="button"
               className="secondary smallButton"
@@ -2095,7 +2127,7 @@ export default function TrainingScoreSheetPage() {
               />
             </div>
           </div>
-          {isCompak && (
+          {isCompak && compakSettingsOpen && (
             <div className="compakSettingsPanel">
               <div>
                 <h3>Compak Sporting training – basic scoring</h3>
@@ -2146,18 +2178,18 @@ export default function TrainingScoreSheetPage() {
                       )
                     }
                   >
-                    <option>Waiting shooter</option>
-                    <option>Continuous rotation</option>
+                    <option value="waiting_shooter">Waiting shooter</option>
+                    <option value="continuous_rotation">Continuous rotation</option>
                   </select>
                 </div>
                 <div>
                   <label>Flow status</label>
                   <input
-                    value={
-                      compakRotationMode === "Waiting shooter"
-                        ? "Stable order; activate extras manually"
-                        : "Stored for continuous training flow"
-                    }
+                    value={`${compakRotationModeLabel(compakRotationMode)} · ${
+                      compakRotationMode === "waiting_shooter"
+                        ? "stable order; activate extras manually"
+                        : "stored for continuous training flow"
+                    }`}
                     disabled
                   />
                 </div>
@@ -2167,9 +2199,9 @@ export default function TrainingScoreSheetPage() {
                   ? "Loaded built-in FITASC/Compak scheme details for scheme-driven target labels."
                   : "No verified target-machine grid is stored for this scheme yet; live scoring follows the expected Compak presentation structure as a safe placeholder."}
                 {compakShootingMode === "Inline"
-                  ? " Inline mode is a basic per-shooter scheme flow until full field movement rules are added."
+                  ? " Inline mode keeps all shooters on the same plate-first sequence before advancing."
                   : " Squad mode scores one plate sequence for every shooter before moving to the next sequence."}
-                {compakRotationMode === "Waiting shooter"
+                {compakRotationMode === "waiting_shooter"
                   ? " Waiting shooter mode keeps the active order stable until the organizer changes it."
                   : " Continuous rotation is stored for this training flow, but this single-round sheet still stops at round complete."}
               </p>
@@ -2260,7 +2292,7 @@ export default function TrainingScoreSheetPage() {
                   <span className="shooterOrderBadge">
                     {isCompak ? `Shooter #${index + 1}` : `#${index + 1}`}
                     {isCompak && (
-                      <small>{compakStartPlateForOrder(index + 1)}</small>
+                      <small>{compakStartPlateForOrder(index + 1, compakRotationMode)}</small>
                     )}
                   </span>
                   <label>
@@ -2366,7 +2398,24 @@ export default function TrainingScoreSheetPage() {
                     <span className="small muted">Wake Lock unsupported</span>
                   )}
                 </div>
-              </div>
+</div>
+
+              {isCompak && currentShooter && currentCompakSequence && (
+                <div className="compakCurrentStatusCard" role="status" aria-label="Current Compak scoring status">
+                  <span className="small muted">Current</span>
+                  <strong>{currentShooter.displayName}</strong>
+                  <div className="compakCurrentStatusMeta">
+                    <span>Shooter #{currentShooterNumber || "—"}</span>
+                    <span>Plate {activePostNumber}</span>
+                    <span>Sequence {currentCompakSequence.eventNumber}</span>
+                  </div>
+                  <div className="compakCurrentStatusMeta">
+                    <span>Target: {currentCompakTarget?.machine || activeTargetNumber}</span>
+                    <span>Score: {currentShooterTotal}/{COMPAK_TOTAL_TARGETS}</span>
+                    <span>Mode: {compakShootingMode}</span>
+                  </div>
+                </div>
+              )}
 
               {isCompakRoundComplete && (
                 <div className="compakLiveProgram" role="status">
@@ -2443,43 +2492,82 @@ export default function TrainingScoreSheetPage() {
               )}
               <div className="liveScoreOverview" aria-label="Compact score overview">
                 <div className="compactPanelHeader">
-                  <h4>Compact score overview</h4>
-                  <span className="small muted">Tap a post cell to correct.</span>
+                  <h4>{isCompak ? "Compak score overview" : "Compact score overview"}</h4>
+                  <span className="small muted">{isCompak ? "Tap a target dot to correct." : "Tap a post cell to correct."}</span>
                 </div>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Shooter</th>
-                      {postNumbers.map((post) => (
-                        <th key={post}>P{post}</th>
-                      ))}
-                      <th>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {validShooters.map((shooter) => (
-                      <tr key={shooter.localId}>
-                        <th scope="row">{shooter.displayName}</th>
-                        {postNumbers.map((post, index) => {
-                          const score = displayedPostScore(shooter, index, targetResults);
-                          return (
-                            <td key={post}>
-                              <button
-                                type="button"
-                                className={hasTargetResults(targetResults, shooter.localId, post) ? "scored" : ""}
-                                onClick={() => correctTarget(shooter.localId, post, 1)}
-                                aria-label={`Correct ${shooter.displayName} post ${post}`}
-                              >
-                                {score || "-"}
-                              </button>
-                            </td>
-                          );
-                        })}
-                        <td className="scoreTotalCell">{totalFor(shooter, targetResults)}/{sheetTotalTargets}</td>
+                {isCompak ? (
+                  <div className="compakCompactOverviewList">
+                    {validShooters.map((shooter) => {
+                      const stats = targetStatsForShooter(targetResults, shooter.localId);
+                      return (
+                        <div className="compakCompactShooter" key={shooter.localId}>
+                          <div className="compakCompactShooterHeader">
+                            <strong>{shooter.displayName} — {stats.hits}/{COMPAK_TOTAL_TARGETS}</strong>
+                            <span className="small muted">{stats.misses} misses · {stats.scored}/{COMPAK_TOTAL_TARGETS} scored</span>
+                          </div>
+                          <div className="compakCompactPlateList">
+                            {postNumbers.map((standNumber) => (
+                              <div className="compakCompactPlateRow" key={standNumber}>
+                                <span>P{standNumber}:</span>
+                                <div className="compakCompactTargets">
+                                  {targetNumbers.map((targetNumber) => {
+                                    const result = targetResults[shooter.localId]?.[standNumber]?.[targetNumber];
+                                    return (
+                                      <button
+                                        key={targetNumber}
+                                        type="button"
+                                        className={`compakDotTarget ${result || "empty"}`}
+                                        onClick={() => correctTarget(shooter.localId, standNumber, targetNumber)}
+                                        aria-label={`${shooter.displayName} plate ${standNumber} target ${targetNumber} ${result || "not scored"}`}
+                                      >
+                                        <span aria-hidden="true">{result === "hit" ? "●" : result === "miss" ? "○" : "·"}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Shooter</th>
+                        {postNumbers.map((post) => (
+                          <th key={post}>P{post}</th>
+                        ))}
+                        <th>Total</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {validShooters.map((shooter) => (
+                        <tr key={shooter.localId}>
+                          <th scope="row">{shooter.displayName}</th>
+                          {postNumbers.map((post, index) => {
+                            const score = displayedPostScore(shooter, index, targetResults);
+                            return (
+                              <td key={post}>
+                                <button
+                                  type="button"
+                                  className={hasTargetResults(targetResults, shooter.localId, post) ? "scored" : ""}
+                                  onClick={() => correctTarget(shooter.localId, post, 1)}
+                                  aria-label={`Correct ${shooter.displayName} post ${post}`}
+                                >
+                                  {score || "-"}
+                                </button>
+                              </td>
+                            );
+                          })}
+                          <td className="scoreTotalCell">{totalFor(shooter, targetResults)}/{sheetTotalTargets}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
 
               <div className="postShootingOrder compactOrder">
@@ -2629,6 +2717,11 @@ export default function TrainingScoreSheetPage() {
                           .map((target) => target.machine || `Target ${target.targetNumber}`)
                           .join(" + ")}
                       </strong>
+                      {!currentCompakSequence.hasSchemeData && (
+                        <span className="small muted">
+                          TODO: verified machine metadata is not stored for this scheme; pair grouping uses presentation type only.
+                        </span>
+                      )}
                     </div>
                   ) : (
                     <p className="small muted pairGroupingTodo">
