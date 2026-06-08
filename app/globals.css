@@ -4292,3 +4292,23 @@ html, body {
     grid-template-columns: repeat(5, minmax(36px, 1fr));
   }
 }
+
+.scoreSheetStatusBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.subtleActionPanel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(10, 16, 24, 0.42);
+}

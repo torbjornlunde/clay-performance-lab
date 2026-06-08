@@ -221,7 +221,7 @@ create table if not exists public.training_score_sheet_scores (
   max_score integer not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (shooter_id, post_number),
+  unique (score_sheet_id, shooter_id, post_number),
   constraint training_score_sheet_scores_post_check check (post_number > 0),
   constraint training_score_sheet_scores_score_check check (score >= 0 and max_score > 0 and score <= max_score)
 );
@@ -229,6 +229,7 @@ create table if not exists public.training_score_sheet_scores (
 create index if not exists training_score_sheets_owner_date_idx on public.training_score_sheets(owner_user_id, session_date desc, created_at desc);
 create index if not exists training_score_sheet_shooters_sheet_order_idx on public.training_score_sheet_shooters(score_sheet_id, display_order);
 create index if not exists training_score_sheet_scores_sheet_shooter_idx on public.training_score_sheet_scores(score_sheet_id, shooter_id);
+create unique index if not exists training_score_sheet_scores_sheet_shooter_post_unique_idx on public.training_score_sheet_scores(score_sheet_id, shooter_id, post_number);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -304,6 +305,8 @@ create table if not exists public.training_score_sheet_target_results (
 );
 
 create index if not exists training_score_sheet_target_results_sheet_shooter_post_idx
+  on public.training_score_sheet_target_results(score_sheet_id, shooter_id, post_number, target_number);
+create unique index if not exists training_score_sheet_target_results_sheet_shooter_post_target_unique_idx
   on public.training_score_sheet_target_results(score_sheet_id, shooter_id, post_number, target_number);
 
 drop trigger if exists training_score_sheet_target_results_set_updated_at on public.training_score_sheet_target_results;
