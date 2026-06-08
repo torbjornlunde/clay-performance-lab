@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
-import type { LeirdueCandidate, LeirdueCategory, LeirdueSearchDebug } from "@/lib/leirdue/types";
+import type { LeirdueCandidate, LeirdueCategory, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueSearchDebug } from "@/lib/leirdue/types";
+import { extractLeirdueSourceIdentifiers, namesLikelyMatch } from "@/lib/leirdue/normalize";
 
 const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduesti", "Sporting"];
 const OPTIONAL_DISCIPLINES = ["Trap", "Skeet", "Other"];
@@ -23,7 +24,12 @@ const SECTION_LABELS: Record<LeirdueCategory, string> = {
 type EditableCandidate = LeirdueCandidate & { selected: boolean; localId: string; saveStatus?: "saved" | "duplicate" | "error"; saveMessage?: string };
 
 type SaveResponse = {
-  results?: { candidate: LeirdueCandidate; status: "saved" | "duplicate" | "error"; id?: string; message?: string }[];
+  results?: { candidate: LeirdueCandidate; status: "saved" | "duplicate" | "error"; id?: string; message?: string; duplicateMatches?: LeirdueDuplicateMatch[] }[];
+  error?: string;
+};
+
+type DuplicateResponse = {
+  results?: { candidate: LeirdueCandidate; status: LeirdueDuplicateStatus; matches: LeirdueDuplicateMatch[] }[];
   error?: string;
 };
 
@@ -33,6 +39,8 @@ type SearchResponse = {
   continuationToken?: string | null;
   error?: string;
 };
+
+type DirectParseResponse = LeirdueDebugParseResult & { error?: string };
 
 
 function isLowQualitySummaryCandidate(candidate: LeirdueCandidate) {
@@ -59,7 +67,18 @@ function performance(candidate: EditableCandidate) {
 }
 
 function toEditable(candidate: LeirdueCandidate, index: number): EditableCandidate {
-  return { ...candidate, selected: candidateSelectedByDefault(candidate), localId: `${candidate.leirdueUrl}-${candidate.date}-${index}` };
+  const sourceIds = candidateSourceIds(candidate);
+  return {
+    ...candidate,
+    ...sourceIds,
+    warnings: candidate.warnings || [],
+    seriesScores: candidate.seriesScores || [],
+    selected: candidateSelectedByDefault(candidate),
+    localId: `${candidate.leirdueUrl}-${candidate.date}-${index}`,
+    duplicateStatus: candidate.duplicateStatus || "new",
+    duplicateMatches: candidate.duplicateMatches || [],
+    shooterMatchStatus: candidate.shooterMatchStatus || null,
+  };
 }
 
 function candidateEventId(candidate: LeirdueCandidate) {
@@ -68,6 +87,33 @@ function candidateEventId(candidate: LeirdueCandidate) {
   } catch {
     return candidate.leirdueUrl;
   }
+}
+
+function candidateSourceIds(candidate: LeirdueCandidate) {
+  return {
+    stevneId: candidate.stevneId || extractLeirdueSourceIdentifiers(candidate.leirdueUrl).stevneId,
+    listeId: candidate.listeId || extractLeirdueSourceIdentifiers(candidate.leirdueUrl).listeId,
+  };
+}
+
+function duplicateLabel(candidate: EditableCandidate) {
+  if (candidate.duplicateStatus === "exact" || candidate.alreadyImported) return "Already imported";
+  if (candidate.duplicateStatus === "possible") return "Possible duplicate";
+  return "New result";
+}
+
+function candidateWarnings(candidate: EditableCandidate) {
+  const warnings = new Set(candidate.warnings || []);
+  if (!candidate.discipline || candidate.discipline === "Other") warnings.add("Could not detect discipline.");
+  if (!candidate.shooterClass) warnings.add("Could not detect class.");
+  if (!candidate.seriesScores || candidate.seriesScores.length === 0) warnings.add("Could not detect series breakdown.");
+  if (candidate.duplicateStatus === "possible") warnings.add("Possible duplicate.");
+  if (candidate.duplicateStatus === "exact" || candidate.alreadyImported) warnings.add("Already imported.");
+  return Array.from(warnings);
+}
+
+function canSelectCandidate(candidate: EditableCandidate) {
+  return candidate.duplicateStatus !== "exact" && !candidate.alreadyImported && candidate.saveStatus !== "saved";
 }
 
 function candidateMergeKey(candidate: LeirdueCandidate) {
@@ -139,6 +185,9 @@ function searchCounterMessage(batchLabel: string, scannedListCount: number, foun
 
 function CandidateCard({ candidate, onChange }: { candidate: EditableCandidate; onChange: (candidate: EditableCandidate) => void }) {
   const percent = performance(candidate);
+  const sourceIds = candidateSourceIds(candidate);
+  const warnings = candidateWarnings(candidate);
+  const selectable = canSelectCandidate(candidate);
 
   function update<Key extends keyof EditableCandidate>(key: Key, value: EditableCandidate[Key]) {
     onChange({ ...candidate, [key]: value, saveStatus: undefined, saveMessage: undefined });
@@ -148,13 +197,13 @@ function CandidateCard({ candidate, onChange }: { candidate: EditableCandidate; 
     <article className="candidateCard">
       <div className="candidateTopline">
         <label className="checkboxLabel importToggle">
-          <input type="checkbox" checked={candidate.selected} onChange={(event) => update("selected", event.target.checked)} />
-          <span>{candidate.selected ? "Import" : "Skip"}</span>
+          <input type="checkbox" checked={candidate.selected && selectable} disabled={!selectable} onChange={(event) => update("selected", event.target.checked)} />
+          <span>{candidate.duplicateStatus === "possible" && !candidate.allowDuplicateSave ? "Review duplicate" : candidate.selected ? "Import" : "Skip"}</span>
         </label>
         <div className="candidateBadges">
           <span className={`badge ${candidate.category === "recommended" ? "badgeGreen" : candidate.category === "review" ? "badgeGold" : "badgeBlue"}`}>{candidate.category}</span>
           <span className={`badge ${candidate.confidence === "high" ? "badgeGreen" : candidate.confidence === "medium" ? "badgeGold" : "badgeBlue"}`}>{candidate.confidence} confidence</span>
-          {candidate.alreadyImported || candidate.saveStatus === "duplicate" ? <span className="badge badgeBlue">Already imported</span> : null}
+          {candidate.duplicateStatus ? <span className={`badge ${candidate.duplicateStatus === "new" ? "badgeGreen" : candidate.duplicateStatus === "possible" ? "badgeGold" : "badgeBlue"}`}>{duplicateLabel(candidate)}</span> : null}
           {candidate.saveStatus === "saved" ? <span className="badge badgeGreen">Saved</span> : null}
           {candidate.saveStatus === "error" ? <span className="badge danger">Error</span> : null}
         </div>
@@ -198,10 +247,40 @@ function CandidateCard({ candidate, onChange }: { candidate: EditableCandidate; 
 
       <div className="metricsRow">
         <span className="metricChip"><strong>{candidate.ownScore ?? "?"}/{candidate.totalTargets ?? "?"}</strong> own score</span>
+        <span className="metricChip"><strong>{candidate.maxScore ?? candidate.totalTargets ?? "?"}</strong> max score</span>
         <span className="metricChip"><strong>{candidate.winningScore ?? "?"}/{candidate.totalTargets ?? "?"}</strong> winning score</span>
+        <span className="metricChip"><strong>{candidate.placement ?? "?"}</strong> placement</span>
         {percent !== null ? <span className="metricChip highlightMetric"><strong>{percent.toFixed(1)}%</strong> performance</span> : null}
         <span className="metricChip"><strong>{candidate.listType || "Unknown list"}</strong></span>
+        <span className="metricChip"><strong>result-only</strong> import type</span>
       </div>
+
+      <div className="metricsRow">
+        <span className="metricChip"><strong>{candidate.shooterName || "?"}</strong> shooter</span>
+        <span className="metricChip"><strong>{candidate.shooterClass || "?"}</strong> class</span>
+        <span className="metricChip"><strong>{candidate.seriesScores?.length ? candidate.seriesScores.join(" · ") : "?"}</strong> series/post scores</span>
+        <span className="metricChip"><strong>{sourceIds.stevneId || "?"}</strong> stevne_id</span>
+        <span className="metricChip"><strong>{sourceIds.listeId || "?"}</strong> liste_id</span>
+        {candidate.shooterMatchStatus === "matched_to_you" ? <span className="metricChip highlightMetric"><strong>Matched to you</strong></span> : null}
+        {candidate.shooterMatchStatus === "possible_match" ? <span className="metricChip badgeGold"><strong>Possible match</strong></span> : null}
+      </div>
+
+      {candidate.duplicateStatus === "possible" ? (
+        <label className="checkboxLabel">
+          <input type="checkbox" checked={Boolean(candidate.allowDuplicateSave)} onChange={(event) => update("allowDuplicateSave", event.target.checked)} />
+          <span>Save anyway after reviewing this possible duplicate</span>
+        </label>
+      ) : null}
+
+      {warnings.length > 0 ? (
+        <div className={candidate.duplicateStatus === "exact" ? "error" : "notice"}>
+          <strong>Import warnings</strong>
+          <ul>
+            {warnings.map((warning) => <li key={warning}>{warning}</li>)}
+          </ul>
+          {candidate.duplicateMatches?.length ? <p className="small muted">Duplicate matches: {candidate.duplicateMatches.map((match) => `${match.reason} (${match.id})`).join("; ")}</p> : null}
+        </div>
+      ) : null}
 
       <label>Leirdue URL</label>
       <input value={candidate.leirdueUrl} onChange={(event) => update("leirdueUrl", event.target.value)} placeholder="https://www.leirdue.net/..." />
@@ -340,6 +419,8 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
 
 export default function LeirdueImportPage() {
   const [shooterName, setShooterName] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [disciplines, setDisciplines] = useState<string[]>(DEFAULT_DISCIPLINES);
   const [candidates, setCandidates] = useState<EditableCandidate[]>([]);
@@ -365,10 +446,98 @@ export default function LeirdueImportPage() {
   }, [candidates]);
   const hiddenFromNormalListCount = candidates.length - groupedCandidates.recommended.length - groupedCandidates.review.length;
 
-  const selectedCount = candidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate)).length;
+  const selectedCount = candidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate) && canSelectCandidate(candidate) && (candidate.duplicateStatus !== "possible" || candidate.allowDuplicateSave)).length;
 
   function toggleDiscipline(discipline: string) {
     setDisciplines((current) => (current.includes(discipline) ? current.filter((item) => item !== discipline) : [...current, discipline]));
+  }
+
+  function applyShooterMatching(candidateList: EditableCandidate[]) {
+    return candidateList.map((candidate) => {
+      if (!candidate.shooterName || !shooterName) return candidate;
+      if (namesLikelyMatch(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "matched_to_you" as const };
+      const parsedParts = candidate.shooterName.split(/\s+/).filter(Boolean);
+      const searchedParts = shooterName.split(/\s+/).filter(Boolean);
+      const possible = parsedParts.length >= 2 && searchedParts.length >= 2 && namesLikelyMatch(parsedParts.at(-1), searchedParts.at(-1));
+      return { ...candidate, shooterMatchStatus: possible ? "possible_match" as const : "unmatched" as const };
+    });
+  }
+
+  async function checkDuplicatesFor(candidateList: EditableCandidate[]) {
+    const visible = candidateList.filter(visibleImportCandidate);
+    if (visible.length === 0) return candidateList;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) return candidateList;
+
+    setCheckingDuplicates(true);
+    try {
+      const response = await fetch("/api/leirdue/duplicates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ candidates: visible }),
+      });
+      const data = (await response.json()) as DuplicateResponse;
+      if (!response.ok || !data.results) return candidateList;
+      return candidateList.map((candidate) => {
+        const result = data.results?.find((item) => item.candidate.leirdueUrl === candidate.leirdueUrl && item.candidate.date === candidate.date && item.candidate.name === candidate.name);
+        if (!result) return candidate;
+        const exact = result.status === "exact";
+        return {
+          ...candidate,
+          duplicateStatus: result.status,
+          duplicateMatches: result.matches,
+          alreadyImported: exact || candidate.alreadyImported,
+          selected: exact ? false : candidate.selected,
+          warnings: result.status === "new" ? candidate.warnings : Array.from(new Set([...(candidate.warnings || []), result.status === "exact" ? "Already imported." : "Possible duplicate."])),
+        };
+      });
+    } finally {
+      setCheckingDuplicates(false);
+    }
+  }
+
+  async function setReviewedCandidates(candidateList: EditableCandidate[]) {
+    const matched = applyShooterMatching(candidateList);
+    const withDuplicates = await checkDuplicatesFor(matched);
+    setCandidates(withDuplicates);
+  }
+
+  async function parseDirectUrl() {
+    setError("");
+    setSuccess("");
+    if (!sourceUrl.trim()) {
+      setError("Paste a Leirdue.net result URL first.");
+      return;
+    }
+    if (!shooterName.trim()) {
+      setError("Enter the shooter name to find in the Leirdue result list.");
+      return;
+    }
+    setSearching(true);
+    try {
+      const response = await fetch("/api/leirdue/debug-parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: sourceUrl.trim(), shooterName: shooterName.trim(), year: Number(year), selectedDisciplines: disciplines }),
+      });
+      const data = (await response.json()) as DirectParseResponse;
+      if (!response.ok || !data.candidate) {
+        setError("Could not import this Leirdue.net result. Try pasting a direct result list URL or save the result manually.");
+        setDebug(null);
+        return;
+      }
+      const candidate = toEditable({
+        ...data.candidate,
+        warnings: Array.from(new Set([...(data.candidate.warnings || []), ...data.parserNotes.filter((note) => /Could not|uncertain|review|Unsupported/i.test(note))])),
+      }, candidates.length);
+      await setReviewedCandidates(mergeCandidates(candidates, [candidate]));
+      setSuccess("Parsed one Leirdue result. Review the fields and duplicate status before saving.");
+    } catch {
+      setError("Could not import this Leirdue.net result. Try pasting a direct result list URL or save the result manually.");
+    } finally {
+      setSearching(false);
+    }
   }
 
   function updateCandidate(updated: EditableCandidate) {
@@ -444,7 +613,7 @@ export default function LeirdueImportPage() {
         currentCandidates = reset && batchCount === 1 ? (data.candidates || []).map(toEditable) : mergeCandidates(currentCandidates, data.candidates || []);
         const afterVisible = visibleCandidateCount(currentCandidates);
         const newVisible = afterVisible - beforeVisible;
-        setCandidates(currentCandidates);
+        await setReviewedCandidates(currentCandidates);
 
         const nextToken = data.continuationToken || null;
         const target = data.debug?.expectedCandidateTarget || 16;
@@ -521,7 +690,7 @@ export default function LeirdueImportPage() {
   async function saveSelected() {
     setError("");
     setSuccess("");
-    const selected = candidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate));
+    const selected = candidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate) && canSelectCandidate(candidate) && (candidate.duplicateStatus !== "possible" || candidate.allowDuplicateSave));
     if (selected.length === 0) {
       setError("Select at least one candidate to save.");
       return;
@@ -558,7 +727,9 @@ export default function LeirdueImportPage() {
           selected: result.status === "error",
           alreadyImported: result.status === "duplicate" || candidate.alreadyImported,
           saveStatus: result.status,
-          saveMessage: result.message || (result.status === "saved" ? "Saved as a result-only session." : result.status === "duplicate" ? "Already imported" : "Could not save this candidate."),
+          duplicateStatus: result.candidate.duplicateStatus || candidate.duplicateStatus,
+          duplicateMatches: result.duplicateMatches || result.candidate.duplicateMatches || candidate.duplicateMatches,
+          saveMessage: result.message || (result.status === "saved" ? "Saved as a result-only session." : result.status === "duplicate" ? "Duplicate skipped" : "Could not save this candidate."),
         };
       }),
     );
@@ -583,6 +754,9 @@ export default function LeirdueImportPage() {
 
         <label>Shooter name</label>
         <input value={shooterName} onChange={(event) => setShooterName(event.target.value)} placeholder="Enter shooter name" required />
+
+        <label>Direct Leirdue result URL (optional)</label>
+        <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://www.leirdue.net/?liste_id=...&meny=resultater&stevne=..." />
 
         <label>Year</label>
         <input value={year} onChange={(event) => setYear(event.target.value)} type="number" min="1990" max={new Date().getFullYear() + 1} required />
@@ -619,6 +793,7 @@ export default function LeirdueImportPage() {
 
         <div className="btns">
           <button disabled={searching || disciplines.length === 0}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
+          {sourceUrl.trim() ? <button type="button" className="secondary" disabled={searching} onClick={parseDirectUrl}>{searching ? "Parsing..." : "Parse direct URL"}</button> : null}
           {continuationToken && !searching ? <button type="button" className="secondary" onClick={continueSearch}>Continue search</button> : null}
           <Link className="button secondary" href="/results/new">Add result manually</Link>
           <Link className="button secondary" href="/dashboard">Dashboard</Link>
@@ -635,10 +810,10 @@ export default function LeirdueImportPage() {
               <h2>Candidate results</h2>
               <p className="small muted">Edit any field before saving. Only checked candidates will be imported as result-only sessions. Low-quality percentage/cup-summary matches are hidden from this list and remain in debug details.</p>
             </div>
-            <span className="countPill">{selectedCount} selected{hiddenFromNormalListCount > 0 ? ` · ${hiddenFromNormalListCount} debug-only hidden` : ""}</span>
+            <span className="countPill">{checkingDuplicates ? "Checking duplicates… · " : ""}{selectedCount} selected{hiddenFromNormalListCount > 0 ? ` · ${hiddenFromNormalListCount} debug-only hidden` : ""}</span>
           </div>
           <div className="btns">
-            <button onClick={saveSelected} disabled={saving || selectedCount === 0}>{saving ? "Saving..." : "Save selected candidates"}</button>
+            <button onClick={saveSelected} disabled={saving || checkingDuplicates || selectedCount === 0}>{saving ? "Saving..." : "Save selected candidates"}</button>
             <Link href="/stats" className="button secondary">Stats</Link>
           </div>
         </div>

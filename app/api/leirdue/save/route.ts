@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import type { LeirdueCandidate } from "@/lib/leirdue/types";
+import type { LeirdueCandidate, LeirdueDuplicateMatch } from "@/lib/leirdue/types";
+import { extractLeirdueSourceIdentifiers } from "@/lib/leirdue/normalize";
+import { compareLeirdueDuplicate, type LeirdueDuplicateSessionRow } from "@/lib/leirdue/duplicates";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +15,7 @@ type SaveResult = {
   status: "saved" | "duplicate" | "error";
   id?: string;
   message?: string;
+  duplicateMatches?: LeirdueDuplicateMatch[];
 };
 
 function supabaseForRequest(request: Request) {
@@ -41,8 +44,23 @@ function isCandidate(value: unknown): value is LeirdueCandidate {
   );
 }
 
-function sourceNotes(candidate: LeirdueCandidate) {
-  const parts = [`Leirdue import: ${candidate.listType}`, `confidence: ${candidate.confidence}`];
+function sourceNotes(candidate: LeirdueCandidate, importedAt: string) {
+  const ids = extractLeirdueSourceIdentifiers(candidate.leirdueUrl);
+  const parts = [
+    "source: leirdue_net",
+    "import_type: result_only",
+    `imported_at: ${importedAt}`,
+    `source_url: ${candidate.leirdueUrl || "unknown"}`,
+    `stevne_id: ${ids.stevneId || "unknown"}`,
+    `liste_id: ${ids.listeId || "unknown"}`,
+    `shooter_name: ${candidate.shooterName || "unknown"}`,
+    `shooter_class: ${candidate.shooterClass || "unknown"}`,
+    `placement: ${candidate.placement ?? "unknown"}`,
+    `series_scores: ${candidate.seriesScores?.length ? candidate.seriesScores.join(",") : "unknown"}`,
+    `Leirdue import: ${candidate.listType}`,
+    `confidence: ${candidate.confidence}`,
+  ];
+  if (candidate.warnings?.length) parts.push(`warnings: ${candidate.warnings.join(" | ")}`);
   if (candidate.notes?.trim()) parts.push(candidate.notes.trim());
   return parts.join(". ");
 }
@@ -75,42 +93,35 @@ export async function POST(request: Request) {
       continue;
     }
 
-    if (url) {
-      const { data: duplicateByUrl, error: duplicateUrlError } = await supabase
-        .from("sessions")
-        .select("id")
-        .eq("user_id", userData.user.id)
-        .eq("leirdue_result_url", url)
-        .maybeSingle<{ id: string }>();
-      if (duplicateUrlError) {
-        results.push({ candidate, status: "error", message: duplicateUrlError.message });
-        continue;
-      }
-      if (duplicateByUrl) {
-        results.push({ candidate: { ...candidate, alreadyImported: true }, status: "duplicate", id: duplicateByUrl.id, message: "Already imported" });
-        continue;
-      }
-    }
-
-    const { data: duplicateByFields, error: duplicateFieldsError } = await supabase
+    const { data: duplicateRows, error: duplicateError } = await supabase
       .from("sessions")
-      .select("id")
+      .select("id,name,discipline,competition_date,own_score,total_targets,winning_score,leirdue_result_url,notes")
       .eq("user_id", userData.user.id)
-      .eq("competition_date", candidate.date)
-      .eq("name", candidate.name.trim())
-      .eq("own_score", ownScore)
-      .maybeSingle<{ id: string }>();
+      .returns<LeirdueDuplicateSessionRow[]>();
 
-    if (duplicateFieldsError) {
-      results.push({ candidate, status: "error", message: duplicateFieldsError.message });
-      continue;
-    }
-    if (duplicateByFields) {
-      results.push({ candidate: { ...candidate, alreadyImported: true }, status: "duplicate", id: duplicateByFields.id, message: "Already imported" });
+    if (duplicateError) {
+      results.push({ candidate, status: "error", message: duplicateError.message });
       continue;
     }
 
-    const notes = sourceNotes(candidate);
+    const duplicateMatches = (duplicateRows || [])
+      .map((row) => compareLeirdueDuplicate(candidate, row))
+      .filter((match): match is LeirdueDuplicateMatch => Boolean(match));
+    const exactDuplicate = duplicateMatches.find((match) => match.exact);
+    const possibleDuplicate = duplicateMatches.find((match) => !match.exact);
+
+    if (exactDuplicate) {
+      results.push({ candidate: { ...candidate, alreadyImported: true, duplicateStatus: "exact", duplicateMatches }, status: "duplicate", id: exactDuplicate.id, message: "Already imported from the same Leirdue source.", duplicateMatches });
+      continue;
+    }
+
+    if (possibleDuplicate && !candidate.allowDuplicateSave) {
+      results.push({ candidate: { ...candidate, duplicateStatus: "possible", duplicateMatches }, status: "duplicate", id: possibleDuplicate.id, message: "Possible duplicate found. Review it and choose Save anyway if this is a separate result.", duplicateMatches });
+      continue;
+    }
+
+    const importedAt = new Date().toISOString();
+    const notes = sourceNotes(candidate, importedAt);
     const { data: inserted, error: insertError } = await supabase
       .from("sessions")
       .insert({

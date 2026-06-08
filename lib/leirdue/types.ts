@@ -1,6 +1,14 @@
 export type LeirdueConfidence = "high" | "medium" | "low";
 export type LeirdueCategory = "recommended" | "review" | "control";
 
+export type LeirdueDuplicateStatus = "new" | "possible" | "exact";
+
+export type LeirdueDuplicateMatch = {
+  id: string;
+  reason: string;
+  exact: boolean;
+};
+
 export type LeirdueCandidate = {
   date: string | null;
   name: string;
@@ -9,6 +17,18 @@ export type LeirdueCandidate = {
   ownScore: number | null;
   totalTargets: number | null;
   winningScore: number | null;
+  maxScore?: number | null;
+  placement?: number | null;
+  seriesScores?: number[];
+  shooterName?: string | null;
+  shooterClass?: string | null;
+  stevneId?: string | null;
+  listeId?: string | null;
+  warnings?: string[];
+  duplicateStatus?: LeirdueDuplicateStatus;
+  duplicateMatches?: LeirdueDuplicateMatch[];
+  shooterMatchStatus?: "matched_to_you" | "possible_match" | "unmatched" | null;
+  allowDuplicateSave?: boolean;
   leirdueUrl: string;
   listType: string | null;
   confidence: LeirdueConfidence;
