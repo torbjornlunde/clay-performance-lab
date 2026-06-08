@@ -682,14 +682,22 @@ export default function DashboardPage() {
           <h2>Dashboard</h2>
           <p className="dashboardHeroCopy">Log sessions, save quick results, or open schemes in seconds.</p>
         </div>
+        <div className="quickStartPresetPanel dashboardQuickStartPanel" aria-label="Training Score Sheet quick start">
+          <div>
+            <p className="eyebrow">NM quick start</p>
+            <h3>Start a training score sheet</h3>
+            <p className="small muted">Use a preset to skip setup choices, then add shooters and enter Field Mode.</p>
+          </div>
+          <div className="quickStartPresetActions">
+            <Link href="/training-score-sheets/new?preset=compak" className="button primaryAction">New Compak Sporting training</Link>
+            <Link href="/training-score-sheets/new?preset=leirduesti" className="button secondary smallButton">New Leirduesti training</Link>
+            <Link href="/training-score-sheets/new?preset=custom" className="button secondary smallButton">Custom training score sheet</Link>
+          </div>
+        </div>
         <div className="dashboardPrimaryActions">
-          <Link href="/sessions/new" className="dashboardActionCard primaryAction">
+          <Link href="/sessions/new" className="dashboardActionCard secondaryAction">
             <span>New shooting log</span>
             <small>Track misses and training patterns.</small>
-          </Link>
-          <Link href="/training-score-sheets/new" className="dashboardActionCard secondaryAction">
-            <span>Training Score Sheet</span>
-            <small>Score multiple shooters by post.</small>
           </Link>
           <Link href="/results/new" className="dashboardActionCard secondaryAction">
             <span>Quick result</span>
