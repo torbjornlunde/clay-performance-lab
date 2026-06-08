@@ -320,6 +320,20 @@ function localDraftIsNewer(draft: LocalScoreSheetDraft, serverUpdatedAt: string 
   return new Date(draft.updatedAt).getTime() > new Date(serverUpdatedAt).getTime();
 }
 
+
+function removeLocalDraftsForScoreSheet(scoreSheetId: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(localDraftKey(scoreSheetId));
+  window.localStorage.removeItem(legacyLocalDraftKey(scoreSheetId));
+  Object.keys(window.localStorage).forEach((key) => {
+    if (!key.startsWith(LOCAL_DRAFT_PREFIX)) return;
+    const draft = parseLocalDraft(window.localStorage.getItem(key));
+    if (draft?.scoreSheetId === scoreSheetId || draft?.sheetId === scoreSheetId) {
+      window.localStorage.removeItem(key);
+    }
+  });
+}
+
 function cleanupOldSyncedDrafts() {
   if (typeof window === "undefined") return;
   const now = Date.now();
@@ -1763,7 +1777,7 @@ export default function TrainingScoreSheetPage() {
     const sheetToDelete = effectiveSheetId;
     if (!sheetToDelete) return;
     const confirmed = window.confirm(
-      "Delete this training score sheet? This permanently removes its shooters, scores and target results.",
+      "Delete this training score sheet? This will remove shooters, scores, and target results. This cannot be undone.",
     );
     if (!confirmed) return;
 
@@ -1797,10 +1811,8 @@ export default function TrainingScoreSheetPage() {
       return;
     }
 
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(localDraftKey(sheetToDelete));
-      window.localStorage.removeItem(localDraftKey(sheetId));
-    }
+    removeLocalDraftsForScoreSheet(sheetToDelete);
+    if (sheetId !== sheetToDelete) removeLocalDraftsForScoreSheet(sheetId);
     setPersistedSheetId("");
     setSaving(false);
     router.push("/dashboard");
