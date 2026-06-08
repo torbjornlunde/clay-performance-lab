@@ -488,6 +488,7 @@ export default function TrainingScoreSheetPage() {
   const [localSaveStatus, setLocalSaveStatus] = useState<LocalSaveStatus>("idle");
   const [localDraftLoaded, setLocalDraftLoaded] = useState(false);
   const [hasUnsyncedLocalDraft, setHasUnsyncedLocalDraft] = useState(false);
+  const [copyMessage, setCopyMessage] = useState("");
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
@@ -622,6 +623,25 @@ export default function TrainingScoreSheetPage() {
       })),
     [targetResults, validShooters],
   );
+  const rankedShooters = useMemo(
+    () =>
+      validShooters
+        .map((shooter, index) => {
+          const totalScore = totalFor(shooter, targetResults);
+          return {
+            ...shooter,
+            originalIndex: index,
+            totalScore,
+            percentage: sheetTotalTargets > 0 ? (totalScore / sheetTotalTargets) * 100 : 0,
+            ...targetStatsForShooter(targetResults, shooter.localId),
+          };
+        })
+        .sort((a, b) => b.totalScore - a.totalScore || a.originalIndex - b.originalIndex),
+    [sheetTotalTargets, targetResults, validShooters],
+  );
+  const hasMissCounts = rankedShooters.some((shooter) => shooter.scored > 0);
+  const resultPostLabel = isCompak ? "plate" : "post";
+  const resultPostLabels = postNumbers.map((post) => `P${post}`);
   const isCompakRoundComplete = Boolean(
     isCompak &&
       validShooters.length > 0 &&
@@ -1522,6 +1542,54 @@ export default function TrainingScoreSheetPage() {
     );
   }
 
+  function buildResultsShareText() {
+    const headerParts = [`${discipline || "Training"} training`];
+    const cleanLocation = location.trim();
+    if (cleanLocation) headerParts.push(cleanLocation);
+    if (sessionDate) headerParts.push(formatTitleDate(sessionDate));
+
+    const lines = [headerParts.join(" – "), ""];
+    rankedShooters.forEach((shooter, index) => {
+      lines.push(`${index + 1}. ${shooter.displayName} – ${shooter.totalScore}/${sheetTotalTargets}`);
+    });
+
+    if (rankedShooters.length > 0 && numberOfPosts <= 10 && rankedShooters.length <= 12) {
+      lines.push("", `${isCompak ? "Plate" : "Post"} breakdown:`);
+      rankedShooters.forEach((shooter) => {
+        const breakdown = postNumbers
+          .map((post, index) => `${resultPostLabels[index]} ${displayedPostScore(shooter, index, targetResults)}`)
+          .join(", ");
+        lines.push(`${shooter.displayName}: ${breakdown} = ${shooter.totalScore}/${sheetTotalTargets}`);
+      });
+    }
+
+    return lines.join("\n");
+  }
+
+  async function copyResults() {
+    const text = buildResultsShareText();
+    if (!text.trim()) return;
+    setCopyMessage("");
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+      }
+      setCopyMessage("Results copied.");
+    } catch {
+      setCopyMessage("Could not copy results. Select and copy from the summary instead.");
+    }
+  }
+
   function validate() {
     const namedShooters = shooters.filter((shooter) =>
       formatShooterName(shooter.name),
@@ -1986,6 +2054,111 @@ export default function TrainingScoreSheetPage() {
             </div>
           </div>
         )}
+
+        <section className="subcard resultsSummaryCard" aria-labelledby="training-results-heading">
+          <div className="sectionHeader compactSectionHeader">
+            <div>
+              <p className="eyebrow">Results</p>
+              <h3 id="training-results-heading">Summary</h3>
+              <p className="small muted">Read-only results for sharing after a saved or completed training.</p>
+            </div>
+            <div className="resultsSummaryActions">
+              <button
+                type="button"
+                className="secondary smallButton"
+                onClick={copyResults}
+                disabled={rankedShooters.length === 0}
+              >
+                Copy results
+              </button>
+              {copyMessage && <span className="small muted" role="status">{copyMessage}</span>}
+            </div>
+          </div>
+
+          <div className="resultsSummaryMeta" aria-label="Training result details">
+            <div><span>Title</span><strong>{title || "Training score sheet"}</strong></div>
+            <div><span>Date</span><strong>{formatTitleDate(sessionDate)}</strong></div>
+            {location.trim() && <div><span>Location</span><strong>{location.trim()}</strong></div>}
+            <div><span>Discipline</span><strong>{discipline}</strong></div>
+            <div><span>Session type</span><strong>{sessionTypeLabel(sessionType)}</strong></div>
+            <div><span>Shooters</span><strong>{validShooters.length}</strong></div>
+            <div><span>Targets / shooter</span><strong>{sheetTotalTargets}</strong></div>
+          </div>
+
+          <div className="resultsTablesGrid">
+            <div className="resultsTableBlock">
+              <h4>Ranking</h4>
+              <div className="scoreSheetScroller compactScoreScroller" role="region" aria-label="Ranked training results">
+                <table className="resultsSummaryTable rankingTable">
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Shooter</th>
+                      <th>Total</th>
+                      <th>%</th>
+                      {hasMissCounts && <th>Misses</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rankedShooters.length === 0 ? (
+                      <tr>
+                        <td colSpan={hasMissCounts ? 5 : 4} className="emptyScoreGridCell">
+                          Add at least one shooter.
+                        </td>
+                      </tr>
+                    ) : (
+                      rankedShooters.map((shooter, index) => (
+                        <tr key={shooter.localId}>
+                          <td className="rankCell">{index + 1}</td>
+                          <th scope="row">{shooter.displayName}</th>
+                          <td className="scoreTotalCell">{shooter.totalScore}/{sheetTotalTargets}</td>
+                          <td>{shooter.percentage.toFixed(0)}%</td>
+                          {hasMissCounts && <td>{shooter.misses}</td>}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="resultsTableBlock resultsBreakdownBlock">
+              <h4>{isCompak ? "Plate breakdown" : "Post breakdown"}</h4>
+              <div className="scoreSheetScroller compactScoreScroller" role="region" aria-label={`Compact ${resultPostLabel} breakdown`}>
+                <table className="resultsSummaryTable breakdownTable">
+                  <thead>
+                    <tr>
+                      <th>Shooter</th>
+                      {resultPostLabels.map((label) => (
+                        <th key={label}>{label}</th>
+                      ))}
+                      <th>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rankedShooters.length === 0 ? (
+                      <tr>
+                        <td colSpan={resultPostLabels.length + 2} className="emptyScoreGridCell">
+                          No results yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      rankedShooters.map((shooter) => (
+                        <tr key={shooter.localId}>
+                          <th scope="row">{shooter.displayName}</th>
+                          {postNumbers.map((post, index) => (
+                            <td key={post}>{displayedPostScore(shooter, index, targetResults)}</td>
+                          ))}
+                          <td className="scoreTotalCell">{shooter.totalScore}/{sheetTotalTargets}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {liveMode && (
           <div className="setupVisibilityToggle">

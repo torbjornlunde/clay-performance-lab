@@ -3804,6 +3804,139 @@ html, body {
   white-space: nowrap;
 }
 
+
+.resultsSummaryCard {
+  display: grid;
+  gap: 16px;
+}
+
+.resultsSummaryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.resultsSummaryMeta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.resultsSummaryMeta > div {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(10, 16, 24, 0.55);
+  padding: 10px 12px;
+}
+
+.resultsSummaryMeta span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.resultsSummaryMeta strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.resultsTablesGrid {
+  display: grid;
+  gap: 16px;
+}
+
+.resultsTableBlock {
+  display: grid;
+  gap: 8px;
+}
+
+.resultsTableBlock h4 {
+  margin: 0;
+}
+
+.resultsSummaryTable {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  background: rgba(10, 16, 24, 0.5);
+}
+
+.breakdownTable {
+  min-width: 680px;
+}
+
+.resultsSummaryTable th,
+.resultsSummaryTable td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.resultsSummaryTable thead th {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.resultsSummaryTable tbody tr:last-child th,
+.resultsSummaryTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.resultsSummaryTable td:not(:first-child),
+.resultsSummaryTable th:not(:first-child) {
+  text-align: center;
+}
+
+.resultsSummaryTable th[scope="row"] {
+  text-align: left;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rankCell {
+  color: #ffe2a0;
+  font-weight: 950;
+}
+
+.compactScoreScroller {
+  border-radius: 14px;
+}
+
+@media (max-width: 720px) {
+  .resultsSummaryActions {
+    justify-content: flex-start;
+  }
+
+  .resultsSummaryMeta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .resultsSummaryTable {
+    min-width: 480px;
+  }
+
+  .breakdownTable {
+    min-width: 620px;
+  }
+
+  .resultsSummaryTable th,
+  .resultsSummaryTable td {
+    padding: 7px 8px;
+  }
+}
+
 .successMessage {
   border: 1px solid rgba(68, 204, 136, 0.35);
   background: rgba(68, 204, 136, 0.12);
