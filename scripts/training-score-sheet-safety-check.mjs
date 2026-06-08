@@ -39,6 +39,13 @@ function displayedPostScore(shooter, postIndex, targetResults) {
     : shooter.scores[postIndex] || 0;
 }
 
+function parsePositiveIntegerDraft(value, min, max) {
+  if (!/^\d+$/.test(value.trim())) return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) return null;
+  return parsed;
+}
+
 function setupReductionWouldTrimData({ shooters, targetResults, nextPostCount, nextTargetsPerPost }) {
   return (
     shooters.some((shooter) => shooter.scores.slice(nextPostCount).some((score) => score > 0)) ||
@@ -64,6 +71,8 @@ const targetResults = {
   },
 };
 
+assert.equal(parsePositiveIntegerDraft("", 1, 20), null, "empty setup draft does not parse as an applied structure");
+assert.equal(parsePositiveIntegerDraft("1", 1, 20), 1, "partial typing can be represented as a draft only");
 assert.deepEqual(makeScores(10, shooter.scores).slice(0, 5), shooter.scores, "increasing posts preserves existing post scores");
 assert.deepEqual(trimTargetResults(targetResults, 10, 10), targetResults, "increasing setup preserves target results");
 assert.equal(

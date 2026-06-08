@@ -82,6 +82,11 @@ type CompakRotationMode = "waiting_shooter" | "continuous_rotation";
 
 type LocalSaveStatus = "idle" | "saved_local" | "syncing" | "synced" | "sync_failed" | "offline";
 
+type SetupDraft = {
+  numberOfPosts: string;
+  targetsPerPost: string;
+};
+
 type WakeLockSentinelLike = {
   released: boolean;
   release: () => Promise<void>;
@@ -373,8 +378,9 @@ function localStatusLabel(status: LocalSaveStatus) {
   return "Autosave ready";
 }
 
-function setupTrimWarning() {
-  return "Reducing this setup may remove existing score data outside the new post/target range. Continue and trim those scores?";
+function setupTrimWarning(details: string[]) {
+  const suffix = details.length > 0 ? `\n\nThis will remove or change:\n- ${details.join("\n- ")}` : "";
+  return `Reducing this setup may remove existing score data outside the new post/target range.${suffix}\n\nContinue and apply setup changes?`;
 }
 
 function todayValue() {
@@ -444,6 +450,87 @@ function targetStatsForShooter(
   return { scored: results.length, hits, misses };
 }
 
+function setupTrimDetails(options: {
+  shooters: ShooterDraft[];
+  targetResults: TargetResultMap;
+  nextPostCount: number;
+  nextTargetsPerPost: number;
+  postLabel: string;
+}) {
+  const details: string[] = [];
+  const removedManualPosts = options.shooters
+    .flatMap((shooter) =>
+      shooter.scores
+        .map((score, index) => ({ shooter, score, postNumber: index + 1 }))
+        .filter((item) => item.postNumber > options.nextPostCount && item.score > 0),
+    );
+  if (removedManualPosts.length > 0) {
+    details.push(
+      `${removedManualPosts.length} manual ${options.postLabel} total${removedManualPosts.length === 1 ? "" : "s"} after ${options.postLabel} ${options.nextPostCount}`,
+    );
+  }
+
+  const clampedManualScores = options.shooters.flatMap((shooter) =>
+    shooter.scores
+      .map((score, index) => ({ shooter, score, postNumber: index + 1 }))
+      .filter(
+        (item) =>
+          item.postNumber <= options.nextPostCount &&
+          item.score > options.nextTargetsPerPost &&
+          !hasTargetResults(options.targetResults, item.shooter.localId, item.postNumber),
+      ),
+  );
+  if (clampedManualScores.length > 0) {
+    details.push(
+      `${clampedManualScores.length} manual total${clampedManualScores.length === 1 ? "" : "s"} above ${options.nextTargetsPerPost} will be clamped`,
+    );
+  }
+
+  const removedTargetResults = Object.values(options.targetResults).reduce(
+    (count, posts) =>
+      count +
+      Object.entries(posts).reduce((postCount, [postKey, targets]) => {
+        const postNumber = Number(postKey);
+        return (
+          postCount +
+          Object.keys(targets).filter((targetKey) => {
+            const targetNumber = Number(targetKey);
+            return (
+              postNumber > options.nextPostCount ||
+              targetNumber > options.nextTargetsPerPost
+            );
+          }).length
+        );
+      }, 0),
+    0,
+  );
+  if (removedTargetResults > 0) {
+    details.push(
+      `${removedTargetResults} target-by-target result${removedTargetResults === 1 ? "" : "s"} outside the new setup`,
+    );
+  }
+
+  return details;
+}
+
+function parsePositiveIntegerDraft(value: string, min: number, max: number) {
+  if (!/^\d+$/.test(value.trim())) return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) return null;
+  return parsed;
+}
+
+function scoreThroughPost(
+  shooter: ShooterDraft,
+  targetResults: TargetResultMap,
+  postNumber: number,
+) {
+  return shooter.scores.slice(0, postNumber).reduce(
+    (sum, _score, index) => sum + displayedPostScore(shooter, index, targetResults),
+    0,
+  );
+}
+
 export default function TrainingScoreSheetPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -460,6 +547,11 @@ export default function TrainingScoreSheetPage() {
   const [sessionType, setSessionType] = useState("training");
   const [numberOfPosts, setNumberOfPosts] = useState(5);
   const [targetsPerPost, setTargetsPerPost] = useState(10);
+  const [setupDraft, setSetupDraft] = useState<SetupDraft>({
+    numberOfPosts: "5",
+    targetsPerPost: "10",
+  });
+  const [setupApplyMessage, setSetupApplyMessage] = useState("");
   const [compakSchemeId, setCompakSchemeId] = useState(DEFAULT_COMPAK_SCHEME);
   const [compakShootingMode, setCompakShootingMode] = useState<CompakShootingMode>("Squad");
   const [compakRotationMode, setCompakRotationMode] = useState<CompakRotationMode>("waiting_shooter");
@@ -472,6 +564,7 @@ export default function TrainingScoreSheetPage() {
   const [showShootersDuringLive, setShowShootersDuringLive] = useState(false);
   const [showCompakSettingsDuringLive, setShowCompakSettingsDuringLive] = useState(false);
   const [showFullScoreTableDuringLive, setShowFullScoreTableDuringLive] = useState(false);
+  const [showResultsSummaryDuringLive, setShowResultsSummaryDuringLive] = useState(false);
   const [postComplete, setPostComplete] = useState<PostCompleteState | null>(null);
   const [wakeLockActive, setWakeLockActive] = useState(false);
   const [wakeLockUnsupported, setWakeLockUnsupported] = useState(false);
@@ -505,10 +598,17 @@ export default function TrainingScoreSheetPage() {
   );
   const isCompak = isCompakSporting(discipline);
   const sheetTotalTargets = numberOfPosts * targetsPerPost;
+  const draftPostCount = parsePositiveIntegerDraft(setupDraft.numberOfPosts, 1, 20);
+  const draftTargetsPerPost = parsePositiveIntegerDraft(setupDraft.targetsPerPost, 1, 100);
+  const setupDraftDirty =
+    setupDraft.numberOfPosts !== String(numberOfPosts) ||
+    setupDraft.targetsPerPost !== String(targetsPerPost);
+  const setupDraftValid = Boolean(draftPostCount && draftTargetsPerPost);
   const setupSectionsOpen = !liveMode || showSetupDuringLive;
-  const shooterSetupOpen = !liveMode || (isCompak ? showSetupDuringLive : showShootersDuringLive);
+  const shooterSetupOpen = !liveMode || showShootersDuringLive;
   const compakSettingsOpen = !liveMode || showCompakSettingsDuringLive;
   const fullScoreTableOpen = !liveMode || showFullScoreTableDuringLive;
+  const resultsSummaryOpen = !liveMode || showResultsSummaryDuringLive;
   const hasEnteredScores = shooters.some((shooter) =>
     shooter.scores.some(
       (score, index) => displayedPostScore(shooter, index, targetResults) > 0,
@@ -614,6 +714,14 @@ export default function TrainingScoreSheetPage() {
   const postCompleteMisses = postComplete
     ? targetNumbers.filter((targetNumber) => postCompleteResults[targetNumber] === "miss")
     : [];
+  const postCompleteTotalSoFar = postComplete && postCompleteShooter
+    ? scoreThroughPost(postCompleteShooter, targetResults, postComplete.postNumber)
+    : 0;
+  const postCompleteTargetsSoFar = postComplete
+    ? isCompak
+      ? COMPAK_TOTAL_TARGETS
+      : postComplete.postNumber * targetsPerPost
+    : 0;
   const compakShooterStats = useMemo(
     () =>
       validShooters.map((shooter) => ({
@@ -800,6 +908,13 @@ export default function TrainingScoreSheetPage() {
   useEffect(() => {
     setPersistedSheetId(isNew ? "" : sheetId);
   }, [isNew, sheetId]);
+
+  useEffect(() => {
+    setSetupDraft({
+      numberOfPosts: String(numberOfPosts),
+      targetsPerPost: String(targetsPerPost),
+    });
+  }, [numberOfPosts, targetsPerPost]);
 
   useEffect(() => {
     if (!titleAutoGenerated) return;
@@ -1098,7 +1213,13 @@ export default function TrainingScoreSheetPage() {
         nextPostCount: COMPAK_DEFAULT_STANDS,
         nextTargetsPerPost: COMPAK_TARGETS_PER_STAND,
       }) &&
-      !window.confirm(setupTrimWarning())
+      !window.confirm(setupTrimWarning(setupTrimDetails({
+        shooters,
+        targetResults,
+        nextPostCount: COMPAK_DEFAULT_STANDS,
+        nextTargetsPerPost: COMPAK_TARGETS_PER_STAND,
+        postLabel: "stand",
+      })))
     ) {
       return false;
     }
@@ -1138,43 +1259,55 @@ export default function TrainingScoreSheetPage() {
     loadCompakSchemeRows(safeScheme);
   }
 
-  function updatePostCount(nextCount: number) {
-    const safeCount = Math.min(Math.max(nextCount || 1, 1), 20);
-    if (safeCount < numberOfPosts) {
-      const wouldTrim = setupReductionWouldTrimData({
-        shooters,
-        targetResults,
-        nextPostCount: safeCount,
-        nextTargetsPerPost: targetsPerPost,
-      });
-      if (wouldTrim && !window.confirm(setupTrimWarning())) return;
-    }
-    setNumberOfPosts(safeCount);
-    setShooters((current) =>
-      resizeShootersForSetup(current, safeCount, targetsPerPost),
-    );
-    setTargetResults((current) =>
-      trimTargetResults(current, safeCount, targetsPerPost),
-    );
+  function updateSetupDraft(field: keyof SetupDraft, value: string) {
+    setSetupApplyMessage("");
+    setSetupDraft((current) => ({ ...current, [field]: value }));
   }
 
-  function updateTargetsPerPost(nextValue: number) {
-    const safeTargets = Math.min(Math.max(nextValue || 1, 1), 100);
-    if (safeTargets < targetsPerPost) {
-      const wouldTrim = setupReductionWouldTrimData({
+  function applySetupDraftChanges() {
+    const nextPostCount = parsePositiveIntegerDraft(setupDraft.numberOfPosts, 1, 20);
+    const nextTargetsPerPost = parsePositiveIntegerDraft(setupDraft.targetsPerPost, 1, 100);
+    if (!nextPostCount || !nextTargetsPerPost) {
+      setSetupApplyMessage(
+        `Enter a complete valid setup before applying: ${isCompak ? "1–20 stands" : "1–20 posts"} and 1–100 targets.`,
+      );
+      return;
+    }
+    if (nextPostCount === numberOfPosts && nextTargetsPerPost === targetsPerPost) {
+      setSetupApplyMessage("Setup is already applied.");
+      return;
+    }
+
+    const wouldTrim = setupReductionWouldTrimData({
+      shooters,
+      targetResults,
+      nextPostCount,
+      nextTargetsPerPost,
+    });
+    if (wouldTrim) {
+      const details = setupTrimDetails({
         shooters,
         targetResults,
-        nextPostCount: numberOfPosts,
-        nextTargetsPerPost: safeTargets,
+        nextPostCount,
+        nextTargetsPerPost,
+        postLabel: isCompak ? "stand" : "post",
       });
-      if (wouldTrim && !window.confirm(setupTrimWarning())) return;
+      if (!window.confirm(setupTrimWarning(details))) {
+        setSetupApplyMessage("Setup changes were not applied; existing scoring data is unchanged.");
+        return;
+      }
     }
-    setTargetsPerPost(safeTargets);
+
+    setNumberOfPosts(nextPostCount);
+    setTargetsPerPost(nextTargetsPerPost);
     setShooters((current) =>
-      resizeShootersForSetup(current, numberOfPosts, safeTargets),
+      resizeShootersForSetup(current, nextPostCount, nextTargetsPerPost),
     );
     setTargetResults((current) =>
-      trimTargetResults(current, numberOfPosts, safeTargets),
+      trimTargetResults(current, nextPostCount, nextTargetsPerPost),
+    );
+    setSetupApplyMessage(
+      `${isCompak ? "Stand" : "Post"} setup applied: ${nextPostCount} × ${nextTargetsPerPost}. Existing in-range scores were preserved.`,
     );
   }
 
@@ -1383,6 +1516,7 @@ export default function TrainingScoreSheetPage() {
       setShowShootersDuringLive(false);
       setShowCompakSettingsDuringLive(false);
       setShowFullScoreTableDuringLive(false);
+      setShowResultsSummaryDuringLive(false);
       setPostComplete(null);
       if (nextValue && validShooters.length > 0) {
         if (isCompak) {
@@ -2055,7 +2189,8 @@ export default function TrainingScoreSheetPage() {
           </div>
         )}
 
-        <section className="subcard resultsSummaryCard" aria-labelledby="training-results-heading">
+        {resultsSummaryOpen && (
+          <section className="subcard resultsSummaryCard" aria-labelledby="training-results-heading">
           <div className="sectionHeader compactSectionHeader">
             <div>
               <p className="eyebrow">Results</p>
@@ -2158,45 +2293,64 @@ export default function TrainingScoreSheetPage() {
               </div>
             </div>
           </div>
-        </section>
+          </section>
+        )}
 
         {liveMode && (
-          <div className="setupVisibilityToggle">
-            <button
-              type="button"
-              className="secondary smallButton"
-              onClick={() => setShowSetupDuringLive((value) => !value)}
-            >
-              {showSetupDuringLive ? "Hide setup" : "Show setup"}
-            </button>
-            {isCompak ? (
+          <details className="compactMoreActions">
+            <summary>Options</summary>
+            <div className="compactMoreActionGrid">
               <button
                 type="button"
                 className="secondary smallButton"
-                onClick={() => setShowCompakSettingsDuringLive((value) => !value)}
+                onClick={() => setShowSetupDuringLive((value) => !value)}
               >
-                {showCompakSettingsDuringLive ? "Hide Compak settings" : "Show Compak settings"}
+                {showSetupDuringLive ? "Hide setup" : "Show setup"}
               </button>
-            ) : (
               <button
                 type="button"
                 className="secondary smallButton"
                 onClick={() => setShowShootersDuringLive((value) => !value)}
               >
-                {showShootersDuringLive ? "Hide shooters" : "Show shooters"}
+                {showShootersDuringLive ? "Hide shooters" : "Edit shooters"}
               </button>
-            )}
-            <button
-              type="button"
-              className="secondary smallButton"
-              onClick={() => setShowFullScoreTableDuringLive((value) => !value)}
-            >
-              {showFullScoreTableDuringLive ? "Hide full score table" : "Show full score table"}
-            </button>
-            <span className="small muted">
-              Setup is hidden by default so live scoring stays front and center.
-            </span>
-          </div>
+              {isCompak && (
+                <button
+                  type="button"
+                  className="secondary smallButton"
+                  onClick={() => setShowCompakSettingsDuringLive((value) => !value)}
+                >
+                  {showCompakSettingsDuringLive ? "Hide Compak settings" : "Compak settings"}
+                </button>
+              )}
+              <button
+                type="button"
+                className="secondary smallButton"
+                onClick={() => setShowFullScoreTableDuringLive((value) => !value)}
+              >
+                {showFullScoreTableDuringLive ? "Hide score overview" : "Full score overview"}
+              </button>
+              <button
+                type="button"
+                className="secondary smallButton"
+                onClick={() => setShowResultsSummaryDuringLive((value) => !value)}
+              >
+                {showResultsSummaryDuringLive ? "Hide results" : "Results summary"}
+              </button>
+              <button
+                type="button"
+                className="secondary smallButton"
+                onClick={() => save({ navigate: false, reload: false })}
+                disabled={saving}
+              >
+                {saving ? "Saving..." : "Save now"}
+              </button>
+              <Link href="/dashboard" className="button secondary smallButton">
+                Back to dashboard
+              </Link>
+            </div>
+            <p className="small muted">Setup, results and management stay tucked away during Field Mode.</p>
+          </details>
         )}
 
         <details
@@ -2274,9 +2428,9 @@ export default function TrainingScoreSheetPage() {
             <div>
               <label>{isCompak ? "Number of stands / plates" : "Number of posts / stations"}</label>
               <input
-                value={numberOfPosts}
+                value={setupDraft.numberOfPosts}
                 onChange={(event) =>
-                  updatePostCount(Number(event.target.value))
+                  updateSetupDraft("numberOfPosts", event.target.value)
                 }
                 disabled={isCompak}
                 type="number"
@@ -2288,9 +2442,9 @@ export default function TrainingScoreSheetPage() {
             <div>
               <label>{isCompak ? "Targets per stand" : "Targets per post"}</label>
               <input
-                value={targetsPerPost}
+                value={setupDraft.targetsPerPost}
                 onChange={(event) =>
-                  updateTargetsPerPost(Number(event.target.value))
+                  updateSetupDraft("targetsPerPost", event.target.value)
                 }
                 disabled={isCompak}
                 type="number"
@@ -2300,6 +2454,27 @@ export default function TrainingScoreSheetPage() {
               />
             </div>
           </div>
+          <div className="setupApplyPanel">
+            <div>
+              <strong>Setup changes are staged until applied.</strong>
+              <p className="small muted">Typing partial values like “1” while entering “10” will not resize posts, targets, target results, or the live cursor.</p>
+              {setupDraftDirty && setupDraftValid && draftPostCount && draftTargetsPerPost && (
+                <p className="small muted">Pending setup: {draftPostCount} × {draftTargetsPerPost} ({draftPostCount * draftTargetsPerPost} targets per shooter).</p>
+              )}
+              {setupApplyMessage && <p className="small muted" role="status">{setupApplyMessage}</p>}
+            </div>
+            <button
+              type="button"
+              className="secondary smallButton"
+              onClick={applySetupDraftChanges}
+              disabled={isCompak || !setupDraftDirty || !setupDraftValid}
+            >
+              Apply setup changes
+            </button>
+          </div>
+          {setupDraftDirty && !setupDraftValid && (
+            <p className="small muted">Enter complete whole numbers before applying setup changes.</p>
+          )}
           {isCompak && compakSettingsOpen && (
             <div className="compakSettingsPanel">
               <div>
@@ -2809,7 +2984,8 @@ export default function TrainingScoreSheetPage() {
                 <div className="postCompleteCard" role="status">
                   <span className="small muted">{postCompleteShooter.displayName}</span>
                   <strong>{isCompak ? "Stand" : "Post"} {postComplete.postNumber} complete</strong>
-                  <p>Score: {postCompleteScore} / {targetsPerPost}</p>
+                  <p>{isCompak ? "Plate" : "Post"} score: {postCompleteScore}/{targetsPerPost}</p>
+                  <p>Total so far: {postCompleteTotalSoFar}/{postCompleteTargetsSoFar}</p>
                   <p className="small muted">
                     Missed: {postCompleteMisses.length > 0
                       ? postCompleteMisses.map((target) => `target ${target}`).join(" and ")
@@ -2824,7 +3000,7 @@ export default function TrainingScoreSheetPage() {
                       className="secondary smallButton"
                       onClick={editCurrentPost}
                     >
-                      Correct post
+                      {isCompak ? "Correct plate" : "Correct post"}
                     </button>
                   </div>
                 </div>
