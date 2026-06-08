@@ -5010,3 +5010,62 @@ html, body {
   place-items: center;
   pointer-events: none;
 }
+
+.betaTestNote {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  margin: 10px 0;
+  border: 1px solid rgba(216, 165, 58, 0.34);
+  border-radius: 999px;
+  background: rgba(216, 165, 58, 0.1);
+  color: #f6e4b7;
+  padding: 7px 10px;
+  font-weight: 800;
+}
+
+.quickStartCard {
+  margin: 12px 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.quickStartCard > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  font-weight: 900;
+  list-style: none;
+}
+
+.quickStartCard > summary::-webkit-details-marker {
+  display: none;
+}
+
+.quickStartList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px 18px;
+  margin: 0;
+  padding: 0 14px 14px 32px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.debugBuildInfo {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.debugBuildInfo > summary {
+  cursor: pointer;
+}
+
+.debugBuildInfo p {
+  margin: 6px 0 0;
+}

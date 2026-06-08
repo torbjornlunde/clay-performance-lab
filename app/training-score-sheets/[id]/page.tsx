@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { appBuildLabel } from "@/lib/appBuildInfo";
 import { COMPAK_SPORTING, DISCIPLINE_OPTIONS, LEIRDUESTI } from "@/lib/disciplines";
 import {
   type CompakSchemeRow,
@@ -26,6 +27,11 @@ import {
   type TargetResultMap,
   type TargetResultValue,
 } from "@/lib/trainingScoreSheets/safety";
+import {
+  buildTrainingScoreSheetFeedback,
+  TRAINING_SCORE_SHEET_BETA_NOTE,
+  TRAINING_SCORE_SHEET_QUICK_START_STEPS,
+} from "@/lib/trainingScoreSheets/feedback";
 
 type ShooterDraft = {
   localId: string;
@@ -582,6 +588,7 @@ export default function TrainingScoreSheetPage() {
   const [localDraftLoaded, setLocalDraftLoaded] = useState(false);
   const [hasUnsyncedLocalDraft, setHasUnsyncedLocalDraft] = useState(false);
   const [copyMessage, setCopyMessage] = useState("");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
@@ -1757,6 +1764,37 @@ export default function TrainingScoreSheetPage() {
     }
   }
 
+
+  async function copyFeedbackTemplate() {
+    setFeedbackMessage("");
+    const feedbackText = buildTrainingScoreSheetFeedback({
+      title,
+      discipline,
+      sessionDate,
+      location,
+      url: typeof window === "undefined" ? "" : window.location.href,
+      userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
+    });
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(feedbackText);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = feedbackText;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+      }
+      setFeedbackMessage("Feedback template copied. Paste it into a message with any screenshot.");
+    } catch {
+      setFeedbackMessage("Could not copy feedback template. Please include the title, discipline, browser, and what happened.");
+    }
+  }
+
   function validate() {
     const namedShooters = shooters.filter((shooter) =>
       formatShooterName(shooter.name),
@@ -2194,8 +2232,31 @@ export default function TrainingScoreSheetPage() {
               {sessionTypeLabel(sessionType)}
             </span>
             <span className="badge">{localStatusLabel(localSaveStatus)}</span>
+            {!liveMode && (
+              <button type="button" className="secondary smallButton" onClick={() => void copyFeedbackTemplate()}>
+                Report issue
+              </button>
+            )}
           </div>
         </div>
+
+        {!liveMode && (
+          <>
+            <p className="small betaTestNote">{TRAINING_SCORE_SHEET_BETA_NOTE}</p>
+            <details className="subcard quickStartCard">
+              <summary>
+                <span>Quick start</span>
+                <span className="small muted">How to test</span>
+              </summary>
+              <ol className="quickStartList">
+                {TRAINING_SCORE_SHEET_QUICK_START_STEPS.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+            </details>
+          </>
+        )}
+        {feedbackMessage && <p className="success" role="status">{feedbackMessage}</p>}
 
         {recoveryPrompt && (
           <div className="recoveryPromptCard" role="alert">
@@ -2239,9 +2300,18 @@ export default function TrainingScoreSheetPage() {
               >
                 Copy results
               </button>
+              <button
+                type="button"
+                className="secondary smallButton"
+                onClick={() => void copyFeedbackTemplate()}
+              >
+                Report issue
+              </button>
               {copyMessage && <span className="small muted" role="status">{copyMessage}</span>}
             </div>
           </div>
+
+          <p className="small betaTestNote">{TRAINING_SCORE_SHEET_BETA_NOTE}</p>
 
           <div className="resultsSummaryMeta" aria-label="Training result details">
             <div><span>Title</span><strong>{title || "Training score sheet"}</strong></div>
@@ -2596,6 +2666,25 @@ export default function TrainingScoreSheetPage() {
           <p className="small muted">
             Total targets per shooter: {sheetTotalTargets}
           </p>
+          <div className="subtleActionPanel">
+            <div>
+              <h3>Tester support</h3>
+              <p className="small muted">
+                Copy a feedback template with training context, browser/device, URL, and app build info.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="secondary smallButton"
+              onClick={() => void copyFeedbackTemplate()}
+            >
+              Report issue
+            </button>
+          </div>
+          <details className="debugBuildInfo">
+            <summary className="small muted">Version / build</summary>
+            <p className="small muted">{appBuildLabel()}</p>
+          </details>
           {hasSavedSheet && (
             <div className="subtleActionPanel">
               <div>

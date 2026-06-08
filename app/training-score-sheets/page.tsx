@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { appBuildLabel } from "@/lib/appBuildInfo";
 import { supabase } from "@/lib/supabase/client";
+import {
+  buildTrainingScoreSheetFeedback,
+  TRAINING_SCORE_SHEET_BETA_NOTE,
+  TRAINING_SCORE_SHEET_QUICK_START_STEPS,
+} from "@/lib/trainingScoreSheets/feedback";
 
 type ScoreSheetRow = {
   id: string;
@@ -198,6 +204,7 @@ export default function TrainingScoreSheetsPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState("");
 
   useEffect(() => {
     void load();
@@ -338,6 +345,40 @@ export default function TrainingScoreSheetsPage() {
     router.push("/training-score-sheets/new");
   }
 
+  async function copyTextToClipboard(text: string) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textArea);
+  }
+
+  async function copyFeedbackTemplate(item?: SheetListItem) {
+    setFeedbackMessage("");
+    const feedbackText = buildTrainingScoreSheetFeedback({
+      title: item?.title || "Training score sheet archive",
+      discipline: item?.discipline,
+      sessionDate: item?.sessionDate,
+      location: item?.location || "",
+      url: typeof window === "undefined" ? "" : window.location.href,
+      userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
+    });
+    try {
+      await copyTextToClipboard(feedbackText);
+      setFeedbackMessage("Feedback template copied. Paste it into a message with any screenshot.");
+    } catch {
+      setFeedbackMessage("Could not copy feedback template automatically. Try copying results manually and include the score sheet title.");
+    }
+  }
+
   async function deleteItem(item: SheetListItem) {
     if (item.isLocalOnly) {
       const confirmed = window.confirm(
@@ -412,13 +453,31 @@ export default function TrainingScoreSheetsPage() {
             </p>
           </div>
           <div className="btns heroActions">
+            <button type="button" className="button secondary smallButton" onClick={() => void copyFeedbackTemplate()}>
+              Report issue
+            </button>
             <Link href="/dashboard" className="button secondary smallButton">Dashboard</Link>
             <Link href="/training-score-sheets/new" className="button smallButton">New score sheet</Link>
           </div>
         </div>
 
+        <p className="small betaTestNote">{TRAINING_SCORE_SHEET_BETA_NOTE}</p>
+
+        <details className="subcard quickStartCard">
+          <summary>
+            <span>Quick start</span>
+            <span className="small muted">How to test</span>
+          </summary>
+          <ol className="quickStartList">
+            {TRAINING_SCORE_SHEET_QUICK_START_STEPS.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </details>
+
         {err && <p className="error">{err}</p>}
         {message && <p className="success">{message}</p>}
+        {feedbackMessage && <p className="success">{feedbackMessage}</p>}
 
         <div className="filterBar" aria-label="Training score sheet filters">
           {([
@@ -491,6 +550,13 @@ export default function TrainingScoreSheetsPage() {
                     <button type="button" className="button secondary smallButton" onClick={() => openItem(item)}>
                       Open / edit
                     </button>
+                    <button
+                      type="button"
+                      className="button secondary smallButton"
+                      onClick={() => void copyFeedbackTemplate(item)}
+                    >
+                      Report issue
+                    </button>
                     {canDelete && (
                       <details className="compactMoreActions">
                         <summary className="button secondary smallButton">More actions</summary>
@@ -510,6 +576,10 @@ export default function TrainingScoreSheetsPage() {
             })}
           </div>
         )}
+        <details className="debugBuildInfo">
+          <summary className="small muted">Version / build</summary>
+          <p className="small muted">{appBuildLabel()}</p>
+        </details>
       </div>
     </main>
   );
