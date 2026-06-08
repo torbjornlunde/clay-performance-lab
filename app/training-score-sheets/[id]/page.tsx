@@ -1306,7 +1306,7 @@ export default function TrainingScoreSheetPage() {
 
     const { error: scoresError } = await supabase
       .from("training_score_sheet_scores")
-      .upsert(scoreRows, { onConflict: "shooter_id,post_number" });
+      .upsert(scoreRows, { onConflict: "score_sheet_id,shooter_id,post_number" });
     if (scoresError) {
       setErr(scoresError.message);
       setLocalSaveStatus("sync_failed");
