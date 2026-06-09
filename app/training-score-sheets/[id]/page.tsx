@@ -304,6 +304,42 @@ function compakStartPlateForOrderNumber(
   return 1;
 }
 
+
+function compakTargetLabel(target: CompakSequenceTarget | null | undefined) {
+  if (!target) return "—";
+  return target.machine || `Target ${target.targetNumber}`;
+}
+
+function compakSequenceTargetLabels(sequence: CompakSequence | null | undefined) {
+  if (!sequence) return "—";
+  return sequence.targets.map(compakTargetLabel).join(" + ");
+}
+
+function compakSequenceKind(sequence: CompakSequence | null | undefined) {
+  if (!sequence) return "Unknown";
+  return sequence.targets.length > 1 ? "Pair" : "Single";
+}
+
+function compakScoringStepLabel(sequence: CompakSequence | null | undefined, targetInSequence: number) {
+  if (!sequence) return "—";
+  if (sequence.targets.length <= 1) return "target 1 / 1";
+  return `target ${Math.min(Math.max(targetInSequence, 1), sequence.targets.length)} / ${sequence.targets.length}`;
+}
+
+function compakMissDetailsForStand(
+  standSequences: CompakSequence[],
+  results: Record<number, TargetResultValue> | undefined,
+) {
+  return standSequences.flatMap((sequence) =>
+    sequence.targets
+      .filter((target) => results?.[target.targetNumber] === "miss")
+      .map(
+        (target) =>
+          `Seq ${sequence.eventNumber} ${compakTargetLabel(target)} (${getPresentationLabel(sequence.presentation)})`,
+      ),
+  );
+}
+
 function compakStartPlateForOrder(
   orderNumber: number,
   rotationMode: CompakRotationMode = "waiting_shooter",
@@ -725,6 +761,13 @@ export default function TrainingScoreSheetPage() {
   const activeTargetNumber = isCompak
     ? currentCompakTarget?.targetNumber || currentTarget
     : currentTarget;
+  const activeCompakStandSequences = useMemo(
+    () =>
+      isCompak
+        ? buildCompakStandSequences(compakSchemeId, activePostNumber, compakSchemeRows)
+        : [],
+    [activePostNumber, compakSchemeId, compakSchemeRows, isCompak],
+  );
   const currentPostResults = currentShooter
     ? targetResults[currentShooter.localId]?.[activePostNumber] || {}
     : {};
@@ -755,8 +798,15 @@ export default function TrainingScoreSheetPage() {
   const postCompleteScore = postComplete && postCompleteShooter
     ? displayedPostScore(postCompleteShooter, postComplete.postNumber - 1, targetResults)
     : 0;
+  const postCompleteStandSequences = postComplete && isCompak
+    ? buildCompakStandSequences(compakSchemeId, postComplete.postNumber, compakSchemeRows)
+    : [];
   const postCompleteMisses = postComplete
-    ? targetNumbers.filter((targetNumber) => postCompleteResults[targetNumber] === "miss")
+    ? isCompak
+      ? compakMissDetailsForStand(postCompleteStandSequences, postCompleteResults)
+      : targetNumbers
+          .filter((targetNumber) => postCompleteResults[targetNumber] === "miss")
+          .map((targetNumber) => `target ${targetNumber}`)
     : [];
   const postCompleteTotalSoFar = postComplete && postCompleteShooter
     ? scoreThroughPost(postCompleteShooter, targetResults, postComplete.postNumber)
@@ -1782,7 +1832,7 @@ export default function TrainingScoreSheetPage() {
 
     const lines = [headerParts.join(" – ")];
     if (discipline) {
-      lines.push(isCompak ? `${discipline} · Mode: ${compakShootingMode}` : discipline);
+      lines.push(isCompak ? `${discipline} · Scheme ${compakSchemeId} · Mode: ${compakShootingMode}` : discipline);
     }
     lines.push("");
     rankedShooters.forEach((shooter, index) => {
@@ -2375,6 +2425,8 @@ export default function TrainingScoreSheetPage() {
             <div><span>Date</span><strong>{formatTitleDate(sessionDate)}</strong></div>
             {location.trim() && <div><span>Location</span><strong>{location.trim()}</strong></div>}
             <div><span>Discipline</span><strong>{discipline}</strong></div>
+            {isCompak && <div><span>Compak scheme</span><strong>Scheme {compakSchemeId} · {getCompakSchemeType(compakSchemeId)}</strong></div>}
+            {isCompak && <div><span>Compak mode</span><strong>{compakShootingMode}</strong></div>}
             <div><span>Session type</span><strong>{sessionTypeLabel(sessionType)}</strong></div>
             <div><span>Shooters</span><strong>{validShooters.length}</strong></div>
             <div><span>Targets / shooter</span><strong>{sheetTotalTargets}</strong></div>
@@ -2453,6 +2505,29 @@ export default function TrainingScoreSheetPage() {
               </div>
             </div>
           </div>
+          {isCompak && rankedShooters.some((shooter) => shooter.misses > 0) && (
+            <details className="compakMissDetails">
+              <summary>Miss details by sequence / target letter</summary>
+              <div className="compakMissDetailsGrid">
+                {rankedShooters.map((shooter) => {
+                  const misses = postNumbers.flatMap((standNumber) =>
+                    compakMissDetailsForStand(
+                      buildCompakStandSequences(compakSchemeId, standNumber, compakSchemeRows),
+                      targetResults[shooter.localId]?.[standNumber],
+                    ).map((miss) => `P${standNumber} ${miss}`),
+                  );
+                  return (
+                    <div key={shooter.localId} className="compakMissDetailCard">
+                      <strong>{shooter.displayName}</strong>
+                      <span className="small muted">
+                        {misses.length > 0 ? misses.join("; ") : "No misses scored."}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+          )}
           </section>
         )}
 
@@ -2955,7 +3030,12 @@ export default function TrainingScoreSheetPage() {
                     <span>Sequence {currentCompakSequence.eventNumber}</span>
                   </div>
                   <div className="compakCurrentStatusMeta">
-                    <span>Target: {currentCompakTarget?.machine || activeTargetNumber}</span>
+                    <span>{currentCompakSequence.targets.length > 1 ? "Pair" : "Target"}: {compakSequenceTargetLabels(currentCompakSequence)}</span>
+                    <span>{getPresentationLabel(currentCompakSequence.presentation)}</span>
+                    <span>Scoring: {compakScoringStepLabel(currentCompakSequence, currentCompakTargetInSequence)}</span>
+                  </div>
+                  <div className="compakCurrentStatusMeta">
+                    <span>Current target: {compakTargetLabel(currentCompakTarget)}</span>
                     <span>Score: {currentShooterTotal}/{COMPAK_TOTAL_TARGETS}</span>
                     <span>Mode: {compakShootingMode}</span>
                   </div>
@@ -3056,7 +3136,7 @@ export default function TrainingScoreSheetPage() {
                       : "Machine labels not stored yet"}
                   </span>
                   <span className="small muted">
-                    Target letters: {currentCompakSequence.targets.map((target) => target.machine || "?").join(" + ")}
+                    Target letters: {compakSequenceTargetLabels(currentCompakSequence)}
                   </span>
                 </div>
               )}
@@ -3210,7 +3290,7 @@ export default function TrainingScoreSheetPage() {
                   <p>Total so far: {postCompleteTotalSoFar}/{postCompleteTargetsSoFar}</p>
                   <p className="small muted">
                     Missed: {postCompleteMisses.length > 0
-                      ? postCompleteMisses.map((target) => `target ${target}`).join(" and ")
+                      ? postCompleteMisses.join("; ")
                       : "none"}
                   </p>
                   <div className="btns">
@@ -3235,8 +3315,8 @@ export default function TrainingScoreSheetPage() {
                       onClick={() => markTarget("hit")}
                       disabled={!currentShooter || (isCompak && (!currentCompakTarget || isCompakRoundComplete))}
                     >
-                      {isCompak && currentCompakTarget?.machine
-                        ? `Hit ${currentCompakTarget.machine}`
+                      {isCompak && currentCompakTarget
+                        ? `Hit ${compakTargetLabel(currentCompakTarget)}`
                         : "Hit"}
                     </button>
                     <button
@@ -3245,8 +3325,8 @@ export default function TrainingScoreSheetPage() {
                       onClick={() => markTarget("miss")}
                       disabled={!currentShooter || (isCompak && (!currentCompakTarget || isCompakRoundComplete))}
                     >
-                      {isCompak && currentCompakTarget?.machine
-                        ? `Miss ${currentCompakTarget.machine}`
+                      {isCompak && currentCompakTarget
+                        ? `Miss ${compakTargetLabel(currentCompakTarget)}`
                         : "Miss"}
                     </button>
                   </div>
@@ -3281,13 +3361,12 @@ export default function TrainingScoreSheetPage() {
                   {isCompak && currentCompakSequence ? (
                     <div className="pairGroupingHint">
                       <span className="small muted">
-                        {currentCompakSequence.targets.length > 1 ? "Pair" : "Single"}
+                        {compakSequenceKind(currentCompakSequence)} · {getPresentationLabel(currentCompakSequence.presentation)}
                       </span>
-                      <strong>
-                        {currentCompakSequence.targets
-                          .map((target) => target.machine || `Target ${target.targetNumber}`)
-                          .join(" + ")}
-                      </strong>
+                      <strong>{compakSequenceTargetLabels(currentCompakSequence)}</strong>
+                      <span className="small muted">
+                        Scoring {compakScoringStepLabel(currentCompakSequence, currentCompakTargetInSequence)}
+                      </span>
                       {!currentCompakSequence.hasSchemeData && (
                         <span className="small muted">
                           Machine labels are not available for this scheme yet; scoring still follows the expected Compak presentation order.
@@ -3299,41 +3378,91 @@ export default function TrainingScoreSheetPage() {
                       Pair grouping is not available for this discipline yet; score targets in numeric order.
                     </p>
                   )}
-                  <div
-                    className="targetCorrectionGrid"
-                    aria-label="Target correction grid"
-                  >
-                    {targetNumbers.map((targetNumber) => {
-                      const result = currentPostResults[targetNumber];
-                      const isCurrentTarget = targetNumber === activeTargetNumber;
-                      return (
-                        <button
-                          key={targetNumber}
-                          type="button"
-                          className={`targetCorrectionButton ${result || "empty"} ${
-                            isCurrentTarget ? "selected" : ""
-                          }`}
-                          onClick={() =>
-                            correctTarget(
-                              currentShooter.localId,
-                              activePostNumber,
-                              targetNumber,
-                            )
-                          }
-                          aria-label={`${currentShooter.displayName} ${isCompak ? "stand" : "post"} ${activePostNumber} target ${targetNumber} ${result || "not scored"}`}
+                  {isCompak ? (
+                    <div
+                      className="targetCorrectionGrid compakGroupedTargetGrid"
+                      aria-label="Compak target correction grid"
+                    >
+                      {activeCompakStandSequences.map((sequence) => (
+                        <div
+                          key={`${sequence.eventNumber}-${sequence.targets.map((target) => target.targetNumber).join("-")}`}
+                          className={`compakTargetGroup ${sequence.targets.length > 1 ? "pair" : "single"}`}
                         >
-                          <span>{targetNumber}</span>
-                          <strong>
-                            {result === "hit"
-                              ? "H"
-                              : result === "miss"
-                                ? "M"
-                                : "—"}
-                          </strong>
-                        </button>
-                      );
-                    })}
-                  </div>
+                          <span className="small muted">
+                            Seq {sequence.eventNumber} · {getPresentationLabel(sequence.presentation)}
+                          </span>
+                          <div className="compakTargetGroupButtons">
+                            {sequence.targets.map((target) => {
+                              const result = currentPostResults[target.targetNumber];
+                              const isCurrentTarget = target.targetNumber === activeTargetNumber;
+                              return (
+                                <button
+                                  key={target.targetNumber}
+                                  type="button"
+                                  className={`targetCorrectionButton ${result || "empty"} ${
+                                    isCurrentTarget ? "selected" : ""
+                                  }`}
+                                  onClick={() =>
+                                    correctTarget(
+                                      currentShooter.localId,
+                                      activePostNumber,
+                                      target.targetNumber,
+                                    )
+                                  }
+                                  aria-label={`${currentShooter.displayName} plate ${activePostNumber} sequence ${sequence.eventNumber} target ${compakTargetLabel(target)} ${result || "not scored"}`}
+                                >
+                                  <span>{compakTargetLabel(target)}</span>
+                                  <strong>
+                                    {result === "hit"
+                                      ? "H"
+                                      : result === "miss"
+                                        ? "M"
+                                        : "—"}
+                                  </strong>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div
+                      className="targetCorrectionGrid"
+                      aria-label="Target correction grid"
+                    >
+                      {targetNumbers.map((targetNumber) => {
+                        const result = currentPostResults[targetNumber];
+                        const isCurrentTarget = targetNumber === activeTargetNumber;
+                        return (
+                          <button
+                            key={targetNumber}
+                            type="button"
+                            className={`targetCorrectionButton ${result || "empty"} ${
+                              isCurrentTarget ? "selected" : ""
+                            }`}
+                            onClick={() =>
+                              correctTarget(
+                                currentShooter.localId,
+                                activePostNumber,
+                                targetNumber,
+                              )
+                            }
+                            aria-label={`${currentShooter.displayName} post ${activePostNumber} target ${targetNumber} ${result || "not scored"}`}
+                          >
+                            <span>{targetNumber}</span>
+                            <strong>
+                              {result === "hit"
+                                ? "H"
+                                : result === "miss"
+                                  ? "M"
+                                  : "—"}
+                            </strong>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

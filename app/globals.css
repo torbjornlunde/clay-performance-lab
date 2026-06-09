@@ -5139,3 +5139,63 @@ html, body {
 .advancedSetupPanel > summary {
   font-weight: 900;
 }
+
+.compakGroupedTargetGrid {
+  align-items: stretch;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+}
+
+.compakTargetGroup {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(10, 16, 24, 0.48);
+  padding: 8px;
+}
+
+.compakTargetGroup.pair {
+  border-color: rgba(216, 165, 58, 0.48);
+  background: rgba(216, 165, 58, 0.1);
+}
+
+.compakTargetGroupButtons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.compakTargetGroup.single .compakTargetGroupButtons {
+  grid-template-columns: 1fr;
+}
+
+.compakTargetGroup .targetCorrectionButton span {
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.compakMissDetails {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(10, 16, 24, 0.45);
+  padding: 10px;
+}
+
+.compakMissDetails summary {
+  cursor: pointer;
+  font-weight: 950;
+}
+
+.compakMissDetailsGrid {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.compakMissDetailCard {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px;
+}
