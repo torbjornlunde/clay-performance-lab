@@ -5199,3 +5199,136 @@ html, body {
   border-radius: 12px;
   padding: 8px;
 }
+
+.importSummaryCard {
+  border-color: var(--lineStrong);
+}
+
+.compactSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.compactSummaryGrid span {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(10, 16, 24, 0.72);
+  color: var(--muted);
+  padding: 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.compactSummaryGrid strong {
+  display: block;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.compactCandidateCard {
+  padding: 10px 12px;
+}
+
+.secondaryCandidateCard {
+  opacity: 0.82;
+}
+
+.compactCandidateRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.compactCandidateMain {
+  min-width: 0;
+}
+
+.compactCandidateLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.compactCandidateLine strong,
+.scoreLine strong {
+  color: var(--text);
+}
+
+.compactCandidateBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  max-width: 280px;
+}
+
+.compactCandidateAction {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.compactImportToggle {
+  min-width: 96px;
+  justify-content: center;
+  border: 1px solid var(--lineStrong);
+  border-radius: 999px;
+  padding: 9px 12px;
+  background: rgba(216, 165, 58, 0.08);
+  font-weight: 900;
+}
+
+.candidateDetails {
+  margin-top: 8px;
+}
+
+.candidateDetails summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--gold2);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.compactDetailActions {
+  margin-top: 10px;
+}
+
+.ignoredCandidatesGroup {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 12px;
+  background: rgba(12, 18, 27, 0.58);
+}
+
+.ignoredCandidatesGroup > summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+@media (max-width: 720px) {
+  .compactSummaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .compactCandidateRow {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .compactCandidateBadges,
+  .compactCandidateAction {
+    justify-content: flex-start;
+  }
+
+  .compactImportToggle {
+    min-width: 0;
+  }
+}
