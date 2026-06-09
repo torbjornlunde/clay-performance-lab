@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { DISCIPLINE_OPTIONS, isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 import { defaultStartPlateForShooter, getSchemeOptions, plateRotation } from "@/lib/fitasc/schemes";
@@ -33,10 +33,12 @@ function makeCourses(count: number, old: CourseSetup[]) {
 
 export default function NewSessionPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialSessionType = searchParams.get("type") === "competition" ? "Competition" : "Training";
   const schemes = useMemo(() => getSchemeOptions(), []);
   const [name, setName] = useState("");
   const [discipline, setDiscipline] = useState("Compak Sporting");
-  const [sessionType, setSessionType] = useState("Training");
+  const [sessionType, setSessionType] = useState(initialSessionType);
   const [format, setFormat] = useState("Inline");
   const [count, setCount] = useState(3);
   const [courses, setCourses] = useState<CourseSetup[]>(makeCourses(3, []));
