@@ -36,7 +36,7 @@ export default function LoginPage() {
     }
 
     if (mode === "signUp") {
-      setMsg("Account created. Check email if confirmation is enabled, then sign in.");
+      setMsg("Account created. After email confirmation, sign in to request closed beta approval.");
       setMode("signIn");
       return;
     }
@@ -53,7 +53,7 @@ export default function LoginPage() {
             <h2>{mode === "signIn" ? "Login" : "Create account"}</h2>
           </div>
         </div>
-        <p className="compactCopy">Your clay shooting results, schemes, and training insights in one place.</p>
+        <p className="compactCopy">Closed beta access is reviewed after account creation.</p>
         <label htmlFor="email">Email</label>
         <input id="email" value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="email" />
         <label htmlFor="password">Password</label>

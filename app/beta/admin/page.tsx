@@ -198,7 +198,7 @@ export default function BetaAdminPage() {
         <div>
           <p className="eyebrow">Closed beta</p>
           <h2>Beta access approvals</h2>
-          <p>Approve signed-in users and manage exact email or full-name pre-approvals.</p>
+          <p>Approve signed-in users and manage exact email or full-name pre-approvals. Protected owner emails cannot be downgraded here.</p>
           {me ? (
             <p className="small muted">
               Signed in as {me.email || "unknown email"} · {me.system_role} · {me.access_status}
@@ -247,7 +247,7 @@ export default function BetaAdminPage() {
                     <option value="admin">Admin</option>
                     <option value="owner">Owner</option>
                   </select>
-                  <p className="small muted">Owner/admin is granted only by exact email match. Name matches are approved as user only.</p>
+                  <p className="small muted">Owner/admin is granted only by exact email match. Protected owner entries cannot be removed here.</p>
                 </div>
                 <div>
                   <label htmlFor="accessNote">Note</label>

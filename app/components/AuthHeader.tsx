@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { canManageBetaAccess, type UserAccessProfile } from "@/lib/access";
+import { betaFeedbackMailto } from "@/lib/betaFeedback";
 import { supabase } from "@/lib/supabase/client";
 
 function ClayTargetIcon() {
@@ -44,6 +45,7 @@ function ClayTargetIcon() {
 export default function AuthHeader() {
   const [authenticated, setAuthenticated] = useState(false);
   const [showBetaAdmin, setShowBetaAdmin] = useState(false);
+  const [feedbackHref, setFeedbackHref] = useState("");
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -64,6 +66,7 @@ export default function AuthHeader() {
       } else {
         setShowBetaAdmin(false);
       }
+      setFeedbackHref(betaFeedbackMailto("General beta"));
       setReady(true);
     }
 
@@ -92,7 +95,8 @@ export default function AuthHeader() {
         {ready && authenticated && (
           <nav className="topNav" aria-label="Primary navigation">
             <Link href="/dashboard">Dashboard</Link>
-            <Link href="/stats">Stats</Link>
+            <Link href="/stats">Performance</Link>
+            {feedbackHref && <a href={feedbackHref}>Feedback</a>}
             {showBetaAdmin && <Link href="/beta/admin">Beta approvals</Link>}
           </nav>
         )}

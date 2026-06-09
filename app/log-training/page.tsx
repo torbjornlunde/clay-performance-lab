@@ -8,22 +8,22 @@ const trainingActions = [
   {
     href: "/simple-training-logs/new",
     title: "Simple training log",
-    description: "Log only date and targets fired. You can add more details later.",
+    description: "Fast volume log: date and targets fired, with optional hits and notes.",
   },
   {
     href: "/training-score-sheets/new",
-    title: "Training score sheets",
-    description: "Score one or more shooters during training.",
+    title: "Training Score Sheet",
+    description: "Field-mode scoring for one or more shooters during training.",
   },
   {
     href: "/sessions/new?type=training",
-    title: "Personal training log",
-    description: "Log your own detailed training session.",
+    title: "Detailed personal training log",
+    description: "Use when you want misses, targets, reasons, and course details.",
   },
   {
     href: "/training-score-sheets",
-    title: "Existing training score sheets",
-    description: "Open saved, draft, or unsynced score sheets.",
+    title: "Saved Training Score Sheets",
+    description: "Continue saved, draft, or unsynced score sheets.",
   },
 ];
 
@@ -344,7 +344,7 @@ export default function LogTrainingPage() {
           <div>
             <p className="eyebrow">Log training</p>
             <h1>Choose how to record training</h1>
-            <p className="muted">Create a score sheet, log personal practice, or return to existing work.</p>
+            <p className="muted">Choose a fast simple log, a Training Score Sheet, or a detailed personal log.</p>
           </div>
           <div className="btns heroActions">
             <Link href="/dashboard" className="button secondary smallButton">Dashboard</Link>

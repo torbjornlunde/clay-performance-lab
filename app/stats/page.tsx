@@ -280,11 +280,11 @@ export default function StatsPage() {
           <Link href="/results" className="button secondary">
             Manage results
           </Link>
-          <Link href="/results/new" className="button">
-            Add result only
+          <Link href="/log-competition" className="button">
+            Log competition
           </Link>
-          <Link href="/sessions/new" className="button secondary">
-            New shooting log
+          <Link href="/log-training" className="button secondary">
+            Log training
           </Link>
         </div>
       </div>
@@ -299,7 +299,13 @@ export default function StatsPage() {
         {loading ? (
           <p>Loading...</p>
         ) : chartPoints.length === 0 ? (
-          <div className="emptyState">No competition stats yet. Add a result only entry or add winning score to a competition shooting log.</div>
+          <div className="emptyState compactEmptyState">
+            <p>No performance stats yet. Add a competition result with your score and the winning score to build the chart.</p>
+            <div className="btns compactEmptyActions">
+              <Link href="/log-competition" className="button smallButton">Log competition</Link>
+              <Link href="/log-training" className="button secondary smallButton">Log training</Link>
+            </div>
+          </div>
         ) : summary ? (
           <div className="summaryGrid compactSummaryGrid">
             <div className="summaryStat">
@@ -333,7 +339,12 @@ export default function StatsPage() {
         {loading ? (
           <p>Loading...</p>
         ) : chartPoints.length === 0 ? (
-          <p className="muted">Chart appears after scoring data is available.</p>
+          <div className="emptyState compactEmptyState">
+            <p>Chart appears after you add competition results with winning score.</p>
+            <div className="btns compactEmptyActions">
+              <Link href="/log-competition" className="button smallButton">Log competition</Link>
+            </div>
+          </div>
         ) : (
           <PerformanceChart points={chartPoints} onPointClick={(id) => router.push(`/sessions/${id}`)} />
         )}
@@ -371,7 +382,12 @@ export default function StatsPage() {
         {loading ? (
           <p>Loading...</p>
         ) : chartPoints.length === 0 ? (
-          <p className="muted">Add competition scoring data to populate this list.</p>
+          <div className="emptyState compactEmptyState">
+            <p>Add competition scoring data to populate this list.</p>
+            <div className="btns compactEmptyActions">
+              <Link href="/log-competition" className="button smallButton">Log competition</Link>
+            </div>
+          </div>
         ) : (
           chartPoints
             .slice()

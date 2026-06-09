@@ -231,10 +231,16 @@ export default function ResultsPage() {
         {loading ? (
           <p>Loading...</p>
         ) : visibleResults.length === 0 ? (
-          <div className="emptyState">
-            {sessions.length === 0
-              ? "No competition results yet. Add a quick result, create a detailed competition log, or import from Leirdue.net."
-              : "No results match this filter."}
+          <div className="emptyState compactEmptyState">
+            <p>
+              {sessions.length === 0
+                ? "No competition results yet. Add a quick result, create a detailed competition log, or import from Leirdue.net."
+                : "No results match this filter."}
+            </p>
+            <div className="btns compactEmptyActions">
+              <Link href="/log-competition" className="button smallButton">Log competition</Link>
+              {sessions.length === 0 && <Link href="/import/leirdue" className="button secondary smallButton">Import from Leirdue.net</Link>}
+            </div>
           </div>
         ) : (
           <div className="scoreSheetArchiveList">

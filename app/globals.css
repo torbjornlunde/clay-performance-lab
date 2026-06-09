@@ -749,6 +749,12 @@ button:disabled,
     display: none;
   }
 
+  .topNav {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    border-radius: 18px;
+  }
+
   .topNav a {
     padding: 8px;
   }
