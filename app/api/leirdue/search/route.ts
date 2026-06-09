@@ -8,6 +8,7 @@ type SearchBody = {
   year?: unknown;
   disciplines?: unknown;
   continuationToken?: unknown;
+  sourceUrl?: unknown;
 };
 
 function validYear(value: unknown) {
@@ -29,13 +30,14 @@ export async function POST(request: Request) {
   const year = validYear(body.year);
   const disciplines = Array.isArray(body.disciplines) ? body.disciplines.filter((value): value is string => typeof value === "string" && value.trim().length > 0) : [];
   const continuationToken = typeof body.continuationToken === "string" && body.continuationToken.length > 0 ? body.continuationToken : null;
+  const sourceUrl = typeof body.sourceUrl === "string" && body.sourceUrl.trim().length > 0 ? body.sourceUrl.trim() : null;
 
   if (!shooterName || !year || disciplines.length === 0) {
     return NextResponse.json({ error: "Shooter name, year and at least one discipline are required." }, { status: 400 });
   }
 
   try {
-    const result = await searchLeirdueCandidates({ shooterName, year, disciplines, continuationToken });
+    const result = await searchLeirdueCandidates({ shooterName, year, disciplines, continuationToken, sourceUrl });
     if (result.debug.fetchedUrls.length > 0 && result.debug.fetchedUrls.every((item) => !item.ok)) {
       return NextResponse.json({ ...result, error: FETCH_ERROR_MESSAGE }, { status: 502 });
     }

@@ -35,7 +35,7 @@ export function compareLeirdueDuplicate(candidate: LeirdueCandidate, row: Leirdu
   const sameSourceIds = Boolean(candidateIds.stevneId && candidateIds.listeId && candidateIds.stevneId === rowIds.stevneId && candidateIds.listeId === rowIds.listeId);
 
   if (sameUrl || sameSourceIds) {
-    return { id: row.id, exact: true, reason: sameUrl ? "Same Leirdue source URL." : "Same Leirdue stevne_id and liste_id." };
+    return { id: row.id, exact: true, reason: sameUrl ? "Duplicate reason: same Leirdue source URL." : "Duplicate reason: same source stevne_id + liste_id + shooter + score." };
   }
 
   const sameDate = Boolean(candidate.date && row.competition_date === candidate.date);
@@ -46,11 +46,11 @@ export function compareLeirdueDuplicate(candidate: LeirdueCandidate, row: Leirdu
   const sameWinningScore = sameNumber(row.winning_score, candidate.winningScore);
 
   if (sameDate && sameDiscipline && sameEvent && sameOwnScore) {
-    return { id: row.id, exact: sessionHasLeirdueSource(row) && sameTotalTargets && sameWinningScore, reason: "Same date, discipline, event name and total score." };
+    return { id: row.id, exact: sessionHasLeirdueSource(row) && sameTotalTargets && sameWinningScore, reason: "Possible duplicate: same date + discipline + shooter + total score." };
   }
 
   if (sameDate && sameDiscipline && sameOwnScore && (sameEvent || sameTotalTargets || sameWinningScore)) {
-    return { id: row.id, exact: false, reason: "Same date, discipline and score with overlapping event data." };
+    return { id: row.id, exact: false, reason: "Possible duplicate: same date + discipline + total score with overlapping event data." };
   }
 
   return null;

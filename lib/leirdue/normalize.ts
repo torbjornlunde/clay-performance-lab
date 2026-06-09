@@ -14,26 +14,66 @@ export function normalizeLeirdueText(value: string) {
     .trim();
 }
 
+export type LeirdueNameMatchReason = "exact normalized match" | "diacritic-insensitive match" | "partial/initial match" | "fuzzy/possible match" | "no match";
+
 export function normalizeLeirdueName(value: string) {
   return normalizeLeirdueText(value)
     .replace(/[’'`´]/g, "")
+    .replace(/[.,]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 export function nordicSafeNameKey(value: string) {
   return normalizeLeirdueName(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/æ/g, "ae")
     .replace(/ø/g, "o")
-    .replace(/å/g, "a");
+    .replace(/å/g, "a")
+    .replace(/ð/g, "d")
+    .replace(/þ/g, "th");
+}
+
+function nameParts(value: string) {
+  return normalizeLeirdueName(value).split(/\s+/).filter(Boolean);
+}
+
+function initialsMatch(shortName: string, fullName: string) {
+  const shortParts = nameParts(shortName);
+  const fullParts = nameParts(fullName);
+  if (shortParts.length < 2 || fullParts.length < 2) return false;
+  const shortLast = nordicSafeNameKey(shortParts.at(-1) || "");
+  const fullLast = nordicSafeNameKey(fullParts.at(-1) || "");
+  if (!shortLast || shortLast !== fullLast) return false;
+  const shortFirst = nordicSafeNameKey(shortParts[0] || "");
+  const fullFirst = nordicSafeNameKey(fullParts[0] || "");
+  return shortFirst.length === 1 ? fullFirst.startsWith(shortFirst) : fullFirst.length === 1 ? shortFirst.startsWith(fullFirst) : false;
+}
+
+export function leirdueNameMatchReason(first: string | null | undefined, second: string | null | undefined): LeirdueNameMatchReason {
+  const normalizedFirst = normalizeLeirdueName(first || "");
+  const normalizedSecond = normalizeLeirdueName(second || "");
+  if (!normalizedFirst || !normalizedSecond) return "no match";
+  if (normalizedFirst === normalizedSecond) return "exact normalized match";
+
+  const foldedFirst = nordicSafeNameKey(normalizedFirst);
+  const foldedSecond = nordicSafeNameKey(normalizedSecond);
+  if (foldedFirst === foldedSecond) return "diacritic-insensitive match";
+  if (initialsMatch(normalizedFirst, normalizedSecond) || initialsMatch(normalizedSecond, normalizedFirst)) return "partial/initial match";
+
+  const firstParts = nameParts(normalizedFirst);
+  const secondParts = nameParts(normalizedSecond);
+  const firstLast = nordicSafeNameKey(firstParts.at(-1) || "");
+  const secondLast = nordicSafeNameKey(secondParts.at(-1) || "");
+  if (firstLast && secondLast && firstLast === secondLast) return "fuzzy/possible match";
+
+  return "no match";
 }
 
 export function namesLikelyMatch(first: string | null | undefined, second: string | null | undefined) {
-  const normalizedFirst = normalizeLeirdueName(first || "");
-  const normalizedSecond = normalizeLeirdueName(second || "");
-  if (!normalizedFirst || !normalizedSecond) return false;
-  if (normalizedFirst === normalizedSecond) return true;
-  return nordicSafeNameKey(normalizedFirst) === nordicSafeNameKey(normalizedSecond);
+  const reason = leirdueNameMatchReason(first, second);
+  return reason === "exact normalized match" || reason === "diacritic-insensitive match" || reason === "partial/initial match";
 }
 
 export function normalizeLeirdueDisciplineLabel(label: string | null | undefined) {
@@ -44,13 +84,13 @@ export function normalizeLeirdueDisciplineLabel(label: string | null | undefined
   if (/\b(compak sporting|compak|kompak)\b/.test(normalized) && !/\bleirduesti\b/.test(normalized)) return { discipline: COMPAK_SPORTING, warning: null };
   if (/\b(kompakt leirduesti|compact leirduesti|kompaktsti|compaksti|kompak leirduesti|kompakt sporting)\b/.test(normalized)) return { discipline: KOMPAKT_LEIRDUESTI, warning: null };
   if (/\bleirduesti\b/.test(normalized)) return { discipline: LEIRDUESTI, warning: null };
-  if (/\bjegertrap\b/.test(normalized) || /\bnordisk\s+trap\b/.test(normalized)) return { discipline: "Jegertrap / Nordisk trap", warning: null };
+  if (/\bjegertrap\b/.test(normalized)) return { discipline: "Jegertrap / Nordisk trap", warning: null };
+  if (/\bnordisk\s+trap\b/.test(normalized)) return { discipline: "Jegertrap / Nordisk trap", warning: null };
   if (/\btrap\b/.test(normalized)) return { discipline: "Trap", warning: null };
   if (/\bskeet\b/.test(normalized)) return { discipline: "Skeet", warning: null };
   if (/\b(engelsk sporting|sporting)\b/.test(normalized)) return { discipline: "Sporting", warning: null };
 
-  // TODO: Add more Leirdue.net aliases as real result lists expose them.
-  return { discipline: "Other", warning: "Could not detect discipline." };
+  return { discipline: "Other", warning: "Unknown discipline." };
 }
 
 export function extractLeirdueSourceIdentifiers(sourceUrl: string | null | undefined): LeirdueSourceIdentifiers {
