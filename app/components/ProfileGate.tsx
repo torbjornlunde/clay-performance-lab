@@ -2,13 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { canManageBetaAccess, type UserAccessProfile } from "@/lib/access";
 import { isShooterProfileComplete, type ShooterProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase/client";
 
 const ONBOARDING_PROFILE_PATH = "/onboarding/profile";
+const BETA_ACCESS_PATH = "/beta/access";
+const BETA_ADMIN_PATH = "/beta/admin";
 
 function isPublicPath(pathname: string) {
   return pathname === "/" || pathname === "/login";
+}
+
+function isBetaBlockedPath(pathname: string) {
+  return pathname === BETA_ACCESS_PATH;
 }
 
 export default function ProfileGate({ children }: { children: React.ReactNode }) {
@@ -36,6 +43,41 @@ export default function ProfileGate({ children }: { children: React.ReactNode })
       if (userError || !userData.user) {
         router.replace("/login");
         setReady(false);
+        return;
+      }
+
+      await supabase.rpc("sync_my_access_profile");
+      const { data: accessProfile, error: accessError } = await supabase
+        .from("user_access_profiles")
+        .select("user_id,email,full_name,access_status,system_role,account_type,created_at,updated_at,approved_at,approved_by")
+        .eq("user_id", userData.user.id)
+        .maybeSingle<UserAccessProfile>();
+
+      if (!active) return;
+
+      if (accessError || accessProfile?.access_status !== "approved") {
+        if (!isBetaBlockedPath(currentPath)) {
+          router.replace(BETA_ACCESS_PATH);
+          setReady(false);
+          return;
+        }
+        setReady(true);
+        return;
+      }
+
+      if (isBetaBlockedPath(currentPath)) {
+        router.replace("/dashboard");
+        setReady(false);
+        return;
+      }
+
+      if (currentPath === BETA_ADMIN_PATH) {
+        if (!canManageBetaAccess(accessProfile)) {
+          router.replace("/dashboard");
+          setReady(false);
+          return;
+        }
+        setReady(true);
         return;
       }
 
