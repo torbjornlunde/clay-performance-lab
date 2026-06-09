@@ -24,8 +24,7 @@ as $$
   select public.normalize_beta_email(value) in (
     'noenlunde85@gmail.com',
     'torbjorn.lunde@icloud.com',
-    'noenlunde@hotmail.com',
-    'noelunde@hotmail.com'
+    'noenlunde@hotmail.com'
   )
 $$;
 
@@ -324,6 +323,8 @@ declare
   existing public.user_access_profiles%rowtype;
   next_role text;
   updated_profile public.user_access_profiles%rowtype;
+  removes_owner_access boolean;
+  remaining_approved_owners integer;
 begin
   if not public.is_access_admin() then
     raise exception 'Not authorized';
@@ -336,9 +337,37 @@ begin
   perform public.sync_access_profile_for_user(target_user_id);
   select * into existing from public.user_access_profiles where user_id = target_user_id;
 
+  if existing.user_id is null then
+    raise exception 'User access profile not found';
+  end if;
+
   next_role := coalesce(new_system_role, existing.system_role, 'user');
   if next_role not in ('owner', 'admin', 'user') then
     raise exception 'Invalid system role';
+  end if;
+
+  removes_owner_access := existing.access_status = 'approved'
+    and existing.system_role = 'owner'
+    and (new_access_status <> 'approved' or next_role <> 'owner');
+
+  if public.is_protected_owner_email(existing.email) and removes_owner_access then
+    raise exception 'Protected owner access cannot be downgraded or revoked';
+  end if;
+
+  if target_user_id = auth.uid() and removes_owner_access then
+    raise exception 'You cannot revoke your own owner access';
+  end if;
+
+  if removes_owner_access then
+    select count(*) into remaining_approved_owners
+    from public.user_access_profiles p
+    where p.user_id <> target_user_id
+      and p.access_status = 'approved'
+      and p.system_role = 'owner';
+
+    if coalesce(remaining_approved_owners, 0) = 0 then
+      raise exception 'Cannot remove the last approved owner';
+    end if;
   end if;
 
   if public.is_protected_owner_email(existing.email) then
@@ -394,8 +423,7 @@ insert into public.beta_access_list (email, full_name, access_status_to_grant, s
 values
   ('noenlunde85@gmail.com', null, 'approved', 'owner', 'Protected owner account'),
   ('torbjorn.lunde@icloud.com', null, 'approved', 'owner', 'Protected owner account'),
-  ('noenlunde@hotmail.com', null, 'approved', 'owner', 'Protected owner account'),
-  ('noelunde@hotmail.com', null, 'approved', 'owner', 'Protected owner account')
+  ('noenlunde@hotmail.com', null, 'approved', 'owner', 'Protected owner account')
 on conflict (normalized_email) where normalized_email is not null do update set
   access_status_to_grant = 'approved',
   system_role_to_grant = 'owner',

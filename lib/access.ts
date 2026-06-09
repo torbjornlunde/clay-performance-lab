@@ -30,7 +30,6 @@ export const OWNER_EMAILS = [
   "noenlunde85@gmail.com",
   "torbjorn.lunde@icloud.com",
   "noenlunde@hotmail.com",
-  "noelunde@hotmail.com",
 ] as const;
 
 export function canManageBetaAccess(profile: Pick<UserAccessProfile, "access_status" | "system_role"> | null | undefined) {
