@@ -3,18 +3,18 @@ import Link from "next/link";
 const competitionActions = [
   {
     href: "/results/new",
-    title: "Quick result",
-    description: "Save only the main result.",
+    title: "Quick result only",
+    description: "Save competition name, date, score, and winning score.",
   },
   {
     href: "/sessions/new?type=competition",
     title: "Detailed shooting log",
-    description: "Log misses, targets, reasons, and course details.",
+    description: "Use when you want misses, targets, reasons, and course details.",
   },
   {
     href: "/import/leirdue",
     title: "Import from Leirdue.net",
-    description: "Import and review competition results.",
+    description: "Find and review competition results from Leirdue.net.",
   },
 ];
 
@@ -26,7 +26,7 @@ export default function LogCompetitionPage() {
           <div>
             <p className="eyebrow">Log competition</p>
             <h1>Choose how to record a competition</h1>
-            <p className="muted">Save a quick score, build a detailed log, or import existing results.</p>
+            <p className="muted">Save a quick result, build a detailed log, import, or manage saved results.</p>
           </div>
           <div className="btns heroActions">
             <Link href="/results" className="button smallButton">Manage results</Link>
@@ -36,8 +36,8 @@ export default function LogCompetitionPage() {
 
         <div className="productActionGrid" aria-label="Competition logging options">
           <Link href="/results" className="dashboardActionCard productActionCard secondaryAction">
-            <span>Results history</span>
-            <small>Open, review, and delete saved competition results.</small>
+            <span>Manage results</span>
+            <small>Open, review, edit, and delete saved competition results.</small>
           </Link>
           {competitionActions.map((action) => (
             <Link key={action.href} href={action.href} className="dashboardActionCard productActionCard secondaryAction">

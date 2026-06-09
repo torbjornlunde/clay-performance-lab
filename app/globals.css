@@ -749,6 +749,12 @@ button:disabled,
     display: none;
   }
 
+  .topNav {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    border-radius: 18px;
+  }
+
   .topNav a {
     padding: 8px;
   }
@@ -1086,6 +1092,7 @@ html, body {
 
 .statsSummaryCard,
 .statsChartCard,
+.statsTrainingHistoryCard,
 .statsListCard {
   max-width: 860px;
   margin-left: auto;
@@ -1255,6 +1262,7 @@ html, body {
   }
 }
 
+.statsTrainingVolumeCard,
 .statsGroundCard {
   max-width: 860px;
   margin-left: auto;

@@ -25,6 +25,31 @@ type SessionRow = {
 
 type MissRow = { session_id: string };
 
+type SimpleTrainingLog = {
+  id: string;
+  date: string;
+  targets_fired: number;
+  hits: number | null;
+  discipline: string | null;
+  location: string | null;
+  notes: string | null;
+  source_type: string;
+  created_at: string;
+};
+
+type TrainingVolumeLog = Pick<SimpleTrainingLog, "date" | "targets_fired">;
+
+type TrainingVolumeInsights = {
+  trainingTargetsThisYear: number;
+  trainingSessionsThisYear: number;
+  averageTargetsPerSessionThisYear: number | null;
+  trainingTargetsLast30Days: number;
+  trainingSessionsLast30Days: number;
+  averageDaysBetweenSessions: number | null;
+  daysSinceLastTrainingSession: number | null;
+  insightMessages: string[];
+};
+
 type ChartPoint = {
   id: string;
   name: string;
@@ -47,6 +72,108 @@ function isUsableNumber(value: unknown): value is number {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(value));
+}
+
+function formatTrainingDate(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(`${value}T00:00:00`));
+}
+
+function isoDateValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function daysBetweenDates(earlier: string, later: string) {
+  const earlierTime = new Date(`${earlier}T00:00:00`).getTime();
+  const laterTime = new Date(`${later}T00:00:00`).getTime();
+  return Math.round((laterTime - earlierTime) / 86_400_000);
+}
+
+function average(values: number[]) {
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function formatMetricNumber(value: number | null) {
+  if (value === null) return "—";
+  return new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 }).format(Math.round(value));
+}
+
+function hitPercentage(log: SimpleTrainingLog) {
+  if (log.hits === null || log.targets_fired <= 0) return null;
+  return (log.hits / log.targets_fired) * 100;
+}
+
+function isMinimumSimpleLog(log: SimpleTrainingLog) {
+  return log.hits === null && !log.discipline && !log.location && !log.notes;
+}
+
+function buildTrainingVolumeInsights(logs: TrainingVolumeLog[], today = new Date()): TrainingVolumeInsights {
+  const todayValue = isoDateValue(today);
+  const yearStart = `${today.getFullYear()}-01-01`;
+  const last30DaysStartDate = new Date(today);
+  last30DaysStartDate.setDate(last30DaysStartDate.getDate() - 29);
+  const last30DaysStart = isoDateValue(last30DaysStartDate);
+
+  const datedLogs = logs
+    .filter((log) => log.date <= todayValue)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const thisYearLogs = datedLogs.filter((log) => log.date >= yearStart);
+  const last30DaysLogs = datedLogs.filter((log) => log.date >= last30DaysStart);
+
+  const trainingTargetsThisYear = thisYearLogs.reduce((sum, log) => sum + (log.targets_fired || 0), 0);
+  const trainingSessionsThisYear = thisYearLogs.length;
+  const trainingTargetsLast30Days = last30DaysLogs.reduce((sum, log) => sum + (log.targets_fired || 0), 0);
+  const trainingSessionsLast30Days = last30DaysLogs.length;
+  const averageTargetsPerSessionThisYear =
+    trainingSessionsThisYear > 0 ? trainingTargetsThisYear / trainingSessionsThisYear : null;
+
+  const gaps = datedLogs.slice(1).map((log, index) => daysBetweenDates(datedLogs[index].date, log.date));
+  const averageDaysBetweenSessions = average(gaps);
+  const lastLog = datedLogs.at(-1);
+  const daysSinceLastTrainingSession = lastLog ? Math.max(0, daysBetweenDates(lastLog.date, todayValue)) : null;
+
+  const insightMessages: string[] = [];
+  if (datedLogs.length === 0) {
+    insightMessages.push("No training volume logged yet. Add a simple training log to start tracking your season.");
+  } else if (datedLogs.length === 1) {
+    insightMessages.push("You have logged one training session. Add a few more sessions to see training rhythm insights.");
+  } else {
+    if (daysSinceLastTrainingSession !== null && daysSinceLastTrainingSession >= 14) {
+      insightMessages.push(`It has been ${daysSinceLastTrainingSession} days since your last logged training session.`);
+    }
+
+    if (averageDaysBetweenSessions !== null) {
+      const averageTargetsPerLoggedSession =
+        datedLogs.reduce((sum, log) => sum + (log.targets_fired || 0), 0) / datedLogs.length;
+      if (trainingSessionsLast30Days >= 4 && averageDaysBetweenSessions <= 10) {
+        insightMessages.push("Your training rhythm has been fairly consistent recently, based on your logged training volume.");
+      } else if (averageDaysBetweenSessions >= 14 && averageTargetsPerLoggedSession >= 100) {
+        insightMessages.push("You may tend to train with higher volume but longer gaps between sessions.");
+      } else if (trainingSessionsLast30Days >= 4 && trainingTargetsLast30Days < 300) {
+        insightMessages.push("You appear to train regularly, but your total target volume is still modest based on your logged training volume.");
+      } else {
+        insightMessages.push("Based on your logged training volume, a few more sessions could make your training rhythm clearer.");
+      }
+    }
+  }
+
+  return {
+    trainingTargetsThisYear,
+    trainingSessionsThisYear,
+    averageTargetsPerSessionThisYear,
+    trainingTargetsLast30Days,
+    trainingSessionsLast30Days,
+    averageDaysBetweenSessions,
+    daysSinceLastTrainingSession,
+    insightMessages: insightMessages.slice(0, 2),
+  };
 }
 
 function sortableDate(session: SessionRow) {
@@ -84,6 +211,154 @@ function percentageFor(session: SessionRow, missCounts: Record<string, number>) 
   const score = scoreUsed(session, missCounts);
   if (!isUsableNumber(score) || !isUsableNumber(session.winning_score) || session.winning_score <= 0) return null;
   return { score, percentage: (score / session.winning_score) * 100 };
+}
+
+function MetricCard({ label, value, helper }: { label: string; value: string; helper?: string }) {
+  return (
+    <div className="trainingVolumeMetric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {helper && <small>{helper}</small>}
+    </div>
+  );
+}
+
+function TrainingVolumeInsightsCard({
+  insights,
+  competitionTargetsThisYear,
+  loading,
+  error,
+}: {
+  insights: TrainingVolumeInsights;
+  competitionTargetsThisYear: number | null;
+  loading: boolean;
+  error: string;
+}) {
+  const totalTargetsThisYear =
+    competitionTargetsThisYear === null ? null : insights.trainingTargetsThisYear + competitionTargetsThisYear;
+
+  return (
+    <section className="card statsTrainingVolumeCard trainingVolumeInsights" aria-labelledby="training-volume-heading">
+      <div className="sectionHeader listSectionHeader">
+        <div>
+          <p className="eyebrow">Training volume</p>
+          <h2 id="training-volume-heading">Training volume insights</h2>
+        </div>
+        <Link href="/log-training" className="button secondary smallButton">Log training</Link>
+      </div>
+
+      {loading ? (
+        <p>Loading...</p>
+      ) : error ? (
+        <div className="error">{error}</div>
+      ) : (
+        <>
+          <div className="trainingVolumeMetricGrid compactTrainingVolumeGrid">
+            <MetricCard label="Training targets this year" value={formatMetricNumber(insights.trainingTargetsThisYear)} />
+            <MetricCard label="Training sessions this year" value={formatMetricNumber(insights.trainingSessionsThisYear)} />
+            <MetricCard
+              label="Average targets per session"
+              value={formatMetricNumber(insights.averageTargetsPerSessionThisYear)}
+              helper="This calendar year"
+            />
+            <MetricCard label="Training targets last 30 days" value={formatMetricNumber(insights.trainingTargetsLast30Days)} />
+            <MetricCard label="Training sessions last 30 days" value={formatMetricNumber(insights.trainingSessionsLast30Days)} />
+            <MetricCard
+              label="Average days between sessions"
+              value={formatMetricNumber(insights.averageDaysBetweenSessions)}
+              helper={insights.averageDaysBetweenSessions === null ? "Add another log to calculate this" : undefined}
+            />
+            <MetricCard
+              label="Days since last training"
+              value={formatMetricNumber(insights.daysSinceLastTrainingSession)}
+              helper={insights.daysSinceLastTrainingSession === null ? "No logged sessions yet" : undefined}
+            />
+            {competitionTargetsThisYear !== null && (
+              <MetricCard label="Competition targets this year" value={formatMetricNumber(competitionTargetsThisYear)} />
+            )}
+            {totalTargetsThisYear !== null && (
+              <MetricCard label="Total targets this year" value={formatMetricNumber(totalTargetsThisYear)} />
+            )}
+          </div>
+
+          <div className="trainingInsightList" aria-label="Training volume insight text">
+            {insights.insightMessages.map((message) => (
+              <p key={message}>{message}</p>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function TrainingHistoryCard({
+  logs,
+  loading,
+  error,
+}: {
+  logs: SimpleTrainingLog[];
+  loading: boolean;
+  error: string;
+}) {
+  return (
+    <section className="card statsTrainingHistoryCard" aria-labelledby="training-history-heading">
+      <div className="sectionHeader listSectionHeader">
+        <div>
+          <p className="eyebrow">Training history</p>
+          <h2 id="training-history-heading">Recent practice logs</h2>
+        </div>
+        <Link href="/simple-training-logs/new" className="button smallButton">Add training log</Link>
+      </div>
+
+      {loading ? (
+        <p>Loading...</p>
+      ) : error ? (
+        <div className="error">{error}</div>
+      ) : logs.length === 0 ? (
+        <div className="emptyState compactEmptyState">
+          <p>No training history yet. Add a simple training log to start tracking practice volume.</p>
+          <div className="btns compactEmptyActions">
+            <Link href="/simple-training-logs/new" className="button smallButton">Add training log</Link>
+          </div>
+        </div>
+      ) : (
+        <div className="trainingHistoryList">
+          {logs.map((log) => {
+            const percentage = hitPercentage(log);
+            const isMinimumLog = isMinimumSimpleLog(log);
+            return (
+              <article className="sessionItem dashboardListItem" key={log.id}>
+                <div className="sessionContent">
+                  <div className="sessionTopline compactTopline">
+                    <strong>Training entry</strong>
+                    <span className="badge badgeGreen">Training</span>
+                  </div>
+                  <div className="small muted sessionMeta compactMeta">
+                    <span>{formatTrainingDate(log.date)}</span>
+                    <span>{log.targets_fired} targets</span>
+                    {log.hits !== null && <span>{log.hits} hits</span>}
+                    {percentage !== null && <span>{percentage.toFixed(0)}%</span>}
+                    {log.discipline && <span>{log.discipline}</span>}
+                    {log.location && <span>{log.location}</span>}
+                  </div>
+                  {log.notes && <p className="small muted simpleTrainingNotes">{log.notes}</p>}
+                  {isMinimumLog && (
+                    <p className="small muted simpleTrainingNotes">Add hits, discipline or notes when you are ready.</p>
+                  )}
+                </div>
+                <div className="sessionActions simpleTrainingListActions">
+                  <Link href={`/simple-training-logs/${log.id}/edit`} className="button secondary smallButton">
+                    {isMinimumLog ? "Add details" : "Edit"}
+                  </Link>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
 }
 
 function PerformanceChart({ points, onPointClick }: { points: ChartPoint[]; onPointClick: (id: string) => void }) {
@@ -154,6 +429,9 @@ export default function StatsPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [missCounts, setMissCounts] = useState<Record<string, number>>({});
+  const [trainingLogs, setTrainingLogs] = useState<SimpleTrainingLog[]>([]);
+  const [volumeLogs, setVolumeLogs] = useState<TrainingVolumeLog[]>([]);
+  const [trainingLoadError, setTrainingLoadError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -167,15 +445,43 @@ export default function StatsPage() {
       return;
     }
 
-    const { data } = await supabase.from("sessions").select("*").order("created_at", { ascending: false }).returns<SessionRow[]>();
-    const { data: misses } = await supabase.from("misses").select("session_id").returns<MissRow[]>();
-    const counts = (misses || []).reduce<Record<string, number>>((acc, miss) => {
+    const todayValue = isoDateValue(new Date());
+    const [sessionsResult, missesResult, recentTrainingResult, volumeTrainingResult] = await Promise.all([
+      supabase.from("sessions").select("*").order("created_at", { ascending: false }).returns<SessionRow[]>(),
+      supabase.from("misses").select("session_id").returns<MissRow[]>(),
+      supabase
+        .from("training_logs")
+        .select("id,date,targets_fired,hits,discipline,location,notes,source_type,created_at")
+        .eq("source_type", "simple_training")
+        .order("date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(5)
+        .returns<SimpleTrainingLog[]>(),
+      supabase
+        .from("training_logs")
+        .select("date,targets_fired")
+        .eq("source_type", "simple_training")
+        .lte("date", todayValue)
+        .order("date", { ascending: true })
+        .returns<TrainingVolumeLog[]>(),
+    ]);
+
+    const counts = (missesResult.data || []).reduce<Record<string, number>>((acc, miss) => {
       acc[miss.session_id] = (acc[miss.session_id] || 0) + 1;
       return acc;
     }, {});
 
-    setSessions(data || []);
+    setSessions(sessionsResult.data || []);
     setMissCounts(counts);
+    if (recentTrainingResult.error || volumeTrainingResult.error) {
+      setTrainingLoadError("Training history could not be loaded right now.");
+      setTrainingLogs([]);
+      setVolumeLogs([]);
+    } else {
+      setTrainingLoadError("");
+      setTrainingLogs(recentTrainingResult.data || []);
+      setVolumeLogs(volumeTrainingResult.data || []);
+    }
     setLoading(false);
   }
 
@@ -265,13 +571,22 @@ export default function StatsPage() {
       .sort((a, b) => b.count - a.count || b.average - a.average);
   }, [chartPoints]);
 
+  const volumeInsights = useMemo(() => buildTrainingVolumeInsights(volumeLogs), [volumeLogs]);
+  const competitionTargetsThisYear = useMemo(() => {
+    const yearStart = `${new Date().getFullYear()}-01-01`;
+    return sessions
+      .filter((session) => session.session_type === "Competition")
+      .filter((session) => (session.competition_date || session.created_at) >= yearStart)
+      .reduce((sum, session) => sum + (session.total_targets || 0), 0);
+  }, [sessions]);
+
   return (
     <main>
       <div className="heroCard">
         <div>
-          <p className="eyebrow">Competition stats</p>
-          <h2>Performance trend</h2>
-          <p>Competition and result only performance vs winning score.</p>
+          <p className="eyebrow">Performance</p>
+          <h2>Performance</h2>
+          <p>Review competition trends and training volume in one place.</p>
         </div>
         <div className="btns heroActions">
           <Link href="/dashboard" className="button secondary">
@@ -280,11 +595,11 @@ export default function StatsPage() {
           <Link href="/results" className="button secondary">
             Manage results
           </Link>
-          <Link href="/results/new" className="button">
-            Add result only
+          <Link href="/log-competition" className="button">
+            Log competition
           </Link>
-          <Link href="/sessions/new" className="button secondary">
-            New shooting log
+          <Link href="/log-training" className="button secondary">
+            Log training
           </Link>
         </div>
       </div>
@@ -299,7 +614,13 @@ export default function StatsPage() {
         {loading ? (
           <p>Loading...</p>
         ) : chartPoints.length === 0 ? (
-          <div className="emptyState">No competition stats yet. Add a result only entry or add winning score to a competition shooting log.</div>
+          <div className="emptyState compactEmptyState">
+            <p>No performance stats yet. Add a competition result with your score and the winning score to build the chart.</p>
+            <div className="btns compactEmptyActions">
+              <Link href="/log-competition" className="button smallButton">Log competition</Link>
+              <Link href="/log-training" className="button secondary smallButton">Log training</Link>
+            </div>
+          </div>
         ) : summary ? (
           <div className="summaryGrid compactSummaryGrid">
             <div className="summaryStat">
@@ -323,6 +644,15 @@ export default function StatsPage() {
         ) : null}
       </div>
 
+      <TrainingVolumeInsightsCard
+        insights={volumeInsights}
+        competitionTargetsThisYear={competitionTargetsThisYear}
+        loading={loading}
+        error={trainingLoadError}
+      />
+
+      <TrainingHistoryCard logs={trainingLogs} loading={loading} error={trainingLoadError} />
+
       <div className="card statsChartCard">
         <div className="sectionHeader">
           <div>
@@ -333,7 +663,12 @@ export default function StatsPage() {
         {loading ? (
           <p>Loading...</p>
         ) : chartPoints.length === 0 ? (
-          <p className="muted">Chart appears after scoring data is available.</p>
+          <div className="emptyState compactEmptyState">
+            <p>Chart appears after you add competition results with winning score.</p>
+            <div className="btns compactEmptyActions">
+              <Link href="/log-competition" className="button smallButton">Log competition</Link>
+            </div>
+          </div>
         ) : (
           <PerformanceChart points={chartPoints} onPointClick={(id) => router.push(`/sessions/${id}`)} />
         )}
@@ -371,7 +706,12 @@ export default function StatsPage() {
         {loading ? (
           <p>Loading...</p>
         ) : chartPoints.length === 0 ? (
-          <p className="muted">Add competition scoring data to populate this list.</p>
+          <div className="emptyState compactEmptyState">
+            <p>Add competition scoring data to populate this list.</p>
+            <div className="btns compactEmptyActions">
+              <Link href="/log-competition" className="button smallButton">Log competition</Link>
+            </div>
+          </div>
         ) : (
           chartPoints
             .slice()

@@ -10,6 +10,7 @@ import type {
 } from "@/lib/export/exportUserData";
 import { isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { calculateRollingAverage, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
+import { betaFeedbackMailto } from "@/lib/betaFeedback";
 import { supabase } from "@/lib/supabase/client";
 
 type Row = {
@@ -544,8 +545,10 @@ export default function DashboardPage() {
   const [exportError, setExportError] = useState("");
   const [showAllResults, setShowAllResults] = useState(false);
   const [showAllTraining, setShowAllTraining] = useState(false);
+  const [feedbackHref, setFeedbackHref] = useState("");
 
   useEffect(() => {
+    setFeedbackHref(betaFeedbackMailto("Dashboard beta"));
     load();
   }, []);
 
@@ -785,6 +788,12 @@ export default function DashboardPage() {
           <button className="compactAction" onClick={exportMyData} disabled={exporting || loading}>
             <span>{exporting ? "Exporting..." : "Export my data"}</span>
           </button>
+          {feedbackHref && (
+            <a className="compactAction" href={feedbackHref}>
+              <span>Beta feedback</span>
+              <small>Send a bug or usability note with build info.</small>
+            </a>
+          )}
           <button className="compactAction" onClick={load}><span>Refresh</span></button>
           <button className="compactAction dangerAction" onClick={logout}><span>Logout</span></button>
         </div>

@@ -251,14 +251,13 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
       {isEdit && (
         <section className="subcard simpleTrainingFutureDetails" aria-labelledby="simple-training-future-details">
           <h2 id="simple-training-future-details">More detail can be added later</h2>
-          <p className="small muted">This simple log can grow over time without becoming a dead end. Future detail may include:</p>
+          <p className="small muted">This simple log can grow over time without becoming a dead end. Later you may choose to add:</p>
           <ul className="small muted simpleTrainingFutureList">
             <li>post/station scores</li>
             <li>target-by-target scoring</li>
             <li>miss details</li>
             <li>target definitions</li>
             <li>video/ShotKam links</li>
-            <li>coach notes</li>
           </ul>
         </section>
       )}
