@@ -5366,3 +5366,26 @@ html, body {
   flex-wrap: wrap;
   gap: 7px;
 }
+
+.simpleTrainingForm {
+  display: grid;
+  gap: 14px;
+}
+
+.simpleTrainingRequiredFields h2 {
+  margin-top: 0;
+}
+
+.optionalTrainingDetails > summary {
+  cursor: pointer;
+  font-weight: 900;
+  list-style-position: inside;
+}
+
+.optionalTrainingDetails > summary::marker {
+  color: var(--gold2);
+}
+
+.simpleTrainingNotes {
+  margin: 8px 0 0;
+}
