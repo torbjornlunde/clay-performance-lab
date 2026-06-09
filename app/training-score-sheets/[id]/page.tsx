@@ -32,6 +32,7 @@ import {
   TRAINING_SCORE_SHEET_BETA_NOTE,
   TRAINING_SCORE_SHEET_QUICK_START_STEPS,
 } from "@/lib/trainingScoreSheets/feedback";
+import { userFacingDeleteError, userFacingLoadError, userFacingSaveError } from "@/lib/userFacingErrors";
 
 type ShooterDraft = {
   localId: string;
@@ -1174,7 +1175,7 @@ export default function TrainingScoreSheetPage() {
       .single<ScoreSheetRow>();
 
     if (sheetError || !sheet) {
-      setErr(sheetError?.message || "Could not load training score sheet.");
+      setErr(userFacingLoadError(sheetError, "Could not load this training score sheet right now. Check your connection and try again."));
       setLoading(false);
       return;
     }
@@ -1199,12 +1200,7 @@ export default function TrainingScoreSheetPage() {
       .returns<TargetResultRow[]>();
 
     if (shooterError || scoreError || targetError) {
-      setErr(
-        shooterError?.message ||
-          scoreError?.message ||
-          targetError?.message ||
-          "Could not load scores.",
-      );
+      setErr(userFacingLoadError(shooterError || scoreError || targetError, "Could not load the saved scores right now. Check your connection and try again."));
       setLoading(false);
       return;
     }
@@ -1909,9 +1905,9 @@ export default function TrainingScoreSheetPage() {
     setLocalSaveStatus("syncing");
     setSaving(true);
 
-    function failLocal(message: string) {
-      if (!isAutomaticRetry) setErr(message);
-      setSavedMessage("Sync failed — saved locally. You can keep scoring and retry sync.");
+    function failLocal(error?: unknown) {
+      if (!isAutomaticRetry) setErr(userFacingSaveError(error));
+      setSavedMessage("Could not sync right now. Your data is saved locally; you can keep scoring and retry sync.");
       setLocalSaveStatus(typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "sync_failed");
       setHasUnsyncedLocalDraft(true);
       setSaving(false);
@@ -1919,7 +1915,7 @@ export default function TrainingScoreSheetPage() {
     }
 
     const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError) return failLocal(userError.message);
+    if (userError) return failLocal(userError);
     if (!userData.user) {
       setLocalSaveStatus("sync_failed");
       setHasUnsyncedLocalDraft(true);
@@ -1959,7 +1955,7 @@ export default function TrainingScoreSheetPage() {
           .single<{ id: string }>();
 
     if (sheetError || !savedSheet) {
-      return failLocal(sheetError?.message || "Could not save training score sheet.");
+      return failLocal(sheetError);
     }
 
     setPersistedSheetId(savedSheet.id);
@@ -2000,7 +1996,7 @@ export default function TrainingScoreSheetPage() {
       .upsert(shooterRows, { onConflict: "id" });
 
     if (shooterError) {
-      return failLocal(shooterError.message || "Could not save shooters.");
+      return failLocal(shooterError);
     }
 
     const scoreRows = namedShooters.flatMap((shooter) =>
@@ -2020,7 +2016,7 @@ export default function TrainingScoreSheetPage() {
       .from("training_score_sheet_scores")
       .upsert(scoreRows, { onConflict: "score_sheet_id,shooter_id,post_number" });
     if (scoresError) {
-      return failLocal(scoresError.message);
+      return failLocal(scoresError);
     }
 
     const targetRows = namedShooters.flatMap((shooter) =>
@@ -2043,7 +2039,7 @@ export default function TrainingScoreSheetPage() {
           onConflict: "score_sheet_id,shooter_id,post_number,target_number",
         });
       if (targetError) {
-        return failLocal(targetError.message);
+        return failLocal(targetError);
       }
     }
 
@@ -2057,7 +2053,7 @@ export default function TrainingScoreSheetPage() {
         ? await removedShooterDelete.not("id", "in", `(${keptShooterIds.join(",")})`)
         : await removedShooterDelete;
       if (shooterDeleteError) {
-        return failLocal(shooterDeleteError.message || "Could not remove deleted shooters.");
+        return failLocal(shooterDeleteError);
       }
 
       const { error: oldScoreDeleteError } = await supabase
@@ -2076,12 +2072,7 @@ export default function TrainingScoreSheetPage() {
         .eq("score_sheet_id", savedSheet.id)
         .gt("target_number", targetsPerPost);
       if (oldScoreDeleteError || oldTargetPostDeleteError || oldTargetNumberDeleteError) {
-        return failLocal(
-          oldScoreDeleteError?.message ||
-            oldTargetPostDeleteError?.message ||
-            oldTargetNumberDeleteError?.message ||
-            "Could not trim old scores.",
-        );
+        return failLocal(oldScoreDeleteError || oldTargetPostDeleteError || oldTargetNumberDeleteError);
       }
 
       const currentTargetKeys = new Set(
@@ -2096,7 +2087,7 @@ export default function TrainingScoreSheetPage() {
         .eq("score_sheet_id", savedSheet.id)
         .returns<Array<{ id: string; shooter_id: string; post_number: number; target_number: number }>>();
       if (existingTargetError) {
-        return failLocal(existingTargetError.message);
+        return failLocal(existingTargetError);
       }
       const staleTargetIds = (existingTargetRows || [])
         .filter(
@@ -2115,7 +2106,7 @@ export default function TrainingScoreSheetPage() {
           .delete()
           .in("id", staleTargetIds);
         if (staleTargetDeleteError) {
-          return failLocal(staleTargetDeleteError.message);
+          return failLocal(staleTargetDeleteError);
         }
       }
     }
@@ -2148,7 +2139,7 @@ export default function TrainingScoreSheetPage() {
 
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError) {
-      setErr(userError.message);
+      setErr(userFacingDeleteError(userError));
       setSaving(false);
       return;
     }
@@ -2167,7 +2158,7 @@ export default function TrainingScoreSheetPage() {
       .maybeSingle<{ id: string }>();
 
     if (deleteError || !deletedSheet) {
-      setErr(deleteError?.message || "Could not delete this training score sheet.");
+      setErr(userFacingDeleteError(deleteError, "Could not delete this training score sheet right now. Try again when online."));
       setSaving(false);
       return;
     }
@@ -2187,7 +2178,7 @@ export default function TrainingScoreSheetPage() {
 
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError) {
-      setErr(userError.message);
+      setErr(userFacingSaveError(userError));
       return;
     }
     if (!userData.user) {
@@ -2230,7 +2221,7 @@ export default function TrainingScoreSheetPage() {
       .single<{ id: string }>();
 
     if (sheetError || !newSheet) {
-      setErr(sheetError?.message || "Could not create the next round.");
+      setErr(userFacingSaveError(sheetError, "Could not create the next round right now. Try again when online."));
       return;
     }
 
@@ -2247,7 +2238,7 @@ export default function TrainingScoreSheetPage() {
         .from("training_score_sheet_shooters")
         .insert(namedShooters);
       if (shooterError) {
-        setErr(shooterError.message);
+        setErr(userFacingSaveError(shooterError));
         return;
       }
 
@@ -2264,7 +2255,7 @@ export default function TrainingScoreSheetPage() {
         .from("training_score_sheet_scores")
         .insert(scoreRows);
       if (scoresError) {
-        setErr(scoresError.message);
+        setErr(userFacingSaveError(scoresError));
         return;
       }
     }
@@ -2681,7 +2672,7 @@ export default function TrainingScoreSheetPage() {
                 <p className="small muted">
                   {compakSchemeRows.length > 0
                     ? "Loaded built-in FITASC/Compak scheme details for scheme-driven target labels."
-                    : "No verified target-machine grid is stored for this scheme yet; live scoring follows the expected Compak presentation structure as a safe placeholder."}
+                    : "No verified target-machine grid is stored for this scheme yet; live scoring still follows the expected Compak presentation structure."}
                   {compakRotationMode === "waiting_shooter"
                     ? " Waiting shooter keeps shooter #6+ waiting on Plate 1 unless the organizer changes order."
                     : " Continuous rotation assigns shooter #6+ to the next plate number cyclically."}
@@ -3299,13 +3290,13 @@ export default function TrainingScoreSheetPage() {
                       </strong>
                       {!currentCompakSequence.hasSchemeData && (
                         <span className="small muted">
-                          TODO: verified machine metadata is not stored for this scheme; pair grouping uses presentation type only.
+                          Machine labels are not available for this scheme yet; scoring still follows the expected Compak presentation order.
                         </span>
                       )}
                     </div>
                   ) : (
                     <p className="small muted pairGroupingTodo">
-                      TODO: add pair grouping when this discipline stores pair metadata.
+                      Pair grouping is not available for this discipline yet; score targets in numeric order.
                     </p>
                   )}
                   <div

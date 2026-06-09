@@ -7,6 +7,7 @@ import { DISCIPLINE_OPTIONS, isCompactDiscipline, isOrdinaryLeirduesti } from "@
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 import { defaultStartPlateForShooter, getSchemeOptions, plateRotation } from "@/lib/fitasc/schemes";
 import { supabase } from "@/lib/supabase/client";
+import { userFacingSaveError } from "@/lib/userFacingErrors";
 
 type CourseSetup = {
   courseNumber: number;
@@ -135,7 +136,7 @@ export default function NewSessionPage() {
       .single();
 
     if (error || !session) {
-      setErr(error?.message || "Could not save");
+      setErr(userFacingSaveError(error, "Could not save this shooting log right now. Try again when online."));
       setSaving(false);
       return;
     }
@@ -160,7 +161,7 @@ export default function NewSessionPage() {
           }));
       const { error: courseError } = await supabase.from("session_courses").insert(rows);
       if (courseError) {
-        setErr(courseError.message);
+        setErr(userFacingSaveError(courseError, "Could not save the course setup right now. Try again when online."));
         setSaving(false);
         return;
       }
