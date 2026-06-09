@@ -168,7 +168,7 @@ const COMPAK_TARGETS_PER_STAND = 5;
 const COMPAK_TOTAL_TARGETS = COMPAK_DEFAULT_STANDS * COMPAK_TARGETS_PER_STAND;
 const DEFAULT_COMPAK_SCHEME = 1;
 const QUICK_START_PRESET_LABELS: Record<Exclude<QuickStartPreset, "custom">, string> = {
-  compak: "Compak Sporting NM training",
+  compak: "Compak Sporting training",
   leirduesti: "Leirduesti training",
 };
 
@@ -2311,7 +2311,7 @@ export default function TrainingScoreSheetPage() {
             <p className="small betaTestNote">{TRAINING_SCORE_SHEET_BETA_NOTE}</p>
             <details className="subcard quickStartCard">
               <summary>
-                <span>Quick start</span>
+                <span>Preset setup</span>
                 <span className="small muted">How to test</span>
               </summary>
               <ol className="quickStartList">
@@ -2565,7 +2565,7 @@ export default function TrainingScoreSheetPage() {
             placeholder="Kismul, Karmøy, Stavanger..."
           />
           {isQuickStartPreset && (
-            <div className="quickStartPresetSummary" aria-label="Quick start preset defaults">
+            <div className="quickStartPresetSummary" aria-label="Preset defaults">
               <div>
                 <span className="small muted">Preset</span>
                 <strong>{QUICK_START_PRESET_LABELS[quickStartPreset]}</strong>
@@ -2617,7 +2617,7 @@ export default function TrainingScoreSheetPage() {
           {isCompak ? (
             <div className="compakSettingsPanel">
               <div>
-                <h3>Compak Sporting quick setup</h3>
+                <h3>Compak Sporting setup</h3>
                 <p className="small muted">
                   5 plates · {COMPAK_TOTAL_TARGETS} targets · training mode. Training Score Sheet is in testing. Do not use as official competition scoring.
                 </p>

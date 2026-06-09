@@ -457,29 +457,29 @@ export default function TrainingScoreSheetsPage() {
               Report issue
             </button>
             <Link href="/dashboard" className="button secondary smallButton">Dashboard</Link>
-            <Link href="/training-score-sheets/new?preset=custom" className="button smallButton">Custom score sheet</Link>
+            <Link href="/training-score-sheets/new" className="button smallButton">New training score sheet</Link>
           </div>
         </div>
 
         <p className="small betaTestNote">{TRAINING_SCORE_SHEET_BETA_NOTE}</p>
 
-        <section className="subcard quickStartPresetPanel" aria-label="Training Score Sheet quick start presets">
+        <section className="subcard scoreSheetStructurePanel" aria-label="Training score sheet actions">
           <div>
-            <p className="eyebrow">Quick start</p>
-            <h2>Start the right training faster</h2>
-            <p className="small muted">Compak Sporting is first for NM testers. Presets keep setup compact; custom setup still has every option.</p>
+            <p className="eyebrow">Score sheets</p>
+            <h2>Create or continue a score sheet</h2>
+            <p className="small muted">Choose discipline and setup inside the new score sheet flow.</p>
           </div>
           <div className="quickStartPresetActions">
-            <Link href="/training-score-sheets/new?preset=compak" className="button primaryAction">New Compak Sporting training</Link>
-            <Link href="/training-score-sheets/new?preset=leirduesti" className="button secondary smallButton">New Leirduesti training</Link>
-            <Link href="/training-score-sheets/new?preset=custom" className="button secondary smallButton">Custom training score sheet</Link>
+            <Link href="/training-score-sheets/new" className="button primaryAction">New training score sheet</Link>
+            <a href="#existing-score-sheets" className="button secondary smallButton">Existing score sheets</a>
+            <button type="button" className="button secondary smallButton" onClick={() => setFilter("drafts")}>Drafts / incomplete</button>
           </div>
         </section>
 
         <details className="subcard quickStartCard">
           <summary>
-            <span>Quick start</span>
-            <span className="small muted">How to test</span>
+            <span>Testing guide</span>
+            <span className="small muted">Score sheet checks</span>
           </summary>
           <ol className="quickStartList">
             {TRAINING_SCORE_SHEET_QUICK_START_STEPS.map((step) => (
@@ -492,7 +492,7 @@ export default function TrainingScoreSheetsPage() {
         {message && <p className="success">{message}</p>}
         {feedbackMessage && <p className="success">{feedbackMessage}</p>}
 
-        <div className="filterBar" aria-label="Training score sheet filters">
+        <div id="existing-score-sheets" className="filterBar" aria-label="Training score sheet filters">
           {([
             ["all", "All"],
             ["drafts", "Drafts / incomplete"],

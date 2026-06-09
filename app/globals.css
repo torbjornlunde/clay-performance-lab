@@ -200,7 +200,7 @@ p {
 
 .dashboardPrimaryActions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   width: min(100%, 760px);
   margin-top: 8px;
@@ -1618,7 +1618,7 @@ html, body {
 }
 
 .polishedDashboardHero {
-  grid-template-columns: minmax(0, 0.9fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(0, 0.75fr) minmax(320px, 1fr);
   align-items: center;
   padding: 20px;
 }
@@ -1626,6 +1626,27 @@ html, body {
 .polishedDashboardHero .dashboardPrimaryActions {
   width: 100%;
   margin-top: 0;
+}
+
+
+.productNavPage {
+  display: grid;
+  gap: 18px;
+}
+
+.productActionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.productActionCard {
+  min-height: 122px;
+}
+
+.scoreSheetStructurePanel {
+  display: grid;
+  gap: 14px;
 }
 
 .dashboardTrendCard,

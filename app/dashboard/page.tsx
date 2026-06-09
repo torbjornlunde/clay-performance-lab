@@ -680,32 +680,24 @@ export default function DashboardPage() {
         <div>
           <p className="eyebrow">Shooter workspace</p>
           <h2>Dashboard</h2>
-          <p className="dashboardHeroCopy">Log sessions, save quick results, or open schemes in seconds.</p>
+          <p className="dashboardHeroCopy">Choose a product area and continue with the right workflow.</p>
         </div>
-        <div className="quickStartPresetPanel dashboardQuickStartPanel" aria-label="Training Score Sheet quick start">
-          <div>
-            <p className="eyebrow">NM quick start</p>
-            <h3>Start a training score sheet</h3>
-            <p className="small muted">Use a preset to skip setup choices, then add shooters and enter Field Mode.</p>
-          </div>
-          <div className="quickStartPresetActions">
-            <Link href="/training-score-sheets/new?preset=compak" className="button primaryAction">New Compak Sporting training</Link>
-            <Link href="/training-score-sheets/new?preset=leirduesti" className="button secondary smallButton">New Leirduesti training</Link>
-            <Link href="/training-score-sheets/new?preset=custom" className="button secondary smallButton">Custom training score sheet</Link>
-          </div>
-        </div>
-        <div className="dashboardPrimaryActions">
-          <Link href="/sessions/new" className="dashboardActionCard secondaryAction">
-            <span>New shooting log</span>
-            <small>Track misses and training patterns.</small>
+        <div className="dashboardPrimaryActions" aria-label="Dashboard product areas">
+          <Link href="/log-competition" className="dashboardActionCard secondaryAction">
+            <span>Log competition</span>
+            <small>Record competition results, detailed logs, or import from Leirdue.net.</small>
           </Link>
-          <Link href="/results/new" className="dashboardActionCard secondaryAction">
-            <span>Quick result</span>
-            <small>Save a score in seconds.</small>
+          <Link href="/log-training" className="dashboardActionCard secondaryAction">
+            <span>Log training</span>
+            <small>Create training score sheets, personal training logs, or simple training results.</small>
+          </Link>
+          <Link href="/stats" className="dashboardActionCard secondaryAction">
+            <span>Performance</span>
+            <small>View trends, results, and performance insights.</small>
           </Link>
           <Link href="/fitasc" className="dashboardActionCard secondaryAction">
             <span>FITASC schemes</span>
-            <small>Open schemes fast at the ground.</small>
+            <small>Open FITASC/Compak scheme references.</small>
           </Link>
         </div>
       </div>
@@ -726,8 +718,7 @@ export default function DashboardPage() {
           <div className="emptyState compactEmptyState">
             <p>Import from Leirdue.net or add a result to start tracking performance.</p>
             <div className="btns compactEmptyActions">
-              <Link href="/import/leirdue" className="button smallButton">Import from Leirdue.net</Link>
-              <Link href="/results/new" className="button secondary smallButton">Add result only</Link>
+              <Link href="/log-competition" className="button smallButton">Log competition</Link>
             </div>
           </div>
         ) : (
@@ -761,8 +752,7 @@ export default function DashboardPage() {
           <div className="emptyState compactEmptyState">
             <p>Create a shooting log or training score sheet to start tracking practice.</p>
             <div className="btns compactEmptyActions">
-              <Link href="/sessions/new" className="button smallButton">New shooting log</Link>
-              <Link href="/training-score-sheets/new" className="button secondary smallButton">Training Score Sheet</Link>
+              <Link href="/log-training" className="button smallButton">Log training</Link>
             </div>
           </div>
         ) : (
@@ -794,12 +784,6 @@ export default function DashboardPage() {
             <span>Shooter profile</span>
             <small>Manage your name, country, and disciplines.</small>
           </Link>
-          <Link href="/import/leirdue" className="compactAction">
-            <span>Import from Leirdue</span>
-            <small>Find old competition results.</small>
-          </Link>
-          <Link href="/fitasc" className="compactAction"><span>FITASC schemes</span></Link>
-          <Link href="/training-score-sheets/new" className="compactAction"><span>Training Score Sheet</span></Link>
           <button className="compactAction" onClick={exportMyData} disabled={exporting || loading}>
             <span>{exporting ? "Exporting..." : "Export my data"}</span>
           </button>
