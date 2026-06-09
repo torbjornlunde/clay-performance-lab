@@ -277,6 +277,9 @@ export default function StatsPage() {
           <Link href="/dashboard" className="button secondary">
             Dashboard
           </Link>
+          <Link href="/results" className="button secondary">
+            Manage results
+          </Link>
           <Link href="/results/new" className="button">
             Add result only
           </Link>

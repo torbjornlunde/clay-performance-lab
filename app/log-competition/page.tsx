@@ -29,11 +29,16 @@ export default function LogCompetitionPage() {
             <p className="muted">Save a quick score, build a detailed log, or import existing results.</p>
           </div>
           <div className="btns heroActions">
+            <Link href="/results" className="button smallButton">Manage results</Link>
             <Link href="/dashboard" className="button secondary smallButton">Dashboard</Link>
           </div>
         </div>
 
         <div className="productActionGrid" aria-label="Competition logging options">
+          <Link href="/results" className="dashboardActionCard productActionCard secondaryAction">
+            <span>Results history</span>
+            <small>Open, review, and delete saved competition results.</small>
+          </Link>
           {competitionActions.map((action) => (
             <Link key={action.href} href={action.href} className="dashboardActionCard productActionCard secondaryAction">
               <span>{action.title}</span>
