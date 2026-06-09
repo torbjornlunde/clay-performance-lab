@@ -1,6 +1,6 @@
 import { COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI } from "@/lib/disciplines";
-import { extractLeirdueSourceIdentifiers, normalizeLeirdueDisciplineLabel } from "@/lib/leirdue/normalize";
-import type { LeirdueCandidate, LeirdueCategory, LeirdueConfidence, LeirdueDebugParseInput, LeirdueDebugParseResult, LeirdueSearchDebug, LeirdueSearchResult, LeirdueValidationChecklistItem } from "@/lib/leirdue/types";
+import { extractLeirdueSourceIdentifiers, normalizeLeirdueDisciplineLabel, normalizeLeirdueName, nordicSafeNameKey } from "@/lib/leirdue/normalize";
+import type { LeirdueCandidate, LeirdueCategory, LeirdueConfidence, LeirdueDebugParseInput, LeirdueDebugParseResult, LeirdueCheckedListDebug, LeirdueSearchDebug, LeirdueSearchResult, LeirdueValidationChecklistItem } from "@/lib/leirdue/types";
 
 const LEIRDUE_BASE_URL = "https://www.leirdue.net/";
 const FETCH_ERROR_MESSAGE = "Could not fetch Leirdue results right now.";
@@ -26,6 +26,7 @@ export type LeirdueSearchInput = {
   year: number;
   disciplines: string[];
   continuationToken?: string | null;
+  sourceUrl?: string | null;
 };
 
 type LeirdueContinuationState = {
@@ -274,6 +275,8 @@ function emptyDebug(): LeirdueSearchDebug {
     listeIdLinksByEvent: {},
     shooterMatchSnippets: [],
     hiddenControlCandidates: 0,
+    coverage: { eventsChecked: 0, resultListsChecked: 0, rowsParsed: 0, confirmedMatches: 0, possibleMatches: 0, alreadyImported: 0, ignoredOrFailed: 0, failedOrUnsupportedPages: 0 },
+    checkedLists: [],
     eventLinksFound: 0,
     resultLinksFound: 0,
     eventPagesFetched: 0,
@@ -318,14 +321,15 @@ function normalizeText(value: string) {
 }
 
 function normalizeName(value: string) {
-  return normalizeText(value);
+  return normalizeLeirdueName(value);
 }
 
 function asciiFoldNorwegian(value: string) {
-  return normalizeText(value)
-    .replace(/æ/g, "ae")
-    .replace(/ø/g, "o")
-    .replace(/å/g, "a");
+  return nordicSafeNameKey(value);
+}
+
+function escapedRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function pageContainsShooter(text: string, shooterName: string) {
@@ -342,9 +346,12 @@ function pageContainsShooter(text: string, shooterName: string) {
   if (tokens.length < 2) return false;
   const first = tokens[0];
   const last = tokens[tokens.length - 1];
-  const escapedFirst = first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const escapedLast = last.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`\\b${escapedFirst}\\b[\\s\\S]{0,80}\\b${escapedLast}\\b`).test(normalizedText);
+  const foldedFirst = asciiFoldNorwegian(first);
+  const foldedLast = asciiFoldNorwegian(last);
+  if (new RegExp(`\\b${escapedRegex(first)}\\b[\\s\\S]{0,80}\\b${escapedRegex(last)}\\b`).test(normalizedText)) return true;
+  if (new RegExp(`\\b${escapedRegex(foldedFirst)}\\b[\\s\\S]{0,80}\\b${escapedRegex(foldedLast)}\\b`).test(foldedText)) return true;
+  const initial = foldedFirst.slice(0, 1);
+  return Boolean(initial && foldedLast && new RegExp(`\\b${escapedRegex(initial)}\\.?\\b[\\s\\S]{0,80}\\b${escapedRegex(foldedLast)}\\b`).test(foldedText));
 }
 
 function decodeEntities(value: string) {
@@ -447,6 +454,35 @@ async function fetchLeirdue(url: string, debug: LeirdueSearchDebug, state: Crawl
   } finally {
     clearTimeout(timeout);
   }
+}
+
+
+function checkedListStatusFromParsed(parsed: LeirdueDebugParseResult, pageText: string): LeirdueCheckedListDebug["status"] {
+  if (!parsed.shooterFound) return "no matching shooter";
+  if (parsed.candidate && parsed.candidate.category !== "control" && parsed.ownScore !== null) return "parsed";
+  if (parsed.candidate && /duplicate/i.test(parsed.candidate.notes)) return "possible duplicate";
+  if (parsed.candidateRows.length === 0) return "no score rows found";
+  if (isLikelyControlText(`${parsed.listTitle || ""} ${pageText.slice(0, 600)}`)) return "unsupported format";
+  return parsed.ownScore === null ? "no score rows found" : "parsed";
+}
+
+function recordCheckedList(debug: LeirdueSearchDebug, item: ListeIdQueueItem | null, url: string, parsed: LeirdueDebugParseResult | null, pageText: string, failedReason: string | null = null) {
+  if (debug.checkedLists.length >= 250) return;
+  const sourceIds = extractLeirdueSourceIdentifiers(url);
+  const rowsFound = parsed?.candidateRows.length ?? 0;
+  const candidateShooterRows = parsed?.candidateRows.filter((row) => row.containsShooter).length ?? 0;
+  const status: LeirdueCheckedListDebug["status"] = failedReason ? "failed fetch" : parsed ? checkedListStatusFromParsed(parsed, pageText) : "failed fetch";
+  debug.checkedLists.push({
+    eventName: item?.eventTitle || parsed?.eventTitle || null,
+    date: item?.eventDate || parsed?.date || null,
+    sourceUrl: url,
+    stevneId: item?.eventId || sourceIds.stevneId,
+    listeId: item?.listeId || sourceIds.listeId,
+    status,
+    rowsFound,
+    candidateShooterRows,
+    reason: failedReason || parsed?.candidate?.notes.match(/Category reason: ([^.]+)/)?.[1] || parsed?.error || null,
+  });
 }
 
 function classifyDiscipline(text: string, selectedDisciplines: string[]) {
@@ -1204,6 +1240,7 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[], select
     duplicateStatus: "new",
     duplicateMatches: [],
     shooterMatchStatus: null,
+    shooterMatchReason: null,
     leirdueUrl: raw.leirdueUrl,
     listType: raw.listType,
     confidence,
@@ -1496,7 +1533,10 @@ async function scanQueuedListeIdPages(
     scannedKeys.add(item.key);
     if (debug.firstListeIdUrlsInspected.length < 10) debug.firstListeIdUrlsInspected.push(item.href);
     const html = await fetchLeirdue(item.href, debug, state);
-    if (!html) continue;
+    if (!html) {
+      recordCheckedList(debug, item, item.href, null, "", debug.fetchedUrls.find((entry) => entry.url === item.href)?.note || "failed fetch");
+      continue;
+    }
 
     scannedThisPass += 1;
     debug.listeIdPagesFetched += 1;
@@ -1509,7 +1549,11 @@ async function scanQueuedListeIdPages(
     const pageText = stripTags(html);
     const shooterFound = pageContainsShooter(pageText, input.shooterName);
     if (item.source === "validation" && shooterFound) debug.validationShooterMatches += 1;
-    if (!shooterFound) continue;
+    if (!shooterFound) {
+      const rowDebug = debugCandidateRows(htmlToLines(html), html, input.shooterName, input.year, extractLikelyTotalTargets(pageText));
+      recordCheckedList(debug, item, item.href, { ...emptyDebugParseResult(item.href, 200, normalizeName(input.shooterName), "Shooter name not found."), ok: true, shooterFound: false, candidateRows: rowDebug.candidateRows, topCompetitorTotals: rowDebug.topCompetitorTotals }, pageText, null);
+      continue;
+    }
 
     if (debug.firstShooterMatchUrls.length < 10 && !debug.firstShooterMatchUrls.includes(item.href)) debug.firstShooterMatchUrls.push(item.href);
     debug.firstUsefulSnippet ||= usefulSnippet(pageText, input.shooterName);
@@ -1527,6 +1571,7 @@ async function scanQueuedListeIdPages(
       parserNote: `Full-year scan quality check for liste_id page: ${item.href}.`,
     });
     recordCandidateQuality(debug, parsedForQuality, pageText);
+    recordCheckedList(debug, item, item.href, parsedForQuality, pageText);
     if (debug.candidateReasons.length < 50) {
       const quality = isCompleteDirectCandidate(parsedForQuality.candidate, input.year) ? "complete" : isPercentageHeavyText(`${parsedForQuality.rawSnippet || ""} ${parsedForQuality.parsedRow || ""} ${pageText.slice(0, 1200)}`) ? "lowQuality/percentage" : parsedForQuality.candidate ? "partial" : "lowQuality";
       debug.candidateReasons.push(`Scan quality ${quality} from ${item.href}: ownScore=${parsedForQuality.ownScore ?? "unknown"}, totalTargets=${parsedForQuality.totalTargets ?? "unknown"}, winningScore=${parsedForQuality.winningScore ?? "unknown"}.`);
@@ -1892,7 +1937,9 @@ function overviewEventLinksForYear(html: string, selectedYear: number, debug: Le
 }
 
 async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebug, state: CrawlState, continuation: LeirdueContinuationState | null) {
+  const sourceUrl = input.sourceUrl ? absolutizeUrl(input.sourceUrl) : null;
   const guessedUrls = [
+    ...(sourceUrl ? [sourceUrl] : []),
     `${LEIRDUE_BASE_URL}?resultater=`,
     `${LEIRDUE_BASE_URL}?meny=resultater&aar=${input.year}`,
     `${LEIRDUE_BASE_URL}?meny=resultater&year=${input.year}`,
@@ -1907,6 +1954,14 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
 
   const eventLinks = new Map<string, EventLinkMeta>();
   const listeIdLinks = new Map<string, Link>();
+  if (sourceUrl) {
+    if (extractListeId(sourceUrl)) addListeIdLink(listeIdLinks, sourceUrl, "User supplied result list", "anchor");
+    const sourceStevneId = extractStevneId(sourceUrl);
+    if (sourceStevneId) {
+      const meta = makeEventMeta(eventResultMenuUrl(sourceStevneId), `User supplied event ${sourceStevneId} ${input.year}`, input.year);
+      if (meta) addEventMeta(eventLinks, { ...meta, parsedYear: meta.parsedYear ?? input.year }, debug);
+    }
+  }
   const listPages = new Map<string, Page>();
   const previouslyScannedEventIds = new Set(continuation?.scannedEventIds ?? []);
   const scannedListeIdKeys = new Set(continuation?.scannedListeIdKeys ?? []);
@@ -2526,6 +2581,18 @@ function updateCandidateDebugStats(debug: LeirdueSearchDebug, candidates: Leirdu
       notes: candidate.notes,
     });
   }
+  const failedOrUnsupportedPages = debug.checkedLists.filter((item) => item.status === "failed fetch" || item.status === "unsupported format").length;
+  debug.coverage = {
+    eventsChecked: debug.completedEventsInspected || debug.eventResultMenuPagesFetched,
+    resultListsChecked: debug.checkedLists.length || debug.listeIdPagesScannedForName,
+    rowsParsed: debug.checkedLists.reduce((total, item) => total + item.rowsFound, 0),
+    confirmedMatches: candidates.filter((candidate) => candidate.category === "recommended" && candidateHiddenReason(candidate, debug.selectedYear) === null).length,
+    possibleMatches: candidates.filter((candidate) => candidate.category === "review" && candidateHiddenReason(candidate, debug.selectedYear) === null).length,
+    alreadyImported: candidates.filter((candidate) => candidate.alreadyImported || candidate.duplicateStatus === "exact").length,
+    ignoredOrFailed: candidates.filter((candidate) => candidate.category === "control" || candidateHiddenReason(candidate, debug.selectedYear) !== null).length + failedOrUnsupportedPages,
+    failedOrUnsupportedPages,
+  };
+
 }
 
 function debugSelectedYear(inputYear: number | null | undefined) {

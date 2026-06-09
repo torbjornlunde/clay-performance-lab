@@ -2,6 +2,8 @@ export type LeirdueConfidence = "high" | "medium" | "low";
 export type LeirdueCategory = "recommended" | "review" | "control";
 
 export type LeirdueDuplicateStatus = "new" | "possible" | "exact";
+export type LeirdueNameMatchReason = "exact normalized match" | "diacritic-insensitive match" | "partial/initial match" | "fuzzy/possible match" | "no match";
+export type LeirdueCheckedListStatus = "parsed" | "no matching shooter" | "unsupported format" | "failed fetch" | "no score rows found" | "possible duplicate";
 
 export type LeirdueDuplicateMatch = {
   id: string;
@@ -28,6 +30,7 @@ export type LeirdueCandidate = {
   duplicateStatus?: LeirdueDuplicateStatus;
   duplicateMatches?: LeirdueDuplicateMatch[];
   shooterMatchStatus?: "matched_to_you" | "possible_match" | "unmatched" | null;
+  shooterMatchReason?: LeirdueNameMatchReason | null;
   allowDuplicateSave?: boolean;
   leirdueUrl: string;
   listType: string | null;
@@ -88,6 +91,29 @@ export type LeirdueValidationChecklistItem = {
   parsedShootingGround: string | null;
   status: "pass" | "partial" | "fail";
   reason: string;
+};
+
+export type LeirdueCheckedListDebug = {
+  eventName: string | null;
+  date: string | null;
+  sourceUrl: string;
+  stevneId: string | null;
+  listeId: string | null;
+  status: LeirdueCheckedListStatus;
+  rowsFound: number;
+  candidateShooterRows: number;
+  reason: string | null;
+};
+
+export type LeirdueCoverageDebug = {
+  eventsChecked: number;
+  resultListsChecked: number;
+  rowsParsed: number;
+  confirmedMatches: number;
+  possibleMatches: number;
+  alreadyImported: number;
+  ignoredOrFailed: number;
+  failedOrUnsupportedPages: number;
 };
 
 export type LeirdueFetchDebug = {
@@ -218,6 +244,8 @@ export type LeirdueSearchDebug = {
   listeIdLinksByEvent: Record<string, string[]>;
   shooterMatchSnippets: { url: string; snippet: string }[];
   hiddenControlCandidates: number;
+  coverage: LeirdueCoverageDebug;
+  checkedLists: LeirdueCheckedListDebug[];
   fetchedUrls: LeirdueFetchDebug[];
   eventLinksFound: number;
   resultLinksFound: number;

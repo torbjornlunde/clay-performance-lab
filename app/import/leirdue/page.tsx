@@ -5,7 +5,7 @@ import Link from "next/link";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
 import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueSearchDebug } from "@/lib/leirdue/types";
-import { extractLeirdueSourceIdentifiers, namesLikelyMatch } from "@/lib/leirdue/normalize";
+import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch } from "@/lib/leirdue/normalize";
 
 const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduesti", "Sporting"];
 const OPTIONAL_DISCIPLINES = ["Trap", "Skeet", "Other"];
@@ -357,6 +357,7 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
           <span className="metricChip"><strong>{sourceIds.listeId || "?"}</strong> liste_id</span>
           {candidate.shooterMatchStatus === "matched_to_you" ? <span className="metricChip highlightMetric"><strong>Matched to you</strong></span> : null}
           {candidate.shooterMatchStatus === "possible_match" ? <span className="metricChip badgeGold"><strong>Possible match</strong></span> : null}
+          {candidate.shooterMatchReason ? <span className="metricChip"><strong>{candidate.shooterMatchReason}</strong> name match</span> : null}
         </div>
 
         {warnings.length > 0 ? (
@@ -382,6 +383,50 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
       </details>
       {candidate.saveMessage ? <div className={candidate.saveStatus === "error" ? "error" : "notice"}>{candidate.saveMessage}</div> : null}
     </article>
+  );
+}
+
+
+function CoverageDiagnostics({ debug, groupedCounts }: { debug: LeirdueSearchDebug | null; groupedCounts: { confirmed: number; possible: number; alreadyImported: number; ignored: number } }) {
+  if (!debug) return null;
+  const coverage = debug.coverage;
+  const checkedLists = debug.checkedLists || [];
+  const rowsParsed = coverage?.rowsParsed ?? checkedLists.reduce((total, item) => total + item.rowsFound, 0);
+  const failedOrUnsupported = coverage?.failedOrUnsupportedPages ?? checkedLists.filter((item) => item.status === "failed fetch" || item.status === "unsupported format").length;
+  return (
+    <details className="card coverageDiagnostics">
+      <summary>Coverage diagnostics</summary>
+      <div className="compactSummaryGrid" aria-label="Leirdue import coverage">
+        <span><strong>{coverage?.eventsChecked ?? debug.completedEventsInspected}</strong> Events checked</span>
+        <span><strong>{coverage?.resultListsChecked ?? checkedLists.length}</strong> Result lists checked</span>
+        <span><strong>{rowsParsed}</strong> Rows parsed</span>
+        <span><strong>{groupedCounts.confirmed || coverage?.confirmedMatches || 0}</strong> Confirmed</span>
+        <span><strong>{groupedCounts.possible || coverage?.possibleMatches || 0}</strong> Possible</span>
+        <span><strong>{groupedCounts.alreadyImported || coverage?.alreadyImported || 0}</strong> Already imported</span>
+        <span><strong>{groupedCounts.ignored || coverage?.ignoredOrFailed || failedOrUnsupported}</strong> Ignored/failed</span>
+        <span><strong>{failedOrUnsupported}</strong> Failed/unsupported pages</span>
+      </div>
+      <details>
+        <summary>Checked lists</summary>
+        {checkedLists.length > 0 ? (
+          <ul className="small muted checkedListDiagnostics">
+            {checkedLists.slice(0, 120).map((item, index) => (
+              <li key={`${item.sourceUrl}-${index}`}>
+                <strong>{item.status}</strong> — {item.date || "unknown date"} — {item.eventName || "unknown event"} — rows {item.rowsFound}, shooter rows {item.candidateShooterRows} — stevne_id {item.stevneId || "?"}, liste_id {item.listeId || "?"} — <a href={item.sourceUrl} target="_blank" rel="noreferrer">source</a>{item.reason ? ` — ${item.reason}` : ""}
+              </li>
+            ))}
+          </ul>
+        ) : <p className="small muted">No checked-list records were returned for this search batch.</p>}
+      </details>
+      <div className="notice small missingResultHelper">
+        <strong>Missing a result?</strong>
+        <div className="btns compactDetailActions">
+          <button type="button" className="secondary smallButton" onClick={() => document.querySelector<HTMLInputElement>('input[placeholder^="https://www.leirdue.net"]')?.focus()}>Try direct result list URL</button>
+          <span className="small muted">Open Checked lists above to see every list scanned.</span>
+          <Link className="button secondary smallButton" href="/results/new">Add manual result</Link>
+        </div>
+      </div>
+    </details>
   );
 }
 
@@ -548,11 +593,12 @@ export default function LeirdueImportPage() {
   function applyShooterMatching(candidateList: EditableCandidate[]) {
     return candidateList.map((candidate) => {
       if (!candidate.shooterName || !shooterName) return candidate;
-      if (namesLikelyMatch(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "matched_to_you" as const };
+      const matchReason = leirdueNameMatchReason(candidate.shooterName, shooterName);
+      if (namesLikelyMatch(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "matched_to_you" as const, shooterMatchReason: matchReason };
       const parsedParts = candidate.shooterName.split(/\s+/).filter(Boolean);
       const searchedParts = shooterName.split(/\s+/).filter(Boolean);
       const possible = parsedParts.length >= 2 && searchedParts.length >= 2 && namesLikelyMatch(parsedParts.at(-1), searchedParts.at(-1));
-      return { ...candidate, shooterMatchStatus: possible ? "possible_match" as const : "unmatched" as const };
+      return { ...candidate, shooterMatchStatus: possible || matchReason === "fuzzy/possible match" ? "possible_match" as const : "unmatched" as const, shooterMatchReason: possible ? "partial/initial match" as const : matchReason };
     });
   }
 
@@ -644,7 +690,7 @@ export default function LeirdueImportPage() {
       const response = await fetch("/api/leirdue/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shooterName, year: Number(year), disciplines, continuationToken: token }),
+        body: JSON.stringify({ shooterName, year: Number(year), disciplines, continuationToken: token, sourceUrl: sourceUrl.trim() || null }),
         signal: controller.signal,
       });
       const data = (await response.json()) as SearchResponse;
@@ -893,6 +939,7 @@ export default function LeirdueImportPage() {
         </div>
       </form>
 
+      <CoverageDiagnostics debug={debug} groupedCounts={{ confirmed: groupedCandidates.confirmed.length, possible: groupedCandidates.possible.length, alreadyImported: groupedCandidates.alreadyImported.length, ignored: groupedCandidates.ignored.length }} />
       <DebugDetails debug={debug} candidatesFound={candidates.length} />
 
       {candidates.length > 0 ? (
