@@ -95,10 +95,7 @@ export default function AuthHeader() {
         {ready && authenticated && (
           <nav className="topNav" aria-label="Primary navigation">
             <Link href="/dashboard">Dashboard</Link>
-            <Link href="/log-competition">Log competition</Link>
-            <Link href="/log-training">Log training</Link>
             <Link href="/stats">Performance</Link>
-            <Link href="/fitasc">FITASC schemes</Link>
             {feedbackHref && <a href={feedbackHref}>Feedback</a>}
             {showBetaAdmin && <Link href="/beta/admin">Beta approvals</Link>}
           </nav>
