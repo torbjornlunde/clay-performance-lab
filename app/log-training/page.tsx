@@ -57,8 +57,13 @@ function hitPercentage(log: SimpleTrainingLog) {
   return (log.hits / log.targets_fired) * 100;
 }
 
+function isMinimumSimpleLog(log: SimpleTrainingLog) {
+  return log.hits === null && !log.discipline && !log.location && !log.notes;
+}
+
 function SimpleTrainingLogCard({ log }: { log: SimpleTrainingLog }) {
   const percentage = hitPercentage(log);
+  const isMinimumLog = isMinimumSimpleLog(log);
 
   return (
     <article className="sessionItem dashboardListItem">
@@ -76,6 +81,16 @@ function SimpleTrainingLogCard({ log }: { log: SimpleTrainingLog }) {
           {log.location && <span>{log.location}</span>}
         </div>
         {log.notes && <p className="small muted simpleTrainingNotes">{log.notes}</p>}
+        {isMinimumLog && (
+          <p className="small muted simpleTrainingNotes">
+            Add hits, discipline or notes when you are ready.
+          </p>
+        )}
+      </div>
+      <div className="sessionActions simpleTrainingListActions">
+        <Link href={`/simple-training-logs/${log.id}/edit`} className="button secondary smallButton">
+          {isMinimumLog ? "Add more details" : "Edit"}
+        </Link>
       </div>
     </article>
   );
@@ -87,10 +102,14 @@ export default function LogTrainingPage() {
   const [competitionTargetsThisYear, setCompetitionTargetsThisYear] = useState<number | null>(null);
   const [loadingLogs, setLoadingLogs] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [savedMessage, setSavedMessage] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
-    setSavedMessage(new URLSearchParams(window.location.search).get("simpleLogSaved") === "1");
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get("simpleLogSaved") === "1") setStatusMessage("Training log saved.");
+    else if (searchParams.get("simpleLogUpdated") === "1") setStatusMessage("Training log updated.");
+    else if (searchParams.get("simpleLogDeleted") === "1") setStatusMessage("Training log deleted.");
+    else setStatusMessage("");
 
     let active = true;
 
@@ -168,7 +187,7 @@ export default function LogTrainingPage() {
           </div>
         </div>
 
-        {savedMessage && <div className="success">Training log saved.</div>}
+        {statusMessage && <div className="success">{statusMessage}</div>}
 
         <div className="productActionGrid" aria-label="Training logging options">
           {trainingActions.map((action) => (
