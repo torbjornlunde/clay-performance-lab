@@ -10,6 +10,7 @@ import {
   TRAINING_SCORE_SHEET_BETA_NOTE,
   TRAINING_SCORE_SHEET_QUICK_START_STEPS,
 } from "@/lib/trainingScoreSheets/feedback";
+import { userFacingDeleteError, userFacingLoadError } from "@/lib/userFacingErrors";
 
 type ScoreSheetRow = {
   id: string;
@@ -216,7 +217,7 @@ export default function TrainingScoreSheetsPage() {
     setErr("");
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError) {
-      setErr(userError.message);
+      setErr(userFacingLoadError(userError));
       setLoading(false);
       return;
     }
@@ -236,7 +237,7 @@ export default function TrainingScoreSheetsPage() {
       .returns<ScoreSheetRow[]>();
 
     if (sheetError) {
-      setErr(sheetError.message);
+      setErr(userFacingLoadError(sheetError, "Could not load training score sheets right now. Check your connection and try again."));
       setLoading(false);
       return;
     }
@@ -254,12 +255,7 @@ export default function TrainingScoreSheetsPage() {
       ]);
 
       if (shootersResult.error || scoresResult.error || targetsResult.error) {
-        setErr(
-          shootersResult.error?.message ||
-            scoresResult.error?.message ||
-            targetsResult.error?.message ||
-            "Could not load score sheet counts.",
-        );
+        setErr(userFacingLoadError(shootersResult.error || scoresResult.error || targetsResult.error, "Could not load score sheet details right now. Check your connection and try again."));
         setLoading(false);
         return;
       }
@@ -408,7 +404,7 @@ export default function TrainingScoreSheetsPage() {
       .maybeSingle<{ id: string }>();
 
     if (deleteError || !deletedSheet) {
-      setErr(deleteError?.message || "Could not delete this training score sheet.");
+      setErr(userFacingDeleteError(deleteError, "Could not delete this training score sheet right now. Try again when online."));
       setDeletingId(null);
       return;
     }

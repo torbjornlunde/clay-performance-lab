@@ -655,9 +655,7 @@ export default function DashboardPage() {
         exportFileName(),
       );
     } catch (error) {
-      setExportError(
-        error instanceof Error ? error.message : "Could not export your data. Please try again.",
-      );
+      setExportError("Could not export your data right now. Refresh and try again.");
     } finally {
       setExporting(false);
     }

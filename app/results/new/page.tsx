@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase/client";
+import { userFacingSaveError } from "@/lib/userFacingErrors";
 
 export default function NewResultPage() {
   const router = useRouter();
@@ -79,7 +80,7 @@ export default function NewResultPage() {
     });
     setSaving(false);
     if (error) {
-      setErr(error.message);
+      setErr(userFacingSaveError(error, "Could not save this result right now. Try again when online."));
       return;
     }
     router.push("/stats");
