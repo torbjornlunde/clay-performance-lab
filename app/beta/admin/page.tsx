@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { AccessStatus, BetaAccessListEntry, SystemRole, UserAccessProfile } from "@/lib/access";
-import { canManageBetaAccess, isProtectedOwnerEmail } from "@/lib/access";
+import { canManageBetaAccess, isProtectedOwnerEmail, normalizeAccessEmail } from "@/lib/access";
 import { supabase } from "@/lib/supabase/client";
 
 const USER_COLUMNS = "user_id,email,full_name,access_status,system_role,account_type,created_at,updated_at,approved_at,approved_by";
@@ -26,6 +26,14 @@ function formatDate(value: string | null | undefined) {
 
 function groupUsers(users: UserAccessProfile[], status: AccessStatus) {
   return users.filter((user) => user.access_status === status);
+}
+
+function isApprovedOwner(profile: Pick<UserAccessProfile, "access_status" | "system_role">) {
+  return profile.access_status === "approved" && profile.system_role === "owner";
+}
+
+function userMatchesProfile(user: UserAccessProfile, profile: UserAccessProfile | null) {
+  return Boolean(profile?.user_id === user.user_id || normalizeAccessEmail(profile?.email) === normalizeAccessEmail(user.email));
 }
 
 export default function BetaAdminPage() {
@@ -100,11 +108,25 @@ export default function BetaAdminPage() {
   }
 
   async function updateUserAccess(user: UserAccessProfile, status: AccessStatus, role?: SystemRole) {
+    const nextRole = isProtectedOwnerEmail(user.email) ? "owner" : role ?? user.system_role;
+    const wouldRemoveOwnerAccess = isApprovedOwner(user) && (status !== "approved" || nextRole !== "owner");
+
+    if (userMatchesProfile(user, me) && wouldRemoveOwnerAccess) {
+      setError("You cannot revoke your own owner access.");
+      setMessage("");
+      return;
+    }
+
+    if (isProtectedOwnerEmail(user.email) && wouldRemoveOwnerAccess) {
+      setError("Protected owner access cannot be downgraded or revoked.");
+      setMessage("");
+      return;
+    }
+
     setSaving(true);
     setError("");
     setMessage("");
 
-    const nextRole = isProtectedOwnerEmail(user.email) ? "owner" : role ?? user.system_role;
     const { error: updateError } = await supabase.rpc("admin_update_user_access", {
       target_user_id: user.user_id,
       new_access_status: status,
@@ -177,6 +199,11 @@ export default function BetaAdminPage() {
           <p className="eyebrow">Closed beta</p>
           <h2>Beta access approvals</h2>
           <p>Approve signed-in users and manage exact email or full-name pre-approvals.</p>
+          {me ? (
+            <p className="small muted">
+              Signed in as {me.email || "unknown email"} · {me.system_role} · {me.access_status}
+            </p>
+          ) : null}
         </div>
         <button type="button" className="secondary" onClick={loadAdminData} disabled={loading || saving}>
           Refresh
@@ -189,9 +216,9 @@ export default function BetaAdminPage() {
 
       {!loading && canManageBetaAccess(me) && (
         <>
-          <UserSection title="Pending users" users={grouped.pending} saving={saving} onUpdate={updateUserAccess} />
-          <UserSection title="Approved users" users={grouped.approved} saving={saving} onUpdate={updateUserAccess} />
-          <UserSection title="Rejected / revoked users" users={grouped.restricted} saving={saving} onUpdate={updateUserAccess} />
+          <UserSection title="Pending users" users={grouped.pending} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
+          <UserSection title="Approved users" users={grouped.approved} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
+          <UserSection title="Rejected / revoked users" users={grouped.restricted} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
 
           <section className="card">
             <div className="sectionHeader">
@@ -276,11 +303,13 @@ export default function BetaAdminPage() {
 function UserSection({
   title,
   users,
+  currentUser,
   saving,
   onUpdate,
 }: {
   title: string;
   users: UserAccessProfile[];
+  currentUser: UserAccessProfile | null;
   saving: boolean;
   onUpdate: (user: UserAccessProfile, status: AccessStatus, role?: SystemRole) => Promise<void>;
 }) {
@@ -312,6 +341,15 @@ function UserSection({
             <tbody>
               {users.map((user) => {
                 const protectedOwner = isProtectedOwnerEmail(user.email);
+                const selfOwner = userMatchesProfile(user, currentUser) && isApprovedOwner(user);
+                const lockedOwner = protectedOwner || selfOwner;
+                const lockMessage = selfOwner
+                  ? "You cannot revoke your own owner access."
+                  : protectedOwner
+                    ? "Protected owner access cannot be downgraded or revoked."
+                    : "";
+                const restoreRole = protectedOwner ? "owner" : user.system_role;
+
                 return (
                   <tr key={user.user_id}>
                     <td>{user.email || "—"}</td>
@@ -321,16 +359,33 @@ function UserSection({
                     <td>{formatDate(user.created_at)}</td>
                     <td>{formatDate(user.approved_at)}</td>
                     <td>
+                      {lockMessage ? <p className="small muted">{lockMessage}</p> : null}
                       <div className="tableActions">
-                        <button type="button" className="smallButton" disabled={saving} onClick={() => onUpdate(user, "approved", protectedOwner ? "owner" : user.system_role)}>
-                          Approve
-                        </button>
-                        <button type="button" className="secondary smallButton" disabled={saving || protectedOwner} onClick={() => onUpdate(user, "rejected", "user")}>
-                          Reject
-                        </button>
-                        <button type="button" className="danger smallButton" disabled={saving || protectedOwner} onClick={() => onUpdate(user, "revoked", user.system_role)}>
-                          Revoke
-                        </button>
+                        {user.access_status === "pending" ? (
+                          <>
+                            <button type="button" className="smallButton" disabled={saving} onClick={() => onUpdate(user, "approved", restoreRole)}>
+                              Approve
+                            </button>
+                            <button type="button" className="secondary smallButton" disabled={saving || lockedOwner} onClick={() => onUpdate(user, "rejected", "user")}>
+                              Reject
+                            </button>
+                          </>
+                        ) : null}
+                        {user.access_status === "approved" ? (
+                          <>
+                            <button type="button" className="secondary smallButton" disabled={saving || lockedOwner} onClick={() => onUpdate(user, "rejected", "user")}>
+                              Reject
+                            </button>
+                            <button type="button" className="danger smallButton" disabled={saving || lockedOwner} onClick={() => onUpdate(user, "revoked", user.system_role)}>
+                              Revoke
+                            </button>
+                          </>
+                        ) : null}
+                        {user.access_status === "rejected" || user.access_status === "revoked" ? (
+                          <button type="button" className="smallButton" disabled={saving} onClick={() => onUpdate(user, "approved", restoreRole)}>
+                            Restore / Approve again
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
