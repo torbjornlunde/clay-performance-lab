@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { canManageBetaAccess, type UserAccessProfile } from "@/lib/access";
 import { supabase } from "@/lib/supabase/client";
 
 function ClayTargetIcon() {
@@ -42,18 +43,35 @@ function ClayTargetIcon() {
 
 export default function AuthHeader() {
   const [authenticated, setAuthenticated] = useState(false);
+  const [showBetaAdmin, setShowBetaAdmin] = useState(false);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let active = true;
-    supabase.auth.getUser().then(({ data }) => {
+    async function refreshAuthHeader() {
+      const { data } = await supabase.auth.getUser();
       if (!active) return;
       setAuthenticated(Boolean(data.user));
+      if (data.user) {
+        await supabase.rpc("sync_my_access_profile");
+        const { data: accessProfile } = await supabase
+          .from("user_access_profiles")
+          .select("access_status,system_role")
+          .eq("user_id", data.user.id)
+          .maybeSingle<Pick<UserAccessProfile, "access_status" | "system_role">>();
+        if (!active) return;
+        setShowBetaAdmin(canManageBetaAccess(accessProfile));
+      } else {
+        setShowBetaAdmin(false);
+      }
       setReady(true);
-    });
+    }
+
+    refreshAuthHeader();
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthenticated(Boolean(session?.user));
-      setReady(true);
+      if (!session?.user) setShowBetaAdmin(false);
+      refreshAuthHeader();
     });
     return () => {
       active = false;
@@ -75,6 +93,7 @@ export default function AuthHeader() {
           <nav className="topNav" aria-label="Primary navigation">
             <Link href="/dashboard">Dashboard</Link>
             <Link href="/stats">Stats</Link>
+            {showBetaAdmin && <Link href="/beta/admin">Beta approvals</Link>}
           </nav>
         )}
       </div>

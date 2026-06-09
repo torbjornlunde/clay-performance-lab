@@ -5332,3 +5332,37 @@ html, body {
     min-width: 0;
   }
 }
+
+.accessTableWrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.accessTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.accessTable th,
+.accessTable td {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: top;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.accessTable th {
+  color: var(--text);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tableActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
