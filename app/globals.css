@@ -742,7 +742,8 @@ button:disabled,
   }
 
   .logoRow {
-    align-items: flex-start;
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .brandLockup .small {
@@ -750,13 +751,22 @@ button:disabled,
   }
 
   .topNav {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    border-radius: 18px;
+    align-self: flex-start;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+  }
+
+  .topNav::-webkit-scrollbar {
+    display: none;
   }
 
   .topNav a {
-    padding: 8px;
+    flex: 0 0 auto;
+    padding: 7px 9px;
+    white-space: nowrap;
   }
 
   .heroCard,
