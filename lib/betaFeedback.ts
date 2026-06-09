@@ -1,7 +1,6 @@
-import { OWNER_EMAILS } from "@/lib/access";
 import { appBuildLabel } from "@/lib/appBuildInfo";
 
-export const BETA_FEEDBACK_EMAIL = OWNER_EMAILS[0];
+export const BETA_FEEDBACK_EMAIL = "torbjorn.lunde@icloud.com";
 
 export function betaFeedbackMailto(area = "General beta") {
   const subject = `Clay Performance Lab beta feedback - ${area}`;
