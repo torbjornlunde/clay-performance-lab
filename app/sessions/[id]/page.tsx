@@ -66,8 +66,24 @@ function compactDateTime(valueToFormat: string) {
 }
 
 function entryType(session: any, resultOnly: boolean) {
-  if (resultOnly) return "Result only";
-  return session.session_type === "Competition" ? "Competition" : "Training";
+  if (isLeirdueImported(session)) return "Leirdue.net import";
+  if (resultOnly) return "Quick result";
+  return session.session_type === "Competition" ? "Detailed log" : "Training";
+}
+
+function isLeirdueImported(session: any) {
+  return Boolean(
+    session.leirdue_result_url ||
+      (typeof session.notes === "string" &&
+        (session.notes.toLowerCase().includes("source: leirdue_net") || session.notes.toLowerCase().includes("leirdue import"))),
+  );
+}
+
+function importDetail(session: any, key: string) {
+  if (typeof session.notes !== "string") return null;
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = session.notes.match(new RegExp(`(?:^|\\. )${escapedKey}:\\s*([\\s\\S]*?)(?=\\. [a-z_]+:|$)`, "i"));
+  return match?.[1]?.trim() || null;
 }
 
 function missLocation(session: any, miss: Miss) {
@@ -131,6 +147,8 @@ export default function Page() {
   const [misses, setMisses] = useState<Miss[]>([]);
   const [targetDefinitions, setTargetDefinitions] = useState<TargetDefinition[]>([]);
   const [count, setCount] = useState(0);
+  const [err, setErr] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -153,6 +171,24 @@ export default function Page() {
       .order("machine")
       .returns<TargetDefinition[]>();
     setSession(sessionData); setCourses(courseData || []); setMisses(missData || []); setTargetDefinitions(definitionData || []); setCount(missCount || 0);
+  }
+
+  async function deleteSession() {
+    if (!session) return;
+    const confirmed = window.confirm("Delete this result? This cannot be undone.");
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setErr("");
+    const { error } = await supabase.from("sessions").delete().eq("id", session.id);
+    setDeleting(false);
+
+    if (error) {
+      setErr(error.message);
+      return;
+    }
+
+    router.push("/results");
   }
 
   if (!session) return <main><div className="card">Loading...</div></main>;
@@ -185,7 +221,12 @@ export default function Page() {
     entryType(session, resultOnly),
     session.shooting_format && !isSporttrap ? session.shooting_format : null,
   ].filter(Boolean);
-  const showSourceDetails = Boolean(session.leirdue_result_url || (typeof session.notes === "string" && session.notes.toLowerCase().includes("leirdue")));
+  const showSourceDetails = isLeirdueImported(session);
+  const sourceUrl = importDetail(session, "source_url") || session.leirdue_result_url;
+  const importedAt = importDetail(session, "imported_at");
+  const importConfidence = importDetail(session, "confidence");
+  const stevneId = importDetail(session, "stevne_id");
+  const listeId = importDetail(session, "liste_id");
   const summaryMetrics = [
     { label: "Targets", value: totalTargets, show: totalTargets !== null && totalTargets !== undefined },
     { label: "Misses", value: count, show: true },
@@ -242,11 +283,26 @@ export default function Page() {
             <h2>What do you want to do?</h2>
           </div>
         </div>
+        {err && <div className="error">{err}</div>}
         <div className="primaryActionGrid">
           <Link href={`/sessions/${session.id}/log`} className="button">Log miss</Link>
           <Link href={`/sessions/${session.id}/misses`} className="button secondary">Review misses</Link>
           <Link href={`/sessions/${session.id}/analysis`} className="button secondary">Analysis</Link>
         </div>
+        <details className="detailAccordion">
+          <summary>
+            <span>More actions</span>
+          </summary>
+          <div className="detailAccordionBody">
+            <p className="muted small">Manage this saved result. Delete only removes the local app entry and cannot affect any external Leirdue.net source data.</p>
+            <div className="btns compactActions">
+              <Link href="/results" className="button secondary smallButton">Results history</Link>
+              <button className="button danger smallButton" type="button" disabled={deleting} onClick={deleteSession}>
+                {deleting ? "Deleting..." : "Delete result"}
+              </button>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div className="sessionDetailSections">
@@ -326,10 +382,13 @@ export default function Page() {
         {showSourceDetails && (
           <DetailSection title="Source / import details" badge="Import">
             <div className="detailRowsGrid singleColumnRows">
-              <ResultRow label="Source">Leirdue import</ResultRow>
-              {session.leirdue_result_url && (
-                <ResultRow label="Result URL"><a href={session.leirdue_result_url} target="_blank" rel="noreferrer">Open Leirdue.net result</a></ResultRow>
+              <ResultRow label="Source">Leirdue.net</ResultRow>
+              {sourceUrl && (
+                <ResultRow label="Source URL"><a href={sourceUrl} target="_blank" rel="noreferrer">Open Leirdue.net result</a></ResultRow>
               )}
+              {importedAt && <ResultRow label="Imported at">{compactDateTime(importedAt)}</ResultRow>}
+              {importConfidence && <ResultRow label="Duplicate/import status">Imported · Confidence {importConfidence}</ResultRow>}
+              {(stevneId || listeId) && <ResultRow label="Source ids">Stevne {value(stevneId)} · Liste {value(listeId)}</ResultRow>}
             </div>
           </DetailSection>
         )}
