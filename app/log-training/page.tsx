@@ -44,6 +44,19 @@ type CompetitionTargetRow = {
   total_targets: number | null;
 };
 
+type TrainingVolumeLog = Pick<SimpleTrainingLog, "date" | "targets_fired">;
+
+type TrainingVolumeInsights = {
+  trainingTargetsThisYear: number;
+  trainingSessionsThisYear: number;
+  averageTargetsPerSessionThisYear: number | null;
+  trainingTargetsLast30Days: number;
+  trainingSessionsLast30Days: number;
+  averageDaysBetweenSessions: number | null;
+  daysSinceLastTrainingSession: number | null;
+  insightMessages: string[];
+};
+
 function formatTrainingDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
@@ -57,8 +70,159 @@ function hitPercentage(log: SimpleTrainingLog) {
   return (log.hits / log.targets_fired) * 100;
 }
 
+function isoDateValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function daysBetweenDates(earlier: string, later: string) {
+  const earlierTime = new Date(`${earlier}T00:00:00`).getTime();
+  const laterTime = new Date(`${later}T00:00:00`).getTime();
+  return Math.round((laterTime - earlierTime) / 86_400_000);
+}
+
+function average(values: number[]) {
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function formatMetricNumber(value: number | null) {
+  if (value === null) return "—";
+  return new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 }).format(Math.round(value));
+}
+
+function buildTrainingVolumeInsights(logs: TrainingVolumeLog[], today = new Date()): TrainingVolumeInsights {
+  const todayValue = isoDateValue(today);
+  const yearStart = `${today.getFullYear()}-01-01`;
+  const last30DaysStartDate = new Date(today);
+  last30DaysStartDate.setDate(last30DaysStartDate.getDate() - 29);
+  const last30DaysStart = isoDateValue(last30DaysStartDate);
+
+  const datedLogs = logs
+    .filter((log) => log.date <= todayValue)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const thisYearLogs = datedLogs.filter((log) => log.date >= yearStart);
+  const last30DaysLogs = datedLogs.filter((log) => log.date >= last30DaysStart);
+
+  const trainingTargetsThisYear = thisYearLogs.reduce((sum, log) => sum + (log.targets_fired || 0), 0);
+  const trainingSessionsThisYear = thisYearLogs.length;
+  const trainingTargetsLast30Days = last30DaysLogs.reduce((sum, log) => sum + (log.targets_fired || 0), 0);
+  const trainingSessionsLast30Days = last30DaysLogs.length;
+  const averageTargetsPerSessionThisYear =
+    trainingSessionsThisYear > 0 ? trainingTargetsThisYear / trainingSessionsThisYear : null;
+
+  const gaps = datedLogs.slice(1).map((log, index) => daysBetweenDates(datedLogs[index].date, log.date));
+  const averageDaysBetweenSessions = average(gaps);
+  const lastLog = datedLogs.at(-1);
+  const daysSinceLastTrainingSession = lastLog ? Math.max(0, daysBetweenDates(lastLog.date, todayValue)) : null;
+
+  const insightMessages: string[] = [];
+  if (datedLogs.length === 0) {
+    insightMessages.push("No training volume logged yet. Add a simple training log to start tracking your season.");
+  } else if (datedLogs.length === 1) {
+    insightMessages.push("You have logged one training session. Add a few more sessions to see training rhythm insights.");
+  } else {
+    if (daysSinceLastTrainingSession !== null && daysSinceLastTrainingSession >= 14) {
+      insightMessages.push(`It has been ${daysSinceLastTrainingSession} days since your last logged training session.`);
+    }
+
+    if (averageDaysBetweenSessions !== null) {
+      const averageTargetsPerLoggedSession =
+        datedLogs.reduce((sum, log) => sum + (log.targets_fired || 0), 0) / datedLogs.length;
+      if (trainingSessionsLast30Days >= 4 && averageDaysBetweenSessions <= 10) {
+        insightMessages.push("Your training rhythm has been fairly consistent recently, based on your logged training volume.");
+      } else if (averageDaysBetweenSessions >= 14 && averageTargetsPerLoggedSession >= 100) {
+        insightMessages.push("You may tend to train with higher volume but longer gaps between sessions.");
+      } else if (trainingSessionsLast30Days >= 4 && trainingTargetsLast30Days < 300) {
+        insightMessages.push("You appear to train regularly, but your total target volume is still modest based on your logged training volume.");
+      } else {
+        insightMessages.push("Based on your logged training volume, a few more sessions could make your training rhythm clearer.");
+      }
+    }
+  }
+
+  return {
+    trainingTargetsThisYear,
+    trainingSessionsThisYear,
+    averageTargetsPerSessionThisYear,
+    trainingTargetsLast30Days,
+    trainingSessionsLast30Days,
+    averageDaysBetweenSessions,
+    daysSinceLastTrainingSession,
+    insightMessages: insightMessages.slice(0, 2),
+  };
+}
+
 function isMinimumSimpleLog(log: SimpleTrainingLog) {
   return log.hits === null && !log.discipline && !log.location && !log.notes;
+}
+
+function MetricCard({ label, value, helper }: { label: string; value: string; helper?: string }) {
+  return (
+    <div className="trainingVolumeMetric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {helper && <small>{helper}</small>}
+    </div>
+  );
+}
+
+function TrainingVolumeInsightsCard({
+  insights,
+  competitionTargetsThisYear,
+}: {
+  insights: TrainingVolumeInsights;
+  competitionTargetsThisYear: number | null;
+}) {
+  const totalTargetsThisYear =
+    competitionTargetsThisYear === null ? null : insights.trainingTargetsThisYear + competitionTargetsThisYear;
+
+  return (
+    <section className="card dashboardSectionCard trainingVolumeInsights" aria-labelledby="training-volume-heading">
+      <div className="sectionHeader listSectionHeader">
+        <div>
+          <p className="eyebrow">Training volume insights</p>
+          <h2 id="training-volume-heading">Simple training volume</h2>
+        </div>
+      </div>
+
+      <div className="trainingVolumeMetricGrid">
+        <MetricCard label="Training targets this year" value={formatMetricNumber(insights.trainingTargetsThisYear)} />
+        <MetricCard label="Training sessions this year" value={formatMetricNumber(insights.trainingSessionsThisYear)} />
+        <MetricCard
+          label="Average targets per session"
+          value={formatMetricNumber(insights.averageTargetsPerSessionThisYear)}
+          helper="This calendar year"
+        />
+        <MetricCard label="Training targets last 30 days" value={formatMetricNumber(insights.trainingTargetsLast30Days)} />
+        <MetricCard label="Training sessions last 30 days" value={formatMetricNumber(insights.trainingSessionsLast30Days)} />
+        <MetricCard
+          label="Average days between sessions"
+          value={formatMetricNumber(insights.averageDaysBetweenSessions)}
+          helper={insights.averageDaysBetweenSessions === null ? "Add another log to calculate this" : undefined}
+        />
+        <MetricCard
+          label="Days since last training session"
+          value={formatMetricNumber(insights.daysSinceLastTrainingSession)}
+          helper={insights.daysSinceLastTrainingSession === null ? "No logged sessions yet" : undefined}
+        />
+        {competitionTargetsThisYear !== null && (
+          <MetricCard label="Competition targets this year" value={formatMetricNumber(competitionTargetsThisYear)} />
+        )}
+        {totalTargetsThisYear !== null && (
+          <MetricCard label="Total targets this year" value={formatMetricNumber(totalTargetsThisYear)} />
+        )}
+      </div>
+
+      <div className="trainingInsightList" aria-label="Training volume insight text">
+        {insights.insightMessages.map((message) => (
+          <p key={message}>{message}</p>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function SimpleTrainingLogCard({ log }: { log: SimpleTrainingLog }) {
@@ -98,7 +262,7 @@ function SimpleTrainingLogCard({ log }: { log: SimpleTrainingLog }) {
 
 export default function LogTrainingPage() {
   const [logs, setLogs] = useState<SimpleTrainingLog[]>([]);
-  const [trainingTargetsThisYear, setTrainingTargetsThisYear] = useState(0);
+  const [volumeLogs, setVolumeLogs] = useState<TrainingVolumeLog[]>([]);
   const [competitionTargetsThisYear, setCompetitionTargetsThisYear] = useState<number | null>(null);
   const [loadingLogs, setLoadingLogs] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -117,8 +281,10 @@ export default function LogTrainingPage() {
       setLoadingLogs(true);
       setLoadError("");
 
-      const yearStart = `${new Date().getFullYear()}-01-01`;
-      const [recentLogsResult, yearlyLogsResult, competitionsResult] = await Promise.all([
+      const today = new Date();
+      const yearStart = `${today.getFullYear()}-01-01`;
+      const todayValue = isoDateValue(today);
+      const [recentLogsResult, volumeLogsResult, competitionsResult] = await Promise.all([
         supabase
           .from("training_logs")
           .select("id,date,targets_fired,hits,discipline,location,notes,source_type,created_at")
@@ -129,10 +295,11 @@ export default function LogTrainingPage() {
           .returns<SimpleTrainingLog[]>(),
         supabase
           .from("training_logs")
-          .select("targets_fired")
+          .select("date,targets_fired")
           .eq("source_type", "simple_training")
-          .gte("date", yearStart)
-          .returns<Pick<SimpleTrainingLog, "targets_fired">[]>(),
+          .lte("date", todayValue)
+          .order("date", { ascending: true })
+          .returns<TrainingVolumeLog[]>(),
         supabase
           .from("sessions")
           .select("id,total_targets")
@@ -144,17 +311,17 @@ export default function LogTrainingPage() {
 
       if (!active) return;
 
-      if (recentLogsResult.error || yearlyLogsResult.error) {
+      if (recentLogsResult.error || volumeLogsResult.error) {
         setLoadError("Simple training logs could not be loaded. If this is a new deployment, run the Supabase migration first.");
         setLogs([]);
-        setTrainingTargetsThisYear(0);
+        setVolumeLogs([]);
         setCompetitionTargetsThisYear(null);
         setLoadingLogs(false);
         return;
       }
 
       setLogs(recentLogsResult.data || []);
-      setTrainingTargetsThisYear((yearlyLogsResult.data || []).reduce((sum, log) => sum + (log.targets_fired || 0), 0));
+      setVolumeLogs(volumeLogsResult.data || []);
       setCompetitionTargetsThisYear(
         competitionsResult.error ? null : (competitionsResult.data || []).reduce((sum, row) => sum + (row.total_targets || 0), 0),
       );
@@ -168,10 +335,7 @@ export default function LogTrainingPage() {
     };
   }, []);
 
-  const totalTargetsThisYear = useMemo(() => {
-    if (competitionTargetsThisYear === null) return null;
-    return trainingTargetsThisYear + competitionTargetsThisYear;
-  }, [competitionTargetsThisYear, trainingTargetsThisYear]);
+  const volumeInsights = useMemo(() => buildTrainingVolumeInsights(volumeLogs), [volumeLogs]);
 
   return (
     <main className="container narrow">
@@ -199,32 +363,29 @@ export default function LogTrainingPage() {
         </div>
       </div>
 
-      <section className="card dashboardSectionCard" aria-labelledby="training-volume-heading">
-        <div className="sectionHeader listSectionHeader">
-          <div>
-            <p className="eyebrow">Season volume</p>
-            <h2 id="training-volume-heading">This year</h2>
-          </div>
-        </div>
-        <div className="compactSummaryGrid">
-          <div className="summaryStat">
-            <span>Training targets this year</span>
-            <strong>{trainingTargetsThisYear}</strong>
-          </div>
-          {competitionTargetsThisYear !== null && (
-            <div className="summaryStat">
-              <span>Competition targets this year</span>
-              <strong>{competitionTargetsThisYear}</strong>
+      {loadingLogs ? (
+        <section className="card dashboardSectionCard trainingVolumeInsights" aria-labelledby="training-volume-heading">
+          <div className="sectionHeader listSectionHeader">
+            <div>
+              <p className="eyebrow">Training volume insights</p>
+              <h2 id="training-volume-heading">Simple training volume</h2>
             </div>
-          )}
-          {totalTargetsThisYear !== null && (
-            <div className="summaryStat">
-              <span>Total targets this year</span>
-              <strong>{totalTargetsThisYear}</strong>
+          </div>
+          <p>Loading...</p>
+        </section>
+      ) : loadError ? (
+        <section className="card dashboardSectionCard trainingVolumeInsights" aria-labelledby="training-volume-heading">
+          <div className="sectionHeader listSectionHeader">
+            <div>
+              <p className="eyebrow">Training volume insights</p>
+              <h2 id="training-volume-heading">Simple training volume</h2>
             </div>
-          )}
-        </div>
-      </section>
+          </div>
+          <div className="error">{loadError}</div>
+        </section>
+      ) : (
+        <TrainingVolumeInsightsCard insights={volumeInsights} competitionTargetsThisYear={competitionTargetsThisYear} />
+      )}
 
       <section className="card dashboardSectionCard" aria-labelledby="simple-training-heading">
         <div className="sectionHeader listSectionHeader">
