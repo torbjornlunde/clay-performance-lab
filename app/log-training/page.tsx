@@ -31,7 +31,7 @@ export default function LogTrainingPage() {
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
-    if (searchParams.get("simpleLogSaved") === "1") setStatusMessage("Training log saved. View it under Performance.");
+    if (searchParams.get("simpleLogSaved") === "1") setStatusMessage("Training log saved. View it under Dashboard and Performance.");
     else if (searchParams.get("simpleLogUpdated") === "1") setStatusMessage("Training log updated.");
     else if (searchParams.get("simpleLogDeleted") === "1") setStatusMessage("Training log deleted.");
     else setStatusMessage("");
