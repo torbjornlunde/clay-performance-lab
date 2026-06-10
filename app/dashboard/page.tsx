@@ -703,6 +703,21 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      <section className="card betaInfoPanel" aria-labelledby="closed-beta-heading">
+        <div>
+          <p className="eyebrow">Closed beta</p>
+          <h2 id="closed-beta-heading">Closed beta</h2>
+          <p>
+            You are testing an early version of Clay Performance Lab. Please report bugs, confusing screens,
+            or anything that feels slow, unclear or difficult to use during real shooting.
+          </p>
+        </div>
+        <div className="betaInfoActions">
+          {feedbackHref && <a className="button smallButton" href={feedbackHref}>Send feedback</a>}
+          <Link href="/beta/checklist" className="button secondary smallButton">Beta test checklist</Link>
+        </div>
+      </section>
+
       <PerformanceTrendCard sessions={sessions} missCounts={missCounts} />
 
       <section className="card dashboardSectionCard" aria-labelledby="results-heading">
