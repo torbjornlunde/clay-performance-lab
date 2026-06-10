@@ -8,14 +8,16 @@ import { supabase } from "@/lib/supabase/client";
 function copyForStatus(status: UserAccessProfile["access_status"] | null | undefined) {
   if (status === "rejected" || status === "revoked") {
     return {
-      title: status === "revoked" ? "Access revoked" : "Access not approved",
-      body: "Your account does not currently have beta access. Contact the beta owner if this looks wrong.",
+      title: "Access not available",
+      body: "Your account does not currently have access to Clay Performance Lab.",
+      note: "",
     };
   }
 
   return {
     title: "Account pending approval",
-    body: "Your account is waiting for beta approval. You will be able to use the app after an owner or admin approves access.",
+    body: "Clay Performance Lab is currently in closed beta. Your account has been created, but access must be approved before you can use the app.",
+    note: "If you were invited as a beta tester, please wait for approval from the app owner.",
   };
 }
 
@@ -83,8 +85,8 @@ export default function BetaAccessPage() {
         <p className="eyebrow">Closed beta</p>
         <h2>{loading ? "Checking access..." : copy.title}</h2>
         {loading ? <p>Loading access status...</p> : <p>{copy.body}</p>}
+        {!loading && copy.note && <p className="small muted">{copy.note}</p>}
         {profile?.email && <p className="small muted">Signed in as {profile.email}</p>}
-        {!loading && profile?.access_status && <p className="small muted">Status: {profile.access_status}</p>}
         {error && <div className="error">{error}</div>}
         <div className="btns">
           <button type="button" onClick={signOut}>

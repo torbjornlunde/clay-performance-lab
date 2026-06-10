@@ -48,6 +48,23 @@ type TrainingScoreSheetRow = {
   created_at: string;
 };
 
+type SimpleTrainingLogRow = {
+  id: string;
+  date: string;
+  targets_fired: number;
+  hits: number | null;
+  discipline: string | null;
+  location: string | null;
+  notes: string | null;
+  source_type: string;
+  created_at: string;
+};
+
+type TrainingHistoryItem =
+  | { kind: "training_score_sheet"; id: string; date: string; createdAt: string; sheet: TrainingScoreSheetRow }
+  | { kind: "practice_log"; id: string; date: string; createdAt: string; log: SimpleTrainingLogRow }
+  | { kind: "detailed_training"; id: string; date: string; createdAt: string; session: Row };
+
 type ExportCourseRow = ExportCourse;
 type ExportMissRow = ExportMiss;
 type ExportTargetDefinitionRow = ExportTargetDefinition;
@@ -287,6 +304,51 @@ function TrainingScoreSheetCard({ sheet }: { sheet: TrainingScoreSheetRow }) {
       </div>
     </article>
   );
+}
+
+function simpleTrainingHitPercentage(log: SimpleTrainingLogRow) {
+  if (log.hits === null || log.targets_fired <= 0) return null;
+  return (log.hits / log.targets_fired) * 100;
+}
+
+function SimpleTrainingLogCard({ log }: { log: SimpleTrainingLogRow }) {
+  const percentage = simpleTrainingHitPercentage(log);
+
+  return (
+    <article className="sessionItem dashboardListItem">
+      <div className="sessionContent">
+        <div className="sessionTopline compactTopline">
+          <strong>{log.discipline || "Practice log"}</strong>
+          <span className="badge badgeGreen">Practice log</span>
+        </div>
+        <div className="small muted sessionMeta compactMeta">
+          <span>{formatTrainingLogDate(log.date)}</span>
+          <span>{log.targets_fired} targets</span>
+          {log.hits !== null && <span>{log.hits} hits</span>}
+          {percentage !== null && <span>{percentage.toFixed(0)}%</span>}
+          {log.location && <span>{log.location}</span>}
+        </div>
+        {log.notes && <p className="small muted simpleTrainingNotes">{log.notes}</p>}
+      </div>
+      <div className="sessionActions">
+        <Link href={`/simple-training-logs/${log.id}/edit`} className="button secondary smallButton">Edit</Link>
+      </div>
+    </article>
+  );
+}
+
+function formatTrainingLogDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(`${value}T00:00:00`));
+}
+
+function sortTrainingHistoryItems(a: TrainingHistoryItem, b: TrainingHistoryItem) {
+  const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+  if (dateDiff !== 0) return dateDiff;
+  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 }
 
 function TrainingCard({ session, missCounts }: { session: Row; missCounts: Record<string, number> }) {
@@ -539,6 +601,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState<Row[]>([]);
   const [trainingScoreSheets, setTrainingScoreSheets] = useState<TrainingScoreSheetRow[]>([]);
+  const [simpleTrainingLogs, setSimpleTrainingLogs] = useState<SimpleTrainingLogRow[]>([]);
   const [missCounts, setMissCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -575,6 +638,13 @@ export default function DashboardPage() {
       .order("session_date", { ascending: false })
       .order("created_at", { ascending: false })
       .returns<TrainingScoreSheetRow[]>();
+    const { data: simpleLogs } = await supabase
+      .from("training_logs")
+      .select("id,date,targets_fired,hits,discipline,location,notes,source_type,created_at")
+      .eq("source_type", "simple_training")
+      .order("date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .returns<SimpleTrainingLogRow[]>();
     const counts = (misses || []).reduce<Record<string, number>>(
       (acc, miss) => {
         acc[miss.session_id] = (acc[miss.session_id] || 0) + 1;
@@ -585,6 +655,7 @@ export default function DashboardPage() {
 
     setSessions((data || []).slice().sort(sortNewestFirst));
     setTrainingScoreSheets(scoreSheets || []);
+    setSimpleTrainingLogs(simpleLogs || []);
     setMissCounts(counts);
     setLoading(false);
   }
@@ -672,8 +743,30 @@ export default function DashboardPage() {
   const results = useMemo(() => sessions.filter(isResultSession).sort(sortNewestFirst), [sessions]);
   const training = useMemo(() => sessions.filter(isTrainingSession).sort(sortNewestFirst), [sessions]);
   const visibleResults = showAllResults ? results : results.slice(0, 3);
-  const visibleTrainingScoreSheets = showAllTraining ? trainingScoreSheets : trainingScoreSheets.slice(0, 3);
-  const visibleTraining = showAllTraining ? training : training.slice(0, Math.max(3 - visibleTrainingScoreSheets.length, 0));
+  const trainingHistoryItems = useMemo<TrainingHistoryItem[]>(() => [
+    ...trainingScoreSheets.map((sheet) => ({
+      kind: "training_score_sheet" as const,
+      id: sheet.id,
+      date: sheet.session_date,
+      createdAt: sheet.created_at,
+      sheet,
+    })),
+    ...simpleTrainingLogs.map((log) => ({
+      kind: "practice_log" as const,
+      id: log.id,
+      date: log.date,
+      createdAt: log.created_at,
+      log,
+    })),
+    ...training.map((session) => ({
+      kind: "detailed_training" as const,
+      id: session.id,
+      date: displayDate(session),
+      createdAt: session.created_at,
+      session,
+    })),
+  ].sort(sortTrainingHistoryItems), [simpleTrainingLogs, training, trainingScoreSheets]);
+  const visibleTrainingHistoryItems = showAllTraining ? trainingHistoryItems : trainingHistoryItems.slice(0, 3);
 
   return (
     <main className="dashboardMain">
@@ -702,6 +795,21 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      <section className="card betaInfoPanel" aria-labelledby="closed-beta-heading">
+        <div>
+          <p className="eyebrow">Closed beta</p>
+          <h2 id="closed-beta-heading">Closed beta</h2>
+          <p>
+            You are testing an early version of Clay Performance Lab. Please report bugs, confusing screens,
+            or anything that feels slow, unclear or difficult to use during real shooting.
+          </p>
+        </div>
+        <div className="betaInfoActions">
+          {feedbackHref && <a className="button smallButton" href={feedbackHref}>Send feedback</a>}
+          <Link href="/beta/checklist" className="button secondary smallButton">Beta test checklist</Link>
+        </div>
+      </section>
 
       <PerformanceTrendCard sessions={sessions} missCounts={missCounts} />
 
@@ -739,17 +847,17 @@ export default function DashboardPage() {
       <section className="card dashboardSectionCard" aria-labelledby="training-heading">
         <div className="sectionHeader listSectionHeader">
           <div>
-            <p className="eyebrow">Practice logs</p>
+            <p className="eyebrow">Training history</p>
             <h2 id="training-heading">Training</h2>
           </div>
           <div className="sectionHeaderActions">
-            {!loading && <span className="countPill">{training.length + trainingScoreSheets.length}</span>}
+            {!loading && <span className="countPill">{trainingHistoryItems.length}</span>}
             <Link href="/training-score-sheets" className="button secondary smallButton">Manage score sheets</Link>
           </div>
         </div>
         {loading ? (
           <p>Loading...</p>
-        ) : training.length === 0 && trainingScoreSheets.length === 0 ? (
+        ) : trainingHistoryItems.length === 0 ? (
           <div className="emptyState compactEmptyState">
             <p>Create a shooting log or training score sheet to start tracking practice.</p>
             <div className="btns compactEmptyActions">
@@ -758,13 +866,16 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
-            {visibleTrainingScoreSheets.map((sheet) => (
-              <TrainingScoreSheetCard key={sheet.id} sheet={sheet} />
-            ))}
-            {visibleTraining.map((session) => (
-              <TrainingCard key={session.id} session={session} missCounts={missCounts} />
-            ))}
-            {training.length + trainingScoreSheets.length > 3 && (
+            {visibleTrainingHistoryItems.map((item) => {
+              if (item.kind === "training_score_sheet") {
+                return <TrainingScoreSheetCard key={`sheet-${item.id}`} sheet={item.sheet} />;
+              }
+              if (item.kind === "practice_log") {
+                return <SimpleTrainingLogCard key={`practice-${item.id}`} log={item.log} />;
+              }
+              return <TrainingCard key={`session-${item.id}`} session={item.session} missCounts={missCounts} />;
+            })}
+            {trainingHistoryItems.length > 3 && (
               <button type="button" className="button secondary showMoreButton" onClick={() => setShowAllTraining((value) => !value)}>
                 {showAllTraining ? "Show less" : "Show more training"}
               </button>

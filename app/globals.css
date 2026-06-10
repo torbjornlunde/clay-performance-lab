@@ -5479,3 +5479,75 @@ html, body {
 .simpleTrainingNotes {
   margin: 8px 0 0;
 }
+
+.betaInfoPanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  max-width: 860px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 14px 16px;
+  box-shadow: none;
+  border-color: rgba(216, 165, 58, 0.24);
+  background:
+    linear-gradient(135deg, rgba(216, 165, 58, 0.08), transparent 42%),
+    rgba(13, 20, 29, 0.78);
+}
+
+.betaInfoPanel h2 {
+  margin-bottom: 4px;
+  font-size: 20px;
+}
+
+.betaInfoPanel p {
+  margin: 0;
+}
+
+.betaInfoActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.betaChecklistHero {
+  align-items: center;
+}
+
+.betaChecklistCard {
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.betaChecklistList {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 22px;
+  color: var(--text);
+}
+
+.betaChecklistList li {
+  padding-left: 4px;
+  line-height: 1.45;
+}
+
+@media (max-width: 720px) {
+  .betaInfoPanel {
+    grid-template-columns: 1fr;
+    align-items: start;
+    padding: 13px 14px;
+  }
+
+  .betaInfoActions {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .betaInfoActions .button {
+    flex: 1 1 100%;
+  }
+}

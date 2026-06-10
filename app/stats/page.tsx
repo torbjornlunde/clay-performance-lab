@@ -37,7 +37,29 @@ type SimpleTrainingLog = {
   created_at: string;
 };
 
-type TrainingVolumeLog = Pick<SimpleTrainingLog, "date" | "targets_fired">;
+type TrainingScoreSheetLog = {
+  id: string;
+  title: string;
+  session_date: string;
+  location: string | null;
+  discipline: string;
+  session_type: string;
+  number_of_posts: number;
+  targets_per_post: number;
+  total_targets: number;
+  created_at: string;
+};
+
+type TrainingHistoryItem =
+  | { kind: "practice_log"; id: string; date: string; createdAt: string; log: SimpleTrainingLog }
+  | { kind: "training_score_sheet"; id: string; date: string; createdAt: string; sheet: TrainingScoreSheetLog };
+
+type TrainingVolumeLog = {
+  date: string;
+  targets_fired: number;
+  hits: number | null;
+  kind: "practice_log" | "training_score_sheet";
+};
 
 type TrainingVolumeInsights = {
   trainingTargetsThisYear: number;
@@ -47,6 +69,8 @@ type TrainingVolumeInsights = {
   trainingSessionsLast30Days: number;
   averageDaysBetweenSessions: number | null;
   daysSinceLastTrainingSession: number | null;
+  practiceLogsWithHits: number;
+  averagePracticeHitPercentage: number | null;
   insightMessages: string[];
 };
 
@@ -105,6 +129,11 @@ function formatMetricNumber(value: number | null) {
   return new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 }).format(Math.round(value));
 }
 
+function formatMetricPercentage(value: number | null) {
+  if (value === null) return "—";
+  return `${value.toFixed(0)}%`;
+}
+
 function hitPercentage(log: SimpleTrainingLog) {
   if (log.hits === null || log.targets_fired <= 0) return null;
   return (log.hits / log.targets_fired) * 100;
@@ -112,6 +141,30 @@ function hitPercentage(log: SimpleTrainingLog) {
 
 function isMinimumSimpleLog(log: SimpleTrainingLog) {
   return log.hits === null && !log.discipline && !log.location && !log.notes;
+}
+
+function sortTrainingHistoryItems(a: TrainingHistoryItem, b: TrainingHistoryItem) {
+  const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+  if (dateDiff !== 0) return dateDiff;
+  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+}
+
+function scoreSheetToVolumeLog(sheet: TrainingScoreSheetLog): TrainingVolumeLog {
+  return {
+    date: sheet.session_date,
+    targets_fired: sheet.total_targets,
+    hits: null,
+    kind: "training_score_sheet",
+  };
+}
+
+function simpleLogToVolumeLog(log: SimpleTrainingLog): TrainingVolumeLog {
+  return {
+    date: log.date,
+    targets_fired: log.targets_fired,
+    hits: log.hits,
+    kind: "practice_log",
+  };
 }
 
 function buildTrainingVolumeInsights(logs: TrainingVolumeLog[], today = new Date()): TrainingVolumeInsights {
@@ -141,7 +194,7 @@ function buildTrainingVolumeInsights(logs: TrainingVolumeLog[], today = new Date
 
   const insightMessages: string[] = [];
   if (datedLogs.length === 0) {
-    insightMessages.push("No training volume logged yet. Add a simple training log to start tracking your season.");
+    insightMessages.push("No training volume logged yet. Add a practice log or training score sheet to start tracking your season.");
   } else if (datedLogs.length === 1) {
     insightMessages.push("You have logged one training session. Add a few more sessions to see training rhythm insights.");
   } else {
@@ -164,6 +217,11 @@ function buildTrainingVolumeInsights(logs: TrainingVolumeLog[], today = new Date
     }
   }
 
+  const logsWithHits = datedLogs.filter((log) => log.hits !== null && log.targets_fired > 0);
+  const averagePracticeHitPercentage = logsWithHits.length > 0
+    ? logsWithHits.reduce((sum, log) => sum + ((log.hits || 0) / log.targets_fired) * 100, 0) / logsWithHits.length
+    : null;
+
   return {
     trainingTargetsThisYear,
     trainingSessionsThisYear,
@@ -172,6 +230,8 @@ function buildTrainingVolumeInsights(logs: TrainingVolumeLog[], today = new Date
     trainingSessionsLast30Days,
     averageDaysBetweenSessions,
     daysSinceLastTrainingSession,
+    practiceLogsWithHits: logsWithHits.length,
+    averagePracticeHitPercentage,
     insightMessages: insightMessages.slice(0, 2),
   };
 }
@@ -255,14 +315,14 @@ function TrainingVolumeInsightsCard({
         <>
           <div className="trainingVolumeMetricGrid compactTrainingVolumeGrid">
             <MetricCard label="Training targets this year" value={formatMetricNumber(insights.trainingTargetsThisYear)} />
-            <MetricCard label="Training sessions this year" value={formatMetricNumber(insights.trainingSessionsThisYear)} />
+            <MetricCard label="Training sessions/logs this year" value={formatMetricNumber(insights.trainingSessionsThisYear)} />
             <MetricCard
               label="Average targets per session"
               value={formatMetricNumber(insights.averageTargetsPerSessionThisYear)}
               helper="This calendar year"
             />
             <MetricCard label="Training targets last 30 days" value={formatMetricNumber(insights.trainingTargetsLast30Days)} />
-            <MetricCard label="Training sessions last 30 days" value={formatMetricNumber(insights.trainingSessionsLast30Days)} />
+            <MetricCard label="Training sessions/logs last 30 days" value={formatMetricNumber(insights.trainingSessionsLast30Days)} />
             <MetricCard
               label="Average days between sessions"
               value={formatMetricNumber(insights.averageDaysBetweenSessions)}
@@ -273,11 +333,16 @@ function TrainingVolumeInsightsCard({
               value={formatMetricNumber(insights.daysSinceLastTrainingSession)}
               helper={insights.daysSinceLastTrainingSession === null ? "No logged sessions yet" : undefined}
             />
+            <MetricCard
+              label="Average practice hit rate"
+              value={formatMetricPercentage(insights.averagePracticeHitPercentage)}
+              helper={insights.practiceLogsWithHits === 0 ? "Add hits to practice logs to calculate this" : `${insights.practiceLogsWithHits} practice log${insights.practiceLogsWithHits === 1 ? "" : "s"} with hits`}
+            />
             {competitionTargetsThisYear !== null && (
               <MetricCard label="Competition targets this year" value={formatMetricNumber(competitionTargetsThisYear)} />
             )}
             {totalTargetsThisYear !== null && (
-              <MetricCard label="Total targets this year" value={formatMetricNumber(totalTargetsThisYear)} />
+              <MetricCard label="Training + competition targets this year" value={formatMetricNumber(totalTargetsThisYear)} />
             )}
           </div>
 
@@ -297,7 +362,7 @@ function TrainingHistoryCard({
   loading,
   error,
 }: {
-  logs: SimpleTrainingLog[];
+  logs: TrainingHistoryItem[];
   loading: boolean;
   error: string;
 }) {
@@ -306,7 +371,7 @@ function TrainingHistoryCard({
       <div className="sectionHeader listSectionHeader">
         <div>
           <p className="eyebrow">Training history</p>
-          <h2 id="training-history-heading">Recent practice logs</h2>
+          <h2 id="training-history-heading">Recent training logs</h2>
         </div>
         <Link href="/simple-training-logs/new" className="button smallButton">Add training log</Link>
       </div>
@@ -317,29 +382,54 @@ function TrainingHistoryCard({
         <div className="error">{error}</div>
       ) : logs.length === 0 ? (
         <div className="emptyState compactEmptyState">
-          <p>No training history yet. Add a simple training log to start tracking practice volume.</p>
+          <p>No training history yet. Add a practice log or training score sheet to start tracking practice volume.</p>
           <div className="btns compactEmptyActions">
             <Link href="/simple-training-logs/new" className="button smallButton">Add training log</Link>
           </div>
         </div>
       ) : (
         <div className="trainingHistoryList">
-          {logs.map((log) => {
+          {logs.map((item) => {
+            if (item.kind === "training_score_sheet") {
+              const { sheet } = item;
+              return (
+                <article className="sessionItem dashboardListItem" key={`sheet-${sheet.id}`}>
+                  <div className="sessionContent">
+                    <div className="sessionTopline compactTopline">
+                      <strong>{sheet.title}</strong>
+                      <span className="badge badgeGreen">Training score sheet</span>
+                    </div>
+                    <div className="small muted sessionMeta compactMeta">
+                      <span>{formatTrainingDate(sheet.session_date)}</span>
+                      <span>{sheet.total_targets} targets</span>
+                      <span>{sheet.discipline}</span>
+                      {sheet.location && <span>{sheet.location}</span>}
+                    </div>
+                  </div>
+                  <div className="sessionActions simpleTrainingListActions">
+                    <Link href={`/training-score-sheets/${sheet.id}`} className="button secondary smallButton">
+                      Open
+                    </Link>
+                  </div>
+                </article>
+              );
+            }
+
+            const { log } = item;
             const percentage = hitPercentage(log);
             const isMinimumLog = isMinimumSimpleLog(log);
             return (
-              <article className="sessionItem dashboardListItem" key={log.id}>
+              <article className="sessionItem dashboardListItem" key={`practice-${log.id}`}>
                 <div className="sessionContent">
                   <div className="sessionTopline compactTopline">
-                    <strong>Training entry</strong>
-                    <span className="badge badgeGreen">Training</span>
+                    <strong>{log.discipline || "Practice log"}</strong>
+                    <span className="badge badgeGreen">Practice log</span>
                   </div>
                   <div className="small muted sessionMeta compactMeta">
                     <span>{formatTrainingDate(log.date)}</span>
                     <span>{log.targets_fired} targets</span>
                     {log.hits !== null && <span>{log.hits} hits</span>}
                     {percentage !== null && <span>{percentage.toFixed(0)}%</span>}
-                    {log.discipline && <span>{log.discipline}</span>}
                     {log.location && <span>{log.location}</span>}
                   </div>
                   {log.notes && <p className="small muted simpleTrainingNotes">{log.notes}</p>}
@@ -430,6 +520,7 @@ export default function StatsPage() {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [missCounts, setMissCounts] = useState<Record<string, number>>({});
   const [trainingLogs, setTrainingLogs] = useState<SimpleTrainingLog[]>([]);
+  const [trainingScoreSheets, setTrainingScoreSheets] = useState<TrainingScoreSheetLog[]>([]);
   const [volumeLogs, setVolumeLogs] = useState<TrainingVolumeLog[]>([]);
   const [trainingLoadError, setTrainingLoadError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -446,7 +537,7 @@ export default function StatsPage() {
     }
 
     const todayValue = isoDateValue(new Date());
-    const [sessionsResult, missesResult, recentTrainingResult, volumeTrainingResult] = await Promise.all([
+    const [sessionsResult, missesResult, recentTrainingResult, recentScoreSheetsResult, volumeTrainingResult, volumeScoreSheetsResult] = await Promise.all([
       supabase.from("sessions").select("*").order("created_at", { ascending: false }).returns<SessionRow[]>(),
       supabase.from("misses").select("session_id").returns<MissRow[]>(),
       supabase
@@ -455,15 +546,28 @@ export default function StatsPage() {
         .eq("source_type", "simple_training")
         .order("date", { ascending: false })
         .order("created_at", { ascending: false })
-        .limit(5)
+        .limit(10)
         .returns<SimpleTrainingLog[]>(),
       supabase
+        .from("training_score_sheets")
+        .select("id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,created_at")
+        .order("session_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(10)
+        .returns<TrainingScoreSheetLog[]>(),
+      supabase
         .from("training_logs")
-        .select("date,targets_fired")
+        .select("date,targets_fired,hits")
         .eq("source_type", "simple_training")
         .lte("date", todayValue)
         .order("date", { ascending: true })
-        .returns<TrainingVolumeLog[]>(),
+        .returns<SimpleTrainingLog[]>(),
+      supabase
+        .from("training_score_sheets")
+        .select("id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,created_at")
+        .lte("session_date", todayValue)
+        .order("session_date", { ascending: true })
+        .returns<TrainingScoreSheetLog[]>(),
     ]);
 
     const counts = (missesResult.data || []).reduce<Record<string, number>>((acc, miss) => {
@@ -473,14 +577,19 @@ export default function StatsPage() {
 
     setSessions(sessionsResult.data || []);
     setMissCounts(counts);
-    if (recentTrainingResult.error || volumeTrainingResult.error) {
+    if (recentTrainingResult.error || recentScoreSheetsResult.error || volumeTrainingResult.error || volumeScoreSheetsResult.error) {
       setTrainingLoadError("Training history could not be loaded right now.");
       setTrainingLogs([]);
+      setTrainingScoreSheets([]);
       setVolumeLogs([]);
     } else {
       setTrainingLoadError("");
       setTrainingLogs(recentTrainingResult.data || []);
-      setVolumeLogs(volumeTrainingResult.data || []);
+      setTrainingScoreSheets(recentScoreSheetsResult.data || []);
+      setVolumeLogs([
+        ...(volumeTrainingResult.data || []).map(simpleLogToVolumeLog),
+        ...(volumeScoreSheetsResult.data || []).map(scoreSheetToVolumeLog),
+      ]);
     }
     setLoading(false);
   }
@@ -571,6 +680,23 @@ export default function StatsPage() {
       .sort((a, b) => b.count - a.count || b.average - a.average);
   }, [chartPoints]);
 
+  const trainingHistoryItems = useMemo<TrainingHistoryItem[]>(() => [
+    ...trainingLogs.map((log) => ({
+      kind: "practice_log" as const,
+      id: log.id,
+      date: log.date,
+      createdAt: log.created_at,
+      log,
+    })),
+    ...trainingScoreSheets.map((sheet) => ({
+      kind: "training_score_sheet" as const,
+      id: sheet.id,
+      date: sheet.session_date,
+      createdAt: sheet.created_at,
+      sheet,
+    })),
+  ].sort(sortTrainingHistoryItems).slice(0, 5), [trainingLogs, trainingScoreSheets]);
+
   const volumeInsights = useMemo(() => buildTrainingVolumeInsights(volumeLogs), [volumeLogs]);
   const competitionTargetsThisYear = useMemo(() => {
     const yearStart = `${new Date().getFullYear()}-01-01`;
@@ -651,7 +777,7 @@ export default function StatsPage() {
         error={trainingLoadError}
       />
 
-      <TrainingHistoryCard logs={trainingLogs} loading={loading} error={trainingLoadError} />
+      <TrainingHistoryCard logs={trainingHistoryItems} loading={loading} error={trainingLoadError} />
 
       <div className="card statsChartCard">
         <div className="sectionHeader">
