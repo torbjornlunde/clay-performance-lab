@@ -20,8 +20,12 @@ function sortByCreatedAtDesc<T extends { created_at: string }>(items: T[]) {
 }
 
 function formatDate(value: string | null | undefined) {
-  if (!value) return "—";
+  if (!value) return "Not approved yet";
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function displayName(fullName: string | null | undefined) {
+  return fullName?.trim() || "Name missing";
 }
 
 function groupUsers(users: UserAccessProfile[], status: AccessStatus) {
@@ -198,7 +202,7 @@ export default function BetaAdminPage() {
         <div>
           <p className="eyebrow">Closed beta</p>
           <h2>Beta access approvals</h2>
-          <p>Approve signed-in users and manage exact email or full-name pre-approvals. Protected owner emails cannot be downgraded here.</p>
+          <p>Use this page to review beta users and manage access. Owner access is protected and can only be granted by exact email match.</p>
           <p className="small muted">Auth-only fields such as email confirmation and last sign-in are not shown here because they require a secure server-side Supabase admin endpoint.</p>
           {me ? (
             <p className="small muted">
@@ -248,7 +252,7 @@ export default function BetaAdminPage() {
                     <option value="admin">Admin</option>
                     <option value="owner">Owner</option>
                   </select>
-                  <p className="small muted">Owner/admin is granted only by exact email match. Protected owner entries cannot be removed here.</p>
+                  <p className="small muted">Owner/admin is granted only by exact email match. Full-name entries can approve user access only.</p>
                 </div>
                 <div>
                   <label htmlFor="accessNote">Note</label>
@@ -279,7 +283,7 @@ export default function BetaAdminPage() {
                     {accessList.map((entry) => (
                       <tr key={entry.id}>
                         <td>{entry.email || "—"}</td>
-                        <td>{entry.full_name || "—"}</td>
+                        <td>{displayName(entry.full_name)}</td>
                         <td>Approved / {entry.system_role_to_grant}</td>
                         <td>{entry.note || "—"}</td>
                         <td>{formatDate(entry.created_at)}</td>
@@ -326,7 +330,13 @@ function UserSection({
       {users.length === 0 ? (
         <div className="emptyState">No users in this group.</div>
       ) : (
-        <div className="accessTableWrap">
+        <>
+          <div className="accessCardList">
+            {users.map((user) => (
+              <UserAccessCard key={user.user_id} user={user} currentUser={currentUser} saving={saving} onUpdate={onUpdate} />
+            ))}
+          </div>
+          <div className="accessTableWrap userAccessTableWrap">
           <table className="accessTable">
             <thead>
               <tr>
@@ -354,7 +364,7 @@ function UserSection({
                 return (
                   <tr key={user.user_id}>
                     <td>{user.email || "—"}</td>
-                    <td>{user.full_name || "—"}</td>
+                    <td>{displayName(user.full_name)}</td>
                     <td><span className="badge badgeBlue">{user.access_status}</span></td>
                     <td><span className={user.system_role === "owner" ? "badge badgeGold" : "badge"}>{user.system_role}</span></td>
                     <td>{formatDate(user.created_at)}</td>
@@ -395,7 +405,65 @@ function UserSection({
             </tbody>
           </table>
         </div>
+        </>
       )}
     </section>
+  );
+}
+
+function UserAccessCard({
+  user,
+  currentUser,
+  saving,
+  onUpdate,
+}: {
+  user: UserAccessProfile;
+  currentUser: UserAccessProfile | null;
+  saving: boolean;
+  onUpdate: (user: UserAccessProfile, status: AccessStatus, role?: SystemRole) => Promise<void>;
+}) {
+  const protectedOwner = isProtectedOwnerEmail(user.email);
+  const selfOwner = userMatchesProfile(user, currentUser) && isApprovedOwner(user);
+  const lockedOwner = protectedOwner || selfOwner;
+  const lockMessage = selfOwner
+    ? "You cannot revoke your own owner access."
+    : protectedOwner
+      ? "Protected owner access cannot be downgraded or revoked."
+      : "";
+  const restoreRole = protectedOwner ? "owner" : user.system_role;
+
+  return (
+    <article className="accessUserCard">
+      <div className="accessUserCardHeader">
+        <div>
+          <h3>{displayName(user.full_name)}</h3>
+          <p className="small muted">{user.email || "No email"}</p>
+        </div>
+        <span className="badge badgeBlue">{user.access_status}</span>
+      </div>
+      <dl className="accessUserDetails">
+        <div><dt>Role</dt><dd><span className={user.system_role === "owner" ? "badge badgeGold" : "badge"}>{user.system_role}</span></dd></div>
+        <div><dt>Created</dt><dd>{formatDate(user.created_at)}</dd></div>
+        <div><dt>Approved</dt><dd>{formatDate(user.approved_at)}</dd></div>
+      </dl>
+      {lockMessage ? <p className="small muted">{lockMessage}</p> : null}
+      <div className="tableActions accessCardActions">
+        {user.access_status === "pending" ? (
+          <>
+            <button type="button" className="smallButton" disabled={saving} onClick={() => onUpdate(user, "approved", restoreRole)}>Approve</button>
+            <button type="button" className="secondary smallButton" disabled={saving || lockedOwner} onClick={() => onUpdate(user, "rejected", "user")}>Reject</button>
+          </>
+        ) : null}
+        {user.access_status === "approved" ? (
+          <>
+            <button type="button" className="secondary smallButton" disabled={saving || lockedOwner} onClick={() => onUpdate(user, "rejected", "user")}>Reject</button>
+            <button type="button" className="danger smallButton" disabled={saving || lockedOwner} onClick={() => onUpdate(user, "revoked", user.system_role)}>Revoke</button>
+          </>
+        ) : null}
+        {user.access_status === "rejected" || user.access_status === "revoked" ? (
+          <button type="button" className="smallButton" disabled={saving} onClick={() => onUpdate(user, "approved", restoreRole)}>Restore / Approve again</button>
+        ) : null}
+      </div>
+    </article>
   );
 }
