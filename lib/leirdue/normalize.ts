@@ -60,6 +60,7 @@ export function leirdueNameMatchReason(first: string | null | undefined, second:
   const foldedFirst = nordicSafeNameKey(normalizedFirst);
   const foldedSecond = nordicSafeNameKey(normalizedSecond);
   if (foldedFirst === foldedSecond) return "diacritic-insensitive match";
+  if (foldedFirst.length >= 5 && foldedSecond.length >= 5 && (foldedFirst.includes(foldedSecond) || foldedSecond.includes(foldedFirst))) return "partial/initial match";
   if (initialsMatch(normalizedFirst, normalizedSecond) || initialsMatch(normalizedSecond, normalizedFirst)) return "partial/initial match";
 
   const firstParts = nameParts(normalizedFirst);

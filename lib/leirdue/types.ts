@@ -78,6 +78,24 @@ export type LeirdueDebugParseResult = {
   candidate: LeirdueCandidate | null;
 };
 
+export type LeirdueManualLinkParseResult = {
+  url: string;
+  status: number | null;
+  ok: boolean;
+  error: string | null;
+  pageTitle: string | null;
+  eventTitle: string | null;
+  listTitle: string | null;
+  date: string | null;
+  discipline: string | null;
+  shootingGround: string | null;
+  stevneId: string | null;
+  listeId: string | null;
+  parserNotes: string[];
+  listChoices: { url: string; label: string; listeId: string | null }[];
+  candidates: LeirdueCandidate[];
+};
+
 
 export type LeirdueValidationChecklistItem = {
   label: string;

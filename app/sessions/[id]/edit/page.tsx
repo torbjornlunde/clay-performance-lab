@@ -37,6 +37,7 @@ type Session = {
   competition_date: string | null;
   own_score: number | null;
   winning_score: number | null;
+  notes: string | null;
 };
 
 type CourseSetup = {
@@ -94,6 +95,9 @@ export default function EditSessionPage() {
   const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
   const [ownScore, setOwnScore] = useState("");
   const [winningScore, setWinningScore] = useState("");
+  const [notes, setNotes] = useState("");
+  const [isResultOnlyImport, setIsResultOnlyImport] = useState(false);
+  const [advancedSetupEnabled, setAdvancedSetupEnabled] = useState(true);
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -122,7 +126,7 @@ export default function EditSessionPage() {
     const { data: baseSession, error: sessionError } = await supabase
       .from("sessions")
       .select(
-        "id,name,discipline,session_type,shooting_format,course_count,total_targets,leirdue_result_url,shooting_ground,competition_date,own_score,winning_score",
+        "id,name,discipline,session_type,shooting_format,course_count,total_targets,leirdue_result_url,shooting_ground,competition_date,own_score,winning_score,notes",
       )
       .eq("id", sessionId)
       .maybeSingle<Session>();
@@ -178,6 +182,13 @@ export default function EditSessionPage() {
       .eq("session_id", sessionId)
       .returns<CourseOverride[]>();
 
+    const resultOnlyImport = Boolean(
+      session.session_type === "Competition" &&
+        session.own_score !== null &&
+        (session.leirdue_result_url || session.notes?.toLowerCase().includes("source: leirdue_net")) &&
+        (courseRows || []).length === 0,
+    );
+
     const sporttrapSeries =
       session.sporttrap_series_count ||
       (session.discipline === "Sporttrap" && session.total_targets
@@ -227,6 +238,9 @@ export default function EditSessionPage() {
     setCompetitionDate((session.competition_date || "").slice(0, 10));
     setShootingGround(session.shooting_ground || "");
     setLeirdueResultUrl(session.leirdue_result_url || "");
+    setNotes(session.notes || "");
+    setIsResultOnlyImport(resultOnlyImport);
+    setAdvancedSetupEnabled(!resultOnlyImport);
     setOwnScore(
       session.own_score === null || session.own_score === undefined
         ? ""
@@ -320,6 +334,32 @@ export default function EditSessionPage() {
     const isLeirduesti = isOrdinaryLeirduesti(discipline);
     const targetsPerPostNumber = Number(targetsPerPost) || 10;
 
+    if (isResultOnlyImport && !advancedSetupEnabled) {
+      const { error: basicError } = await supabase
+        .from("sessions")
+        .update({
+          name: name.trim() || "Unnamed result",
+          discipline,
+          session_type: "Competition",
+          competition_date: competitionDate || null,
+          shooting_ground: shootingGround.trim() || null,
+          own_score: ownScore === "" ? null : Number(ownScore),
+          winning_score: winningScore === "" ? null : Number(winningScore),
+          leirdue_result_url: leirdueResultUrl.trim() || null,
+          notes: notes.trim() || null,
+        })
+        .eq("id", sessionId);
+
+      if (basicError) {
+        setErr(basicError.message);
+        setSaving(false);
+        return;
+      }
+
+      router.push(`/sessions/${sessionId}`);
+      return;
+    }
+
     const { error: sessionError } = await supabase
       .from("sessions")
       .update({
@@ -356,6 +396,7 @@ export default function EditSessionPage() {
         own_score: ownScore === "" ? null : Number(ownScore),
         winning_score: winningScore === "" ? null : Number(winningScore),
         leirdue_result_url: leirdueResultUrl.trim() || null,
+        notes: notes.trim() || null,
       })
       .eq("id", sessionId);
 
@@ -461,9 +502,12 @@ export default function EditSessionPage() {
           <h2>Edit setup</h2>
           {err && <div className="error">{err}</div>}
           <div className="btns">
-            <Link className="button secondary" href="/dashboard">
-              Dashboard
-            </Link>
+          <Link className="button secondary" href="/dashboard">
+            Dashboard
+          </Link>
+          <Link className="button secondary" href="/results">
+            Back to results
+          </Link>
           </div>
         </div>
       </main>
@@ -473,7 +517,12 @@ export default function EditSessionPage() {
   return (
     <main>
       <div className="card">
-        <h2>Edit setup</h2>
+        <h2>{isResultOnlyImport ? "Edit result details" : "Edit setup"}</h2>
+        {isResultOnlyImport ? (
+          <div className="notice small">
+            This is a result-only Leirdue.net import. You can update the basic result details without adding courses, layouts, FITASC schemes or detailed misses.
+          </div>
+        ) : null}
         <label>Session name</label>
         <input
           value={name}
@@ -522,7 +571,7 @@ export default function EditSessionPage() {
               <option>Competition</option>
             </select>
           </div>
-          {isCompactDiscipline(discipline) && (
+          {(!isResultOnlyImport || advancedSetupEnabled) && isCompactDiscipline(discipline) && (
             <div>
               <label>Shooting format</label>
               <select
@@ -566,7 +615,21 @@ export default function EditSessionPage() {
             </div>
           </div>
         )}
-        {discipline === "Sporttrap" && (
+        <label>Notes</label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Optional notes"
+        />
+        {isResultOnlyImport ? (
+          <details className="optionalDetails advancedSetupDetails" open={advancedSetupEnabled} onToggle={(event) => setAdvancedSetupEnabled(event.currentTarget.open)}>
+            <summary>Advanced shooting setup</summary>
+            <p className="small muted">
+              Optional. Open this only if you want to turn this result-only entry into a detailed session with courses, layouts or target setup.
+            </p>
+          </details>
+        ) : null}
+        {(!isResultOnlyImport || advancedSetupEnabled) && discipline === "Sporttrap" && (
           <div className="subcard">
             <h3>Sporttrap setup</h3>
             <p className="small muted">
@@ -599,7 +662,7 @@ export default function EditSessionPage() {
             </select>
           </div>
         )}
-        {isCompactDiscipline(discipline) && (
+        {(!isResultOnlyImport || advancedSetupEnabled) && isCompactDiscipline(discipline) && (
           <>
             <label>Number of courses/layouts</label>
             <select
@@ -734,7 +797,7 @@ export default function EditSessionPage() {
             ))}
           </>
         )}
-        {isOrdinaryLeirduesti(discipline) && (
+        {(!isResultOnlyImport || advancedSetupEnabled) && isOrdinaryLeirduesti(discipline) && (
           <div className="subcard">
             <h3>Leirduesti setup</h3>
             <p className="small muted">
@@ -781,13 +844,16 @@ export default function EditSessionPage() {
         {err && <div className="error">{err}</div>}
         <div className="btns">
           <button onClick={save} disabled={saving || !sessionLoaded || !loaded}>
-            {saving ? "Saving..." : "Save setup"}
+            {saving ? "Saving..." : isResultOnlyImport && !advancedSetupEnabled ? "Save result details" : "Save setup"}
           </button>
           <Link
             className="button secondary"
             href={sessionId ? `/sessions/${sessionId}` : "/dashboard"}
           >
-            Cancel
+            Back to result
+          </Link>
+          <Link className="button secondary" href="/results">
+            Back to results
           </Link>
         </div>
       </div>
