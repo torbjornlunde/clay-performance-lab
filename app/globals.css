@@ -5338,6 +5338,53 @@ html, body {
   overflow-wrap: anywhere;
 }
 
+.manualFoundSummary,
+.importSuccessCard {
+  overflow-wrap: anywhere;
+}
+
+.manualFoundGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.manualFoundGrid span {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  min-width: 0;
+}
+
+.likelyMatchCallout {
+  margin-top: 10px;
+}
+
+.selectableResultCard {
+  border: 1px solid var(--line);
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.selectedResultCard {
+  border-color: var(--gold2);
+  background: rgba(216, 165, 58, 0.12);
+}
+
+.selectedResultButton {
+  background: var(--gold2);
+  color: #15110a;
+  border-color: var(--gold2);
+  font-weight: 900;
+}
+
+.resultShooterLine strong {
+  font-size: 17px;
+}
+
 .compactCandidateRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -5418,6 +5465,10 @@ html, body {
 @media (max-width: 720px) {
   .compactSummaryGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .manualFoundGrid {
+    grid-template-columns: 1fr;
   }
 
   .compactCandidateRow {

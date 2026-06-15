@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
@@ -17,6 +17,8 @@ const MAX_EMPTY_AUTO_BATCHES = 2;
 const BATCH_TIMEOUT_MS = 35_000;
 
 type EditableCandidate = LeirdueCandidate & { selected: boolean; localId: string; saveStatus?: "saved" | "duplicate" | "error"; saveMessage?: string };
+
+type SavedImportSummary = { id?: string; eventName: string; date: string | null; score: string };
 
 type SaveResponse = {
   results?: { candidate: LeirdueCandidate; status: "saved" | "duplicate" | "error"; id?: string; message?: string; duplicateMatches?: LeirdueDuplicateMatch[] }[];
@@ -263,18 +265,14 @@ function ReviewAction({ candidate, update }: { candidate: EditableCandidate; upd
   if (candidate.duplicateStatus === "possible" && !candidate.allowDuplicateSave) {
     return <button type="button" className="secondary smallButton" onClick={() => update("allowDuplicateSave", true)}>Review duplicate</button>;
   }
-  return (
-    <label className="checkboxLabel compactImportToggle">
-      <input type="checkbox" checked={candidate.selected && selectable} disabled={!selectable} onChange={(event) => update("selected", event.target.checked)} />
-      <span>{candidate.selected ? "Import" : candidate.category === "review" || candidate.confidence === "low" ? "Review" : "Skip"}</span>
-    </label>
-  );
+  return <button type="button" className={candidate.selected ? "smallButton selectedResultButton" : "secondary smallButton"} disabled={!selectable} onClick={() => update("selected", !candidate.selected)}>{candidate.selected ? "Selected" : "Select result"}</button>;
 }
 
 function CandidateCard({ candidate, shooterName, onChange }: { candidate: EditableCandidate; shooterName: string; onChange: (candidate: EditableCandidate) => void }) {
   const percent = performance(candidate);
   const sourceIds = candidateSourceIds(candidate);
   const warnings = candidateWarnings(candidate);
+  const likelyLabel = candidate.shooterMatchStatus === "matched_to_you" ? "Likely match" : candidate.shooterMatchStatus === "possible_match" ? "Possible match" : null;
 
   function update<Key extends keyof EditableCandidate>(key: Key, value: EditableCandidate[Key]) {
     onChange({ ...candidate, [key]: value, saveStatus: undefined, saveMessage: undefined });
@@ -285,16 +283,17 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
   }
 
   return (
-    <article className={`candidateCard compactCandidateCard ${candidate.category === "control" ? "secondaryCandidateCard" : ""}`}>
+    <article className={`candidateCard compactCandidateCard selectableResultCard ${candidate.selected ? "selectedResultCard" : ""} ${candidate.category === "control" ? "secondaryCandidateCard" : ""}`}>
       <div className="compactCandidateRow">
         <div className="compactCandidateMain">
-          <div className="compactCandidateLine"><strong>{formatDate(candidate.date)}</strong><span>·</span><strong>{candidate.name || candidate.shootingGround || "Unknown event"}</strong></div>
-          <div className="compactCandidateLine"><span>{candidate.discipline || "Unknown discipline"}</span><span>·</span><span>{candidate.shooterName || shooterName || "Unknown shooter"}</span></div>
-          <div className="compactCandidateLine scoreLine"><strong>{candidate.ownScore ?? "?"}/{candidate.maxScore ?? candidate.totalTargets ?? "?"}</strong><span>·</span><span>{confidenceLabel(candidate)}</span></div>
+          {likelyLabel ? <div className="compactCandidateLine"><span className={`badge ${likelyLabel === "Likely match" ? "badgeGreen" : "badgeGold"}`}>{likelyLabel}</span></div> : null}
+          <div className="compactCandidateLine resultShooterLine"><strong>{candidate.shooterName || shooterName || "Unknown shooter"}</strong></div>
+          <div className="compactCandidateLine scoreLine"><strong>{candidate.ownScore ?? "?"}/{candidate.maxScore ?? candidate.totalTargets ?? "?"}</strong><span>·</span><span>{candidate.placement ? `Place ${candidate.placement}` : "Placement unknown"}</span></div>
+          <div className="compactCandidateLine"><span>{candidate.shooterClass ? `Class ${candidate.shooterClass}` : "Class unknown"}</span><span>·</span><span>{candidate.shootingGround || "Club unknown"}</span></div>
+          <div className="compactCandidateLine"><span>{candidate.discipline || "Unknown discipline"}</span><span>·</span><span>{formatDate(candidate.date)}</span></div>
         </div>
         <div className="compactCandidateBadges">
           <span className={`badge ${statusBadgeClass(candidate)}`}>{reviewStatusLabel(candidate)}</span>
-          <span className={`badge ${confidenceBadgeClass(candidate)}`}>{confidenceLabel(candidate)}</span>
           {candidate.duplicateStatus ? <span className={`badge ${candidate.duplicateStatus === "new" ? "badgeGreen" : candidate.duplicateStatus === "possible" ? "badgeGold" : "badgeBlue"}`}>{duplicateLabel(candidate)}</span> : null}
           {candidate.saveStatus === "saved" ? <span className="badge badgeGreen">Saved</span> : null}
           {candidate.saveStatus === "error" ? <span className="badge danger">Error</span> : null}
@@ -386,6 +385,44 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
       </details>
       {candidate.saveMessage ? <div className={candidate.saveStatus === "error" ? "error" : "notice"}>{candidate.saveMessage}</div> : null}
     </article>
+  );
+}
+
+function ManualImportSummaryCard({ candidates, year }: { candidates: EditableCandidate[]; year: string }) {
+  const visible = candidates.filter(visibleImportCandidate);
+  if (visible.length === 0) return null;
+  const first = visible[0];
+  const likely = visible.find((candidate) => candidate.shooterMatchStatus === "matched_to_you") || visible.find((candidate) => candidate.shooterMatchStatus === "possible_match");
+  const sourceIds = candidateSourceIds(first);
+
+  return (
+    <section className="card manualFoundSummary">
+      <p className="eyebrow">Review step</p>
+      <h2>We found this event</h2>
+      <div className="manualFoundGrid">
+        <span><strong>Event</strong>{first.name || "Unknown event"}</span>
+        <span><strong>Date</strong>{formatDate(first.date)}</span>
+        <span><strong>Discipline / list</strong>{first.discipline || first.listType || "Unknown list"}</span>
+        <span><strong>Source</strong>Leirdue.net</span>
+        <span><strong>Results found</strong>{visible.length}</span>
+        <span><strong>Year</strong>{year}</span>
+      </div>
+      {likely ? (
+        <div className={likely.shooterMatchStatus === "matched_to_you" ? "success likelyMatchCallout" : "notice likelyMatchCallout"}>
+          <strong>{likely.shooterMatchStatus === "matched_to_you" ? "Likely match" : "Possible match"}:</strong>{" "}
+          {likely.shooterName || "Unknown shooter"} — {likely.ownScore ?? "?"}/{likely.totalTargets ?? likely.maxScore ?? "?"}
+        </div>
+      ) : (
+        <div className="notice likelyMatchCallout">
+          <strong>Select your result below.</strong> We could not confidently pick one row, so choose the shooter row that belongs to you before importing.
+        </div>
+      )}
+      <details className="candidateDetails">
+        <summary>Source details</summary>
+        <p className="small muted">Source URL: <a href={first.leirdueUrl} target="_blank" rel="noreferrer">{first.leirdueUrl}</a></p>
+        <p className="small muted">stevne_id: {sourceIds.stevneId || "unknown"} · liste_id: {sourceIds.listeId || "unknown"}</p>
+      </details>
+    </section>
   );
 }
 
@@ -575,6 +612,23 @@ export default function LeirdueImportPage() {
   const [leirdueBatchNumber, setLeirdueBatchNumber] = useState(0);
   const [leirdueVisibleCandidatesCount, setLeirdueVisibleCandidatesCount] = useState(0);
   const [leirdueTotalListeIdScanned, setLeirdueTotalListeIdScanned] = useState(0);
+  const [savedImport, setSavedImport] = useState<SavedImportSummary | null>(null);
+  const [manualReviewActive, setManualReviewActive] = useState(false);
+
+  useEffect(() => {
+    async function loadShooterName() {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+      const { data } = await supabase
+        .from("shooter_profiles")
+        .select("shooter_name")
+        .eq("user_id", userData.user.id)
+        .maybeSingle<{ shooter_name: string | null }>();
+      const profileName = data?.shooter_name?.trim();
+      if (profileName) setShooterName((current) => current || profileName);
+    }
+    loadShooterName();
+  }, []);
 
   const groupedCandidates = useMemo(() => {
     const sorted = sortCandidatesForReview(candidates);
@@ -687,12 +741,15 @@ export default function LeirdueImportPage() {
   async function fetchManualLink() {
     setError("");
     setSuccess("");
+    setSavedImport(null);
+    setManualListChoices([]);
+    setManualReviewActive(false);
     if (!sourceUrl.trim()) {
       setError("Please paste a valid Leirdue.net result or event link.");
       return;
     }
     setSearching(true);
-    setSearchStatus("Fetching the pasted Leirdue.net link...");
+    setSearchStatus("Looking for results on the pasted Leirdue.net link...");
     setSearchProgress(20);
     try {
       const response = await fetch("/api/leirdue/parse-link", {
@@ -702,7 +759,7 @@ export default function LeirdueImportPage() {
       });
       const data = (await response.json()) as LinkParseResponse;
       if (!response.ok || !data.ok) {
-        setError(data.error || "We could not read results from this Leirdue.net link. Please check the link or try another result list.");
+        setError(data.error || "We could not find a clear result from this link. Check that the link points to a Leirdue.net result page, or try another result list from the same event.");
         return;
       }
       if (data.listChoices.length > 0 && data.candidates.length === 0) {
@@ -719,9 +776,10 @@ export default function LeirdueImportPage() {
         warnings: Array.from(new Set([...(candidate.warnings || []), "Manual link import: select the correct shooter row before saving."])),
       }));
       await setReviewedCandidates(mergeCandidates(candidates, parsedCandidates));
-      setSuccess(`Fetched ${data.candidates.length} parsed result row${data.candidates.length === 1 ? "" : "s"} from the Leirdue.net link. Review and select the correct shooter before saving.`);
+      setManualReviewActive(true);
+      setSuccess(`Found ${data.candidates.length} result row${data.candidates.length === 1 ? "" : "s"}. Select your result below.`);
     } catch {
-      setError("We could not read results from this Leirdue.net link. Please check the link or try another result list.");
+      setError("We could not find a clear result from this link. Check that the link points to a Leirdue.net result page, or try another result list from the same event.");
     } finally {
       setSearching(false);
       setSearchStatus("");
@@ -777,6 +835,7 @@ export default function LeirdueImportPage() {
       setCandidates([]);
       setDebug(null);
       setContinuationToken(null);
+      setManualReviewActive(false);
     }
 
     try {
@@ -879,6 +938,7 @@ export default function LeirdueImportPage() {
   async function saveSelected() {
     setError("");
     setSuccess("");
+    setSavedImport(null);
     const selected = candidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate) && canSelectCandidate(candidate) && (candidate.duplicateStatus !== "possible" || candidate.allowDuplicateSave));
     if (selected.length === 0) {
       setError("Select at least one candidate to save.");
@@ -925,7 +985,18 @@ export default function LeirdueImportPage() {
 
     const saved = data.results.filter((result) => result.status === "saved").length;
     const duplicates = data.results.filter((result) => result.status === "duplicate").length;
-    setSuccess(`${saved} result${saved === 1 ? "" : "s"} saved. ${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped.`);
+    const firstSaved = data.results.find((result) => result.status === "saved");
+    if (firstSaved) {
+      setSavedImport({
+        id: firstSaved.id,
+        eventName: firstSaved.candidate.name,
+        date: firstSaved.candidate.date,
+        score: `${firstSaved.candidate.ownScore ?? "?"}/${firstSaved.candidate.totalTargets ?? firstSaved.candidate.maxScore ?? "?"}`,
+      });
+      setSuccess("Result imported.");
+    } else {
+      setSuccess(`${saved} result${saved === 1 ? "" : "s"} imported. ${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped.`);
+    }
   }
 
   return (
@@ -945,13 +1016,12 @@ export default function LeirdueImportPage() {
         <input value={shooterName} onChange={(event) => setShooterName(event.target.value)} placeholder="Enter shooter name" required />
 
         <div className="manualLinkImportPanel">
-          <p className="eyebrow">Fallback import</p>
           <h3>Import from Leirdue.net link</h3>
-          <p className="small muted">Paste a direct Leirdue.net event or result URL. A result-list URL with <code>liste_id</code> works best. The app will fetch only this link, show parsed rows for review, and save only after you confirm.</p>
+          <p className="small muted">Paste a Leirdue.net result link and we’ll try to find your result. You will review everything before anything is imported.</p>
         </div>
 
         <label>Leirdue.net URL</label>
-        <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://www.leirdue.net/?liste_id=...&meny=resultater&stevne=..." />
+        <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://www.leirdue.net/?stevne=..." />
 
         <label>Year</label>
         <input value={year} onChange={(event) => setYear(event.target.value)} type="number" min="1990" max={new Date().getFullYear() + 1} required />
@@ -971,7 +1041,16 @@ export default function LeirdueImportPage() {
         </fieldset>
 
         {error ? <div className="error">{error}</div> : null}
-        {success ? <div className="success">{success} {success.includes("saved") ? <Link href="/stats">Open Stats</Link> : null}</div> : null}
+        {savedImport ? (
+          <div className="success importSuccessCard">
+            <strong>Result imported</strong>
+            <p>{savedImport.eventName} · {formatDate(savedImport.date)} · {savedImport.score}</p>
+            <div className="btns compactDetailActions">
+              {savedImport.id ? <Link className="button smallButton" href={`/sessions/${savedImport.id}`}>Open result</Link> : null}
+              <button type="button" className="secondary smallButton" onClick={() => { setSourceUrl(""); setCandidates([]); setSavedImport(null); setSuccess(""); }}>Import another Leirdue link</button>
+            </div>
+          </div>
+        ) : success ? <div className="success">{success} {success.includes("saved") ? <Link href="/stats">Open Stats</Link> : null}</div> : null}
         {searching || searchStatus ? (
           <div className="searchProgressPanel" aria-live="polite">
             {searching ? <p className="small">This search can take a few minutes. Do not close or refresh the page while we fetch results from Leirdue.net.</p> : null}
@@ -1002,7 +1081,7 @@ export default function LeirdueImportPage() {
 
         <div className="btns">
           <button disabled={searching || disciplines.length === 0}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
-          <button type="button" className="secondary" disabled={searching || !sourceUrl.trim()} onClick={fetchManualLink}>{searching ? "Fetching..." : "Fetch results"}</button>
+          <button type="button" className="secondary" disabled={searching || !sourceUrl.trim()} onClick={fetchManualLink}>{searching ? "Finding..." : "Find result"}</button>
           {sourceUrl.trim() && shooterName.trim() ? <button type="button" className="secondary" disabled={searching} onClick={parseDirectUrl}>Parse for shooter name</button> : null}
           {continuationToken && !searching ? <button type="button" className="secondary" onClick={continueSearch}>Continue search</button> : null}
           <Link className="button secondary" href="/results/new">Add result manually</Link>
@@ -1012,6 +1091,8 @@ export default function LeirdueImportPage() {
 
       <CoverageDiagnostics debug={debug} groupedCounts={{ confirmed: groupedCandidates.confirmed.length, possible: groupedCandidates.possible.length, alreadyImported: groupedCandidates.alreadyImported.length, ignored: groupedCandidates.ignored.length }} />
       <DebugDetails debug={debug} candidatesFound={candidates.length} />
+
+      {manualReviewActive ? <ManualImportSummaryCard candidates={[...groupedCandidates.confirmed, ...groupedCandidates.possible]} year={year} /> : null}
 
       {candidates.length > 0 ? (
         <div className="card importSummaryCard">
@@ -1030,7 +1111,7 @@ export default function LeirdueImportPage() {
             <span><strong>{groupedCandidates.ignored.length}</strong> Ignored/failed</span>
           </div>
           <div className="btns">
-            <button onClick={saveSelected} disabled={saving || checkingDuplicates || selectedCount === 0}>{saving ? "Saving..." : "Save selected candidates"}</button>
+            <button onClick={saveSelected} disabled={saving || checkingDuplicates || selectedCount === 0}>{saving ? "Importing..." : selectedCount === 1 ? "Import selected result" : "Import selected results"}</button>
             <Link href="/stats" className="button secondary">Stats</Link>
           </div>
         </div>
