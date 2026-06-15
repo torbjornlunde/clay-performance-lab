@@ -16,6 +16,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
   const [mode, setMode] = useState<LoginMode>("signIn");
   const [msg, setMsg] = useState("");
   const [messageKind, setMessageKind] = useState<MessageKind>("info");
@@ -72,10 +73,23 @@ export default function LoginPage() {
     }
 
     const normalizedEmail = email.trim();
+    const trimmedFullName = fullName.trim();
+
+    if (mode === "signUp" && !trimmedFullName) {
+      setMsg("Full name is required.");
+      setMessageKind("error");
+      setSubmitting(false);
+      return;
+    }
+
     const res =
       mode === "signIn"
         ? await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
-        : await supabase.auth.signUp({ email: normalizedEmail, password });
+        : await supabase.auth.signUp({
+            email: normalizedEmail,
+            password,
+            options: { data: { full_name: trimmedFullName, name: trimmedFullName, display_name: trimmedFullName } },
+          });
 
     setSubmitting(false);
 
@@ -90,6 +104,7 @@ export default function LoginPage() {
       setMessageKind("success");
       setMode("signIn");
       setPassword("");
+      setFullName("");
       return;
     }
 
@@ -122,6 +137,13 @@ export default function LoginPage() {
 
         <label htmlFor="email">Email</label>
         <input id="email" value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="email" />
+
+        {isSignUp && (
+          <>
+            <label htmlFor="fullName">Full name</label>
+            <input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required />
+          </>
+        )}
 
         {!isForgotPassword && (
           <>

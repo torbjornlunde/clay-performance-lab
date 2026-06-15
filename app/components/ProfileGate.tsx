@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase/client";
 const ONBOARDING_PROFILE_PATH = "/onboarding/profile";
 const BETA_ACCESS_PATH = "/beta/access";
 const BETA_ADMIN_PATH = "/beta/admin";
+const COMPLETE_PROFILE_PATH = "/complete-profile";
 
 function isPublicPath(pathname: string) {
   return pathname === "/" || pathname === "/login";
@@ -55,7 +56,36 @@ export default function ProfileGate({ children }: { children: React.ReactNode })
 
       if (!active) return;
 
-      if (accessError || accessProfile?.access_status !== "approved") {
+      if (accessError) {
+        if (!isBetaBlockedPath(currentPath)) {
+          router.replace(BETA_ACCESS_PATH);
+          setReady(false);
+          return;
+        }
+        setReady(true);
+        return;
+      }
+
+      const hasFullName = Boolean(accessProfile?.full_name?.trim());
+      const managesBetaAccess = canManageBetaAccess(accessProfile);
+
+      if (!hasFullName && !managesBetaAccess) {
+        if (currentPath !== COMPLETE_PROFILE_PATH) {
+          router.replace(COMPLETE_PROFILE_PATH);
+          setReady(false);
+          return;
+        }
+        setReady(true);
+        return;
+      }
+
+      if (currentPath === COMPLETE_PROFILE_PATH) {
+        router.replace(accessProfile?.access_status === "approved" ? "/dashboard" : BETA_ACCESS_PATH);
+        setReady(false);
+        return;
+      }
+
+      if (accessProfile?.access_status !== "approved") {
         if (!isBetaBlockedPath(currentPath)) {
           router.replace(BETA_ACCESS_PATH);
           setReady(false);

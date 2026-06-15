@@ -5555,3 +5555,77 @@ html, body {
     flex: 1 1 100%;
   }
 }
+
+.accessCardList {
+  display: none;
+}
+
+.accessUserCard {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(12, 18, 27, 0.78);
+}
+
+.accessUserCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.accessUserCardHeader h3 {
+  margin: 0 0 3px;
+  font-size: 18px;
+}
+
+.accessUserDetails {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.accessUserDetails div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid rgba(132, 153, 178, 0.16);
+  padding-top: 8px;
+}
+
+.accessUserDetails dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.accessUserDetails dd {
+  margin: 0;
+  color: var(--text);
+  text-align: right;
+}
+
+@media (max-width: 720px) {
+  .accessCardList {
+    display: grid;
+    gap: 12px;
+  }
+
+  .userAccessTableWrap {
+    display: none;
+  }
+
+  .accessCardActions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .accessCardActions button {
+    width: 100%;
+  }
+}
