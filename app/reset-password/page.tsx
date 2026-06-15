@@ -4,12 +4,16 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 
+const INVALID_RESET_LINK_MESSAGE =
+  "This reset link is invalid or has expired. Please request a new password reset link.";
+
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [msg, setMsg] = useState("");
   const [success, setSuccess] = useState(false);
   const [loadingSession, setLoadingSession] = useState(true);
+  const [hasRecoverySession, setHasRecoverySession] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -20,15 +24,19 @@ export default function ResetPasswordPage() {
       const code = params.get("code");
 
       if (code) {
-        await supabase.auth.exchangeCodeForSession(code);
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error && mounted) {
+          setMsg(INVALID_RESET_LINK_MESSAGE);
+        }
       }
 
       const { data } = await supabase.auth.getSession();
       if (!mounted) return;
 
       if (!data.session) {
-        setMsg("Open the password reset link from your email again, then choose a new password.");
+        setMsg(INVALID_RESET_LINK_MESSAGE);
       }
+      setHasRecoverySession(Boolean(data.session));
       setLoadingSession(false);
     }
 
@@ -88,7 +96,7 @@ export default function ResetPasswordPage() {
           onChange={(event) => setPassword(event.target.value)}
           type="password"
           autoComplete="new-password"
-          disabled={loadingSession || submitting}
+          disabled={loadingSession || submitting || !hasRecoverySession}
         />
 
         <label htmlFor="confirmPassword">Confirm new password</label>
@@ -98,14 +106,14 @@ export default function ResetPasswordPage() {
           onChange={(event) => setConfirmPassword(event.target.value)}
           type="password"
           autoComplete="new-password"
-          disabled={loadingSession || submitting}
+          disabled={loadingSession || submitting || !hasRecoverySession}
         />
 
         {loadingSession && <div className="notice">Checking reset link...</div>}
         {msg && <div className={success ? "success" : "error"}>{msg}</div>}
 
         <div className="btns stackedOnMobile">
-          <button type="submit" disabled={loadingSession || submitting}>
+          <button type="submit" disabled={loadingSession || submitting || !hasRecoverySession}>
             {submitting ? "Saving..." : "Save new password"}
           </button>
           <Link href="/login" className="button secondary">
