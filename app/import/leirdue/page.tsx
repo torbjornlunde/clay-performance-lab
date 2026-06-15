@@ -51,9 +51,14 @@ function isLowQualitySummaryCandidate(candidate: LeirdueCandidate) {
 }
 
 function visibleImportCandidate(candidate: EditableCandidate) {
+  if (isManualLinkCandidate(candidate)) return candidate.ownScore !== null && candidate.totalTargets !== null;
   if (candidate.category === "recommended") return !isLowQualitySummaryCandidate(candidate);
   if (candidate.category === "review") return candidate.ownScore !== null && candidate.totalTargets !== null && !isLowQualitySummaryCandidate(candidate);
   return false;
+}
+
+function isManualLinkCandidate(candidate: LeirdueCandidate) {
+  return /Manual link import parsed row/i.test(candidate.notes || "");
 }
 
 function candidateSelectedByDefault(candidate: LeirdueCandidate) {
@@ -128,7 +133,7 @@ function canSelectCandidate(candidate: EditableCandidate) {
 }
 
 function candidateMergeKey(candidate: LeirdueCandidate) {
-  return [candidateEventId(candidate), candidate.date || "no-date", candidate.ownScore ?? "?", candidate.totalTargets ?? "?"].join("|");
+  return [candidateEventId(candidate), candidate.date || "no-date", candidate.shooterName || "unknown-shooter", candidate.placement ?? "no-place", candidate.ownScore ?? "?", candidate.totalTargets ?? "?"].join("|");
 }
 
 function candidateQualityRank(candidate: LeirdueCandidate) {
@@ -238,6 +243,7 @@ function reviewStatusLabel(candidate: EditableCandidate) {
   if (candidate.saveStatus === "error") return "Failed";
   if (candidate.duplicateStatus === "exact" || candidate.alreadyImported) return "Already imported";
   if (candidate.duplicateStatus === "possible") return "Possible duplicate";
+  if (isManualLinkCandidate(candidate) && candidate.ownScore !== null && candidate.totalTargets !== null) return candidate.shooterMatchStatus === "matched_to_you" ? "Likely match" : "Selectable result";
   if (candidate.category === "recommended") return "Confirmed match";
   if (candidate.category === "review") return "Possible match";
   return "Ignored / not matched";
@@ -246,6 +252,7 @@ function reviewStatusLabel(candidate: EditableCandidate) {
 function statusBadgeClass(candidate: EditableCandidate) {
   if (candidate.saveStatus === "error") return "danger";
   if (candidate.duplicateStatus === "exact" || candidate.alreadyImported) return "badgeBlue";
+  if (isManualLinkCandidate(candidate) && candidate.ownScore !== null && candidate.totalTargets !== null) return candidate.shooterMatchStatus === "matched_to_you" ? "badgeGreen" : "badgeGold";
   if (candidate.duplicateStatus === "possible" || candidate.category === "review") return "badgeGold";
   if (candidate.category === "recommended") return "badgeGreen";
   return "badgeBlue";
@@ -259,6 +266,7 @@ function confidenceBadgeClass(candidate: EditableCandidate) {
 function candidateReason(candidate: EditableCandidate) {
   if (candidate.duplicateStatus === "exact" || candidate.alreadyImported) return "Already imported from Leirdue.net or matching saved result.";
   if (candidate.duplicateStatus === "possible") return candidate.duplicateMatches?.[0]?.reason || "Possible duplicate.";
+  if (isManualLinkCandidate(candidate) && candidate.ownScore !== null && candidate.totalTargets !== null) return "Parsed from the pasted result list. Select it if this is your result.";
   if (candidate.shooterMatchStatus === "unmatched") return "Shooter name did not match.";
   if (candidate.shooterMatchStatus === "possible_match") return "Low confidence shooter-name match.";
   if (!candidate.date) return "Missing date.";
@@ -648,14 +656,15 @@ export default function LeirdueImportPage() {
     const sorted = sortCandidatesForReview(candidates);
     return {
       confirmed: sorted.filter((candidate) => candidate.category === "recommended" && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported),
-      possible: sorted.filter((candidate) => candidate.category === "review" && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported),
+      possible: sorted.filter((candidate) => (candidate.category === "review" || isManualLinkCandidate(candidate)) && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported),
       alreadyImported: sorted.filter((candidate) => candidate.duplicateStatus === "exact" || candidate.alreadyImported),
       ignored: sorted.filter((candidate) => candidate.duplicateStatus !== "exact" && !candidate.alreadyImported && !visibleImportCandidate(candidate)),
     };
   }, [candidates]);
   const reviewableCount = groupedCandidates.confirmed.length + groupedCandidates.possible.length;
   const hiddenFromNormalListCount = groupedCandidates.ignored.length;
-  const manualReviewCandidates = useMemo(() => sortCandidatesForReview([...groupedCandidates.confirmed, ...groupedCandidates.possible]), [groupedCandidates.confirmed, groupedCandidates.possible]);
+  const manualReviewCandidates = useMemo(() => sortCandidatesForReview(candidates.filter((candidate) => isManualLinkCandidate(candidate) && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported)), [candidates]);
+  const manualAlreadyImportedCandidates = useMemo(() => sortCandidatesForReview(candidates.filter((candidate) => isManualLinkCandidate(candidate) && (candidate.duplicateStatus === "exact" || candidate.alreadyImported))), [candidates]);
   const manualBestCandidate = manualReviewCandidates.find((candidate) => candidate.shooterMatchStatus === "matched_to_you") || manualReviewCandidates.find((candidate) => candidate.shooterMatchStatus === "possible_match") || manualReviewCandidates[0] || null;
   const manualOtherCandidates = manualBestCandidate ? manualReviewCandidates.filter((candidate) => candidate.localId !== manualBestCandidate.localId) : manualReviewCandidates;
 
@@ -1143,7 +1152,7 @@ export default function LeirdueImportPage() {
         </div>
       ) : null}
 
-      {reviewableCount === 0 && !searching && (error || success) ? (
+      {reviewableCount === 0 && !manualReviewActive && !searching && (error || success) ? (
         <div className="card">
           <h3>No importable results found</h3>
           <p>We did not find confirmed or possible matches for {year}. Try a direct Leirdue result list URL, check the shooter-name spelling, broaden the discipline filters, or add the result manually.</p>
@@ -1176,6 +1185,21 @@ export default function LeirdueImportPage() {
             <span className="countPill">{manualOtherCandidates.length}</span>
           </summary>
           {manualOtherCandidates.map((candidate) => (
+            <CandidateCard key={candidate.localId} candidate={candidate} shooterName={shooterName} onChange={updateCandidate} />
+          ))}
+        </details>
+      ) : null}
+
+      {manualReviewActive && manualAlreadyImportedCandidates.length > 0 ? (
+        <details className="sessionGroup ignoredCandidatesGroup">
+          <summary className="groupHeader">
+            <div>
+              <h3>Already imported results from this list</h3>
+              <p className="small muted">These rows appear to already exist in your results and are not included in the import action.</p>
+            </div>
+            <span className="countPill">{manualAlreadyImportedCandidates.length}</span>
+          </summary>
+          {manualAlreadyImportedCandidates.map((candidate) => (
             <CandidateCard key={candidate.localId} candidate={candidate} shooterName={shooterName} onChange={updateCandidate} />
           ))}
         </details>
