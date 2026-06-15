@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
 
 type ResultFilter = "all" | "competition" | "imported" | "manual" | "draft";
@@ -24,7 +25,7 @@ type SessionRow = {
   notes: string | null;
 };
 
-type MissRow = { session_id: string };
+type MissRow = { session_id: string; missed_target: string | null };
 type CourseRow = { session_id: string };
 
 type ResultSource = "Quick result" | "Detailed log" | "Leirdue.net import" | "Manual";
@@ -73,7 +74,7 @@ function hasScore(session: SessionRow) {
 
 function scoreUsed(session: SessionRow, missCounts: Record<string, number>) {
   if (isUsableNumber(session.own_score)) return session.own_score;
-  if (isUsableNumber(session.total_targets)) return Math.max(session.total_targets - (missCounts[session.id] || 0), 0);
+  if (isUsableNumber(session.total_targets)) return scoreFromMisses(session.total_targets, missCounts[session.id] || 0);
   return null;
 }
 
@@ -141,7 +142,7 @@ export default function ResultsPage() {
 
     const [{ data: sessionData, error: sessionError }, { data: misses }, { data: courses }] = await Promise.all([
       supabase.from("sessions").select("id,name,discipline,session_type,shooting_format,course_count,total_targets,created_at,competition_date,leirdue_result_url,own_score,winning_score,shooting_ground,notes").order("created_at", { ascending: false }).returns<SessionRow[]>(),
-      supabase.from("misses").select("session_id").returns<MissRow[]>(),
+      supabase.from("misses").select("session_id,missed_target").returns<MissRow[]>(),
       supabase.from("session_courses").select("session_id").returns<CourseRow[]>(),
     ]);
 
@@ -151,10 +152,7 @@ export default function ResultsPage() {
       return;
     }
 
-    setMissCounts((misses || []).reduce<Record<string, number>>((acc, miss) => {
-      acc[miss.session_id] = (acc[miss.session_id] || 0) + 1;
-      return acc;
-    }, {}));
+    setMissCounts(countMissesBySession(misses || []));
     setCourseCounts((courses || []).reduce<Record<string, number>>((acc, course) => {
       acc[course.session_id] = (acc[course.session_id] || 0) + 1;
       return acc;

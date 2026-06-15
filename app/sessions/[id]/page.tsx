@@ -7,6 +7,7 @@ import { analysisPresentation } from "@/lib/analysis/sessionAnalysis";
 import { isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { getSchemeType, plateRotation } from "@/lib/fitasc/schemes";
 import { normalizeLeirduestiLabel, shortMissedTarget } from "@/lib/misses/labels";
+import { scoreFromMisses, totalMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
 
 type Miss = {
@@ -157,7 +158,7 @@ export default function Page() {
     if (!u.user) { router.push("/login"); return; }
     const { data: sessionData } = await supabase.from("sessions").select("*").eq("id", params.id).single();
     const { data: courseData } = await supabase.from("session_courses").select("*").eq("session_id", params.id).order("course_number");
-    const { data: missData, count: missCount } = await supabase
+    const { data: missData } = await supabase
       .from("misses")
       .select("*", { count: "exact" })
       .eq("session_id", params.id)
@@ -170,7 +171,8 @@ export default function Page() {
       .order("course_number")
       .order("machine")
       .returns<TargetDefinition[]>();
-    setSession(sessionData); setCourses(courseData || []); setMisses(missData || []); setTargetDefinitions(definitionData || []); setCount(missCount || 0);
+    const weightedMissCount = totalMisses(missData || []);
+    setSession(sessionData); setCourses(courseData || []); setMisses(missData || []); setTargetDefinitions(definitionData || []); setCount(weightedMissCount);
   }
 
   async function deleteSession() {
@@ -206,7 +208,7 @@ export default function Page() {
     : isLeirduesti && leirduestiPostCount && leirduestiTargetsPerPost
       ? leirduestiPostCount * leirduestiTargetsPerPost
       : session.total_targets;
-  const calculatedScore = typeof totalTargets === "number" ? Math.max(totalTargets - count, 0) : null;
+  const calculatedScore = typeof totalTargets === "number" ? scoreFromMisses(totalTargets, count) : null;
   const scoreUsed = typeof session.own_score === "number" ? session.own_score : calculatedScore;
   const percentage = typeof scoreUsed === "number" && typeof session.winning_score === "number" && session.winning_score > 0 ? (scoreUsed / session.winning_score) * 100 : null;
   const resultOnly = session.session_type === "Competition" && session.own_score !== null && session.winning_score !== null && courses.length === 0 && count === 0;

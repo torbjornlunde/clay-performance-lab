@@ -1,3 +1,5 @@
+import { scoreFromMisses, totalMisses } from "@/lib/misses/scoring";
+
 export type ExportSession = {
   id: string;
   name: string;
@@ -99,17 +101,14 @@ function sessionDate(session: ExportSession) {
 }
 
 function missCountFor(sessionId: string, misses: ExportMiss[]) {
-  return misses.filter((miss) => miss.session_id === sessionId).length;
+  return totalMisses(misses.filter((miss) => miss.session_id === sessionId));
 }
 
 function scoreUsed(session: ExportSession, misses: ExportMiss[]) {
   if (isUsableNumber(session.own_score)) return session.own_score;
   if (isUsableNumber(session.calculated_score)) return session.calculated_score;
   if (isUsableNumber(session.total_targets))
-    return Math.max(
-      session.total_targets - missCountFor(session.id, misses),
-      0,
-    );
+    return scoreFromMisses(session.total_targets, missCountFor(session.id, misses));
   return null;
 }
 
@@ -371,7 +370,7 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
           isResultOnly(session, input.misses),
         ).length,
       },
-      { Metric: "Total misses", Value: input.misses.length },
+      { Metric: "Total misses", Value: totalMisses(input.misses) },
       {
         Metric: "Average performance % where winning score exists",
         Value: performanceValues.length
