@@ -1012,33 +1012,43 @@ export default function LeirdueImportPage() {
           This v1 imports result-only sessions after your review. It does not import misses, target-by-target miss data, scorecard photos, finals or control lists automatically.
         </div>
 
-        <label>Shooter name</label>
-        <input value={shooterName} onChange={(event) => setShooterName(event.target.value)} placeholder="Enter shooter name" required />
+        <section className="manualImportMethodCard">
+          <h3>Search Leirdue.net</h3>
+          <p className="small muted">Find results by shooter name, year and discipline. You do not need a link for this search.</p>
+          <label>Shooter name</label>
+          <input value={shooterName} onChange={(event) => setShooterName(event.target.value)} placeholder="Enter shooter name" required />
 
-        <div className="manualLinkImportPanel">
-          <h3>Import from Leirdue.net link</h3>
-          <p className="small muted">Paste a Leirdue.net result link and we’ll try to find your result. You will review everything before anything is imported.</p>
-        </div>
+          <label>Year</label>
+          <input value={year} onChange={(event) => setYear(event.target.value)} type="number" min="1990" max={new Date().getFullYear() + 1} required />
 
-        <label>Leirdue.net URL</label>
-        <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://www.leirdue.net/?stevne=..." />
-
-        <label>Year</label>
-        <input value={year} onChange={(event) => setYear(event.target.value)} type="number" min="1990" max={new Date().getFullYear() + 1} required />
-
-        <fieldset className="checkboxGroup">
-          <legend>Disciplines</legend>
-          <p className="small muted">Select every relevant discipline to search at once.</p>
-          {/* TODO: Later, discipline checkboxes can be preselected from a Shooter profile page where the user chooses which disciplines they shoot. */}
-          <div className="checkboxGrid">
-            {DISCIPLINE_CHOICES.map((discipline) => (
-              <label key={discipline} className="checkboxLabel">
-                <input type="checkbox" checked={disciplines.includes(discipline)} onChange={() => toggleDiscipline(discipline)} />
-                <span>{discipline === "Other" ? "Other / unknown" : discipline}</span>
-              </label>
-            ))}
+          <fieldset className="checkboxGroup">
+            <legend>Disciplines</legend>
+            <p className="small muted">Select every relevant discipline to search at once.</p>
+            {/* TODO: Later, discipline checkboxes can be preselected from a Shooter profile page where the user chooses which disciplines they shoot. */}
+            <div className="checkboxGrid">
+              {DISCIPLINE_CHOICES.map((discipline) => (
+                <label key={discipline} className="checkboxLabel">
+                  <input type="checkbox" checked={disciplines.includes(discipline)} onChange={() => toggleDiscipline(discipline)} />
+                  <span>{discipline === "Other" ? "Other / unknown" : discipline}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="btns">
+            <button disabled={searching || disciplines.length === 0}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
           </div>
-        </fieldset>
+        </section>
+
+        <section className="manualImportMethodCard manualLinkImportPanel">
+          <h3>Import from Leirdue.net link</h3>
+          <p className="small muted">Already have a specific Leirdue.net result link? Paste it here to import from that event/list.</p>
+          <label>Leirdue.net URL</label>
+          <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://www.leirdue.net/?stevne=..." />
+          <div className="btns">
+            <button type="button" className="secondary" disabled={searching || !sourceUrl.trim()} onClick={fetchManualLink}>{searching ? "Finding..." : "Find result from link"}</button>
+            {sourceUrl.trim() && shooterName.trim() ? <button type="button" className="secondary" disabled={searching} onClick={parseDirectUrl}>Parse for shooter name</button> : null}
+          </div>
+        </section>
 
         {error ? <div className="error">{error}</div> : null}
         {savedImport ? (
@@ -1080,9 +1090,6 @@ export default function LeirdueImportPage() {
         ) : null}
 
         <div className="btns">
-          <button disabled={searching || disciplines.length === 0}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
-          <button type="button" className="secondary" disabled={searching || !sourceUrl.trim()} onClick={fetchManualLink}>{searching ? "Finding..." : "Find result"}</button>
-          {sourceUrl.trim() && shooterName.trim() ? <button type="button" className="secondary" disabled={searching} onClick={parseDirectUrl}>Parse for shooter name</button> : null}
           {continuationToken && !searching ? <button type="button" className="secondary" onClick={continueSearch}>Continue search</button> : null}
           <Link className="button secondary" href="/results/new">Add result manually</Link>
           <Link className="button secondary" href="/dashboard">Dashboard</Link>

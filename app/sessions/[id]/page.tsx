@@ -234,7 +234,7 @@ export default function Page() {
   const listeId = importDetail(session, "liste_id");
   const summaryMetrics = [
     { label: "Targets", value: totalTargets, show: totalTargets !== null && totalTargets !== undefined },
-    { label: "Misses", value: quickScore?.totalMisses ?? count, show: true },
+    { label: resultOnly ? "Detailed misses" : "Misses", value: resultOnly ? "Not added" : quickScore?.totalMisses ?? count, show: true },
     { label: "Calculated", value: calculatedScore, show: calculatedScore !== null && calculatedScore !== undefined },
     { label: "Official", value: session.own_score, show: typeof session.own_score === "number" },
     { label: "Winner", value: session.winning_score, show: typeof session.winning_score === "number" },
@@ -251,6 +251,7 @@ export default function Page() {
             <h2>{session.name}</h2>
           </div>
           {resultOnly && <span className="badge badgeBlue">Result only</span>}
+          {showSourceDetails && <span className="badge badgeGreen">Leirdue.net import</span>}
         </div>
         <div className="metadataLine" aria-label="Session metadata">
           {metadataChips.map((chip) => <span key={chip} className="pill">{chip}</span>)}
@@ -268,12 +269,15 @@ export default function Page() {
           )}
         </div>
         <p className="supportingSummaryLine">
-          Misses logged: <strong>{quickScore?.totalMisses ?? count}</strong>
+          {resultOnly ? <>Detailed misses: <strong>Not added yet</strong></> : <>Misses logged: <strong>{quickScore?.totalMisses ?? count}</strong></>}
           {typeof session.winning_score === "number" && <> · Winning score: <strong>{session.winning_score}</strong></>}
         </p>
         {hasScoreMismatch && (
-          <div className="compactNotice">Manual score differs from logged misses. This can happen if not all misses were logged.</div>
+          <div className="compactNotice">{resultOnly ? "This is a result-only entry. Detailed misses have not been logged yet." : "Manual score differs from logged misses. This can happen if not all misses were logged."}</div>
         )}
+        {resultOnly && !hasScoreMismatch ? (
+          <div className="compactNotice">This is a result-only entry. Detailed misses have not been logged yet.</div>
+        ) : null}
         <div className="compactMetricGrid" aria-label="Session metrics">
           {summaryMetrics.map((metric) => (
             <DetailMetric key={metric.label} label={metric.label} value={metric.value} />
@@ -290,7 +294,8 @@ export default function Page() {
         </div>
         {err && <div className="error">{err}</div>}
         <div className="primaryActionGrid">
-          <Link href={`/sessions/${session.id}/log`} className="button">Log miss</Link>
+          {resultOnly ? <Link href={`/sessions/${session.id}/edit`} className="button">Edit result details</Link> : null}
+          <Link href={`/sessions/${session.id}/log`} className={resultOnly ? "button secondary" : "button"}>{resultOnly ? "Add detailed misses" : "Log miss"}</Link>
           <Link href={`/sessions/${session.id}/misses`} className="button secondary">Review misses</Link>
           <Link href={`/sessions/${session.id}/analysis`} className="button secondary">Analysis</Link>
         </div>
@@ -301,6 +306,7 @@ export default function Page() {
           <div className="detailAccordionBody">
             <p className="muted small">Manage this saved result. Delete only removes the local app entry and cannot affect any external Leirdue.net source data.</p>
             <div className="btns compactActions">
+              {!resultOnly ? <Link href={`/sessions/${session.id}/edit`} className="button secondary smallButton">Edit setup</Link> : null}
               <Link href="/results" className="button secondary smallButton">Results history</Link>
               <button className="button danger smallButton" type="button" disabled={deleting} onClick={deleteSession}>
                 {deleting ? "Deleting..." : "Delete result"}

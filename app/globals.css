@@ -5338,6 +5338,15 @@ html, body {
   overflow-wrap: anywhere;
 }
 
+.manualImportMethodCard {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px;
+  margin-top: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  overflow-wrap: anywhere;
+}
+
 .manualFoundSummary,
 .importSuccessCard {
   overflow-wrap: anywhere;
