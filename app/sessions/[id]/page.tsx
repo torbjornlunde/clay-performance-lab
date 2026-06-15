@@ -9,6 +9,7 @@ import { getSchemeType, plateRotation } from "@/lib/fitasc/schemes";
 import { normalizeLeirduestiLabel, shortMissedTarget } from "@/lib/misses/labels";
 import { scoreFromMisses, totalMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
+import { isQuickScoreNotes, parseQuickScoreMetadata } from "@/lib/quick-score/metadata";
 
 type Miss = {
   id: string;
@@ -68,6 +69,7 @@ function compactDateTime(valueToFormat: string) {
 
 function entryType(session: any, resultOnly: boolean) {
   if (isLeirdueImported(session)) return "Leirdue.net import";
+  if (isQuickScoreNotes(session.notes)) return "Quick score";
   if (resultOnly) return "Quick result";
   return session.session_type === "Competition" ? "Detailed log" : "Training";
 }
@@ -203,19 +205,20 @@ export default function Page() {
   const leirduestiTargetsPerPost = isLeirduesti
     ? session.targets_per_post || (session.total_targets && leirduestiPostCount ? Math.max(Math.round(session.total_targets / leirduestiPostCount), 1) : 10)
     : null;
-  const totalTargets = isSporttrap && sporttrapSeriesCount
+  const quickScore = parseQuickScoreMetadata(session.notes);
+  const totalTargets = quickScore?.totalTargets ?? (isSporttrap && sporttrapSeriesCount
     ? sporttrapSeriesCount * 25
     : isLeirduesti && leirduestiPostCount && leirduestiTargetsPerPost
       ? leirduestiPostCount * leirduestiTargetsPerPost
-      : session.total_targets;
-  const calculatedScore = typeof totalTargets === "number" ? scoreFromMisses(totalTargets, count) : null;
+      : session.total_targets);
+  const calculatedScore = quickScore?.totalHits ?? (typeof totalTargets === "number" ? scoreFromMisses(totalTargets, count) : null);
   const scoreUsed = typeof session.own_score === "number" ? session.own_score : calculatedScore;
   const percentage = typeof scoreUsed === "number" && typeof session.winning_score === "number" && session.winning_score > 0 ? (scoreUsed / session.winning_score) * 100 : null;
-  const resultOnly = session.session_type === "Competition" && session.own_score !== null && session.winning_score !== null && courses.length === 0 && count === 0;
+  const resultOnly = session.session_type === "Competition" && session.own_score !== null && courses.length === 0 && count === 0;
   const sporttrapStand = courses[0]?.shooter_number;
   const scoreLine = typeof scoreUsed === "number" && typeof totalTargets === "number" ? `${scoreUsed} / ${totalTargets}` : value(scoreUsed);
   const performanceLine = percentage === null ? null : `${percentage.toFixed(1)}%`;
-  const hasScoreMismatch = typeof session.own_score === "number" && typeof calculatedScore === "number" && session.own_score !== calculatedScore;
+  const hasScoreMismatch = !quickScore && typeof session.own_score === "number" && typeof calculatedScore === "number" && session.own_score !== calculatedScore;
   const metadataChips = [
     formatDate(session.competition_date || session.created_at),
     session.discipline,
@@ -231,7 +234,7 @@ export default function Page() {
   const listeId = importDetail(session, "liste_id");
   const summaryMetrics = [
     { label: "Targets", value: totalTargets, show: totalTargets !== null && totalTargets !== undefined },
-    { label: "Misses", value: count, show: true },
+    { label: "Misses", value: quickScore?.totalMisses ?? count, show: true },
     { label: "Calculated", value: calculatedScore, show: calculatedScore !== null && calculatedScore !== undefined },
     { label: "Official", value: session.own_score, show: typeof session.own_score === "number" },
     { label: "Winner", value: session.winning_score, show: typeof session.winning_score === "number" },
@@ -265,7 +268,7 @@ export default function Page() {
           )}
         </div>
         <p className="supportingSummaryLine">
-          Misses logged: <strong>{count}</strong>
+          Misses logged: <strong>{quickScore?.totalMisses ?? count}</strong>
           {typeof session.winning_score === "number" && <> · Winning score: <strong>{session.winning_score}</strong></>}
         </p>
         {hasScoreMismatch && (
@@ -341,18 +344,37 @@ export default function Page() {
         <DetailSection title="Result details" badge="Full">
           <div className="detailRowsGrid">
             <ResultRow label="Total targets">{value(totalTargets)}</ResultRow>
-            <ResultRow label="Registered misses">{count}</ResultRow>
+            <ResultRow label="Registered misses">{quickScore?.totalMisses ?? count}</ResultRow>
             <ResultRow label="Calculated score">{value(calculatedScore)}</ResultRow>
             <ResultRow label="Manual/official score">{value(session.own_score)}</ResultRow>
             <ResultRow label="Winning score">{value(session.winning_score)}</ResultRow>
             <ResultRow label="Performance vs winning score">{performanceLine || "-"}</ResultRow>
             <ResultRow label="Entry type">{entryType(session, resultOnly)}</ResultRow>
+            {quickScore && <ResultRow label="Start course/post">{quickScore.startCourse}</ResultRow>}
+            {quickScore && <ResultRow label="Generated order">{quickScore.courseOrder.join(" → ")}</ResultRow>}
             <ResultRow label="Discipline">{session.discipline}</ResultRow>
             <ResultRow label="Shooting ground">{value(session.shooting_ground)}</ResultRow>
             <ResultRow label="Competition/session date">{formatDate(session.competition_date || session.created_at)}</ResultRow>
             {session.shooting_format && <ResultRow label="Shooting format">{session.shooting_format}</ResultRow>}
           </div>
         </DetailSection>
+
+
+        {quickScore && (
+          <DetailSection title="Quick score breakdown" badge="Result only" defaultOpen>
+            <div className="quickScoreList">
+              {quickScore.breakdown.map((row) => (
+                <div className="quickScoreRow" key={row.course}>
+                  <strong>Course/post {row.course}</strong>
+                  <span className="small muted">Targets <strong>{row.targets}</strong></span>
+                  <span className="small muted">Score <strong>{row.hits}/{row.targets}</strong></span>
+                  <span className="small muted">Misses <strong>{row.misses}</strong></span>
+                </div>
+              ))}
+            </div>
+            <p className="small muted">This is a result-only quick score. Detailed misses and target definitions can be added later.</p>
+          </DetailSection>
+        )}
 
         {targetDefinitions.length > 0 && (
           <DetailSection title="Target definitions" badge={targetDefinitions.length}>

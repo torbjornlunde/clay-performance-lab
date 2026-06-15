@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
+import { isQuickScoreNotes, parseQuickScoreMetadata } from "@/lib/quick-score/metadata";
 
 type ResultFilter = "all" | "competition" | "imported" | "manual" | "draft";
 
@@ -28,7 +29,7 @@ type SessionRow = {
 type MissRow = { session_id: string; missed_target: string | null };
 type CourseRow = { session_id: string };
 
-type ResultSource = "Quick result" | "Detailed log" | "Leirdue.net import" | "Manual";
+type ResultSource = "Quick score" | "Quick result" | "Detailed log" | "Leirdue.net import" | "Manual";
 
 const filters: Array<{ value: ResultFilter; label: string }> = [
   { value: "all", label: "All" },
@@ -88,6 +89,7 @@ function isDraftOrIncomplete(session: SessionRow, missCounts: Record<string, num
 
 function resultSource(session: SessionRow, missCounts: Record<string, number>, courseCounts: Record<string, number>): ResultSource {
   if (isImported(session)) return "Leirdue.net import";
+  if (isQuickScoreNotes(session.notes)) return "Quick score";
   if (isDetailedLog(session, missCounts, courseCounts)) return "Detailed log";
   if (isUsableNumber(session.own_score) && isUsableNumber(session.winning_score)) return "Quick result";
   return "Manual";
@@ -112,7 +114,7 @@ function resultMatchesFilter(session: SessionRow, filter: ResultFilter, missCoun
   if (filter === "all") return true;
   if (filter === "competition") return session.session_type === "Competition" && !isImported(session);
   if (filter === "imported") return isImported(session);
-  if (filter === "manual") return source === "Manual" || source === "Quick result";
+  if (filter === "manual") return source === "Manual" || source === "Quick result" || source === "Quick score";
   if (filter === "draft") return isDraftOrIncomplete(session, missCounts, courseCounts);
   return true;
 }
@@ -197,7 +199,7 @@ export default function ResultsPage() {
         </div>
         <div className="btns heroActions">
           <Link href="/log-competition" className="button secondary">Log competition</Link>
-          <Link href="/results/new" className="button">Add quick result</Link>
+          <Link href="/results/quick" className="button">Quick competition score</Link>
         </div>
       </div>
 
@@ -261,6 +263,11 @@ export default function ResultsPage() {
                       {isUsableNumber(session.winning_score) ? ` · Winning score ${session.winning_score}` : ""}
                       {` · Source: ${source}`}
                     </div>
+                    {parseQuickScoreMetadata(session.notes) && (
+                      <div className="small muted">
+                        Order {parseQuickScoreMetadata(session.notes)?.courseOrder.join(" → ")} · Misses {parseQuickScoreMetadata(session.notes)?.totalMisses}
+                      </div>
+                    )}
                     <div className="small muted">Created {formatDateTime(session.created_at)}</div>
                     {source === "Leirdue.net import" && (
                       <div className="small muted">
