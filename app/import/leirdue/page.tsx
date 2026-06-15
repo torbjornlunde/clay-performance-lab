@@ -1085,6 +1085,7 @@ export default function LeirdueImportPage() {
             <p>{savedImport.eventName} · {formatDate(savedImport.date)} · {savedImport.score}</p>
             <div className="btns compactDetailActions">
               {savedImport.id ? <Link className="button smallButton" href={`/sessions/${savedImport.id}`}>Open result</Link> : null}
+              <Link className="button secondary smallButton" href="/results">Back to results</Link>
               <button type="button" className="secondary smallButton" onClick={() => { setSourceUrl(""); setCandidates([]); setSavedImport(null); setSuccess(""); }}>Import another Leirdue link</button>
             </div>
           </div>
@@ -1119,6 +1120,7 @@ export default function LeirdueImportPage() {
 
         <div className="btns">
           {continuationToken && !searching ? <button type="button" className="secondary" onClick={continueSearch}>Continue search</button> : null}
+          <Link className="button secondary" href="/results">Results history</Link>
           <Link className="button secondary" href="/results/new">Add result manually</Link>
           <Link className="button secondary" href="/dashboard">Dashboard</Link>
         </div>

@@ -502,9 +502,12 @@ export default function EditSessionPage() {
           <h2>Edit setup</h2>
           {err && <div className="error">{err}</div>}
           <div className="btns">
-            <Link className="button secondary" href="/dashboard">
-              Dashboard
-            </Link>
+          <Link className="button secondary" href="/dashboard">
+            Dashboard
+          </Link>
+          <Link className="button secondary" href="/results">
+            Back to results
+          </Link>
           </div>
         </div>
       </main>
@@ -847,7 +850,10 @@ export default function EditSessionPage() {
             className="button secondary"
             href={sessionId ? `/sessions/${sessionId}` : "/dashboard"}
           >
-            Cancel
+            Back to result
+          </Link>
+          <Link className="button secondary" href="/results">
+            Back to results
           </Link>
         </div>
       </div>

@@ -298,6 +298,7 @@ export default function Page() {
           <Link href={`/sessions/${session.id}/log`} className={resultOnly ? "button secondary" : "button"}>{resultOnly ? "Add detailed misses" : "Log miss"}</Link>
           <Link href={`/sessions/${session.id}/misses`} className="button secondary">Review misses</Link>
           <Link href={`/sessions/${session.id}/analysis`} className="button secondary">Analysis</Link>
+          <Link href="/results" className="button secondary">Back to results</Link>
         </div>
         <details className="detailAccordion">
           <summary>
