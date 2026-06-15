@@ -1,6 +1,6 @@
 import { COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI } from "@/lib/disciplines";
 import { extractLeirdueSourceIdentifiers, normalizeLeirdueDisciplineLabel, normalizeLeirdueName, nordicSafeNameKey } from "@/lib/leirdue/normalize";
-import type { LeirdueCandidate, LeirdueCategory, LeirdueConfidence, LeirdueDebugParseInput, LeirdueDebugParseResult, LeirdueCheckedListDebug, LeirdueSearchDebug, LeirdueSearchResult, LeirdueValidationChecklistItem } from "@/lib/leirdue/types";
+import type { LeirdueCandidate, LeirdueCategory, LeirdueConfidence, LeirdueDebugParseInput, LeirdueDebugParseResult, LeirdueCheckedListDebug, LeirdueManualLinkParseResult, LeirdueSearchDebug, LeirdueSearchResult, LeirdueValidationChecklistItem } from "@/lib/leirdue/types";
 
 const LEIRDUE_BASE_URL = "https://www.leirdue.net/";
 const FETCH_ERROR_MESSAGE = "Could not fetch Leirdue results right now.";
@@ -2615,6 +2615,145 @@ function debugCandidateRows(lines: string[], html: string, shooterName: string, 
     .slice(0, 10)
     .map((row) => ({ row: row.text, total: row.total, numbers: row.numbers }));
   return { candidateRows, topCompetitorTotals };
+}
+
+function cellLooksLikeShooterName(cell: string) {
+  const normalized = normalizeText(cell);
+  if (!normalized || /\d/.test(normalized)) return false;
+  if (normalized.length < 4 || normalized.length > 70) return false;
+  if (/(klubb|klasse|sum|totalt|plass|resultat|nr\.?|skytter|navn|skive|lag|premie)/.test(normalized)) return false;
+  return /[a-zæøå]{2,}\s+[a-zæøå]{2,}|[a-zæøå]{2,},\s*[a-zæøå]{2,}/i.test(cell);
+}
+
+function parseManualShooterFromRow(row: ParsedRow) {
+  const cells = row.cells.length ? row.cells : row.text.split("|").map((cell) => cell.trim()).filter(Boolean);
+  const placement = Number(cells.find((cell) => /^\d{1,3}\.?$/.test(cell.trim()))?.replace(".", "")) || null;
+  const nameIndex = cells.findIndex(cellLooksLikeShooterName);
+  const shooterName = nameIndex >= 0 ? cells[nameIndex] : null;
+  const club = nameIndex >= 0 ? cells.slice(nameIndex + 1).find((cell) => cell && !/\d/.test(cell) && !/^[A-ZÆØÅ]{1,4}$/.test(cell.trim())) || null : null;
+  const shooterClass = nameIndex >= 0 ? cells.slice(nameIndex + 1).find((cell) => /^[A-ZÆØÅ][A-ZÆØÅ0-9-]{0,5}$/.test(cell.trim())) || null : null;
+  return { shooterName, shooterClass, club, placement };
+}
+
+function manualListChoicesFromHtml(html: string, sourceUrl: string) {
+  void sourceUrl;
+  return extractLinks(html)
+    .filter((link) => isListeIdLink(link))
+    .map((link) => ({ url: link.href, label: link.text || `Result list ${extractLeirdueSourceIdentifiers(link.href).listeId || ""}`.trim(), listeId: extractLeirdueSourceIdentifiers(link.href).listeId }))
+    .filter((choice, index, choices) => choices.findIndex((item) => item.url === choice.url) === index)
+    .slice(0, 25);
+}
+
+function emptyManualLinkParseResult(url: string, status: number | null, error: string): LeirdueManualLinkParseResult {
+  const ids = extractLeirdueSourceIdentifiers(url);
+  return {
+    url,
+    status,
+    ok: false,
+    error,
+    pageTitle: null,
+    eventTitle: null,
+    listTitle: null,
+    date: null,
+    discipline: null,
+    shootingGround: null,
+    stevneId: ids.stevneId,
+    listeId: ids.listeId,
+    parserNotes: [error],
+    listChoices: [],
+    candidates: [],
+  };
+}
+
+export async function parseLeirdueManualResultLink(input: { url: string; year?: number | null; selectedDisciplines?: string[] }): Promise<LeirdueManualLinkParseResult> {
+  const url = absolutizeUrl(input.url);
+  const ids = extractLeirdueSourceIdentifiers(url);
+  const year = debugSelectedYear(input.year);
+  const selectedDisciplines = input.selectedDisciplines?.length ? input.selectedDisciplines : [COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI, "Sporting"];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let status: number | null = null;
+
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers: { "user-agent": "ClayPerformanceLab/1.0 manual Leirdue link import" } });
+    status = response.status;
+    const html = await response.text();
+    if (!response.ok) return emptyManualLinkParseResult(url, status, `HTTP ${response.status}`);
+
+    const lines = htmlToLines(html);
+    const pageText = lines.join("\n");
+    const pageTitle = stripTags(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "") || null;
+    const eventTitle = extractTitle(lines, html, year);
+    const listTitle = `${eventTitle} ${pageTitle || ""}`.trim();
+    const date = parseDate(`${eventTitle}\n${pageText}`, year);
+    const discipline = classifyDiscipline(`${eventTitle}\n${pageText}`, selectedDisciplines);
+    const targetContext = [listTitle, eventTitle, lines.slice(0, 25).join("\n")].join("\n");
+    const initialTotalTargets = extractLikelyTotalTargets(targetContext);
+    const rows = extractTableRows(html);
+    const rowTexts = rows.length > 0 ? rows : lines.map((line) => ({ text: line, cells: [], numbers: extractScoreNumbers(line), total: null, seriesScores: [] }));
+    const parsedRows = rowTexts.map((row) => {
+      const parsed = parseCompetitorRow(row.text, year, initialTotalTargets);
+      return parsed ? { ...parsed, cells: row.cells } : null;
+    }).filter((row): row is ParsedRow => Boolean(row));
+    const winningScore = parsedRows.reduce<number | null>((max, row) => row.total === null ? max : Math.max(max ?? row.total, row.total), null);
+    const totalTargets = initialTotalTargets ?? winningScore;
+    const shootingGroundResult = extractShootingGround(eventTitle, lines.slice(0, 25).join("\n"));
+    const listChoices = ids.listeId ? [] : manualListChoicesFromHtml(html, url);
+    const candidates = parsedRows.map((row, index) => {
+      const rowMeta = parseManualShooterFromRow(row);
+      const shooterName = rowMeta.shooterName || `Parsed row ${index + 1}`;
+      const raw: RawCandidate = {
+        date,
+        name: candidateNameFrom(eventTitle, listTitle, discipline.discipline),
+        shootingGround: shootingGroundResult.value || rowMeta.club,
+        discipline: discipline.discipline,
+        ownScore: row.total,
+        totalTargets,
+        winningScore,
+        maxScore: totalTargets,
+        placement: rowMeta.placement,
+        seriesScores: row.seriesScores,
+        shooterName,
+        shooterClass: rowMeta.shooterClass,
+        leirdueUrl: url,
+        listType: classifyListType(listTitle),
+        sourceText: pageText,
+        listTitle,
+        notes: [
+          ...discipline.notes,
+          `Manual link import parsed row: ${row.text}`,
+          ids.stevneId ? `stevne_id=${ids.stevneId}` : "Could not detect stevne_id.",
+          ids.listeId ? `liste_id=${ids.listeId}` : "Could not detect liste_id.",
+        ],
+        validationSource: true,
+        shootingGroundSource: shootingGroundResult.source,
+      };
+      return classifyNormalizedCandidate(buildCandidate(raw, selectedDisciplines, year), year);
+    });
+
+    return {
+      url,
+      status,
+      ok: candidates.length > 0 || listChoices.length > 0,
+      error: candidates.length > 0 || listChoices.length > 0 ? null : "No result table found.",
+      pageTitle,
+      eventTitle,
+      listTitle,
+      date,
+      discipline: discipline.discipline,
+      shootingGround: shootingGroundResult.value,
+      stevneId: ids.stevneId,
+      listeId: ids.listeId,
+      parserNotes: candidates.length > 0 ? [`Parsed ${candidates.length} result row${candidates.length === 1 ? "" : "s"} from the pasted URL.`] : ["No result rows found on this page. Choose a result list if available."],
+      listChoices,
+      candidates,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : FETCH_ERROR_MESSAGE;
+    return emptyManualLinkParseResult(url, status, message);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function emptyDebugParseResult(url: string, status: number | null, normalizedShooterName: string, error: string): LeirdueDebugParseResult {

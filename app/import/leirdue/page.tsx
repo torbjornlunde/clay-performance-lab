@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
-import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueSearchDebug } from "@/lib/leirdue/types";
+import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
 import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch } from "@/lib/leirdue/normalize";
 
 const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduesti", "Sporting"];
@@ -36,6 +36,8 @@ type SearchResponse = {
 };
 
 type DirectParseResponse = LeirdueDebugParseResult & { error?: string };
+type LinkParseResponse = LeirdueManualLinkParseResult & { error?: string };
+type ManualListChoice = LeirdueManualLinkParseResult["listChoices"][number];
 
 
 function isLowQualitySummaryCandidate(candidate: LeirdueCandidate) {
@@ -53,6 +55,7 @@ function visibleImportCandidate(candidate: EditableCandidate) {
 }
 
 function candidateSelectedByDefault(candidate: LeirdueCandidate) {
+  if (/Manual link import parsed row/i.test(candidate.notes || "")) return false;
   return candidate.category === "recommended" && (candidate.confidence === "high" || candidate.confidence === "medium") && candidate.importRecommended;
 }
 
@@ -563,6 +566,7 @@ export default function LeirdueImportPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [debug, setDebug] = useState<LeirdueSearchDebug | null>(null);
+  const [manualListChoices, setManualListChoices] = useState<ManualListChoice[]>([]);
   const [continuationToken, setContinuationToken] = useState<string | null>(null);
   const [searchProgress, setSearchProgress] = useState(0);
   const [searchStatus, setSearchStatus] = useState("");
@@ -645,6 +649,7 @@ export default function LeirdueImportPage() {
   async function parseDirectUrl() {
     setError("");
     setSuccess("");
+    setManualListChoices([]);
     if (!sourceUrl.trim()) {
       setError("Paste a Leirdue.net result URL first.");
       return;
@@ -676,6 +681,51 @@ export default function LeirdueImportPage() {
       setError("Could not import this Leirdue.net result. Try pasting a direct result list URL or save the result manually.");
     } finally {
       setSearching(false);
+    }
+  }
+
+  async function fetchManualLink() {
+    setError("");
+    setSuccess("");
+    if (!sourceUrl.trim()) {
+      setError("Please paste a valid Leirdue.net result or event link.");
+      return;
+    }
+    setSearching(true);
+    setSearchStatus("Fetching the pasted Leirdue.net link...");
+    setSearchProgress(20);
+    try {
+      const response = await fetch("/api/leirdue/parse-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: sourceUrl.trim(), year: Number(year), selectedDisciplines: disciplines }),
+      });
+      const data = (await response.json()) as LinkParseResponse;
+      if (!response.ok || !data.ok) {
+        setError(data.error || "We could not read results from this Leirdue.net link. Please check the link or try another result list.");
+        return;
+      }
+      if (data.listChoices.length > 0 && data.candidates.length === 0) {
+        setSuccess(`This event has ${data.listChoices.length} result list${data.listChoices.length === 1 ? "" : "s"}. Open one and paste that result-list URL.`);
+        setManualListChoices(data.listChoices);
+        setCandidates([]);
+        setDebug(null);
+        return;
+      }
+      const parsedCandidates = data.candidates.map((candidate, index) => ({
+        ...toEditable(candidate, candidates.length + index),
+        selected: shooterName.trim() ? candidateSelectedByDefault(candidate) : false,
+        shooterMatchStatus: shooterName.trim() ? candidate.shooterMatchStatus : null,
+        warnings: Array.from(new Set([...(candidate.warnings || []), "Manual link import: select the correct shooter row before saving."])),
+      }));
+      await setReviewedCandidates(mergeCandidates(candidates, parsedCandidates));
+      setSuccess(`Fetched ${data.candidates.length} parsed result row${data.candidates.length === 1 ? "" : "s"} from the Leirdue.net link. Review and select the correct shooter before saving.`);
+    } catch {
+      setError("We could not read results from this Leirdue.net link. Please check the link or try another result list.");
+    } finally {
+      setSearching(false);
+      setSearchStatus("");
+      setSearchProgress(100);
     }
   }
 
@@ -894,7 +944,13 @@ export default function LeirdueImportPage() {
         <label>Shooter name</label>
         <input value={shooterName} onChange={(event) => setShooterName(event.target.value)} placeholder="Enter shooter name" required />
 
-        <label>Direct Leirdue result URL (optional)</label>
+        <div className="manualLinkImportPanel">
+          <p className="eyebrow">Fallback import</p>
+          <h3>Import from Leirdue.net link</h3>
+          <p className="small muted">Paste a direct Leirdue.net event or result URL. A result-list URL with <code>liste_id</code> works best. The app will fetch only this link, show parsed rows for review, and save only after you confirm.</p>
+        </div>
+
+        <label>Leirdue.net URL</label>
         <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://www.leirdue.net/?liste_id=...&meny=resultater&stevne=..." />
 
         <label>Year</label>
@@ -930,9 +986,24 @@ export default function LeirdueImportPage() {
           </div>
         ) : null}
 
+        {manualListChoices.length > 0 ? (
+          <div className="notice small manualListChoices">
+            <strong>Result lists found</strong>
+            <p>Choose a result list, then fetch again.</p>
+            <div className="btns compactDetailActions">
+              {manualListChoices.map((choice) => (
+                <button key={choice.url} type="button" className="secondary smallButton" onClick={() => setSourceUrl(choice.url)}>
+                  {choice.label || `Result list ${choice.listeId || ""}`}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="btns">
           <button disabled={searching || disciplines.length === 0}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
-          {sourceUrl.trim() ? <button type="button" className="secondary" disabled={searching} onClick={parseDirectUrl}>{searching ? "Parsing..." : "Parse direct URL"}</button> : null}
+          <button type="button" className="secondary" disabled={searching || !sourceUrl.trim()} onClick={fetchManualLink}>{searching ? "Fetching..." : "Fetch results"}</button>
+          {sourceUrl.trim() && shooterName.trim() ? <button type="button" className="secondary" disabled={searching} onClick={parseDirectUrl}>Parse for shooter name</button> : null}
           {continuationToken && !searching ? <button type="button" className="secondary" onClick={continueSearch}>Continue search</button> : null}
           <Link className="button secondary" href="/results/new">Add result manually</Link>
           <Link className="button secondary" href="/dashboard">Dashboard</Link>
