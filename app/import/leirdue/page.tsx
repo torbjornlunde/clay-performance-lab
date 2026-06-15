@@ -5,7 +5,7 @@ import Link from "next/link";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
 import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
-import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch } from "@/lib/leirdue/normalize";
+import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, nordicSafeNameKey } from "@/lib/leirdue/normalize";
 
 const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduesti", "Sporting"];
 const OPTIONAL_DISCIPLINES = ["Trap", "Skeet", "Other"];
@@ -59,6 +59,17 @@ function visibleImportCandidate(candidate: EditableCandidate) {
 function candidateSelectedByDefault(candidate: LeirdueCandidate) {
   if (/Manual link import parsed row/i.test(candidate.notes || "")) return false;
   return candidate.category === "recommended" && (candidate.confidence === "high" || candidate.confidence === "medium") && candidate.importRecommended;
+}
+
+function manualLinkNameMatchStatus(parsedName: string | null | undefined, profileName: string) {
+  if (!parsedName || !profileName) return null;
+  if (namesLikelyMatch(parsedName, profileName)) return { status: "matched_to_you" as const, reason: leirdueNameMatchReason(parsedName, profileName) };
+  const parsedKey = nordicSafeNameKey(parsedName).replace(/\b(l|lk|l\.k|skytterlag|sportskyttere|jff|jfnf|jeger|fiskerforening)\b/g, " ").replace(/\s+/g, " ").trim();
+  const profileKey = nordicSafeNameKey(profileName).replace(/\s+/g, " ").trim();
+  if (profileKey && parsedKey.includes(profileKey)) return { status: "matched_to_you" as const, reason: "partial/initial match" as const };
+  const profileParts = profileKey.split(/\s+/).filter(Boolean);
+  if (profileParts.length >= 2 && profileParts.every((part) => parsedKey.includes(part))) return { status: "possible_match" as const, reason: "fuzzy/possible match" as const };
+  return null;
 }
 
 function performance(candidate: EditableCandidate) {
@@ -143,6 +154,9 @@ function candidateTime(candidate: LeirdueCandidate) {
 
 function sortCandidatesForReview(candidateList: EditableCandidate[]) {
   return [...candidateList].sort((a, b) => {
+    const matchRank = (candidate: EditableCandidate) => candidate.shooterMatchStatus === "matched_to_you" ? 3 : candidate.shooterMatchStatus === "possible_match" ? 2 : 1;
+    const matchDiff = matchRank(b) - matchRank(a);
+    if (matchDiff !== 0) return matchDiff;
     const dateDiff = candidateTime(a) - candidateTime(b);
     if (dateDiff !== 0) return dateDiff;
     const statusDiff = candidateStatusRank(b) - candidateStatusRank(a);
@@ -641,6 +655,9 @@ export default function LeirdueImportPage() {
   }, [candidates]);
   const reviewableCount = groupedCandidates.confirmed.length + groupedCandidates.possible.length;
   const hiddenFromNormalListCount = groupedCandidates.ignored.length;
+  const manualReviewCandidates = useMemo(() => sortCandidatesForReview([...groupedCandidates.confirmed, ...groupedCandidates.possible]), [groupedCandidates.confirmed, groupedCandidates.possible]);
+  const manualBestCandidate = manualReviewCandidates.find((candidate) => candidate.shooterMatchStatus === "matched_to_you") || manualReviewCandidates.find((candidate) => candidate.shooterMatchStatus === "possible_match") || manualReviewCandidates[0] || null;
+  const manualOtherCandidates = manualBestCandidate ? manualReviewCandidates.filter((candidate) => candidate.localId !== manualBestCandidate.localId) : manualReviewCandidates;
 
   const selectedCount = candidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate) && canSelectCandidate(candidate) && (candidate.duplicateStatus !== "possible" || candidate.allowDuplicateSave)).length;
 
@@ -651,6 +668,8 @@ export default function LeirdueImportPage() {
   function applyShooterMatching(candidateList: EditableCandidate[]) {
     return candidateList.map((candidate) => {
       if (!candidate.shooterName || !shooterName) return candidate;
+      const manualMatch = /Manual link import parsed row/i.test(candidate.notes || "") ? manualLinkNameMatchStatus(candidate.shooterName, shooterName) : null;
+      if (manualMatch) return { ...candidate, shooterMatchStatus: manualMatch.status, shooterMatchReason: manualMatch.reason };
       const matchReason = leirdueNameMatchReason(candidate.shooterName, shooterName);
       if (namesLikelyMatch(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "matched_to_you" as const, shooterMatchReason: matchReason };
       const parsedParts = candidate.shooterName.split(/\s+/).filter(Boolean);
@@ -1118,7 +1137,7 @@ export default function LeirdueImportPage() {
             <span><strong>{groupedCandidates.ignored.length}</strong> Ignored/failed</span>
           </div>
           <div className="btns">
-            <button onClick={saveSelected} disabled={saving || checkingDuplicates || selectedCount === 0}>{saving ? "Importing..." : selectedCount === 1 ? "Import selected result" : "Import selected results"}</button>
+            <button onClick={saveSelected} disabled={saving || checkingDuplicates || selectedCount === 0}>{saving ? "Importing..." : manualReviewActive && selectedCount === 1 ? "Import this result" : selectedCount === 1 ? "Import selected result" : "Import selected results"}</button>
             <Link href="/stats" className="button secondary">Stats</Link>
           </div>
         </div>
@@ -1134,7 +1153,35 @@ export default function LeirdueImportPage() {
         </div>
       ) : null}
 
-      {([
+      {manualReviewActive && manualBestCandidate ? (
+        <section className="sessionGroup">
+          <div className="groupHeader">
+            <div>
+              <h3>{manualBestCandidate.shooterMatchStatus === "matched_to_you" ? "Likely match" : "Best result from this link"}</h3>
+              <p className="small muted">Review this row, then choose Import this result when it is correct.</p>
+            </div>
+            <span className="countPill">1 result</span>
+          </div>
+          <CandidateCard candidate={manualBestCandidate} shooterName={shooterName} onChange={updateCandidate} />
+        </section>
+      ) : null}
+
+      {manualReviewActive && manualOtherCandidates.length > 0 ? (
+        <details className="sessionGroup ignoredCandidatesGroup">
+          <summary className="groupHeader">
+            <div>
+              <h3>Other results from this list</h3>
+              <p className="small muted">Open if the highlighted row is not your result.</p>
+            </div>
+            <span className="countPill">{manualOtherCandidates.length}</span>
+          </summary>
+          {manualOtherCandidates.map((candidate) => (
+            <CandidateCard key={candidate.localId} candidate={candidate} shooterName={shooterName} onChange={updateCandidate} />
+          ))}
+        </details>
+      ) : null}
+
+      {!manualReviewActive && ([
         { key: "confirmed", title: "Confirmed matches", description: "High-quality matches that are safe to scan and are checked by default." },
         { key: "possible", title: "Possible matches", description: "Medium/low confidence matches for review. Import only if this is your result." },
         { key: "alreadyImported", title: "Already imported", description: "Existing or exact duplicate results remain visible but are not normal import actions." },
@@ -1155,7 +1202,7 @@ export default function LeirdueImportPage() {
         ) : null
       ))}
 
-      {groupedCandidates.ignored.length > 0 ? (
+      {!manualReviewActive && groupedCandidates.ignored.length > 0 ? (
         <details className="sessionGroup ignoredCandidatesGroup">
           <summary className="groupHeader">
             <div>

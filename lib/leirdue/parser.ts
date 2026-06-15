@@ -2728,7 +2728,8 @@ export async function parseLeirdueManualResultLink(input: { url: string; year?: 
         validationSource: true,
         shootingGroundSource: shootingGroundResult.source,
       };
-      return classifyNormalizedCandidate(buildCandidate(raw, selectedDisciplines, year), year);
+      const manualReviewYear = parsedYear(date) ?? year;
+      return classifyNormalizedCandidate(buildCandidate(raw, Array.from(new Set([...selectedDisciplines, raw.discipline])), manualReviewYear), manualReviewYear);
     });
 
     return {
