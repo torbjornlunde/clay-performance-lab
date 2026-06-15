@@ -199,6 +199,7 @@ export default function BetaAdminPage() {
           <p className="eyebrow">Closed beta</p>
           <h2>Beta access approvals</h2>
           <p>Approve signed-in users and manage exact email or full-name pre-approvals. Protected owner emails cannot be downgraded here.</p>
+          <p className="small muted">Auth-only fields such as email confirmation and last sign-in are not shown here because they require a secure server-side Supabase admin endpoint.</p>
           {me ? (
             <p className="small muted">
               Signed in as {me.email || "unknown email"} · {me.system_role} · {me.access_status}
