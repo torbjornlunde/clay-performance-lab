@@ -142,22 +142,18 @@ function expandMisses(misses: MissForAnalysis[]) {
         ) || miss.target_label,
     };
 
-    if (
-      miss.missed_target === "Both targets in pair" &&
-      hasFirst &&
-      hasSecond
-    ) {
-      detailed.push({
-        ...base,
-        targetPosition: "Second",
-        where_miss: miss.second_where_miss || miss.where_miss,
-        main_reason: miss.second_main_reason || miss.main_reason,
-      });
+    if (miss.missed_target === "Both targets in pair") {
       detailed.push({
         ...base,
         targetPosition: "First",
         where_miss: miss.first_where_miss || miss.where_miss,
         main_reason: miss.first_main_reason || miss.main_reason,
+      });
+      detailed.push({
+        ...base,
+        targetPosition: "Second",
+        where_miss: miss.second_where_miss || miss.where_miss,
+        main_reason: miss.second_main_reason || miss.main_reason,
       });
       continue;
     }

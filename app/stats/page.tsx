@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { calculateRollingAverage, calculateRollingStdDev, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
+import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
 
 type SessionRow = {
@@ -23,7 +24,7 @@ type SessionRow = {
   shooting_ground?: string | null;
 };
 
-type MissRow = { session_id: string };
+type MissRow = { session_id: string; missed_target: string | null };
 
 type SimpleTrainingLog = {
   id: string;
@@ -263,7 +264,7 @@ function chartBounds(percentages: number[]) {
 function scoreUsed(session: SessionRow, missCounts: Record<string, number>) {
   if (isUsableNumber(session.own_score)) return session.own_score;
   if (isUsableNumber(session.calculated_score)) return session.calculated_score;
-  if (isUsableNumber(session.total_targets)) return Math.max(session.total_targets - (missCounts[session.id] || 0), 0);
+  if (isUsableNumber(session.total_targets)) return scoreFromMisses(session.total_targets, missCounts[session.id] || 0);
   return null;
 }
 
@@ -539,7 +540,7 @@ export default function StatsPage() {
     const todayValue = isoDateValue(new Date());
     const [sessionsResult, missesResult, recentTrainingResult, recentScoreSheetsResult, volumeTrainingResult, volumeScoreSheetsResult] = await Promise.all([
       supabase.from("sessions").select("*").order("created_at", { ascending: false }).returns<SessionRow[]>(),
-      supabase.from("misses").select("session_id").returns<MissRow[]>(),
+      supabase.from("misses").select("session_id,missed_target").returns<MissRow[]>(),
       supabase
         .from("training_logs")
         .select("id,date,targets_fired,hits,discipline,location,notes,source_type,created_at")
@@ -570,10 +571,7 @@ export default function StatsPage() {
         .returns<TrainingScoreSheetLog[]>(),
     ]);
 
-    const counts = (missesResult.data || []).reduce<Record<string, number>>((acc, miss) => {
-      acc[miss.session_id] = (acc[miss.session_id] || 0) + 1;
-      return acc;
-    }, {});
+    const counts = countMissesBySession(missesResult.data || []);
 
     setSessions(sessionsResult.data || []);
     setMissCounts(counts);

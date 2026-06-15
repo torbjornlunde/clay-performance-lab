@@ -307,6 +307,10 @@ button.compactAction {
   margin-top: 0;
 }
 
+.compactAuthActions {
+  margin-top: 8px;
+}
+
 .subcard {
   background: rgba(12, 18, 27, 0.88);
   border: 1px solid var(--line);

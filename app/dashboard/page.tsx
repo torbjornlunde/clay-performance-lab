@@ -11,6 +11,7 @@ import type {
 import { isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { calculateRollingAverage, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
 import { betaFeedbackMailto } from "@/lib/betaFeedback";
+import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
 
 type Row = {
@@ -33,7 +34,7 @@ type Row = {
   shooting_ground?: string | null;
 };
 
-type MissRow = { session_id: string };
+type MissRow = { session_id: string; missed_target: string | null };
 
 type TrainingScoreSheetRow = {
   id: string;
@@ -100,7 +101,7 @@ function scoreUsed(session: Row, missCounts: Record<string, number>) {
   if (isUsableNumber(session.own_score)) return session.own_score;
   if (isUsableNumber(session.calculated_score)) return session.calculated_score;
   if (isUsableNumber(session.total_targets)) {
-    return Math.max(session.total_targets - missCountFor(session, missCounts), 0);
+    return scoreFromMisses(session.total_targets, missCountFor(session, missCounts));
   }
   return null;
 }
@@ -630,7 +631,7 @@ export default function DashboardPage() {
       .returns<Row[]>();
     const { data: misses } = await supabase
       .from("misses")
-      .select("session_id")
+      .select("session_id,missed_target")
       .returns<MissRow[]>();
     const { data: scoreSheets } = await supabase
       .from("training_score_sheets")
@@ -645,13 +646,7 @@ export default function DashboardPage() {
       .order("date", { ascending: false })
       .order("created_at", { ascending: false })
       .returns<SimpleTrainingLogRow[]>();
-    const counts = (misses || []).reduce<Record<string, number>>(
-      (acc, miss) => {
-        acc[miss.session_id] = (acc[miss.session_id] || 0) + 1;
-        return acc;
-      },
-      {},
-    );
+    const counts = countMissesBySession(misses || []);
 
     setSessions((data || []).slice().sort(sortNewestFirst));
     setTrainingScoreSheets(scoreSheets || []);
