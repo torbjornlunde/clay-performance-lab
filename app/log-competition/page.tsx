@@ -2,8 +2,13 @@ import Link from "next/link";
 
 const competitionActions = [
   {
+    href: "/results/quick",
+    title: "Quick competition score",
+    description: "Log result-only hits or misses by course/post during a live competition.",
+  },
+  {
     href: "/results/new",
-    title: "Quick result only",
+    title: "Simple result only",
     description: "Save competition name, date, score, and winning score.",
   },
   {
