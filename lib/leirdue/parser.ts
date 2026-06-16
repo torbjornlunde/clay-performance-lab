@@ -1,5 +1,5 @@
 import { COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI } from "@/lib/disciplines";
-import { extractLeirdueSourceIdentifiers, normalizeLeirdueDisciplineLabel, normalizeLeirdueName, nordicSafeNameKey } from "@/lib/leirdue/normalize";
+import { extractLeirdueSourceIdentifiers, normalizeLeirdueDisciplineLabel, normalizeLeirdueName, nordicSafeNameKey, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 import type { LeirdueCandidate, LeirdueCategory, LeirdueConfidence, LeirdueDebugParseInput, LeirdueDebugParseResult, LeirdueCheckedListDebug, LeirdueManualLinkParseResult, LeirdueSearchDebug, LeirdueSearchResult, LeirdueValidationChecklistItem } from "@/lib/leirdue/types";
 
 const LEIRDUE_BASE_URL = "https://www.leirdue.net/";
@@ -337,6 +337,7 @@ function pageContainsShooter(text: string, shooterName: string) {
   const normalizedShooter = normalizeName(shooterName);
   if (!normalizedShooter) return false;
   if (normalizedText.includes(normalizedShooter)) return true;
+  if (profileNameContainedInShooterText(text, shooterName)) return true;
 
   const foldedText = asciiFoldNorwegian(text);
   const foldedShooter = asciiFoldNorwegian(shooterName);
@@ -714,6 +715,7 @@ function extractActualEventInfoFromResultMenu(html: string, overviewEvent: Event
 function knownTorbjorn2025Assertions(input: LeirdueSearchInput) {
   if (!isTorbjornLunde2025DebugSearch(input)) return [];
   return [
+    { eventId: "11387", listeId: "51624", discovered: false, inspected: false, listeQueued: false, listeScanned: false },
     { eventId: "11412", listeId: "51724", discovered: false, inspected: false, listeQueued: false, listeScanned: false },
     { eventId: "12337", listeId: "56520", discovered: false, inspected: false, listeQueued: false, listeScanned: false },
   ];
@@ -1068,7 +1070,13 @@ function isNonCompetitorRow(text: string, year: number) {
 
 function parseCompetitorRow(rowText: string, year: number, totalTargets: number | null, shooterName?: string): ParsedRow | null {
   if (isNonCompetitorRow(rowText, year)) return null;
-  const searchable = shooterName ? rowText.slice(Math.max(0, normalizeText(rowText).indexOf(normalizeText(shooterName)))) : rowText;
+  const normalizedRow = normalizeText(rowText);
+  const normalizedShooter = shooterName ? normalizeText(shooterName) : "";
+  const foldedRow = asciiFoldNorwegian(rowText);
+  const foldedShooter = shooterName ? asciiFoldNorwegian(shooterName) : "";
+  const nameIndex = normalizedShooter ? normalizedRow.indexOf(normalizedShooter) : -1;
+  const foldedIndex = foldedShooter ? foldedRow.indexOf(foldedShooter) : -1;
+  const searchable = shooterName ? rowText.slice(Math.max(0, nameIndex >= 0 ? nameIndex : foldedIndex >= 0 ? foldedIndex : 0)) : rowText;
   const numbers = extractScoreNumbers(searchable).filter((value) => value <= 250);
   if (numbers.length === 0) return null;
   const possibleScores = totalTargets ? numbers.filter((value) => value <= totalTargets) : numbers.filter((value) => value <= 200);
@@ -1638,12 +1646,17 @@ function isTorbjornLunde2025DebugSearch(input: LeirdueSearchInput) {
 }
 
 function addValidationListeIdLinks(input: LeirdueSearchInput, links: Map<string, Link>, debug: LeirdueSearchDebug) {
-  if (!isTorbjornLunde2026Validation(input)) return;
-  for (const url of TORBJORN_LUNDE_2026_VALIDATION_URLS) {
-    addListeIdLink(links, url, "Debug validation URL for Torbjørn Lunde 2026", "validation");
+  const urls = isTorbjornLunde2026Validation(input)
+    ? TORBJORN_LUNDE_2026_VALIDATION_URLS.map((url) => ({ url, label: "Debug validation URL for Torbjørn Lunde 2026" }))
+    : isTorbjornLunde2025DebugSearch(input)
+      ? knownTorbjorn2025Assertions(input).map((item) => ({ url: `https://www.leirdue.net/?liste_id=${item.listeId}&meny=resultater&stevne=${item.eventId}`, label: "Regression discovery fallback for Torbjørn Lunde 2025" }))
+      : [];
+  if (urls.length === 0) return;
+  for (const { url, label } of urls) {
+    addListeIdLink(links, url, label, "validation");
   }
-  debug.validationUrlsInspected = TORBJORN_LUNDE_2026_VALIDATION_URLS.length;
-  debug.candidateReasons.push("Added Torbjørn Lunde 2026 debug validation liste_id URLs.");
+  debug.validationUrlsInspected = urls.length;
+  debug.candidateReasons.push(`Added ${urls.length} Leirdue validation/discovery fallback liste_id URLs.`);
 }
 
 

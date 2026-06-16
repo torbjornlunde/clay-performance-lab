@@ -35,6 +35,37 @@ export function nordicSafeNameKey(value: string) {
     .replace(/þ/g, "th");
 }
 
+const CLUB_TRAILING_WORDS = new Set([
+  "l",
+  "lk",
+  "l.k",
+  "jff",
+  "j.f.f",
+  "jfnf",
+  "j.f.n.f",
+  "jfl",
+  "j.f.l",
+  "skytterlag",
+  "sportskyttere",
+  "jeger",
+  "fiskerforening",
+  "klubb",
+]);
+
+function compactNameKey(value: string) {
+  return nordicSafeNameKey(value)
+    .replace(/\b(l\s*k|l\s*k\.|j\s*f\s*f|j\s*f\s*n\s*f|j\s*f\s*l)\b/g, (match) => match.replace(/\s+/g, "."))
+    .replace(/[^a-z0-9\s.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripLikelyClubSuffix(value: string) {
+  const parts = compactNameKey(value).split(/\s+/).filter(Boolean);
+  while (parts.length > 2 && CLUB_TRAILING_WORDS.has((parts.at(-1) || "").replace(/\.+$/g, ""))) parts.pop();
+  return parts.join(" ");
+}
+
 function nameParts(value: string) {
   return normalizeLeirdueName(value).split(/\s+/).filter(Boolean);
 }
@@ -60,6 +91,10 @@ export function leirdueNameMatchReason(first: string | null | undefined, second:
   const foldedFirst = nordicSafeNameKey(normalizedFirst);
   const foldedSecond = nordicSafeNameKey(normalizedSecond);
   if (foldedFirst === foldedSecond) return "diacritic-insensitive match";
+  const firstWithoutClub = stripLikelyClubSuffix(normalizedFirst);
+  const secondWithoutClub = stripLikelyClubSuffix(normalizedSecond);
+  if (firstWithoutClub && secondWithoutClub && firstWithoutClub === secondWithoutClub) return "diacritic-insensitive match";
+  if (profileNameContainedInShooterText(first, second) || profileNameContainedInShooterText(second, first)) return "partial/initial match";
   if (foldedFirst.length >= 5 && foldedSecond.length >= 5 && (foldedFirst.includes(foldedSecond) || foldedSecond.includes(foldedFirst))) return "partial/initial match";
   if (initialsMatch(normalizedFirst, normalizedSecond) || initialsMatch(normalizedSecond, normalizedFirst)) return "partial/initial match";
 
@@ -70,6 +105,15 @@ export function leirdueNameMatchReason(first: string | null | undefined, second:
   if (firstLast && secondLast && firstLast === secondLast) return "fuzzy/possible match";
 
   return "no match";
+}
+
+export function profileNameContainedInShooterText(shooterText: string | null | undefined, profileName: string | null | undefined) {
+  const shooterKey = stripLikelyClubSuffix(shooterText || "");
+  const profileKey = stripLikelyClubSuffix(profileName || "");
+  if (!shooterKey || !profileKey || profileKey.length < 5) return false;
+  const profileParts = profileKey.split(/\s+/).filter(Boolean);
+  if (profileParts.length < 2) return false;
+  return new RegExp(`(^|\\s)${profileParts.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+")}(\\s|$)`).test(shooterKey);
 }
 
 export function namesLikelyMatch(first: string | null | undefined, second: string | null | undefined) {

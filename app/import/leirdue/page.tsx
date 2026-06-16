@@ -5,7 +5,7 @@ import Link from "next/link";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
 import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
-import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, nordicSafeNameKey } from "@/lib/leirdue/normalize";
+import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 
 const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduesti", "Sporting"];
 const OPTIONAL_DISCIPLINES = ["Trap", "Skeet", "Other"];
@@ -69,11 +69,7 @@ function candidateSelectedByDefault(candidate: LeirdueCandidate) {
 function manualLinkNameMatchStatus(parsedName: string | null | undefined, profileName: string) {
   if (!parsedName || !profileName) return null;
   if (namesLikelyMatch(parsedName, profileName)) return { status: "matched_to_you" as const, reason: leirdueNameMatchReason(parsedName, profileName) };
-  const parsedKey = nordicSafeNameKey(parsedName).replace(/\b(l|lk|l\.k|skytterlag|sportskyttere|jff|jfnf|jeger|fiskerforening)\b/g, " ").replace(/\s+/g, " ").trim();
-  const profileKey = nordicSafeNameKey(profileName).replace(/\s+/g, " ").trim();
-  if (profileKey && parsedKey.includes(profileKey)) return { status: "matched_to_you" as const, reason: "partial/initial match" as const };
-  const profileParts = profileKey.split(/\s+/).filter(Boolean);
-  if (profileParts.length >= 2 && profileParts.every((part) => parsedKey.includes(part))) return { status: "possible_match" as const, reason: "fuzzy/possible match" as const };
+  if (profileNameContainedInShooterText(parsedName, profileName)) return { status: "matched_to_you" as const, reason: "partial/initial match" as const };
   return null;
 }
 
@@ -268,12 +264,12 @@ function candidateReason(candidate: EditableCandidate) {
   if (candidate.duplicateStatus === "possible") return candidate.duplicateMatches?.[0]?.reason || "Possible duplicate.";
   if (isManualLinkCandidate(candidate) && candidate.ownScore !== null && candidate.totalTargets !== null) return "Parsed from the pasted result list. Select it if this is your result.";
   if (candidate.shooterMatchStatus === "unmatched") return "Shooter name did not match.";
-  if (candidate.shooterMatchStatus === "possible_match") return "Low confidence shooter-name match.";
+  if (candidate.shooterMatchStatus === "possible_match") return "Possible match — please review before importing.";
   if (!candidate.date) return "Missing date.";
   if (!candidate.discipline || candidate.discipline === "Other") return "Discipline not recognized.";
   if (candidate.ownScore === null || candidate.totalTargets === null) return "No score found.";
   if (candidate.category === "control") return candidate.warnings?.[0] || "Unsupported result format or control list.";
-  if (candidate.confidence === "low") return "Low confidence match.";
+  if (candidate.confidence === "low" || candidate.category === "review") return "Possible match — please review before importing.";
   return "Ready for review.";
 }
 
@@ -681,6 +677,7 @@ export default function LeirdueImportPage() {
       if (manualMatch) return { ...candidate, shooterMatchStatus: manualMatch.status, shooterMatchReason: manualMatch.reason };
       const matchReason = leirdueNameMatchReason(candidate.shooterName, shooterName);
       if (namesLikelyMatch(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "matched_to_you" as const, shooterMatchReason: matchReason };
+      if (profileNameContainedInShooterText(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "matched_to_you" as const, shooterMatchReason: "partial/initial match" as const };
       const parsedParts = candidate.shooterName.split(/\s+/).filter(Boolean);
       const searchedParts = shooterName.split(/\s+/).filter(Boolean);
       const possible = parsedParts.length >= 2 && searchedParts.length >= 2 && namesLikelyMatch(parsedParts.at(-1), searchedParts.at(-1));
