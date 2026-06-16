@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { FETCH_ERROR_MESSAGE, searchLeirdueCandidates } from "@/lib/leirdue/parser";
+import { getCachedLeirdueCandidates, storeLeirdueCandidatesInCache } from "@/lib/leirdue/cache";
+import { emptyLeirdueSearchDebug, FETCH_ERROR_MESSAGE, searchLeirdueCandidates } from "@/lib/leirdue/parser";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,25 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (!continuationToken && !sourceUrl) {
+      const cached = await getCachedLeirdueCandidates({ shooterName, year, disciplines, authorization: request.headers.get("authorization") });
+      if (cached.candidates.length > 0) {
+        const debug = emptyLeirdueSearchDebug();
+        debug.selectedYear = year;
+        debug.normalizedSearchName = shooterName.toLowerCase().replace(/\s+/g, " ").trim();
+        debug.selectedDisciplineFilters = disciplines;
+        debug.continuationAvailable = false;
+        debug.continuationReason = "cacheHitFresh";
+        debug.message = `Search complete. Loaded ${cached.candidates.length} cached Leirdue results.`;
+        debug.candidateReasons.unshift(`Cache hit: ${cached.candidates.length} fresh parsed candidates; skipped live crawling.`);
+        return NextResponse.json({ candidates: cached.candidates, debug, continuationToken: null });
+      }
+    }
     const result = await searchLeirdueCandidates({ shooterName, year, disciplines, continuationToken, sourceUrl });
+    if (!continuationToken && !sourceUrl) {
+      const stored = await storeLeirdueCandidatesInCache(result.candidates, year);
+      result.debug.candidateReasons.unshift(`Cache ${stored.enabled ? "write" : "disabled"}: stored ${stored.liveCandidatesStored} live candidates.${stored.note ? ` ${stored.note}` : ""}`);
+    }
     if (result.debug.fetchedUrls.length > 0 && result.debug.fetchedUrls.every((item) => !item.ok)) {
       return NextResponse.json({ ...result, error: FETCH_ERROR_MESSAGE }, { status: 502 });
     }

@@ -5,15 +5,14 @@ import Link from "next/link";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
 import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
-import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, nordicSafeNameKey } from "@/lib/leirdue/normalize";
+import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 
 const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduesti", "Sporting"];
 const OPTIONAL_DISCIPLINES = ["Trap", "Skeet", "Other"];
 const DISCIPLINE_CHOICES = [...DEFAULT_DISCIPLINES, ...OPTIONAL_DISCIPLINES];
-const MAX_AUTO_BATCHES = 12;
-const MAX_AUTO_LISTE_ID_SCANNED = 400;
-const MAX_AUTO_SEARCH_MS = 5 * 60 * 1000;
-const MAX_EMPTY_AUTO_BATCHES = 2;
+const MAX_AUTO_BATCHES = 250;
+const MAX_AUTO_LISTE_ID_SCANNED = 10_000;
+const MAX_AUTO_SEARCH_MS = 30 * 60 * 1000;
 const BATCH_TIMEOUT_MS = 35_000;
 
 type EditableCandidate = LeirdueCandidate & { selected: boolean; localId: string; saveStatus?: "saved" | "duplicate" | "error"; saveMessage?: string };
@@ -44,10 +43,25 @@ type ManualListChoice = LeirdueManualLinkParseResult["listChoices"][number];
 
 function isLowQualitySummaryCandidate(candidate: LeirdueCandidate) {
   const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes}`.toLowerCase();
-  const percentageHeavy = /\b\d{1,3}(?:[,.]\d+)?\s*%/.test(text);
-  const summaryList = /(ranking|prosent|cup sammenlagt|sammenlagt premiering|klasseføring|klasseforing|sesong|season)/.test(text);
+  const percentageHeavy = /\b\d{1,3}(?:[,.]\d+)?\s*%/.test(text) || /(percentageheavy|prosent|percentage)/.test(text);
+  const summaryList = /(ranking|cup sammenlagt|sammenlagt premiering|klasseføring|klasseforing|sesong|season|multiEventSummary|cupSummary)/i.test(text);
   const missingUsableScore = candidate.ownScore === null || candidate.totalTargets === null;
   return candidate.category === "control" || percentageHeavy || summaryList || missingUsableScore;
+}
+
+function candidateUsesMainResultList(candidate: LeirdueCandidate) {
+  const listType = (candidate.listType || "").toLowerCase();
+  if (listType === "overall list" || listType === "main result list") return true;
+  if (listType === "class list") return false;
+  const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes}`.toLowerCase();
+  if (/(class list|klassedelt|klassevis|class\s+(?:a|b|c|d|e|junior|veteran)|klasse\s+(?:a|b|c|d|e|junior|veteran))/.test(text)) return false;
+  return /(overall list|main result list|sammenlagt|total|totalt|resultat|resultater|alle|hovedliste|hovedresultat)/.test(text);
+}
+
+function candidateHasUsableSourceList(candidate: LeirdueCandidate) {
+  const ids = candidateSourceIds(candidate);
+  const listType = (candidate.listType || "").toLowerCase();
+  return Boolean(ids.stevneId && ids.listeId && listType !== "class list");
 }
 
 function visibleImportCandidate(candidate: EditableCandidate) {
@@ -63,17 +77,14 @@ function isManualLinkCandidate(candidate: LeirdueCandidate) {
 
 function candidateSelectedByDefault(candidate: LeirdueCandidate) {
   if (/Manual link import parsed row/i.test(candidate.notes || "")) return false;
-  return candidate.category === "recommended" && (candidate.confidence === "high" || candidate.confidence === "medium") && candidate.importRecommended;
+  const completeScore = candidate.ownScore !== null && candidate.totalTargets !== null && candidate.winningScore !== null;
+  return candidate.category === "recommended" && candidate.confidence === "high" && candidate.importRecommended && completeScore && (candidateUsesMainResultList(candidate) || candidateHasUsableSourceList(candidate)) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported;
 }
 
 function manualLinkNameMatchStatus(parsedName: string | null | undefined, profileName: string) {
   if (!parsedName || !profileName) return null;
   if (namesLikelyMatch(parsedName, profileName)) return { status: "matched_to_you" as const, reason: leirdueNameMatchReason(parsedName, profileName) };
-  const parsedKey = nordicSafeNameKey(parsedName).replace(/\b(l|lk|l\.k|skytterlag|sportskyttere|jff|jfnf|jeger|fiskerforening)\b/g, " ").replace(/\s+/g, " ").trim();
-  const profileKey = nordicSafeNameKey(profileName).replace(/\s+/g, " ").trim();
-  if (profileKey && parsedKey.includes(profileKey)) return { status: "matched_to_you" as const, reason: "partial/initial match" as const };
-  const profileParts = profileKey.split(/\s+/).filter(Boolean);
-  if (profileParts.length >= 2 && profileParts.every((part) => parsedKey.includes(part))) return { status: "possible_match" as const, reason: "fuzzy/possible match" as const };
+  if (profileNameContainedInShooterText(parsedName, profileName)) return { status: "matched_to_you" as const, reason: "partial/initial match" as const };
   return null;
 }
 
@@ -121,7 +132,6 @@ function duplicateLabel(candidate: EditableCandidate) {
 function candidateWarnings(candidate: EditableCandidate) {
   const warnings = new Set(candidate.warnings || []);
   if (!candidate.discipline || candidate.discipline === "Other") warnings.add("Could not detect discipline.");
-  if (!candidate.shooterClass) warnings.add("Could not detect class.");
   if (!candidate.seriesScores || candidate.seriesScores.length === 0) warnings.add("Could not detect series breakdown.");
   if (candidate.duplicateStatus === "possible") warnings.add("Possible duplicate.");
   if (candidate.duplicateStatus === "exact" || candidate.alreadyImported) warnings.add("Already imported.");
@@ -214,16 +224,16 @@ function likelyResultsLabel(count: number) {
   return `${count} likely result${count === 1 ? "" : "s"}`;
 }
 
-function autoSearchStopMessage(visibleCount: number) {
-  return `Search stopped after the safety limit. We found ${likelyResultsLabel(visibleCount)}. Some results may still be missing.`;
+function autoSearchIncompleteMessage(visibleCount: number, reason: string) {
+  return `Search incomplete. Found ${likelyResultsLabel(visibleCount)}. Reason: ${reason}.`;
 }
 
 function autoSearchCompleteMessage(visibleCount: number) {
-  return `Found ${likelyResultsLabel(visibleCount)}. Some results may still be missing. Please review the list before saving.`;
+  return `Search complete. Found ${likelyResultsLabel(visibleCount)}. Please review the list before saving.`;
 }
 
-function searchCounterMessage(batchLabel: string, scannedListCount: number, foundCount: number, autoContinuing = false) {
-  return `${batchLabel} — ${scannedListCount} result lists checked — ${foundCount} candidates found so far${autoContinuing ? " — continuing automatically" : ""}`;
+function searchCounterMessage(scannedListCount: number, foundCount: number, autoContinuing = false) {
+  return `Searching Leirdue.net… ${scannedListCount} result lists checked — ${foundCount} results found so far${autoContinuing ? " — continuing automatically" : ""}`;
 }
 
 function formatDate(date: string | null) {
@@ -244,8 +254,9 @@ function reviewStatusLabel(candidate: EditableCandidate) {
   if (candidate.duplicateStatus === "exact" || candidate.alreadyImported) return "Already imported";
   if (candidate.duplicateStatus === "possible") return "Possible duplicate";
   if (isManualLinkCandidate(candidate) && candidate.ownScore !== null && candidate.totalTargets !== null) return candidate.shooterMatchStatus === "matched_to_you" ? "Likely match" : "Selectable result";
+  if (isLowQualitySummaryCandidate(candidate)) return `Not importable — ${shortBlockerReason(candidate)}`;
   if (candidate.category === "recommended") return "Confirmed match";
-  if (candidate.category === "review") return "Possible match";
+  if (candidate.category === "review") return candidate.shooterMatchStatus === "matched_to_you" ? "Review before import" : "Possible match";
   return "Ignored / not matched";
 }
 
@@ -266,15 +277,40 @@ function confidenceBadgeClass(candidate: EditableCandidate) {
 function candidateReason(candidate: EditableCandidate) {
   if (candidate.duplicateStatus === "exact" || candidate.alreadyImported) return "Already imported from Leirdue.net or matching saved result.";
   if (candidate.duplicateStatus === "possible") return candidate.duplicateMatches?.[0]?.reason || "Possible duplicate.";
+  if (isLowQualitySummaryCandidate(candidate)) return longBlockerReason(candidate);
   if (isManualLinkCandidate(candidate) && candidate.ownScore !== null && candidate.totalTargets !== null) return "Parsed from the pasted result list. Select it if this is your result.";
   if (candidate.shooterMatchStatus === "unmatched") return "Shooter name did not match.";
-  if (candidate.shooterMatchStatus === "possible_match") return "Low confidence shooter-name match.";
+  if (candidate.shooterMatchStatus === "possible_match") return "Possible match — please review before importing.";
   if (!candidate.date) return "Missing date.";
   if (!candidate.discipline || candidate.discipline === "Other") return "Discipline not recognized.";
-  if (candidate.ownScore === null || candidate.totalTargets === null) return "No score found.";
-  if (candidate.category === "control") return candidate.warnings?.[0] || "Unsupported result format or control list.";
-  if (candidate.confidence === "low") return "Low confidence match.";
+  if (candidate.ownScore === null) return "Could not identify a valid score.";
+  if (candidate.totalTargets === null) return "Missing total target count.";
+  if (candidate.category === "control") return longBlockerReason(candidate);
+  if (candidate.confidence === "low" || candidate.category === "review") return "Possible match — please review before importing.";
   return "Ready for review.";
+}
+
+function shortBlockerReason(candidate: LeirdueCandidate) {
+  const reason = longBlockerReason(candidate).toLowerCase();
+  if (reason.includes("percentage") || reason.includes("ranking")) return "ranking/control data";
+  if (reason.includes("outside")) return "outside selected year";
+  if (reason.includes("discipline")) return "discipline is not selected";
+  if (reason.includes("total target")) return "missing total targets";
+  if (reason.includes("score")) return "no valid score";
+  return "review details";
+}
+
+function longBlockerReason(candidate: LeirdueCandidate) {
+  const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes} ${(candidate.warnings || []).join(" ")}`.toLowerCase();
+  if (candidate.duplicateStatus === "exact" || candidate.alreadyImported) return "Duplicate of an existing imported result.";
+  if (/(percentageheavy|prosent|percentage|\b\d{1,3}(?:[,.]\d+)?\s*%|ranking|klasseføring|klasseforing)/.test(text)) return "Score appears to come from percentage/ranking data, not target score.";
+  if (/(control|cup sammenlagt|sammenlagt premiering|multieventsummary|cupsummary|flere stevner|sesong|season)/.test(text)) return "Appears to be a ranking/control list, not a competition result.";
+  if (/outside selected year|outsideyear/.test(text)) return "Outside selected year.";
+  if (/parsed discipline is not selected|discipline is not selected/.test(text)) return "Discipline is not selected.";
+  if (candidate.ownScore === null) return "Could not identify a valid score.";
+  if (candidate.totalTargets === null) return "Missing total target count.";
+  if (/parser could not|score row parsed/.test(text)) return "Parser could not read a complete result row.";
+  return candidate.warnings?.[0] || "Not enough reliable competition-result data to import automatically.";
 }
 
 function ReviewAction({ candidate, update }: { candidate: EditableCandidate; update: <Key extends keyof EditableCandidate>(key: Key, value: EditableCandidate[Key]) => void }) {
@@ -283,7 +319,7 @@ function ReviewAction({ candidate, update }: { candidate: EditableCandidate; upd
     const existingId = candidate.duplicateMatches?.[0]?.id;
     return existingId ? <Link href={`/sessions/${existingId}`} className="button secondary smallButton">View existing</Link> : <span className="badge badgeBlue">Already imported</span>;
   }
-  if (candidate.category === "control") return <span className="badge badgeBlue">Not importable</span>;
+  if (candidate.category === "control" || isLowQualitySummaryCandidate(candidate)) return <span className="badge badgeBlue">Not importable</span>;
   if (candidate.duplicateStatus === "possible" && !candidate.allowDuplicateSave) {
     return <button type="button" className="secondary smallButton" onClick={() => update("allowDuplicateSave", true)}>Review duplicate</button>;
   }
@@ -294,7 +330,8 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
   const percent = performance(candidate);
   const sourceIds = candidateSourceIds(candidate);
   const warnings = candidateWarnings(candidate);
-  const likelyLabel = candidate.shooterMatchStatus === "matched_to_you" ? "Likely match" : candidate.shooterMatchStatus === "possible_match" ? "Possible match" : null;
+  const nameMatchLabel = candidate.shooterMatchStatus === "matched_to_you" ? (candidate.category === "recommended" ? "Name match" : "Strong name match") : candidate.shooterMatchStatus === "possible_match" ? "Possible match" : null;
+  const visibleReason = candidate.category === "control" || isLowQualitySummaryCandidate(candidate) ? candidateReason(candidate) : null;
 
   function update<Key extends keyof EditableCandidate>(key: Key, value: EditableCandidate[Key]) {
     onChange({ ...candidate, [key]: value, saveStatus: undefined, saveMessage: undefined });
@@ -308,11 +345,11 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
     <article className={`candidateCard compactCandidateCard selectableResultCard ${candidate.selected ? "selectedResultCard" : ""} ${candidate.category === "control" ? "secondaryCandidateCard" : ""}`}>
       <div className="compactCandidateRow">
         <div className="compactCandidateMain">
-          {likelyLabel ? <div className="compactCandidateLine"><span className={`badge ${likelyLabel === "Likely match" ? "badgeGreen" : "badgeGold"}`}>{likelyLabel}</span></div> : null}
+          {nameMatchLabel ? <div className="compactCandidateLine"><span className={`badge ${candidate.shooterMatchStatus === "matched_to_you" ? "badgeGreen" : "badgeGold"}`}>{nameMatchLabel}</span></div> : null}
           <div className="compactCandidateLine resultShooterLine"><strong>{candidate.shooterName || shooterName || "Unknown shooter"}</strong></div>
-          <div className="compactCandidateLine scoreLine"><strong>{candidate.ownScore ?? "?"}/{candidate.maxScore ?? candidate.totalTargets ?? "?"}</strong><span>·</span><span>{candidate.placement ? `Place ${candidate.placement}` : "Placement unknown"}</span></div>
-          <div className="compactCandidateLine"><span>{candidate.shooterClass ? `Class ${candidate.shooterClass}` : "Class unknown"}</span><span>·</span><span>{candidate.shootingGround || "Club unknown"}</span></div>
-          <div className="compactCandidateLine"><span>{candidate.discipline || "Unknown discipline"}</span><span>·</span><span>{formatDate(candidate.date)}</span></div>
+          <div className="compactCandidateLine scoreLine"><strong>{candidate.ownScore ?? "?"}/{candidate.maxScore ?? candidate.totalTargets ?? "?"}</strong><span>·</span><span>Winner {candidate.winningScore ?? "?"}</span></div>
+          <div className="compactCandidateLine"><span>{candidate.placement ? `Place ${candidate.placement}` : "Placement unknown"}</span><span>·</span><span>{candidate.listType || "Unknown list"}</span></div>
+          <div className="compactCandidateLine"><span>{candidate.shootingGround || "Club unknown"}</span><span>·</span><span>{candidate.discipline || "Unknown discipline"}</span><span>·</span><span>{formatDate(candidate.date)}</span></div>
         </div>
         <div className="compactCandidateBadges">
           <span className={`badge ${statusBadgeClass(candidate)}`}>{reviewStatusLabel(candidate)}</span>
@@ -322,6 +359,7 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
         </div>
         <div className="compactCandidateAction"><ReviewAction candidate={candidate} update={update} /></div>
       </div>
+      {visibleReason ? <p className="small muted compactCandidateReason"><strong>Reason:</strong> {visibleReason}</p> : null}
 
       <details className="candidateDetails">
         <summary>Show details</summary>
@@ -681,6 +719,7 @@ export default function LeirdueImportPage() {
       if (manualMatch) return { ...candidate, shooterMatchStatus: manualMatch.status, shooterMatchReason: manualMatch.reason };
       const matchReason = leirdueNameMatchReason(candidate.shooterName, shooterName);
       if (namesLikelyMatch(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "matched_to_you" as const, shooterMatchReason: matchReason };
+      if (profileNameContainedInShooterText(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "matched_to_you" as const, shooterMatchReason: "partial/initial match" as const };
       const parsedParts = candidate.shooterName.split(/\s+/).filter(Boolean);
       const searchedParts = shooterName.split(/\s+/).filter(Boolean);
       const possible = parsedParts.length >= 2 && searchedParts.length >= 2 && namesLikelyMatch(parsedParts.at(-1), searchedParts.at(-1));
@@ -713,7 +752,7 @@ export default function LeirdueImportPage() {
           duplicateStatus: result.status,
           duplicateMatches: result.matches,
           alreadyImported: exact || candidate.alreadyImported,
-          selected: exact ? false : candidate.selected,
+          selected: result.status === "new" ? candidate.selected : false,
           warnings: result.status === "new" ? candidate.warnings : Array.from(new Set([...(candidate.warnings || []), result.status === "exact" ? "Already imported." : "Possible duplicate."])),
         };
       });
@@ -822,10 +861,15 @@ export default function LeirdueImportPage() {
   async function fetchSearchBatch(token: string | null) {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), BATCH_TIMEOUT_MS);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
     try {
       const response = await fetch("/api/leirdue/search", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
         body: JSON.stringify({ shooterName, year: Number(year), disciplines, continuationToken: token, sourceUrl: sourceUrl.trim() || null }),
         signal: controller.signal,
       });
@@ -854,7 +898,6 @@ export default function LeirdueImportPage() {
 
     let token = startToken;
     let batchCount = 0;
-    let consecutiveEmptyBatches = 0;
     let stoppedInsideLoop = false;
     let currentCandidates = reset ? [] : candidates;
     const startedAt = Date.now();
@@ -867,12 +910,11 @@ export default function LeirdueImportPage() {
     }
 
     try {
-      while (batchCount < MAX_AUTO_BATCHES) {
+      while (true) {
         batchCount += 1;
-        const batchLabel = token ? `batch ${batchCount + (debug?.batchNumber || 0)}` : "batch 1";
         setIsAutoContinuingLeirdue(Boolean(token));
         setSearchStatus(token ? "Continuing the search for more results..." : "Finding relevant events...");
-        setSearchCounterText(searchCounterMessage(batchLabel, leirdueTotalListeIdScanned, visibleCandidateCount(currentCandidates)));
+        setSearchCounterText(searchCounterMessage(leirdueTotalListeIdScanned, visibleCandidateCount(currentCandidates), Boolean(token)));
 
         const { response, data } = await fetchSearchBatch(token);
         setDebug(data.debug || null);
@@ -885,33 +927,25 @@ export default function LeirdueImportPage() {
         }
 
         setSearchStatus("Searching for your name in result lists...");
-        const beforeVisible = visibleCandidateCount(currentCandidates);
         currentCandidates = reset && batchCount === 1 ? (data.candidates || []).map(toEditable) : mergeCandidates(currentCandidates, data.candidates || []);
         const afterVisible = visibleCandidateCount(currentCandidates);
-        const newVisible = afterVisible - beforeVisible;
         await setReviewedCandidates(currentCandidates);
 
         const nextToken = data.continuationToken || null;
-        const target = data.debug?.expectedCandidateTarget || 16;
-        const completeTotal = data.debug?.completeCandidatesFoundTotal ?? afterVisible;
         const likelyWorkRemains = hasLikelySelectedYearWork(data.debug);
         const apiAllowsContinuation = data.debug?.continuationAvailable !== false;
-        const shouldContinue = Boolean(nextToken && apiAllowsContinuation && likelyWorkRemains && completeTotal < target);
+        const shouldContinue = Boolean(nextToken && apiAllowsContinuation && likelyWorkRemains);
         setContinuationToken(shouldContinue ? nextToken : null);
         setSearchProgress(estimatedSearchProgress(data.debug, batchCount, afterVisible, !shouldContinue));
         setLeirdueBatchNumber(data.debug?.batchNumber || batchCount);
         setLeirdueVisibleCandidatesCount(afterVisible);
         setLeirdueTotalListeIdScanned(data.debug?.scannedListeIdTotal || 0);
-        setSearchCounterText(searchCounterMessage(`Batch ${data.debug?.batchNumber || batchCount}`, data.debug?.scannedListeIdTotal || 0, afterVisible));
-
-        if (newVisible <= 0 && (data.debug?.pendingListeIdQueueRemaining || 0) === 0) consecutiveEmptyBatches += 1;
-        else consecutiveEmptyBatches = 0;
+        setSearchCounterText(searchCounterMessage(data.debug?.scannedListeIdTotal || 0, afterVisible, shouldContinue));
 
         if (!shouldContinue) {
-          setSearchStatus("Preparing the import list...");
+          setSearchStatus("Search complete");
           if (afterVisible === 0 && reset) setSuccess("No candidates found. Try broader filters or add a result manually.");
-          else if (completeTotal >= target) setSuccess(autoSearchCompleteMessage(afterVisible));
-          else setSuccess(`${autoSearchCompleteMessage(afterVisible)} Older or archived pages were skipped.`);
+          else setSuccess(autoSearchCompleteMessage(afterVisible));
           stoppedInsideLoop = true;
           break;
         }
@@ -919,11 +953,10 @@ export default function LeirdueImportPage() {
         token = nextToken;
         const scannedTooManyLists = (data.debug?.scannedListeIdTotal || 0) >= MAX_AUTO_LISTE_ID_SCANNED;
         const searchedTooLong = Date.now() - startedAt >= MAX_AUTO_SEARCH_MS;
-        const noVisibleProgress = consecutiveEmptyBatches >= MAX_EMPTY_AUTO_BATCHES;
-        if (scannedTooManyLists || searchedTooLong || noVisibleProgress) {
+        if (scannedTooManyLists || searchedTooLong) {
           setContinuationToken(nextToken);
-          setSearchStatus("Preparing the import list...");
-          setSuccess(autoSearchStopMessage(afterVisible));
+          setSearchStatus("Search could not be completed");
+          setSuccess(autoSearchIncompleteMessage(afterVisible, scannedTooManyLists ? `internal list scan cap reached (${MAX_AUTO_LISTE_ID_SCANNED} lists) while more work remained` : `internal time cap reached (${Math.round(MAX_AUTO_SEARCH_MS / 60000)} minutes) while more work remained`));
           setSearchProgress(100);
           stoppedInsideLoop = true;
           break;
@@ -932,16 +965,10 @@ export default function LeirdueImportPage() {
         setSearchStatus("Fetching result lists...");
       }
 
-      if (batchCount >= MAX_AUTO_BATCHES && !stoppedInsideLoop) {
-        const visibleCount = visibleCandidateCount(currentCandidates);
-        setSuccess(autoSearchStopMessage(visibleCount));
-        setSearchStatus("Preparing the import list...");
-        setSearchProgress(100);
-      }
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
         const visibleCount = visibleCandidateCount(currentCandidates);
-        if (visibleCount > 0) setSuccess(autoSearchStopMessage(visibleCount));
+        if (visibleCount > 0) setSuccess(autoSearchIncompleteMessage(visibleCount, "request timeout"));
         else setError("The Leirdue search took too long before finding candidates. Try again or choose a narrower year.");
       } else {
         setError("Could not fetch Leirdue results right now.");
@@ -956,11 +983,6 @@ export default function LeirdueImportPage() {
   async function search(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await runAutoSearch(null, true);
-  }
-
-  async function continueSearch() {
-    if (!continuationToken) return;
-    await runAutoSearch(continuationToken, false);
   }
 
   async function saveSelected() {
@@ -1099,7 +1121,7 @@ export default function LeirdueImportPage() {
             </div>
             <progress value={searchProgress} max={100} />
             {searchStatus ? <p className="small muted">{searchStatus}</p> : null}
-            <p className="small muted">{searchCounterMessage(`Batch ${leirdueBatchNumber || debug?.batchNumber || 0}`, leirdueTotalListeIdScanned || debug?.scannedListeIdTotal || 0, leirdueVisibleCandidatesCount || visibleCandidateCount(candidates), isAutoContinuingLeirdue)}</p>
+            <p className="small muted">{searchCounterMessage(leirdueTotalListeIdScanned || debug?.scannedListeIdTotal || 0, leirdueVisibleCandidatesCount || visibleCandidateCount(candidates), isAutoContinuingLeirdue)}</p>
             {searchCounterText ? <p className="small muted">{searchCounterText}</p> : null}
           </div>
         ) : null}
@@ -1119,7 +1141,6 @@ export default function LeirdueImportPage() {
         ) : null}
 
         <div className="btns">
-          {continuationToken && !searching ? <button type="button" className="secondary" onClick={continueSearch}>Continue search</button> : null}
           <Link className="button secondary" href="/results">Results history</Link>
           <Link className="button secondary" href="/results/new">Add result manually</Link>
           <Link className="button secondary" href="/dashboard">Dashboard</Link>
