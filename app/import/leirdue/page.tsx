@@ -43,8 +43,8 @@ type ManualListChoice = LeirdueManualLinkParseResult["listChoices"][number];
 
 function isLowQualitySummaryCandidate(candidate: LeirdueCandidate) {
   const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes}`.toLowerCase();
-  const percentageHeavy = /\b\d{1,3}(?:[,.]\d+)?\s*%/.test(text);
-  const summaryList = /(ranking|prosent|cup sammenlagt|sammenlagt premiering|klasseføring|klasseforing|sesong|season)/.test(text);
+  const percentageHeavy = /\b\d{1,3}(?:[,.]\d+)?\s*%/.test(text) || /(percentageheavy|prosent|percentage)/.test(text);
+  const summaryList = /(ranking|cup sammenlagt|sammenlagt premiering|klasseføring|klasseforing|sesong|season|multiEventSummary|cupSummary)/i.test(text);
   const missingUsableScore = candidate.ownScore === null || candidate.totalTargets === null;
   return candidate.category === "control" || percentageHeavy || summaryList || missingUsableScore;
 }
@@ -225,7 +225,7 @@ function likelyResultsLabel(count: number) {
 }
 
 function autoSearchStopMessage(visibleCount: number) {
-  return `Search could not be completed. We found ${likelyResultsLabel(visibleCount)} before a safety limit stopped the search.`;
+  return `Search could not be completed. We found ${likelyResultsLabel(visibleCount)} before the connection or public Leirdue response limit stopped this run.`;
 }
 
 function autoSearchCompleteMessage(visibleCount: number) {
@@ -254,6 +254,7 @@ function reviewStatusLabel(candidate: EditableCandidate) {
   if (candidate.duplicateStatus === "exact" || candidate.alreadyImported) return "Already imported";
   if (candidate.duplicateStatus === "possible") return "Possible duplicate";
   if (isManualLinkCandidate(candidate) && candidate.ownScore !== null && candidate.totalTargets !== null) return candidate.shooterMatchStatus === "matched_to_you" ? "Likely match" : "Selectable result";
+  if (isLowQualitySummaryCandidate(candidate)) return `Not importable — ${shortBlockerReason(candidate)}`;
   if (candidate.category === "recommended") return "Confirmed match";
   if (candidate.category === "review") return candidate.shooterMatchStatus === "matched_to_you" ? "Review before import" : "Possible match";
   return "Ignored / not matched";
@@ -281,10 +282,35 @@ function candidateReason(candidate: EditableCandidate) {
   if (candidate.shooterMatchStatus === "possible_match") return "Possible match — please review before importing.";
   if (!candidate.date) return "Missing date.";
   if (!candidate.discipline || candidate.discipline === "Other") return "Discipline not recognized.";
-  if (candidate.ownScore === null || candidate.totalTargets === null) return "No score found.";
-  if (candidate.category === "control") return candidate.warnings?.[0] || "Unsupported result format or control list.";
+  if (candidate.ownScore === null) return "Could not identify a valid score.";
+  if (candidate.totalTargets === null) return "Missing total target count.";
+  if (isLowQualitySummaryCandidate(candidate)) return longBlockerReason(candidate);
+  if (candidate.category === "control") return longBlockerReason(candidate);
   if (candidate.confidence === "low" || candidate.category === "review") return "Possible match — please review before importing.";
   return "Ready for review.";
+}
+
+function shortBlockerReason(candidate: LeirdueCandidate) {
+  const reason = longBlockerReason(candidate).toLowerCase();
+  if (reason.includes("percentage") || reason.includes("ranking")) return "ranking/control data";
+  if (reason.includes("outside")) return "outside selected year";
+  if (reason.includes("discipline")) return "discipline is not selected";
+  if (reason.includes("total target")) return "missing total targets";
+  if (reason.includes("score")) return "no valid score";
+  return "review details";
+}
+
+function longBlockerReason(candidate: LeirdueCandidate) {
+  const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes} ${(candidate.warnings || []).join(" ")}`.toLowerCase();
+  if (candidate.duplicateStatus === "exact" || candidate.alreadyImported) return "Duplicate of an existing imported result.";
+  if (/(percentageheavy|prosent|percentage|\b\d{1,3}(?:[,.]\d+)?\s*%|ranking|klasseføring|klasseforing)/.test(text)) return "Score appears to come from percentage/ranking data, not target score.";
+  if (/(control|cup sammenlagt|sammenlagt premiering|multieventsummary|cupsummary|flere stevner|sesong|season)/.test(text)) return "Appears to be a ranking/control list, not a competition result.";
+  if (/outside selected year|outsideyear/.test(text)) return "Outside selected year.";
+  if (/parsed discipline is not selected|discipline is not selected/.test(text)) return "Discipline is not selected.";
+  if (candidate.ownScore === null) return "Could not identify a valid score.";
+  if (candidate.totalTargets === null) return "Missing total target count.";
+  if (/parser could not|score row parsed/.test(text)) return "Parser could not read a complete result row.";
+  return candidate.warnings?.[0] || "Not enough reliable competition-result data to import automatically.";
 }
 
 function ReviewAction({ candidate, update }: { candidate: EditableCandidate; update: <Key extends keyof EditableCandidate>(key: Key, value: EditableCandidate[Key]) => void }) {
@@ -293,7 +319,7 @@ function ReviewAction({ candidate, update }: { candidate: EditableCandidate; upd
     const existingId = candidate.duplicateMatches?.[0]?.id;
     return existingId ? <Link href={`/sessions/${existingId}`} className="button secondary smallButton">View existing</Link> : <span className="badge badgeBlue">Already imported</span>;
   }
-  if (candidate.category === "control") return <span className="badge badgeBlue">Not importable</span>;
+  if (candidate.category === "control" || isLowQualitySummaryCandidate(candidate)) return <span className="badge badgeBlue">Not importable</span>;
   if (candidate.duplicateStatus === "possible" && !candidate.allowDuplicateSave) {
     return <button type="button" className="secondary smallButton" onClick={() => update("allowDuplicateSave", true)}>Review duplicate</button>;
   }
@@ -305,6 +331,7 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
   const sourceIds = candidateSourceIds(candidate);
   const warnings = candidateWarnings(candidate);
   const nameMatchLabel = candidate.shooterMatchStatus === "matched_to_you" ? (candidate.category === "recommended" ? "Name match" : "Strong name match") : candidate.shooterMatchStatus === "possible_match" ? "Possible match" : null;
+  const visibleReason = candidate.category === "control" || isLowQualitySummaryCandidate(candidate) ? candidateReason(candidate) : null;
 
   function update<Key extends keyof EditableCandidate>(key: Key, value: EditableCandidate[Key]) {
     onChange({ ...candidate, [key]: value, saveStatus: undefined, saveMessage: undefined });
@@ -332,6 +359,7 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
         </div>
         <div className="compactCandidateAction"><ReviewAction candidate={candidate} update={update} /></div>
       </div>
+      {visibleReason ? <p className="small muted compactCandidateReason"><strong>Reason:</strong> {visibleReason}</p> : null}
 
       <details className="candidateDetails">
         <summary>Show details</summary>

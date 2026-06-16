@@ -864,8 +864,8 @@ function eventHasSelectedDisciplineContext(event: EventLinkMeta, input: LeirdueS
 function eventQueueSortRank(event: EventLinkMeta, input: LeirdueSearchInput) {
   if (event.actualEventYear === input.year) return 0;
   if (event.actualEventYear !== null) return 4;
-  if (eventHasExplicitSelectedYearText(event, input.year)) return 1;
-  if (eventHasSelectedDisciplineContext(event, input)) return 2;
+  if (eventHasSelectedDisciplineContext(event, input)) return 1;
+  if (eventHasExplicitSelectedYearText(event, input.year)) return 2;
   return 3;
 }
 
