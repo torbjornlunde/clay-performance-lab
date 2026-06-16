@@ -297,6 +297,23 @@ export type LeirdueSearchDebug = {
   rejectedReasons: string[];
   candidateReasons: string[];
   firstUsefulSnippet: string | null;
+  cacheDiagnostics: {
+    cacheUsed: boolean;
+    cachedCandidatesFound: number;
+    liveCandidatesFound: number;
+    cacheEventHits: number;
+    cacheListHits: number;
+    cacheMisses: number;
+    staleCacheRefreshed: number;
+    liveEventFetches: number;
+    liveMenuFetches: number;
+    liveListFetches: number;
+    invalidCachedListsSkipped: number;
+    invalidLiveListsCached: number;
+    elapsedMs: number | null;
+    stopReason: string | null;
+    repeatedSearchShouldBeFaster: boolean;
+  };
 };
 
 export type LeirdueSearchResult = {

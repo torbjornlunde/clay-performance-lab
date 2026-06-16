@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { LeirdueCandidate } from "@/lib/leirdue/types";
+import type { LeirdueCandidate, LeirdueCheckedListDebug } from "@/lib/leirdue/types";
 import { extractLeirdueSourceIdentifiers, nordicSafeNameKey } from "@/lib/leirdue/normalize";
 
 const CURRENT_YEAR_TTL_DAYS = 7;
@@ -13,7 +13,12 @@ export type LeirdueCacheStats = {
   liveCandidatesStored: number;
   cacheMiss: boolean;
   staleCache: boolean;
+  staleRowsFound: number;
   cacheUsed: boolean;
+  eventHits: number;
+  listHits: number;
+  invalidListKeys: string[];
+  invalidListsStored: number;
   note: string | null;
 };
 
@@ -58,11 +63,30 @@ function supabaseServiceClient(): SupabaseClient | null {
 }
 
 export function emptyLeirdueCacheStats(note: string | null = null): LeirdueCacheStats {
-  return { enabled: false, cachedCandidatesFound: 0, liveCandidatesStored: 0, cacheMiss: false, staleCache: false, cacheUsed: false, note };
+  return { enabled: false, cachedCandidatesFound: 0, liveCandidatesStored: 0, cacheMiss: false, staleCache: false, staleRowsFound: 0, cacheUsed: false, eventHits: 0, listHits: 0, invalidListKeys: [], invalidListsStored: 0, note };
+}
+
+export function leirdueCacheTtlDaysForYear(year: number) {
+  const currentYear = new Date().getFullYear();
+  if (year >= currentYear) return CURRENT_YEAR_TTL_DAYS;
+  if (year >= currentYear - 1) return PAST_YEAR_TTL_DAYS;
+  return 36500;
 }
 
 function ttlDaysForYear(year: number) {
-  return year >= new Date().getFullYear() ? CURRENT_YEAR_TTL_DAYS : PAST_YEAR_TTL_DAYS;
+  return leirdueCacheTtlDaysForYear(year);
+}
+
+export function leirdueCanonicalListeIdKey(sourceUrl: string) {
+  try {
+    const url = new URL(sourceUrl.replace(/&amp;/g, "&"), "https://www.leirdue.net/");
+    const listeId = url.searchParams.get("liste_id");
+    const stevneId = url.searchParams.get("stevne");
+    if (listeId) return `liste:${stevneId || "none"}:${listeId}`;
+    return url.toString();
+  } catch {
+    return sourceUrl;
+  }
 }
 
 function freshCutoffIso(year: number) {
@@ -96,7 +120,7 @@ function candidateToCacheRow(candidate: LeirdueCandidate, year: number) {
     placement: candidate.placement ?? null,
     row_fingerprint: rowFingerprint(candidate),
     candidate_quality: `${candidate.category}/${candidate.confidence}`,
-    is_importable: candidate.category !== "control" && candidate.ownScore !== null && candidate.totalTargets !== null,
+    is_importable: candidate.importRecommended === true && candidate.category === "recommended",
     not_importable_reason: notImportable,
     raw_row_text: candidate.notes,
     parsed_at: new Date().toISOString(),
@@ -104,7 +128,8 @@ function candidateToCacheRow(candidate: LeirdueCandidate, year: number) {
 }
 
 function cacheRowToCandidate(row: CachedResultRow): LeirdueCandidate {
-  const [category = "review", confidence = "medium"] = (row.candidate_quality || "review/medium").split("/");
+  const [storedCategory = "review", confidence = "medium"] = (row.candidate_quality || "review/medium").split("/");
+  const category = row.is_importable === false ? "control" : storedCategory;
   return {
     date: row.event_date,
     name: row.event_title || "Leirdue.net cached result",
@@ -138,19 +163,43 @@ export async function getCachedLeirdueCandidates(input: { shooterName: string; y
   const supabase = supabaseReadClient(input.authorization);
   if (!supabase) return { candidates: [] as LeirdueCandidate[], stats: emptyLeirdueCacheStats("Cache read skipped: missing authenticated cache read context.") };
   const normalizedName = nordicSafeNameKey(input.shooterName);
-  const { data, error } = await supabase
-    .from("leirdue_parsed_result_cache")
-    .select("*")
-    .eq("year", input.year)
-    .eq("shooter_name_normalized", normalizedName)
-    .gte("parsed_at", freshCutoffIso(input.year))
-    .limit(200);
+  const cutoff = freshCutoffIso(input.year);
+  const [{ data, error }, staleResult, eventResult, listResult] = await Promise.all([
+    supabase
+      .from("leirdue_parsed_result_cache")
+      .select("*")
+      .eq("year", input.year)
+      .eq("shooter_name_normalized", normalizedName)
+      .gte("parsed_at", cutoff)
+      .limit(200),
+    supabase
+      .from("leirdue_parsed_result_cache")
+      .select("id", { count: "exact", head: true })
+      .eq("year", input.year)
+      .eq("shooter_name_normalized", normalizedName)
+      .lt("parsed_at", cutoff),
+    supabase
+      .from("leirdue_event_index")
+      .select("event_id")
+      .eq("year", input.year)
+      .gte("last_fetched_at", cutoff)
+      .limit(500),
+    supabase
+      .from("leirdue_result_list_index")
+      .select("event_id,liste_id,source_url,is_valid_single_event_result,is_ranking_or_control,is_multi_event_or_cup,last_fetched_at")
+      .gte("last_fetched_at", cutoff)
+      .limit(1000),
+  ]);
   if (error) return { candidates: [] as LeirdueCandidate[], stats: emptyLeirdueCacheStats(`Cache read failed: ${error.message}`) };
   const rows = (data || []) as CachedResultRow[];
+  const listRows = (listResult.data || []) as { event_id: string; liste_id: string; source_url: string | null; is_valid_single_event_result: boolean; is_ranking_or_control: boolean; is_multi_event_or_cup: boolean }[];
+  const invalidListKeys = listRows
+    .filter((row) => !row.is_valid_single_event_result || row.is_ranking_or_control || row.is_multi_event_or_cup)
+    .map((row) => leirdueCanonicalListeIdKey(row.source_url || `https://www.leirdue.net/?stevne=${row.event_id}&meny=resultater&liste_id=${row.liste_id}`));
   const filtered = input.disciplines.length > 0 ? rows.filter((row) => !row.discipline || input.disciplines.includes(row.discipline)) : rows;
   return {
     candidates: filtered.map(cacheRowToCandidate),
-    stats: { enabled: true, cachedCandidatesFound: filtered.length, liveCandidatesStored: 0, cacheMiss: filtered.length === 0, staleCache: false, cacheUsed: filtered.length > 0, note: null },
+    stats: { enabled: true, cachedCandidatesFound: filtered.length, liveCandidatesStored: 0, cacheMiss: filtered.length === 0, staleCache: (staleResult.count || 0) > 0, staleRowsFound: staleResult.count || 0, cacheUsed: filtered.length > 0, eventHits: eventResult.data?.length || 0, listHits: listRows.length, invalidListKeys, invalidListsStored: 0, note: listResult.error ? `Cache list read failed: ${listResult.error.message}` : eventResult.error ? `Cache event read failed: ${eventResult.error.message}` : null },
   };
 }
 
@@ -188,5 +237,29 @@ export async function storeLeirdueCandidatesInCache(candidates: LeirdueCandidate
   if (eventRows.length > 0) await supabase.from("leirdue_event_index").upsert(eventRows, { onConflict: "event_id" });
   if (listRows.length > 0) await supabase.from("leirdue_result_list_index").upsert(listRows, { onConflict: "event_id,liste_id" });
   const { error } = await supabase.from("leirdue_parsed_result_cache").upsert(rows, { onConflict: "source_url,row_fingerprint" });
-  return { enabled: true, cachedCandidatesFound: 0, liveCandidatesStored: error ? 0 : rows.length, cacheMiss: false, staleCache: false, cacheUsed: false, note: error ? `Cache write failed: ${error.message}` : null };
+  return { enabled: true, cachedCandidatesFound: 0, liveCandidatesStored: error ? 0 : rows.length, cacheMiss: false, staleCache: false, staleRowsFound: 0, cacheUsed: false, eventHits: 0, listHits: 0, invalidListKeys: [], invalidListsStored: 0, note: error ? `Cache write failed: ${error.message}` : null };
+}
+
+export async function storeLeirdueInvalidListDecisionsInCache(checkedLists: LeirdueCheckedListDebug[]) {
+  const supabase = supabaseServiceClient();
+  if (!supabase) return emptyLeirdueCacheStats("Invalid list cache write skipped: missing SUPABASE_SERVICE_ROLE_KEY.");
+  const now = new Date().toISOString();
+  const rows = checkedLists
+    .filter((item) => item.stevneId && item.listeId && item.reason && /invalid|summary|ranking|cup|multi-event|flere stevner|prosent|klassef.ring|control/i.test(item.reason))
+    .map((item) => ({
+      event_id: item.stevneId as string,
+      liste_id: item.listeId as string,
+      source_url: item.sourceUrl,
+      list_title: item.eventName,
+      list_type: item.status,
+      is_valid_single_event_result: false,
+      is_ranking_or_control: /ranking|klassef.ring|control|prosent/i.test(item.reason || ""),
+      is_multi_event_or_cup: /cup|series|summary|multi-event|flere stevner|sammenlagt/i.test(item.reason || ""),
+      detected_disciplines: [],
+      last_fetched_at: now,
+    }));
+  const uniqueRows = Array.from(new Map(rows.map((row) => [`${row.event_id}:${row.liste_id}`, row])).values());
+  if (uniqueRows.length === 0) return emptyLeirdueCacheStats(null);
+  const { error } = await supabase.from("leirdue_result_list_index").upsert(uniqueRows, { onConflict: "event_id,liste_id" });
+  return { ...emptyLeirdueCacheStats(error ? `Invalid list cache write failed: ${error.message}` : null), enabled: true, invalidListsStored: error ? 0 : uniqueRows.length };
 }

@@ -27,6 +27,7 @@ export type LeirdueSearchInput = {
   disciplines: string[];
   continuationToken?: string | null;
   sourceUrl?: string | null;
+  cachedInvalidListKeys?: string[];
 };
 
 type LeirdueContinuationState = {
@@ -309,6 +310,23 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
     rejectedReasons: [],
     candidateReasons: [],
     firstUsefulSnippet: null,
+    cacheDiagnostics: {
+      cacheUsed: false,
+      cachedCandidatesFound: 0,
+      liveCandidatesFound: 0,
+      cacheEventHits: 0,
+      cacheListHits: 0,
+      cacheMisses: 0,
+      staleCacheRefreshed: 0,
+      liveEventFetches: 0,
+      liveMenuFetches: 0,
+      liveListFetches: 0,
+      invalidCachedListsSkipped: 0,
+      invalidLiveListsCached: 0,
+      elapsedMs: null,
+      stopReason: null,
+      repeatedSearchShouldBeFaster: false,
+    },
   };
 }
 
@@ -1558,6 +1576,7 @@ async function scanQueuedListeIdPages(
 ) {
   const queueItems = listeIdQueueItems(links, eventsById, input);
   updateListeIdQueueDebug(debug, queueItems);
+  const cachedInvalidKeys = new Set(input.cachedInvalidListKeys || []);
   const pendingItems = queueItems.filter((item) => !scannedKeys.has(item.key) && !listPages.has(item.key));
   debug.queuedThisBatch = Math.max(debug.queuedThisBatch, pendingItems.length);
   debug.listeIdsQueuedThisBatch = Math.max(debug.listeIdsQueuedThisBatch, pendingItems.length);
@@ -1585,11 +1604,20 @@ async function scanQueuedListeIdPages(
       debug.scanStoppedReason ||= "timeout";
       break;
     }
+    if (cachedInvalidKeys.has(item.key) && item.source !== "validation") {
+      scannedKeys.add(item.key);
+      debug.cacheDiagnostics.invalidCachedListsSkipped += 1;
+      debug.lowPriorityListeIdPagesSkipped += 1;
+      debug.candidateReasons.push(`Skipped cached invalid Leirdue list before fetch: ${listPageLabel(item)}.`);
+      recordCheckedList(debug, item, item.href, null, "", "Skipped cached invalid result-list decision.");
+      continue;
+    }
     const invalidReason = invalidSummaryReason(`${item.eventTitle} ${item.text}`);
     if (invalidReason && item.source !== "validation") {
       scannedKeys.add(item.key);
       debug.lowPriorityListeIdPagesSkipped += 1;
       debug.candidateReasons.push(`Skipped invalid summary list before fetch: ${listPageLabel(item)} (${invalidReason}).`);
+      debug.cacheDiagnostics.invalidLiveListsCached += 1;
       recordCheckedList(debug, item, item.href, null, "", `Skipped invalid summary list before fetch: ${invalidReason}`);
       continue;
     }
@@ -1604,6 +1632,7 @@ async function scanQueuedListeIdPages(
 
     scannedThisPass += 1;
     debug.listeIdPagesFetched += 1;
+    debug.cacheDiagnostics.liveListFetches += 1;
     debug.listeIdPagesScannedForName += 1;
     debug.fetchedThisBatch += 1;
     debug.scannedThisBatch += 1;
@@ -2195,7 +2224,9 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     const resultHtml = await fetchLeirdue(resultMenuUrl, debug, state);
     if (!resultHtml) continue;
     debug.eventPagesFetched += 1;
+    debug.cacheDiagnostics.liveEventFetches += 1;
     debug.eventResultMenuPagesFetched += 1;
+    debug.cacheDiagnostics.liveMenuFetches += 1;
     debug.eventMenusFetchedThisBatch += 1;
     menusSinceLastScan += 1;
 
@@ -2971,6 +3002,7 @@ function mergeLeirdueCandidatesForContinuation(candidates: LeirdueCandidate[], d
 }
 
 export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promise<LeirdueSearchResult> {
+  const searchStartedAt = Date.now();
   const debug = emptyLeirdueSearchDebug();
   const continuation = continuationTokenPayload(input, input.continuationToken);
   debug.selectedYear = input.year;
@@ -3010,6 +3042,7 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   debug.candidateRowsCreated = normalized.length;
   debug.candidatesFoundAfterScan = normalized.length;
   debug.candidatesFoundBeforeTimeout = normalized.length;
+  debug.cacheDiagnostics.liveCandidatesFound = normalized.length;
   debug.previousVisibleCandidatesCount = continuation?.visibleCandidatesCountTotal ?? 0;
   updateCandidateDebugStats(debug, returnedCandidates);
   debug.returnedVisibleCandidatesCount = debug.visibleCandidatesCount;
@@ -3064,6 +3097,9 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
         pendingListeIdQueue: discovered.pendingListeIdQueue,
       })
     : null;
+  debug.cacheDiagnostics.elapsedMs = Date.now() - searchStartedAt;
+  debug.cacheDiagnostics.stopReason = debug.continuationStopReason || debug.scanStoppedReason || debug.eventStopReason;
+  debug.cacheDiagnostics.repeatedSearchShouldBeFaster = debug.cacheDiagnostics.liveCandidatesFound > 0 || debug.cacheDiagnostics.invalidLiveListsCached > 0 || debug.cacheDiagnostics.liveEventFetches > 0;
   return { candidates: returnedCandidates, debug, continuationToken };
 }
 
