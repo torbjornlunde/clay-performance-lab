@@ -39,7 +39,7 @@ export async function POST(request: Request) {
 
   try {
     if (!continuationToken && !sourceUrl) {
-      const cached = await getCachedLeirdueCandidates({ shooterName, year, disciplines });
+      const cached = await getCachedLeirdueCandidates({ shooterName, year, disciplines, authorization: request.headers.get("authorization") });
       if (cached.candidates.length > 0) {
         const debug = emptyLeirdueSearchDebug();
         debug.selectedYear = year;

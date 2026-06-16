@@ -1,3 +1,4 @@
+import "server-only";
 import { createHash } from "crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { LeirdueCandidate } from "@/lib/leirdue/types";
@@ -38,6 +39,16 @@ type CachedResultRow = {
   raw_row_text: string | null;
   parsed_at: string | null;
 };
+
+function supabaseReadClient(authorization: string | null | undefined): SupabaseClient | null {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnonKey || !authorization) return null;
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false },
+    global: { headers: { Authorization: authorization } },
+  });
+}
 
 function supabaseServiceClient(): SupabaseClient | null {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -123,9 +134,9 @@ function cacheRowToCandidate(row: CachedResultRow): LeirdueCandidate {
   };
 }
 
-export async function getCachedLeirdueCandidates(input: { shooterName: string; year: number; disciplines: string[] }) {
-  const supabase = supabaseServiceClient();
-  if (!supabase) return { candidates: [] as LeirdueCandidate[], stats: emptyLeirdueCacheStats("Cache disabled: missing SUPABASE_SERVICE_ROLE_KEY.") };
+export async function getCachedLeirdueCandidates(input: { shooterName: string; year: number; disciplines: string[]; authorization?: string | null }) {
+  const supabase = supabaseReadClient(input.authorization);
+  if (!supabase) return { candidates: [] as LeirdueCandidate[], stats: emptyLeirdueCacheStats("Cache read skipped: missing authenticated cache read context.") };
   const normalizedName = nordicSafeNameKey(input.shooterName);
   const { data, error } = await supabase
     .from("leirdue_parsed_result_cache")
