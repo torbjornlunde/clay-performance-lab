@@ -524,11 +524,26 @@ function controlFlags(text: string) {
   const flags: string[] = [];
   if (/\b(?:xxl\s+cup|blaser\s+cup|cup)\s+sammenlagt\b/.test(normalized) || /\bsammenlagt\s+(?:cup|xxl\s+cup|blaser\s+cup)\b/.test(normalized)) flags.push("cup/ranking/prosent/uttak");
   if (normalized.includes("prosent") || normalized.includes("uttaksliste") || /\buttak\s+liste\b/.test(normalized) || normalized.includes("ranking") || /\brank\b/.test(normalized)) flags.push("cup/ranking/prosent/uttak");
+  if (invalidSummaryFlags(normalized).length > 0) flags.push(...invalidSummaryFlags(normalized));
   if (normalized.includes("påmelding") || normalized.includes("pamelding") || normalized.includes("deltakerliste") || normalized.includes("deltagarliste") || normalized.includes("participant")) flags.push("registration/participant");
   if (normalized.includes("lagliste") || normalized.includes("lag list") || normalized.includes("team list") || normalized.includes("lister lag")) flags.push("team/lag list");
   if (normalized.includes("finale only") || normalized.includes("final-only") || normalized.includes("shoot-off") || normalized.includes("shootoff")) flags.push("finale/shoot-off only");
   if ((normalized.includes("lørdag") && normalized.includes("søndag")) || (normalized.includes("lordag") && normalized.includes("sondag")) || normalized.includes("combined weekend")) flags.push("combined weekend");
   return Array.from(new Set(flags));
+}
+
+function invalidSummaryFlags(text: string) {
+  const normalized = normalizeText(text);
+  const flags: string[] = [];
+  if (/\b(cup|karusell)\b.*\b(sammenlagt|total|totalt|poeng|prosent|ranking)\b|\b(sammenlagt|total|totalt)\b.*\b(cup|karusell)\b/.test(normalized)) flags.push("cup/series summary");
+  if (/\b(sammenlagt\s+etter|etter\s+\d+\s+stevner|flere\s+stevner|alle\s+stevner|resultater?\s+med\s+flere\s+stevner|resultatliste\s+med\s+flere\s+stevner)\b/.test(normalized)) flags.push("multi-event summary");
+  if (/\b(ranking|klasseføring|klasseforing|kontroll|poeng|prosent)\b/.test(normalized)) flags.push("ranking/percentage/control");
+  if (/\bsammenlagt\s+(trap|sti)\b|\btrap\/sti\b/.test(normalized)) flags.push("combined trap/sti summary");
+  return Array.from(new Set(flags));
+}
+
+function invalidSummaryReason(text: string) {
+  return invalidSummaryFlags(text).join(", ");
 }
 
 function isLikelyControlText(text: string) {
@@ -1570,6 +1585,14 @@ async function scanQueuedListeIdPages(
       debug.scanStoppedReason ||= "timeout";
       break;
     }
+    const invalidReason = invalidSummaryReason(`${item.eventTitle} ${item.text}`);
+    if (invalidReason && item.source !== "validation") {
+      scannedKeys.add(item.key);
+      debug.lowPriorityListeIdPagesSkipped += 1;
+      debug.candidateReasons.push(`Skipped invalid summary list before fetch: ${listPageLabel(item)} (${invalidReason}).`);
+      recordCheckedList(debug, item, item.href, null, "", `Skipped invalid summary list before fetch: ${invalidReason}`);
+      continue;
+    }
 
     scannedKeys.add(item.key);
     if (debug.firstListeIdUrlsInspected.length < 10) debug.firstListeIdUrlsInspected.push(item.href);
@@ -1908,6 +1931,7 @@ function listeIdPriorityDetail(link: Link, input: LeirdueSearchInput) {
   const text = normalizeText(`${link.text} ${link.href}`);
   const reasons: string[] = [];
   let score = 0;
+  const invalidReason = invalidSummaryReason(text);
   if (text.includes("sammenlagt resultatliste etter bane")) { score += 140; reasons.push("sammenlagt resultatliste etter bane"); }
   else if (text.includes("resultater sammenlagt") || text.includes("resultatliste sammenlagt")) { score += 110; reasons.push("resultater/resultatliste sammenlagt"); }
   else if (/\b(hovedliste|hovedresultat|alle|total|totalt|sammenlagt)\b/.test(text)) { score += 105; reasons.push("overall/main list"); }
@@ -1918,6 +1942,7 @@ function listeIdPriorityDetail(link: Link, input: LeirdueSearchInput) {
   if (link.source === "validation") { score += 500; reasons.push("validation"); }
   if (isTorbjornLunde2025RegressionListe(input, link.href)) { score += 1000; reasons.push("Torbjørn 2025 regression liste_id priority"); }
   if (text.includes("klassedelt") || /\b(klassevis|class\s+[a-z0-9]+|klasse\s+[a-z0-9]+)\b/.test(text)) { score -= 70; reasons.push("class split"); }
+  if (invalidReason) { score -= 500; reasons.push(`invalid summary: ${invalidReason}`); }
   if (/(lagskyting|lagliste|finaleliste|finale|cup sammenlagt|sammenlagt premiering|ranking|prosent|klasseføring|klasseforing|uttak|flere stevner|sesong|season|%)/.test(text)) { score -= 180; reasons.push("control/summary/percentage list"); }
   return { score, reason: reasons.join(", ") || "generic liste_id" };
 }

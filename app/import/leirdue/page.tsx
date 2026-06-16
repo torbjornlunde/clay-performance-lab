@@ -277,6 +277,7 @@ function confidenceBadgeClass(candidate: EditableCandidate) {
 function candidateReason(candidate: EditableCandidate) {
   if (candidate.duplicateStatus === "exact" || candidate.alreadyImported) return "Already imported from Leirdue.net or matching saved result.";
   if (candidate.duplicateStatus === "possible") return candidate.duplicateMatches?.[0]?.reason || "Possible duplicate.";
+  if (isLowQualitySummaryCandidate(candidate)) return longBlockerReason(candidate);
   if (isManualLinkCandidate(candidate) && candidate.ownScore !== null && candidate.totalTargets !== null) return "Parsed from the pasted result list. Select it if this is your result.";
   if (candidate.shooterMatchStatus === "unmatched") return "Shooter name did not match.";
   if (candidate.shooterMatchStatus === "possible_match") return "Possible match — please review before importing.";
@@ -284,7 +285,6 @@ function candidateReason(candidate: EditableCandidate) {
   if (!candidate.discipline || candidate.discipline === "Other") return "Discipline not recognized.";
   if (candidate.ownScore === null) return "Could not identify a valid score.";
   if (candidate.totalTargets === null) return "Missing total target count.";
-  if (isLowQualitySummaryCandidate(candidate)) return longBlockerReason(candidate);
   if (candidate.category === "control") return longBlockerReason(candidate);
   if (candidate.confidence === "low" || candidate.category === "review") return "Possible match — please review before importing.";
   return "Ready for review.";
