@@ -51,9 +51,18 @@ function isLowQualitySummaryCandidate(candidate: LeirdueCandidate) {
 }
 
 function candidateUsesMainResultList(candidate: LeirdueCandidate) {
+  const listType = (candidate.listType || "").toLowerCase();
+  if (listType === "overall list" || listType === "main result list") return true;
+  if (listType === "class list") return false;
   const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes}`.toLowerCase();
-  if (/(class list|klassedelt|klassevis|class\s+[a-z0-9]+|klasse\s+[a-z0-9]+)/.test(text)) return false;
+  if (/(class list|klassedelt|klassevis|class\s+(?:a|b|c|d|e|junior|veteran)|klasse\s+(?:a|b|c|d|e|junior|veteran))/.test(text)) return false;
   return /(overall list|main result list|sammenlagt|total|totalt|resultat|resultater|alle|hovedliste|hovedresultat)/.test(text);
+}
+
+function candidateHasUsableSourceList(candidate: LeirdueCandidate) {
+  const ids = candidateSourceIds(candidate);
+  const listType = (candidate.listType || "").toLowerCase();
+  return Boolean(ids.stevneId && ids.listeId && listType !== "class list");
 }
 
 function visibleImportCandidate(candidate: EditableCandidate) {
@@ -70,7 +79,7 @@ function isManualLinkCandidate(candidate: LeirdueCandidate) {
 function candidateSelectedByDefault(candidate: LeirdueCandidate) {
   if (/Manual link import parsed row/i.test(candidate.notes || "")) return false;
   const completeScore = candidate.ownScore !== null && candidate.totalTargets !== null && candidate.winningScore !== null;
-  return candidate.category === "recommended" && candidate.confidence === "high" && candidate.importRecommended && completeScore && candidateUsesMainResultList(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported;
+  return candidate.category === "recommended" && candidate.confidence === "high" && candidate.importRecommended && completeScore && (candidateUsesMainResultList(candidate) || candidateHasUsableSourceList(candidate)) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported;
 }
 
 function manualLinkNameMatchStatus(parsedName: string | null | undefined, profileName: string) {
@@ -247,7 +256,7 @@ function reviewStatusLabel(candidate: EditableCandidate) {
   if (candidate.duplicateStatus === "possible") return "Possible duplicate";
   if (isManualLinkCandidate(candidate) && candidate.ownScore !== null && candidate.totalTargets !== null) return candidate.shooterMatchStatus === "matched_to_you" ? "Likely match" : "Selectable result";
   if (candidate.category === "recommended") return "Confirmed match";
-  if (candidate.category === "review") return "Possible match";
+  if (candidate.category === "review") return candidate.shooterMatchStatus === "matched_to_you" ? "Review before import" : "Possible match";
   return "Ignored / not matched";
 }
 
@@ -296,7 +305,7 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
   const percent = performance(candidate);
   const sourceIds = candidateSourceIds(candidate);
   const warnings = candidateWarnings(candidate);
-  const likelyLabel = candidate.shooterMatchStatus === "matched_to_you" ? "Likely match" : candidate.shooterMatchStatus === "possible_match" ? "Possible match" : null;
+  const nameMatchLabel = candidate.shooterMatchStatus === "matched_to_you" ? (candidate.category === "recommended" ? "Name match" : "Strong name match") : candidate.shooterMatchStatus === "possible_match" ? "Possible match" : null;
 
   function update<Key extends keyof EditableCandidate>(key: Key, value: EditableCandidate[Key]) {
     onChange({ ...candidate, [key]: value, saveStatus: undefined, saveMessage: undefined });
@@ -310,7 +319,7 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
     <article className={`candidateCard compactCandidateCard selectableResultCard ${candidate.selected ? "selectedResultCard" : ""} ${candidate.category === "control" ? "secondaryCandidateCard" : ""}`}>
       <div className="compactCandidateRow">
         <div className="compactCandidateMain">
-          {likelyLabel ? <div className="compactCandidateLine"><span className={`badge ${likelyLabel === "Likely match" ? "badgeGreen" : "badgeGold"}`}>{likelyLabel}</span></div> : null}
+          {nameMatchLabel ? <div className="compactCandidateLine"><span className={`badge ${candidate.shooterMatchStatus === "matched_to_you" ? "badgeGreen" : "badgeGold"}`}>{nameMatchLabel}</span></div> : null}
           <div className="compactCandidateLine resultShooterLine"><strong>{candidate.shooterName || shooterName || "Unknown shooter"}</strong></div>
           <div className="compactCandidateLine scoreLine"><strong>{candidate.ownScore ?? "?"}/{candidate.maxScore ?? candidate.totalTargets ?? "?"}</strong><span>·</span><span>Winner {candidate.winningScore ?? "?"}</span></div>
           <div className="compactCandidateLine"><span>{candidate.placement ? `Place ${candidate.placement}` : "Placement unknown"}</span><span>·</span><span>{candidate.listType || "Unknown list"}</span></div>

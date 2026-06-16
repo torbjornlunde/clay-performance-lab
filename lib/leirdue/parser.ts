@@ -577,10 +577,12 @@ function isOverallResultList(text: string) {
 
 function isClassOnlyList(text: string) {
   const normalized = normalizeText(text);
-  return /\b(klassedelt|klassevis|klasse\s+[a-z0-9]+|class\s+[a-z0-9]+|junior|veteran)\b/.test(normalized);
+  return /\b(klassedelt|klassevis|klasse\s+(?:a|b|c|d|e|junior|veteran)|class\s+(?:a|b|c|d|e|junior|veteran)|junior|veteran)\b/.test(normalized);
 }
 
 function isDefaultImportList(text: string) {
+  const normalized = normalizeText(text);
+  if (/\b(overall list|main result list)\b/.test(normalized)) return true;
   return isOverallResultList(text) || (directListScore(text) >= 55 && !isClassOnlyList(text));
 }
 
@@ -1216,6 +1218,8 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[], select
   const hasCompleteScore = raw.ownScore !== null && raw.winningScore !== null && raw.totalTargets !== null;
   const parsedDiscipline = raw.discipline !== "Other";
   const defaultImportList = isDefaultImportList(classificationContext);
+  const sourceIds = extractLeirdueSourceIdentifiers(raw.leirdueUrl);
+  const usableSourceList = Boolean(sourceIds.stevneId && sourceIds.listeId && !isClassOnlyList(classificationContext));
   const ambiguousInferredTargets = notes.some((note) => /totalTargetsSource=seriesPattern/.test(note) && /inferenceConfidence=(medium|low)/.test(note));
   const candidatePriority = computeCandidatePriority(raw);
   let confidence: LeirdueConfidence = "low";
@@ -1225,7 +1229,7 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[], select
     category = "control";
     confidence = "low";
     notes.push(`Category reason: control flags triggered: ${Array.from(new Set(flags)).join(", ")}.`);
-  } else if (hasCompleteScore && raw.date !== null && parsedDiscipline && defaultImportList && !ambiguousInferredTargets) {
+  } else if (hasCompleteScore && raw.date !== null && parsedDiscipline && (defaultImportList || usableSourceList) && !ambiguousInferredTargets) {
     category = "recommended";
     confidence = "high";
     notes.push("Category reason: complete parsed result data from overall/main result list.");
@@ -1248,7 +1252,6 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[], select
 
   if (!raw.shooterClass) notes.push("Class unknown.");
   if (!raw.seriesScores || raw.seriesScores.length === 0) notes.push("Could not detect series breakdown.");
-  const sourceIds = extractLeirdueSourceIdentifiers(raw.leirdueUrl);
   const warnings = [
     ...notes.filter((note) => /Could not|uncertain|review is required|Unsupported|Possible duplicate/i.test(note)),
     ...(raw.placement === null || raw.placement === undefined ? ["Could not detect placement."] : []),
@@ -2370,6 +2373,7 @@ function classifyNormalizedCandidate(candidate: LeirdueCandidate, selectedYear: 
   const hiddenReason = candidateHiddenReason(candidate, selectedYear);
   if (hiddenReason && hiddenReason !== "missingTotalTargets") flags.push(hiddenReason);
   const direct = directListScore(context) > 0 || isValidationHintedCandidate(candidate);
+  const usableSourceList = Boolean(candidate.stevneId && candidate.listeId && !isClassOnlyList(`${candidate.name} ${candidate.listType || ""}`));
   let category: LeirdueCategory = "review";
   let confidence: LeirdueConfidence = "low";
   let importRecommended = false;
@@ -2377,7 +2381,7 @@ function classifyNormalizedCandidate(candidate: LeirdueCandidate, selectedYear: 
   if (flags.length > 0) {
     category = "control";
     confidence = "low";
-  } else if (completeCandidate(candidate) && isDefaultImportList(context) && !/totalTargetsSource=seriesPattern.*inferenceConfidence=(medium|low)/.test(candidate.notes)) {
+  } else if (completeCandidate(candidate) && (isDefaultImportList(context) || usableSourceList) && !/totalTargetsSource=seriesPattern.*inferenceConfidence=(medium|low)/.test(candidate.notes)) {
     category = "recommended";
     confidence = "high";
     importRecommended = true;
