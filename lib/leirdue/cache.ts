@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { LeirdueCandidate, LeirdueCheckedListDebug } from "@/lib/leirdue/types";
+import type { LeirdueCandidate, LeirdueCheckedListDebug, LeirdueSearchDebug } from "@/lib/leirdue/types";
 import { extractLeirdueSourceIdentifiers, nordicSafeNameKey } from "@/lib/leirdue/normalize";
 
 const CURRENT_YEAR_TTL_DAYS = 7;
@@ -15,10 +15,16 @@ export type LeirdueCacheStats = {
   staleCache: boolean;
   staleRowsFound: number;
   cacheUsed: boolean;
+  cacheReadOk: boolean;
+  cachedImportableCandidatesFound: number;
   eventHits: number;
   listHits: number;
   invalidListKeys: string[];
   invalidListsStored: number;
+  serviceRoleCacheWriteEnabled: boolean;
+  cacheWriteOk: boolean;
+  cacheWriteErrors: string[];
+  cacheReadErrors: string[];
   note: string | null;
 };
 
@@ -63,7 +69,7 @@ function supabaseServiceClient(): SupabaseClient | null {
 }
 
 export function emptyLeirdueCacheStats(note: string | null = null): LeirdueCacheStats {
-  return { enabled: false, cachedCandidatesFound: 0, liveCandidatesStored: 0, cacheMiss: false, staleCache: false, staleRowsFound: 0, cacheUsed: false, eventHits: 0, listHits: 0, invalidListKeys: [], invalidListsStored: 0, note };
+  return { enabled: false, cachedCandidatesFound: 0, liveCandidatesStored: 0, cacheMiss: false, staleCache: false, staleRowsFound: 0, cacheUsed: false, cacheReadOk: false, cachedImportableCandidatesFound: 0, eventHits: 0, listHits: 0, invalidListKeys: [], invalidListsStored: 0, serviceRoleCacheWriteEnabled: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY), cacheWriteOk: false, cacheWriteErrors: note ? [note] : [], cacheReadErrors: note ? [note] : [], note };
 }
 
 export function leirdueCacheTtlDaysForYear(year: number) {
@@ -190,24 +196,30 @@ export async function getCachedLeirdueCandidates(input: { shooterName: string; y
       .gte("last_fetched_at", cutoff)
       .limit(1000),
   ]);
-  if (error) return { candidates: [] as LeirdueCandidate[], stats: emptyLeirdueCacheStats(`Cache read failed: ${error.message}`) };
+  if (error) return { candidates: [] as LeirdueCandidate[], stats: { ...emptyLeirdueCacheStats(`Cache read failed: ${error.message}`), cacheReadErrors: [`Cache read failed: ${error.message}`] } };
   const rows = (data || []) as CachedResultRow[];
   const listRows = (listResult.data || []) as { event_id: string; liste_id: string; source_url: string | null; is_valid_single_event_result: boolean; is_ranking_or_control: boolean; is_multi_event_or_cup: boolean }[];
   const invalidListKeys = listRows
     .filter((row) => !row.is_valid_single_event_result || row.is_ranking_or_control || row.is_multi_event_or_cup)
     .map((row) => leirdueCanonicalListeIdKey(row.source_url || `https://www.leirdue.net/?stevne=${row.event_id}&meny=resultater&liste_id=${row.liste_id}`));
   const filtered = input.disciplines.length > 0 ? rows.filter((row) => !row.discipline || input.disciplines.includes(row.discipline)) : rows;
+  const candidates = filtered.map(cacheRowToCandidate);
+  const readErrors = [
+    staleResult.error ? `Cache stale-row read failed: ${staleResult.error.message}` : null,
+    listResult.error ? `Cache list read failed: ${listResult.error.message}` : null,
+    eventResult.error ? `Cache event read failed: ${eventResult.error.message}` : null,
+  ].filter((value): value is string => Boolean(value));
   return {
-    candidates: filtered.map(cacheRowToCandidate),
-    stats: { enabled: true, cachedCandidatesFound: filtered.length, liveCandidatesStored: 0, cacheMiss: filtered.length === 0, staleCache: (staleResult.count || 0) > 0, staleRowsFound: staleResult.count || 0, cacheUsed: filtered.length > 0, eventHits: eventResult.data?.length || 0, listHits: listRows.length, invalidListKeys, invalidListsStored: 0, note: listResult.error ? `Cache list read failed: ${listResult.error.message}` : eventResult.error ? `Cache event read failed: ${eventResult.error.message}` : null },
+    candidates,
+    stats: { enabled: true, cachedCandidatesFound: filtered.length, liveCandidatesStored: 0, cacheMiss: filtered.length === 0, staleCache: (staleResult.count || 0) > 0, staleRowsFound: staleResult.count || 0, cacheUsed: filtered.length > 0, cacheReadOk: readErrors.length === 0, cachedImportableCandidatesFound: candidates.filter((candidate) => candidate.importRecommended).length, eventHits: eventResult.data?.length || 0, listHits: listRows.length, invalidListKeys, invalidListsStored: 0, serviceRoleCacheWriteEnabled: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY), cacheWriteOk: false, cacheWriteErrors: [], cacheReadErrors: readErrors, note: readErrors[0] || null },
   };
 }
 
 export async function storeLeirdueCandidatesInCache(candidates: LeirdueCandidate[], year: number) {
   const supabase = supabaseServiceClient();
-  if (!supabase || candidates.length === 0) return emptyLeirdueCacheStats(!supabase ? "Cache write skipped: missing SUPABASE_SERVICE_ROLE_KEY." : null);
+  if (!supabase || candidates.length === 0) return { ...emptyLeirdueCacheStats(!supabase ? "Cache write skipped: missing SUPABASE_SERVICE_ROLE_KEY." : null), serviceRoleCacheWriteEnabled: Boolean(supabase) };
   const rows = candidates.filter((candidate) => candidate.leirdueUrl && candidate.shooterName).map((candidate) => candidateToCacheRow(candidate, year));
-  if (rows.length === 0) return emptyLeirdueCacheStats("Cache write skipped: no cacheable candidates.");
+  if (rows.length === 0) return { ...emptyLeirdueCacheStats("Cache write skipped: no cacheable candidates."), serviceRoleCacheWriteEnabled: Boolean(supabase) };
   const eventRows = Array.from(new Map(rows.filter((row) => row.event_id).map((row) => [row.event_id, {
     event_id: row.event_id,
     source_url: row.source_url,
@@ -234,10 +246,18 @@ export async function storeLeirdueCandidatesInCache(candidates: LeirdueCandidate
     detected_disciplines: row.discipline ? [row.discipline] : [],
     last_fetched_at: new Date().toISOString(),
   }])).values());
-  if (eventRows.length > 0) await supabase.from("leirdue_event_index").upsert(eventRows, { onConflict: "event_id" });
-  if (listRows.length > 0) await supabase.from("leirdue_result_list_index").upsert(listRows, { onConflict: "event_id,liste_id" });
+  const writeErrors: string[] = [];
+  if (eventRows.length > 0) {
+    const { error } = await supabase.from("leirdue_event_index").upsert(eventRows, { onConflict: "event_id" });
+    if (error) writeErrors.push(`Event cache write failed: ${error.message}`);
+  }
+  if (listRows.length > 0) {
+    const { error } = await supabase.from("leirdue_result_list_index").upsert(listRows, { onConflict: "event_id,liste_id" });
+    if (error) writeErrors.push(`List cache write failed: ${error.message}`);
+  }
   const { error } = await supabase.from("leirdue_parsed_result_cache").upsert(rows, { onConflict: "source_url,row_fingerprint" });
-  return { enabled: true, cachedCandidatesFound: 0, liveCandidatesStored: error ? 0 : rows.length, cacheMiss: false, staleCache: false, staleRowsFound: 0, cacheUsed: false, eventHits: 0, listHits: 0, invalidListKeys: [], invalidListsStored: 0, note: error ? `Cache write failed: ${error.message}` : null };
+  if (error) writeErrors.push(`Parsed result cache write failed: ${error.message}`);
+  return { enabled: true, cachedCandidatesFound: 0, liveCandidatesStored: writeErrors.length ? 0 : rows.length, cacheMiss: false, staleCache: false, staleRowsFound: 0, cacheUsed: false, cacheReadOk: false, cachedImportableCandidatesFound: 0, eventHits: 0, listHits: 0, invalidListKeys: [], invalidListsStored: 0, serviceRoleCacheWriteEnabled: true, cacheWriteOk: writeErrors.length === 0, cacheWriteErrors: writeErrors, cacheReadErrors: [], note: writeErrors[0] || null };
 }
 
 export async function storeLeirdueInvalidListDecisionsInCache(checkedLists: LeirdueCheckedListDebug[]) {
@@ -261,5 +281,75 @@ export async function storeLeirdueInvalidListDecisionsInCache(checkedLists: Leir
   const uniqueRows = Array.from(new Map(rows.map((row) => [`${row.event_id}:${row.liste_id}`, row])).values());
   if (uniqueRows.length === 0) return emptyLeirdueCacheStats(null);
   const { error } = await supabase.from("leirdue_result_list_index").upsert(uniqueRows, { onConflict: "event_id,liste_id" });
-  return { ...emptyLeirdueCacheStats(error ? `Invalid list cache write failed: ${error.message}` : null), enabled: true, invalidListsStored: error ? 0 : uniqueRows.length };
+  return { ...emptyLeirdueCacheStats(error ? `Invalid list cache write failed: ${error.message}` : null), enabled: true, serviceRoleCacheWriteEnabled: true, cacheWriteOk: !error, cacheWriteErrors: error ? [`Invalid list cache write failed: ${error.message}`] : [], invalidListsStored: error ? 0 : uniqueRows.length };
+}
+
+
+export async function storeLeirdueCrawlIndexesInCache(debug: LeirdueSearchDebug, year: number) {
+  const supabase = supabaseServiceClient();
+  if (!supabase) return emptyLeirdueCacheStats("Crawl index cache write skipped: missing SUPABASE_SERVICE_ROLE_KEY.");
+  const now = new Date().toISOString();
+  const eventRows = debug.selectedYearEventLinks
+    .filter((event) => event.eventId)
+    .map((event) => ({
+      event_id: event.eventId,
+      source_url: event.url,
+      year,
+      event_date: event.actualEventDate || event.date,
+      event_title: event.eventTitle || event.titleText,
+      organizer: event.organizerText,
+      detected_disciplines: [],
+      raw_overview_text: event.rawRowSnippet,
+      is_ranking_or_control: /ranking|klasseføring|klasseforing|control|trening|training/i.test(`${event.titleText} ${event.eventTitle} ${event.rawRowSnippet}`),
+      is_multi_event_or_cup: /cup|series|flere stevner|sammenlagt etter/i.test(`${event.titleText} ${event.eventTitle} ${event.rawRowSnippet}`),
+      last_seen_at: now,
+      last_fetched_at: event.inspected ? now : null,
+    }));
+  const checkedListRows = debug.checkedLists
+    .filter((item) => item.stevneId && item.listeId)
+    .map((item) => {
+      const reason = item.reason || "";
+      const invalid = item.status === "unsupported format" || /invalid|summary|ranking|cup|multi-event|flere stevner|prosent|klassef.ring|control/i.test(reason);
+      return {
+        event_id: item.stevneId as string,
+        liste_id: item.listeId as string,
+        source_url: item.sourceUrl,
+        list_title: item.eventName,
+        list_type: item.status,
+        is_valid_single_event_result: !invalid && item.status === "parsed",
+        is_ranking_or_control: /ranking|klassef.ring|control|prosent/i.test(reason),
+        is_multi_event_or_cup: /cup|series|summary|multi-event|flere stevner|sammenlagt/i.test(reason),
+        detected_disciplines: [],
+        last_fetched_at: now,
+      };
+    });
+  const resultMenuRows = debug.resultMenuDebug.flatMap((menu) =>
+    menu.firstListeIdUrls.map((sourceUrl) => {
+      const ids = extractLeirdueSourceIdentifiers(sourceUrl);
+      return ids.stevneId && ids.listeId ? {
+        event_id: ids.stevneId,
+        liste_id: ids.listeId,
+        source_url: sourceUrl,
+        list_title: null,
+        list_type: "discovered",
+        is_valid_single_event_result: false,
+        is_ranking_or_control: false,
+        is_multi_event_or_cup: false,
+        detected_disciplines: [],
+        last_fetched_at: null,
+      } : null;
+    }).filter((row): row is NonNullable<typeof row> => Boolean(row)),
+  );
+  const uniqueEventRows = Array.from(new Map(eventRows.map((row) => [row.event_id, row])).values());
+  const uniqueListRows = Array.from(new Map([...resultMenuRows, ...checkedListRows].map((row) => [`${row.event_id}:${row.liste_id}`, row])).values());
+  const writeErrors: string[] = [];
+  if (uniqueEventRows.length > 0) {
+    const { error } = await supabase.from("leirdue_event_index").upsert(uniqueEventRows, { onConflict: "event_id" });
+    if (error) writeErrors.push(`Crawl event index write failed: ${error.message}`);
+  }
+  if (uniqueListRows.length > 0) {
+    const { error } = await supabase.from("leirdue_result_list_index").upsert(uniqueListRows, { onConflict: "event_id,liste_id" });
+    if (error) writeErrors.push(`Crawl list index write failed: ${error.message}`);
+  }
+  return { ...emptyLeirdueCacheStats(writeErrors[0] || null), enabled: true, serviceRoleCacheWriteEnabled: true, cacheWriteOk: writeErrors.length === 0, cacheWriteErrors: writeErrors, invalidListsStored: checkedListRows.filter((row) => !row.is_valid_single_event_result).length };
 }

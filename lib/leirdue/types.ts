@@ -299,20 +299,32 @@ export type LeirdueSearchDebug = {
   firstUsefulSnippet: string | null;
   cacheDiagnostics: {
     cacheUsed: boolean;
+    cacheReadOk: boolean;
+    cacheWriteOk: boolean;
+    cacheNotUsedReason: string | null;
     cachedCandidatesFound: number;
+    cachedImportableCandidatesFound: number;
+    cachedInvalidListsFound: number;
     liveCandidatesFound: number;
     cacheEventHits: number;
     cacheListHits: number;
     cacheMisses: number;
     staleCacheRefreshed: number;
+    staleCacheRows: number;
     liveEventFetches: number;
     liveMenuFetches: number;
     liveListFetches: number;
+    liveFetchesStarted: number;
+    liveFetchesSkippedBecauseCached: number;
+    liveFetchesSkippedBecauseCachedInvalid: number;
     invalidCachedListsSkipped: number;
     invalidLiveListsCached: number;
     elapsedMs: number | null;
     stopReason: string | null;
     repeatedSearchShouldBeFaster: boolean;
+    serviceRoleCacheWriteEnabled: boolean;
+    cacheWriteErrors: string[];
+    cacheReadErrors: string[];
   };
 };
 

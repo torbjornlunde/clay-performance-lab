@@ -312,20 +312,32 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
     firstUsefulSnippet: null,
     cacheDiagnostics: {
       cacheUsed: false,
+      cacheReadOk: false,
+      cacheWriteOk: false,
+      cacheNotUsedReason: "Cache not checked yet.",
       cachedCandidatesFound: 0,
+      cachedImportableCandidatesFound: 0,
+      cachedInvalidListsFound: 0,
       liveCandidatesFound: 0,
       cacheEventHits: 0,
       cacheListHits: 0,
       cacheMisses: 0,
       staleCacheRefreshed: 0,
+      staleCacheRows: 0,
       liveEventFetches: 0,
       liveMenuFetches: 0,
       liveListFetches: 0,
+      liveFetchesStarted: 0,
+      liveFetchesSkippedBecauseCached: 0,
+      liveFetchesSkippedBecauseCachedInvalid: 0,
       invalidCachedListsSkipped: 0,
       invalidLiveListsCached: 0,
       elapsedMs: null,
       stopReason: null,
       repeatedSearchShouldBeFaster: false,
+      serviceRoleCacheWriteEnabled: false,
+      cacheWriteErrors: [],
+      cacheReadErrors: [],
     },
   };
 }
@@ -442,6 +454,7 @@ function usefulSnippet(text: string, query?: string) {
 async function fetchLeirdue(url: string, debug: LeirdueSearchDebug, state: CrawlState) {
   let status: number | null = null;
   if (shouldStopCrawl(debug, state)) return null;
+  debug.cacheDiagnostics.liveFetchesStarted += 1;
   const remainingMs = remainingCrawlMs(state);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Math.max(1, Math.min(FETCH_TIMEOUT_MS, remainingMs)));
@@ -903,9 +916,12 @@ function eventQueueSortRank(event: EventLinkMeta, input: LeirdueSearchInput) {
 }
 
 function shouldUseEventForContinuation(event: EventLinkMeta, input: LeirdueSearchInput, continuation: LeirdueContinuationState | null) {
-  if (!continuation || continuation.visibleCandidatesCountTotal === 0) return true;
   if (event.actualEventYear !== null) return event.actualEventYear === input.year;
-  return eventHasExplicitSelectedYearText(event, input.year) || eventHasSelectedDisciplineContext(event, input);
+  if (event.parsedYear !== null) return event.parsedYear === input.year;
+  const hasYearContext = eventHasExplicitSelectedYearText(event, input.year) || event.overviewMatchedYear;
+  if (!hasYearContext) return false;
+  if (!continuation || continuation.visibleCandidatesCountTotal === 0) return true;
+  return hasYearContext || eventHasSelectedDisciplineContext(event, input);
 }
 
 function setRemainingQueueDebug(debug: LeirdueSearchDebug, events: EventLinkMeta[], inspectedEventIds: Set<string>, input: LeirdueSearchInput, pendingListeIds: number) {
@@ -1607,6 +1623,7 @@ async function scanQueuedListeIdPages(
     if (cachedInvalidKeys.has(item.key) && item.source !== "validation") {
       scannedKeys.add(item.key);
       debug.cacheDiagnostics.invalidCachedListsSkipped += 1;
+      debug.cacheDiagnostics.liveFetchesSkippedBecauseCachedInvalid += 1;
       debug.lowPriorityListeIdPagesSkipped += 1;
       debug.candidateReasons.push(`Skipped cached invalid Leirdue list before fetch: ${listPageLabel(item)}.`);
       recordCheckedList(debug, item, item.href, null, "", "Skipped cached invalid result-list decision.");
@@ -1842,7 +1859,8 @@ function makeEventMeta(href: string, text: string, selectedYear: number, rowHtml
   const priorityText = [metadata.eventTitle, metadata.organizerText, metadata.rawRowSnippet].filter(Boolean).join(" ");
   const date = parseDate(`${metadata.dateText || ""} ${priorityText}`, selectedYear);
   const year = parsedYear(date);
-  return { eventId, url: eventResultMenuUrl(eventId), titleText: metadata.eventTitle, ...metadata, date, parsedYear: year, overviewMatchedYear: true, actualEventYear: null, actualEventDate: null, actualDateText: null, inspected: false, skippedReason: null };
+  const overviewMatchedYear = [text, rowHtml, metadata.dateText || "", metadata.rawRowSnippet].some((value) => String(value || "").includes(String(selectedYear)));
+  return { eventId, url: eventResultMenuUrl(eventId), titleText: metadata.eventTitle, ...metadata, date, parsedYear: year, overviewMatchedYear, actualEventYear: null, actualEventDate: null, actualDateText: null, inspected: false, skippedReason: null };
 }
 
 function isOverviewUrl(url: string) {
@@ -1999,7 +2017,7 @@ function overviewEventLinksForYear(html: string, selectedYear: number, debug: Le
     if (nearestHeadingYear && Number(nearestHeadingYear) !== selectedYear && !nearbyText.includes(String(selectedYear))) continue;
     const meta = makeEventMeta(href, linkText, selectedYear, rowHtml);
     if (!meta) continue;
-    addEventMeta(linksByEvent, { ...meta, parsedYear: meta.parsedYear ?? selectedYear }, debug);
+    addEventMeta(linksByEvent, { ...meta, overviewMatchedYear: meta.overviewMatchedYear || nearestHeadingYear === String(selectedYear), parsedYear: meta.parsedYear ?? (nearestHeadingYear === String(selectedYear) ? selectedYear : null) }, debug);
   }
 
   if (linksByEvent.size > 0) return Array.from(linksByEvent.values());
@@ -2028,7 +2046,7 @@ function overviewEventLinksForYear(html: string, selectedYear: number, debug: Le
       if (currentYear !== selectedYear) continue;
       const meta = makeEventMeta(linkMatch[1], linkMatch[2], selectedYear, `${recentText} ${linkMatch[2]}`);
       if (!meta) continue;
-      addEventMeta(linksByEvent, { ...meta, parsedYear: meta.parsedYear ?? selectedYear }, debug);
+      addEventMeta(linksByEvent, { ...meta, overviewMatchedYear: true, parsedYear: meta.parsedYear ?? selectedYear }, debug);
       continue;
     }
     recentText = `${recentText} ${line}`.slice(-300);
@@ -2126,10 +2144,8 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
         if (!meta || isEventLinkSkippable(meta, input.year, debug)) continue;
         addEventMeta(eventLinks, meta, debug);
       }
-      for (const match of html.matchAll(/stevne\s*=\s*(\d+)/gi)) {
-        const meta = makeEventMeta(eventResultMenuUrl(match[1]), `Raw selected-year event ${match[1]} ${input.year}`, input.year);
-        if (meta) addEventMeta(eventLinks, { ...meta, parsedYear: meta.parsedYear ?? input.year }, debug);
-      }
+      // Avoid blind raw stevne-id fallback here: old archive pages can contain many historical ids
+      // without selected-year context, which caused 2024 searches to inspect 2014/2015 events.
     }
   }
 
