@@ -905,7 +905,7 @@ export default function LeirdueImportPage() {
     }
 
     try {
-      while (batchCount < MAX_AUTO_BATCHES) {
+      while (true) {
         batchCount += 1;
         setIsAutoContinuingLeirdue(Boolean(token));
         setSearchStatus(token ? "Continuing the search for more results..." : "Finding relevant events...");
@@ -960,12 +960,6 @@ export default function LeirdueImportPage() {
         setSearchStatus("Fetching result lists...");
       }
 
-      if (batchCount >= MAX_AUTO_BATCHES && !stoppedInsideLoop) {
-        const visibleCount = visibleCandidateCount(currentCandidates);
-        setSuccess(autoSearchIncompleteMessage(visibleCount, `internal auto-continuation batch cap reached (${MAX_AUTO_BATCHES} batches) while more work remained`));
-        setSearchStatus("Search could not be completed");
-        setSearchProgress(100);
-      }
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
         const visibleCount = visibleCandidateCount(currentCandidates);
