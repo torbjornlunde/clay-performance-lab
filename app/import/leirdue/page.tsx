@@ -10,9 +10,9 @@ import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMat
 const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduesti", "Sporting"];
 const OPTIONAL_DISCIPLINES = ["Trap", "Skeet", "Other"];
 const DISCIPLINE_CHOICES = [...DEFAULT_DISCIPLINES, ...OPTIONAL_DISCIPLINES];
-const MAX_AUTO_BATCHES = 40;
-const MAX_AUTO_LISTE_ID_SCANNED = 2000;
-const MAX_AUTO_SEARCH_MS = 10 * 60 * 1000;
+const MAX_AUTO_BATCHES = 250;
+const MAX_AUTO_LISTE_ID_SCANNED = 10_000;
+const MAX_AUTO_SEARCH_MS = 30 * 60 * 1000;
 const BATCH_TIMEOUT_MS = 35_000;
 
 type EditableCandidate = LeirdueCandidate & { selected: boolean; localId: string; saveStatus?: "saved" | "duplicate" | "error"; saveMessage?: string };
@@ -224,8 +224,8 @@ function likelyResultsLabel(count: number) {
   return `${count} likely result${count === 1 ? "" : "s"}`;
 }
 
-function autoSearchStopMessage(visibleCount: number) {
-  return `Search could not be completed. We found ${likelyResultsLabel(visibleCount)} before the connection or public Leirdue response limit stopped this run.`;
+function autoSearchIncompleteMessage(visibleCount: number, reason: string) {
+  return `Search incomplete. Found ${likelyResultsLabel(visibleCount)}. Reason: ${reason}.`;
 }
 
 function autoSearchCompleteMessage(visibleCount: number) {
@@ -951,7 +951,7 @@ export default function LeirdueImportPage() {
         if (scannedTooManyLists || searchedTooLong) {
           setContinuationToken(nextToken);
           setSearchStatus("Search could not be completed");
-          setSuccess(autoSearchStopMessage(afterVisible));
+          setSuccess(autoSearchIncompleteMessage(afterVisible, scannedTooManyLists ? `internal list scan cap reached (${MAX_AUTO_LISTE_ID_SCANNED} lists) while more work remained` : `internal time cap reached (${Math.round(MAX_AUTO_SEARCH_MS / 60000)} minutes) while more work remained`));
           setSearchProgress(100);
           stoppedInsideLoop = true;
           break;
@@ -962,14 +962,14 @@ export default function LeirdueImportPage() {
 
       if (batchCount >= MAX_AUTO_BATCHES && !stoppedInsideLoop) {
         const visibleCount = visibleCandidateCount(currentCandidates);
-        setSuccess(autoSearchStopMessage(visibleCount));
+        setSuccess(autoSearchIncompleteMessage(visibleCount, `internal auto-continuation batch cap reached (${MAX_AUTO_BATCHES} batches) while more work remained`));
         setSearchStatus("Search could not be completed");
         setSearchProgress(100);
       }
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
         const visibleCount = visibleCandidateCount(currentCandidates);
-        if (visibleCount > 0) setSuccess(autoSearchStopMessage(visibleCount));
+        if (visibleCount > 0) setSuccess(autoSearchIncompleteMessage(visibleCount, "request timeout"));
         else setError("The Leirdue search took too long before finding candidates. Try again or choose a narrower year.");
       } else {
         setError("Could not fetch Leirdue results right now.");
