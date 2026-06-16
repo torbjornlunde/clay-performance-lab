@@ -1824,10 +1824,10 @@ function selectedDisciplineMatchTerms(text: string, input: LeirdueSearchInput) {
   const matches: string[] = [];
   for (const discipline of input.disciplines) {
     const d = normalizeText(discipline);
-    if (d.includes("compak") && /(compak|compaq|compact|fitasc\s+compak)/.test(normalized)) matches.push(discipline);
+    if (d.includes("compak") && !d.includes("kompakt") && /\b(compak|compaq|compak[-\s]?sporting|fitasc\s+compak)\b/.test(normalized) && !/\b(kompakt|kompaktsti|leirduesti)\b/.test(normalized)) matches.push(discipline);
     else if (d.includes("kompakt") && /(kompakt|kompaktsti|compact\s+leirduesti|kompakt\s+leirduesti)/.test(normalized)) matches.push(discipline);
-    else if (d.includes("leirduesti") && /(leirduesti|kompaktsti|\bsti\b)/.test(normalized)) matches.push(discipline);
-    else if (d.includes("sporting") && /(sporting|fitasc\s+sporting)/.test(normalized)) matches.push(discipline);
+    else if (d.includes("leirduesti") && !d.includes("kompakt") && /(leirduesti|\bsti\b)/.test(normalized) && !/\b(kompakt|kompaktsti)\b/.test(normalized)) matches.push(discipline);
+    else if (d.includes("sporting") && !d.includes("compak") && /(sporting|fitasc\s+sporting)/.test(normalized)) matches.push(discipline);
     else if (d.includes("skeet") && /\bskeet\b/.test(normalized)) matches.push(discipline);
     else if (d.includes("trap") && /\btrap\b/.test(normalized)) matches.push(discipline);
   }
@@ -1849,8 +1849,8 @@ function eventPriorityDetail(meta: EventLinkMeta, input: LeirdueSearchInput) {
   const reasons: string[] = [];
   let score = genericOverviewTitle(meta.eventTitle) || /^event\s+\d+$/i.test(meta.eventTitle) ? 5 : 20;
   reasons.push(score === 20 ? "generic selected-year result event" : "fallback/generic event title");
-  if (matches.length > 0) { score += 140; reasons.push(`selected discipline match: ${matches.join("/")}`); }
-  if (/(compak|compaq|sporting|kompakt|kompaktsti|compact|leirduesti|fitasc)/.test(text)) { score += 90; reasons.push("selected shotgun discipline words"); }
+  if (matches.length > 0) { score += 420; reasons.push(`tier 1 selected discipline match: ${matches.join("/")}`); }
+  else if (/(compak|compaq|sporting|kompakt|kompaktsti|compact|leirduesti|fitasc|skeet|trap)/.test(text)) { score -= 80; reasons.push("tier 3 other shotgun discipline"); }
   const knownCompetition = /(blaser|xxl|khan|beretta|hringariki|ranastien|nyttår|nyttar|\bcup\b)/.test(text);
   const selectedContext = matches.length > 0 || /(compak|compaq|sporting|kompakt|kompaktsti|compact|leirduesti|fitasc|50\s*skudd|75|100|200)/.test(text);
   if (knownCompetition && selectedContext && !/(cup sammenlagt|sammenlagt cup|ranking)/.test(text)) { score += 45; reasons.push("known competition term with selected-discipline context"); }
@@ -1882,9 +1882,7 @@ function rankedEventsAcrossYear(events: EventLinkMeta[], input: LeirdueSearchInp
 function isRelevantSelectedDisciplineEvent(meta: EventLinkMeta, input: LeirdueSearchInput) {
   const text = normalizeText(eventPriorityText(meta));
   if (selectedDisciplineMatches(eventPriorityText(meta), input)) return true;
-  if (/(blaser|khan|ranastien|nyttår|nyttar)/.test(text)) return true;
-  if (/\bxxl\b/.test(text) && /(compak|sporting|kompakt|leirduesti|50|75|100|200)/.test(text)) return true;
-  if (/\bcup\b/.test(text) && /(compak|sporting|kompakt|leirduesti)/.test(text) && !/(cup sammenlagt|sammenlagt cup|ranking)/.test(text)) return true;
+  if (input.disciplines.length === 0 && /(blaser|khan|ranastien|nyttår|nyttar)/.test(text)) return true;
   return false;
 }
 
@@ -1892,6 +1890,8 @@ function isClearlyUnselectedDisciplineEvent(meta: EventLinkMeta, input: LeirdueS
   const text = normalizeText(eventPriorityText(meta));
   if (selectedDisciplineMatches(eventPriorityText(meta), input)) return false;
   const selected = input.disciplines.map((discipline) => normalizeText(discipline));
+  const selectedCompak = selected.some((discipline) => discipline.includes("compak") && !discipline.includes("kompakt"));
+  if (selectedCompak && /\b(kompakt|kompaktsti|leirduesti)\b/.test(text) && !/\b(compak|compaq)\b/.test(text)) return true;
   const selectedSkeet = selected.some((discipline) => discipline.includes("skeet"));
   const selectedTrap = selected.some((discipline) => discipline.includes("trap"));
   if (!selectedSkeet && /\bskeet\b/.test(text)) return true;
@@ -2097,10 +2097,12 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     if (isRelevantSelectedDisciplineEvent(event, input)) strictRelevantEvents.push(event);
     else genericFallbackCandidates.push(event);
   }
+  const sortedStrictRelevantEvents = strictRelevantEvents
+    .sort((a, b) => eventPriority(b, input) - eventPriority(a, input) || Number(b.eventId) - Number(a.eventId) || (b.date || "0000-00-00").localeCompare(a.date || "0000-00-00") || a.titleText.localeCompare(b.titleText));
   const fallbackEvents = genericFallbackCandidates
     .sort((a, b) => eventPriority(b, input) - eventPriority(a, input) || Number(b.eventId) - Number(a.eventId) || (b.date || "0000-00-00").localeCompare(a.date || "0000-00-00") || a.titleText.localeCompare(b.titleText));
   debug.genericFallbackEventsAdded = fallbackEvents.length;
-  const relevantEventLinks = [...strictRelevantEvents, ...fallbackEvents];
+  const relevantEventLinks = [...sortedStrictRelevantEvents, ...fallbackEvents];
   debug.selectedYearEventLinksAfterSoftFilter = relevantEventLinks.length;
   debug.selectedYearEventLinks = relevantEventLinks.map((event) => ({ eventId: event.eventId, url: event.url, titleText: event.titleText, eventTitle: event.eventTitle, organizerText: event.organizerText, dateText: event.dateText, rawRowSnippet: event.rawRowSnippet, titleParseSource: event.titleParseSource, date: event.date, parsedYear: event.parsedYear, overviewMatchedYear: event.overviewMatchedYear, actualEventYear: event.actualEventYear, actualEventDate: event.actualEventDate, actualDateText: event.actualDateText, inspected: event.inspected, skippedReason: event.skippedReason }));
   debug.selectedYearEventLinksCount = debug.selectedYearEventLinks.length;
@@ -2156,7 +2158,6 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
       recordEventBatchScan(debug, beforeScanned, beforeShooterPages);
       refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
       menusSinceLastScan = 0;
-      if (debug.completeCandidatesFound >= TARGET_COMPLETE_CANDIDATES) { debug.eventStopReason = "completeCandidatesFound"; debug.candidateQualityStopReason = "completeCandidatesFound"; break; }
       if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; debug.candidateQualityStopReason = "scanLimit"; break; }
       if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) { debug.eventStopReason = "max shooter pages"; debug.candidateQualityStopReason = "shooterPageLimit"; break; }
       if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; debug.candidateQualityStopReason = "timeout"; break; }
@@ -2222,7 +2223,6 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
       recordEventBatchScan(debug, beforeScanned, beforeShooterPages);
       refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
       menusSinceLastScan = 0;
-      if (debug.completeCandidatesFound >= TARGET_COMPLETE_CANDIDATES) { debug.eventStopReason = "completeCandidatesFound"; debug.candidateQualityStopReason = "completeCandidatesFound"; break; }
       if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; debug.candidateQualityStopReason = "scanLimit"; break; }
       if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) { debug.eventStopReason = "max shooter pages"; debug.candidateQualityStopReason = "shooterPageLimit"; break; }
       if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; debug.candidateQualityStopReason = "timeout"; break; }
@@ -2239,7 +2239,6 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
       recordEventBatchScan(debug, beforeScanned, beforeShooterPages);
       refreshKnownTorbjorn2025Debug(input, debug, eventLinks, listeIdLinks, scannedListeIdKeys);
       menusSinceLastScan = 0;
-      if (debug.completeCandidatesFound >= TARGET_COMPLETE_CANDIDATES) { debug.eventStopReason = "completeCandidatesFound"; debug.candidateQualityStopReason = "completeCandidatesFound"; break; }
       if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; debug.candidateQualityStopReason = "scanLimit"; break; }
       if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) { debug.eventStopReason = "max shooter pages"; debug.candidateQualityStopReason = "shooterPageLimit"; break; }
       if (shouldStopCrawl(debug, state)) { debug.eventStopReason = "timeout"; debug.candidateQualityStopReason = "timeout"; break; }
@@ -2296,8 +2295,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     debug.message = "Timed out before result list pages were inspected";
   }
   if (!debug.scanStoppedReason) {
-    if (debug.completeCandidatesFound >= TARGET_COMPLETE_CANDIDATES) debug.scanStoppedReason = "targetReached";
-    else if (debug.timedOut) debug.scanStoppedReason = "timeout";
+    if (debug.timedOut) debug.scanStoppedReason = "timeout";
     else if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) debug.scanStoppedReason = "scanLimit";
     else if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) debug.scanStoppedReason = "shooterPageLimit";
     else debug.scanStoppedReason = "eventQueueExhausted";
@@ -2308,8 +2306,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   setEventQueueDebugRows(debug, allRankedEvents, input);
   setNextUnscannedEventQueueDebug(debug, allRankedEvents, input);
   debug.selectedYearEventLinks = relevantEventLinks.map((event) => ({ eventId: event.eventId, url: event.url, titleText: event.titleText, eventTitle: event.eventTitle, organizerText: event.organizerText, dateText: event.dateText, rawRowSnippet: event.rawRowSnippet, titleParseSource: event.titleParseSource, date: event.date, parsedYear: event.parsedYear, overviewMatchedYear: event.overviewMatchedYear, actualEventYear: event.actualEventYear, actualEventDate: event.actualEventDate, actualDateText: event.actualDateText, inspected: event.inspected, skippedReason: event.skippedReason }));
-  if (debug.completeCandidatesFound >= TARGET_COMPLETE_CANDIDATES) { debug.eventStopReason = "completeCandidatesFound"; debug.candidateQualityStopReason = "completeCandidatesFound"; }
-  else if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; debug.candidateQualityStopReason = "scanLimit"; }
+  if (debug.listeIdPagesScannedForName >= MAX_LISTE_ID_PAGES_SCANNED) { debug.eventStopReason = "max scan pages"; debug.candidateQualityStopReason = "scanLimit"; }
   else if (listPages.size >= MAX_SHOOTER_PAGES_PARSED) { debug.eventStopReason = "max shooter pages"; debug.candidateQualityStopReason = "shooterPageLimit"; }
   else if (debug.timedOut) { debug.eventStopReason = "timeout"; debug.candidateQualityStopReason = "timeout"; }
   else if (debug.eventStopReason === "event queue exhausted") debug.candidateQualityStopReason = "eventQueueExhausted";
@@ -2993,7 +2990,7 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   debug.returnedVisibleCandidatesCount = debug.visibleCandidatesCount;
   debug.accumulatedCompleteCandidatesCount = debug.importableCompleteCandidates;
   debug.completeCandidatesFoundTotal = debug.importableCompleteCandidates;
-  debug.targetReachedBy = debug.importableCompleteCandidates >= TARGET_COMPLETE_CANDIDATES ? "importableCompleteCandidates" : null;
+  debug.targetReachedBy = null;
   debug.visibleCandidatesCountTotal = debug.visibleCandidatesCount;
   debug.hiddenLowQualityCandidatesCountTotal = debug.hiddenLowQualityCandidatesCount;
   const likelySelectedYearWorkRemaining = debug.pendingListeIdQueueRemaining > 0 || debug.confirmedSelectedYearEventsRemaining > 0 || debug.likelySelectedYearEventsRemaining > 0 || debug.unknownYearEventsRemaining > 0;
@@ -3002,10 +2999,10 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
     debug.continuationDisabledReason = "onlyOutsideYearFallbackEventsRemain";
     debug.autoStoppedBecauseOnlyOldFallbackRemains = true;
     debug.continuationStopReason = "noMoreLikelySelectedYearResults";
-    debug.message ||= `Søket er ferdig. Vi fant ${debug.visibleCandidatesCount} sannsynlige resultater for ${input.year}. Eldre/arkiverte sider ble hoppet over.`;
+    debug.message ||= `Search complete. Found ${debug.visibleCandidatesCount} likely results for ${input.year}. Older archived pages were skipped.`;
     debug.rejectedReasons.push("Continuation stopped: only outside-year fallback events remain.");
   }
-  const canContinue = debug.completeCandidatesFoundTotal < TARGET_COMPLETE_CANDIDATES && likelySelectedYearWorkRemaining && !onlyOldFallbackRemains;
+  const canContinue = likelySelectedYearWorkRemaining && !onlyOldFallbackRemains;
   debug.continuationAvailable = canContinue;
   debug.continuationReason = canContinue
     ? debug.timedOut
@@ -3013,9 +3010,7 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
       : debug.candidateQualityStopReason === "scanLimit"
         ? "scanLimitButContinuationAvailable"
         : "remainingSelectedYearWorkAvailable"
-    : debug.completeCandidatesFoundTotal >= TARGET_COMPLETE_CANDIDATES
-      ? "targetReached"
-      : onlyOldFallbackRemains
+    : onlyOldFallbackRemains
         ? "noMoreLikelySelectedYearResults"
         : debug.remainingEventQueueCount === 0
           ? "eventQueueExhausted"
