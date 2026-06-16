@@ -540,6 +540,7 @@ function directListScore(text: string) {
   if (flags.includes("sammenlagt resultatliste etter bane")) return 90;
   if (flags.includes("resultater sammenlagt") || flags.includes("resultatliste sammenlagt")) return 85;
   if (flags.includes("sammenlagt result")) return 75;
+  if (/\b(hovedliste|hovedresultat|alle|total|totalt)\b/.test(normalizeText(text))) return 70;
   if (flags.includes("resultater") || flags.includes("resultatliste")) return 55;
   if (flags.includes("score rows")) return 25;
   return 0;
@@ -562,8 +563,25 @@ function penaltyForControlText(text: string) {
 
 function classifyListType(text: string) {
   if (isLikelyControlText(text)) return "Control / not imported by default";
-  if (directListScore(text) > 0) return "Direct result list";
+  if (isClassOnlyList(text)) return "Class list";
+  if (isOverallResultList(text)) return "Overall list";
+  if (directListScore(text) > 0) return "Main result list";
   return "Unknown list";
+}
+
+function isOverallResultList(text: string) {
+  const normalized = normalizeText(text);
+  if (isLikelyControlText(normalized) || isClassOnlyList(normalized)) return false;
+  return /\b(sammenlagt|total|totalt|resultat|resultater|alle|hovedliste|hovedresultat)\b/.test(normalized);
+}
+
+function isClassOnlyList(text: string) {
+  const normalized = normalizeText(text);
+  return /\b(klassedelt|klassevis|klasse\s+[a-z0-9]+|class\s+[a-z0-9]+|junior|veteran)\b/.test(normalized);
+}
+
+function isDefaultImportList(text: string) {
+  return isOverallResultList(text) || (directListScore(text) >= 55 && !isClassOnlyList(text));
 }
 
 function isControlList(text: string) {
@@ -1158,6 +1176,15 @@ function parseScoresFromLines(lines: string[], html: string, shooterName: string
   return { ownScore, winningScore: competitorTotals.length > 0 ? Math.max(...competitorTotals) : null, scoreLine, notes, parsedNumbers, seriesScores };
 }
 
+function deriveWinningScoreFromResultRows(lines: string[], html: string, year: number, totalTargets: number | null) {
+  const rows = extractTableRows(html);
+  const rowTexts = rows.length > 0 ? rows.map((row) => row.text) : lines;
+  const totals = rowTexts
+    .map((rowText) => parseCompetitorRow(rowText, year, totalTargets)?.total ?? null)
+    .filter((value): value is number => value !== null && value >= 0 && (totalTargets === null || value <= totalTargets));
+  return totals.length > 0 ? Math.max(...totals) : null;
+}
+
 function computeCandidatePriority(raw: RawCandidate) {
   const classificationContext = `${raw.listTitle} ${raw.listType || ""}`;
   let priority = 0;
@@ -1188,6 +1215,7 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[], select
   const hasOwnScore = raw.ownScore !== null;
   const hasCompleteScore = raw.ownScore !== null && raw.winningScore !== null && raw.totalTargets !== null;
   const parsedDiscipline = raw.discipline !== "Other";
+  const defaultImportList = isDefaultImportList(classificationContext);
   const ambiguousInferredTargets = notes.some((note) => /totalTargetsSource=seriesPattern/.test(note) && /inferenceConfidence=(medium|low)/.test(note));
   const candidatePriority = computeCandidatePriority(raw);
   let confidence: LeirdueConfidence = "low";
@@ -1197,14 +1225,14 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[], select
     category = "control";
     confidence = "low";
     notes.push(`Category reason: control flags triggered: ${Array.from(new Set(flags)).join(", ")}.`);
-  } else if (hasCompleteScore && raw.date !== null && parsedDiscipline && !ambiguousInferredTargets) {
+  } else if (hasCompleteScore && raw.date !== null && parsedDiscipline && defaultImportList && !ambiguousInferredTargets) {
     category = "recommended";
     confidence = "high";
-    notes.push("Category reason: complete parsed result data from fetched liste_id page; direct result flags are not required.");
+    notes.push("Category reason: complete parsed result data from overall/main result list.");
   } else if (hasCompleteScore && raw.date !== null && parsedDiscipline) {
     category = "review";
     confidence = "medium";
-    notes.push("Category reason: complete row uses series-pattern total target inference, so review before import.");
+    notes.push(defaultImportList ? "Category reason: complete row needs review before import." : "Category reason: complete row is from a class/unknown list; review before import.");
   } else if (hasOwnScore) {
     category = "review";
     confidence = candidatePriority >= 40 ? "medium" : "low";
@@ -1218,7 +1246,7 @@ function buildCandidate(raw: RawCandidate, selectedDisciplines: string[], select
     if (!selectedDiscipline) notes.push("Category reason: parsed discipline is not selected.");
   }
 
-  if (!raw.shooterClass) notes.push("Could not detect class.");
+  if (!raw.shooterClass) notes.push("Class unknown.");
   if (!raw.seriesScores || raw.seriesScores.length === 0) notes.push("Could not detect series breakdown.");
   const sourceIds = extractLeirdueSourceIdentifiers(raw.leirdueUrl);
   const warnings = [
@@ -1285,6 +1313,7 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
   const parsed = parseScoresFromLines(lines, page.html, input.shooterName, pageText, input.year, initialTotalTargets);
   const totalTargetsInference = inferTotalTargets(targetContext, parsed.scoreLine || "", parsed.ownScore, parsed.winningScore, parsed.seriesScores);
   const totalTargets = totalTargetsInference?.totalTargets ?? initialTotalTargets ?? extractLikelyTotalTargets(targetContext, parsed.ownScore, parsed.seriesScores, parsed.scoreLine || "");
+  const derivedWinningScore = deriveWinningScoreFromResultRows(lines, page.html, input.year, totalTargets);
   const snippet = findShooterSnippet(lines, input.shooterName);
   const listType = classifyListType(listTitle);
   const notes = [...discipline.notes, ...parsed.notes, `Source liste_id URL: ${page.url}.`, `List title/type: ${listTitle} / ${listType}.`];
@@ -1300,6 +1329,7 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
     notes.push(`Raw snippet: ${snippet}`);
     if (debug.shooterMatchSnippets.length < 20) debug.shooterMatchSnippets.push({ url: page.url, snippet });
   }
+  if (derivedWinningScore !== null && derivedWinningScore !== parsed.winningScore) notes.push(`Winning score derived from parsed result rows: ${derivedWinningScore}.`);
   if (parsed.scoreLine && totalTargets === null) notes.push(`Score row parsed, but total targets could not be inferred from title/list text: ${parsed.scoreLine}`);
 
   const raw: RawCandidate = {
@@ -1309,7 +1339,7 @@ function extractCandidatesFromPage(page: Page, input: LeirdueSearchInput, debug:
     discipline: discipline.discipline,
     ownScore: parsed.ownScore,
     totalTargets,
-    winningScore: parsed.winningScore,
+    winningScore: derivedWinningScore ?? parsed.winningScore,
     maxScore: totalTargets,
     placement: null,
     seriesScores: parsed.seriesScores,
@@ -1875,15 +1905,16 @@ function listeIdPriorityDetail(link: Link, input: LeirdueSearchInput) {
   const text = normalizeText(`${link.text} ${link.href}`);
   const reasons: string[] = [];
   let score = 0;
-  if (text.includes("sammenlagt resultatliste etter bane")) { score += 120; reasons.push("sammenlagt resultatliste etter bane"); }
+  if (text.includes("sammenlagt resultatliste etter bane")) { score += 140; reasons.push("sammenlagt resultatliste etter bane"); }
   else if (text.includes("resultater sammenlagt") || text.includes("resultatliste sammenlagt")) { score += 110; reasons.push("resultater/resultatliste sammenlagt"); }
+  else if (/\b(hovedliste|hovedresultat|alle|total|totalt|sammenlagt)\b/.test(text)) { score += 105; reasons.push("overall/main list"); }
   else if (text.includes("resultatliste etter bane")) { score += 95; reasons.push("resultatliste etter bane"); }
   else if (text.includes("resultater") || text.includes("resultatliste")) { score += 80; reasons.push("result list"); }
   if (selectedDisciplineMatches(text, input)) { score += 20; reasons.push("matches selected disciplines"); }
   if (text.includes("liste_id")) score += 10;
   if (link.source === "validation") { score += 500; reasons.push("validation"); }
   if (isTorbjornLunde2025RegressionListe(input, link.href)) { score += 1000; reasons.push("Torbjørn 2025 regression liste_id priority"); }
-  if (text.includes("klassedelt")) { score -= 20; reasons.push("class split"); }
+  if (text.includes("klassedelt") || /\b(klassevis|class\s+[a-z0-9]+|klasse\s+[a-z0-9]+)\b/.test(text)) { score -= 70; reasons.push("class split"); }
   if (/(lagskyting|lagliste|finaleliste|finale|cup sammenlagt|sammenlagt premiering|ranking|prosent|klasseføring|klasseforing|uttak|flere stevner|sesong|season|%)/.test(text)) { score -= 180; reasons.push("control/summary/percentage list"); }
   return { score, reason: reasons.join(", ") || "generic liste_id" };
 }
@@ -2331,7 +2362,7 @@ function completeCandidate(candidate: LeirdueCandidate) {
 }
 
 function classifyNormalizedCandidate(candidate: LeirdueCandidate, selectedYear: number) {
-  const context = `${candidate.name} ${candidate.listType || ""}`;
+  const context = `${candidate.name} ${candidate.listType || ""} ${candidate.notes || ""}`;
   const flags = controlFlags(context);
   if (isFutureDate(candidate.date)) flags.push("future event");
   const candidateYear = parsedYear(candidate.date);
@@ -2346,7 +2377,7 @@ function classifyNormalizedCandidate(candidate: LeirdueCandidate, selectedYear: 
   if (flags.length > 0) {
     category = "control";
     confidence = "low";
-  } else if (completeCandidate(candidate) && !/totalTargetsSource=seriesPattern.*inferenceConfidence=(medium|low)/.test(candidate.notes)) {
+  } else if (completeCandidate(candidate) && isDefaultImportList(context) && !/totalTargetsSource=seriesPattern.*inferenceConfidence=(medium|low)/.test(candidate.notes)) {
     category = "recommended";
     confidence = "high";
     importRecommended = true;
@@ -2432,9 +2463,10 @@ function candidatePriorityFromNotes(candidate: LeirdueCandidate) {
 function listPreferenceScore(candidate: LeirdueCandidate) {
   const text = normalizeText(`${candidate.name} ${candidate.listType || ""} ${candidate.notes}`);
   if (text.includes("resultater sammenlagt") || text.includes("resultatliste sammenlagt") || text.includes("sammenlagt resultatliste etter bane")) return 120;
+  if (/\b(hovedliste|hovedresultat|alle|total|totalt|sammenlagt)\b/.test(text)) return 110;
   if (text.includes("resultatliste etter bane")) return 100;
-  if (text.includes("klassedelt")) return 50;
   if (text.includes("resultater") || text.includes("resultatliste")) return 70;
+  if (text.includes("klassedelt") || text.includes("class list")) return 20;
   return 0;
 }
 
@@ -2818,11 +2850,13 @@ function debugParseLeirdueHtml(params: { url: string; status: number | null; htm
   const parsed = parseScoresFromLines(lines, html, shooterName, pageText, year, initialTotalTargets);
   const totalTargetsInference = inferTotalTargets(targetContext, parsed.scoreLine || "", parsed.ownScore, parsed.winningScore, parsed.seriesScores);
   const totalTargets = totalTargetsInference?.totalTargets ?? initialTotalTargets ?? extractLikelyTotalTargets(targetContext, parsed.ownScore, parsed.seriesScores, parsed.scoreLine || "");
+  const derivedWinningScore = deriveWinningScoreFromResultRows(lines, html, year, totalTargets);
   const rowDebug = debugCandidateRows(lines, html, shooterName, year, totalTargets);
   const rawSnippet = findShooterSnippet(lines, shooterName) || (shooterFound ? usefulSnippet(pageText, shooterName) : null);
   const shootingGroundResult = extractShootingGround(eventTitle, lines.slice(0, 25).join("\n"));
   const parserNotes = [...discipline.notes, ...parsed.notes];
   if (totalTargetsInference) parserNotes.push(`totalTargetsSource=${totalTargetsInference.source}; inferredTotalTargets=${totalTargetsInference.totalTargets}; inferenceConfidence=${totalTargetsInference.confidence}.`);
+  if (derivedWinningScore !== null && derivedWinningScore !== parsed.winningScore) parserNotes.push(`Winning score derived from parsed result rows: ${derivedWinningScore}.`);
   if (rawSnippet) parserNotes.push(`Raw snippet: ${rawSnippet}`);
   if (!shootingGroundResult.value) parserNotes.push("Could not infer shooting ground.");
 
@@ -2835,7 +2869,7 @@ function debugParseLeirdueHtml(params: { url: string; status: number | null; htm
       discipline: discipline.discipline,
       ownScore: parsed.ownScore,
       totalTargets,
-      winningScore: parsed.winningScore,
+      winningScore: derivedWinningScore ?? parsed.winningScore,
       maxScore: totalTargets,
       placement: null,
       seriesScores: parsed.seriesScores,
@@ -2868,7 +2902,7 @@ function debugParseLeirdueHtml(params: { url: string; status: number | null; htm
     parsedSeriesScores: parsed.seriesScores,
     ownScore: parsed.ownScore,
     totalTargets,
-    winningScore: parsed.winningScore,
+    winningScore: derivedWinningScore ?? parsed.winningScore,
     discipline: discipline.discipline,
     shootingGround: shootingGroundResult.value,
     date,

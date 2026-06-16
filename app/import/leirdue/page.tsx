@@ -50,6 +50,12 @@ function isLowQualitySummaryCandidate(candidate: LeirdueCandidate) {
   return candidate.category === "control" || percentageHeavy || summaryList || missingUsableScore;
 }
 
+function candidateUsesMainResultList(candidate: LeirdueCandidate) {
+  const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes}`.toLowerCase();
+  if (/(class list|klassedelt|klassevis|class\s+[a-z0-9]+|klasse\s+[a-z0-9]+)/.test(text)) return false;
+  return /(overall list|main result list|sammenlagt|total|totalt|resultat|resultater|alle|hovedliste|hovedresultat)/.test(text);
+}
+
 function visibleImportCandidate(candidate: EditableCandidate) {
   if (isManualLinkCandidate(candidate)) return candidate.ownScore !== null && candidate.totalTargets !== null;
   if (candidate.category === "recommended") return !isLowQualitySummaryCandidate(candidate);
@@ -63,7 +69,8 @@ function isManualLinkCandidate(candidate: LeirdueCandidate) {
 
 function candidateSelectedByDefault(candidate: LeirdueCandidate) {
   if (/Manual link import parsed row/i.test(candidate.notes || "")) return false;
-  return candidate.category === "recommended" && (candidate.confidence === "high" || candidate.confidence === "medium") && candidate.importRecommended;
+  const completeScore = candidate.ownScore !== null && candidate.totalTargets !== null && candidate.winningScore !== null;
+  return candidate.category === "recommended" && candidate.confidence === "high" && candidate.importRecommended && completeScore && candidateUsesMainResultList(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported;
 }
 
 function manualLinkNameMatchStatus(parsedName: string | null | undefined, profileName: string) {
@@ -117,7 +124,6 @@ function duplicateLabel(candidate: EditableCandidate) {
 function candidateWarnings(candidate: EditableCandidate) {
   const warnings = new Set(candidate.warnings || []);
   if (!candidate.discipline || candidate.discipline === "Other") warnings.add("Could not detect discipline.");
-  if (!candidate.shooterClass) warnings.add("Could not detect class.");
   if (!candidate.seriesScores || candidate.seriesScores.length === 0) warnings.add("Could not detect series breakdown.");
   if (candidate.duplicateStatus === "possible") warnings.add("Possible duplicate.");
   if (candidate.duplicateStatus === "exact" || candidate.alreadyImported) warnings.add("Already imported.");
@@ -306,9 +312,9 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
         <div className="compactCandidateMain">
           {likelyLabel ? <div className="compactCandidateLine"><span className={`badge ${likelyLabel === "Likely match" ? "badgeGreen" : "badgeGold"}`}>{likelyLabel}</span></div> : null}
           <div className="compactCandidateLine resultShooterLine"><strong>{candidate.shooterName || shooterName || "Unknown shooter"}</strong></div>
-          <div className="compactCandidateLine scoreLine"><strong>{candidate.ownScore ?? "?"}/{candidate.maxScore ?? candidate.totalTargets ?? "?"}</strong><span>·</span><span>{candidate.placement ? `Place ${candidate.placement}` : "Placement unknown"}</span></div>
-          <div className="compactCandidateLine"><span>{candidate.shooterClass ? `Class ${candidate.shooterClass}` : "Class unknown"}</span><span>·</span><span>{candidate.shootingGround || "Club unknown"}</span></div>
-          <div className="compactCandidateLine"><span>{candidate.discipline || "Unknown discipline"}</span><span>·</span><span>{formatDate(candidate.date)}</span></div>
+          <div className="compactCandidateLine scoreLine"><strong>{candidate.ownScore ?? "?"}/{candidate.maxScore ?? candidate.totalTargets ?? "?"}</strong><span>·</span><span>Winner {candidate.winningScore ?? "?"}</span></div>
+          <div className="compactCandidateLine"><span>{candidate.placement ? `Place ${candidate.placement}` : "Placement unknown"}</span><span>·</span><span>{candidate.listType || "Unknown list"}</span></div>
+          <div className="compactCandidateLine"><span>{candidate.shootingGround || "Club unknown"}</span><span>·</span><span>{candidate.discipline || "Unknown discipline"}</span><span>·</span><span>{formatDate(candidate.date)}</span></div>
         </div>
         <div className="compactCandidateBadges">
           <span className={`badge ${statusBadgeClass(candidate)}`}>{reviewStatusLabel(candidate)}</span>
@@ -710,7 +716,7 @@ export default function LeirdueImportPage() {
           duplicateStatus: result.status,
           duplicateMatches: result.matches,
           alreadyImported: exact || candidate.alreadyImported,
-          selected: exact ? false : candidate.selected,
+          selected: result.status === "new" ? candidate.selected : false,
           warnings: result.status === "new" ? candidate.warnings : Array.from(new Set([...(candidate.warnings || []), result.status === "exact" ? "Already imported." : "Possible duplicate."])),
         };
       });
