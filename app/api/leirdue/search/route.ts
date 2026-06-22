@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCachedLeirdueCandidates, storeLeirdueCandidatesInCache } from "@/lib/leirdue/cache";
+import { getCachedLeirdueCandidates, getLeirdueCrawlProgress, storeLeirdueCandidatesInCache, storeLeirdueCrawlIndexesInCache, storeLeirdueCrawlProgress, storeLeirdueInvalidListDecisionsInCache } from "@/lib/leirdue/cache";
 import { emptyLeirdueSearchDebug, FETCH_ERROR_MESSAGE, searchLeirdueCandidates } from "@/lib/leirdue/parser";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +17,43 @@ function validYear(value: unknown) {
   const currentYear = new Date().getFullYear() + 1;
   if (!Number.isInteger(year) || year < 1990 || year > currentYear) return null;
   return year;
+}
+
+function applyCacheStatsToDebug(debug: ReturnType<typeof emptyLeirdueSearchDebug>, cached: Awaited<ReturnType<typeof getCachedLeirdueCandidates>> | null, progress?: Awaited<ReturnType<typeof getLeirdueCrawlProgress>> | null) {
+  if (!cached) {
+    debug.cacheDiagnostics.cacheNotUsedReason = "Manual URL search or continuation request skipped cache pre-read.";
+    return;
+  }
+  debug.cacheDiagnostics.cacheReadOk = cached.stats.cacheReadOk;
+  debug.cacheDiagnostics.cacheUsed = cached.stats.cacheUsed;
+  debug.cacheDiagnostics.cacheNotUsedReason = cached.stats.cacheUsed ? null : cached.stats.note || "No fresh cached candidates matched this year/name/discipline search.";
+  debug.cacheDiagnostics.cachedCandidatesFound = cached.stats.cachedCandidatesFound;
+  debug.cacheDiagnostics.cachedImportableCandidatesFound = cached.stats.cachedImportableCandidatesFound;
+  debug.cacheDiagnostics.cachedInvalidListsFound = cached.stats.invalidListKeys.length;
+  debug.cacheDiagnostics.cacheEventHits = cached.stats.eventHits;
+  debug.cacheDiagnostics.cacheListHits = cached.stats.listHits;
+  debug.cacheDiagnostics.cacheMisses = cached.stats.cacheMiss ? 1 : 0;
+  debug.cacheDiagnostics.staleCacheRefreshed = cached.stats.staleRowsFound;
+  debug.cacheDiagnostics.staleCacheRows = cached.stats.staleRowsFound;
+  debug.cacheDiagnostics.cacheReadErrors = cached.stats.cacheReadErrors;
+  debug.cacheDiagnostics.serviceRoleCacheWriteEnabled = cached.stats.serviceRoleCacheWriteEnabled;
+  if (progress) {
+    debug.cacheDiagnostics.cacheScopeComplete = progress.progress?.status === "complete";
+    debug.cacheDiagnostics.cacheScopeStatus = progress.progress?.status || "unknown";
+    debug.cacheDiagnostics.continuationRequired = progress.progress?.status === "incomplete" && Boolean(progress.progress.continuation_token);
+    debug.cacheDiagnostics.resumedFromSavedProgress = Boolean(progress.progress?.continuation_token);
+    debug.cacheDiagnostics.previouslyProcessed = progress.progress?.processed_work_count || 0;
+    debug.cacheDiagnostics.remainingWork = progress.progress?.remaining_work_count ?? null;
+    if (progress.error) debug.cacheDiagnostics.cacheReadErrors = [...debug.cacheDiagnostics.cacheReadErrors, progress.error];
+  }
+}
+
+function applyCacheWriteStatsToDebug(debug: ReturnType<typeof emptyLeirdueSearchDebug>, ...stats: { serviceRoleCacheWriteEnabled: boolean; cacheWriteOk: boolean; cacheWriteErrors: string[]; cacheWriteWarnings?: string[]; invalidListsStored: number }[]) {
+  debug.cacheDiagnostics.serviceRoleCacheWriteEnabled = stats.some((item) => item.serviceRoleCacheWriteEnabled);
+  debug.cacheDiagnostics.cacheWriteOk = stats.every((item) => item.cacheWriteOk);
+  debug.cacheDiagnostics.cacheWriteErrors = stats.flatMap((item) => item.cacheWriteErrors);
+  debug.cacheDiagnostics.cacheWriteWarnings = stats.flatMap((item) => item.cacheWriteWarnings || []);
+  debug.cacheDiagnostics.invalidLiveListsCached += stats.reduce((total, item) => total + item.invalidListsStored, 0);
 }
 
 export async function POST(request: Request) {
@@ -38,30 +75,80 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (!continuationToken && !sourceUrl) {
-      const cached = await getCachedLeirdueCandidates({ shooterName, year, disciplines, authorization: request.headers.get("authorization") });
-      if (cached.candidates.length > 0) {
-        const debug = emptyLeirdueSearchDebug();
-        debug.selectedYear = year;
-        debug.normalizedSearchName = shooterName.toLowerCase().replace(/\s+/g, " ").trim();
-        debug.selectedDisciplineFilters = disciplines;
-        debug.continuationAvailable = false;
-        debug.continuationReason = "cacheHitFresh";
-        debug.message = `Search complete. Loaded ${cached.candidates.length} cached Leirdue results.`;
-        debug.candidateReasons.unshift(`Cache hit: ${cached.candidates.length} fresh parsed candidates; skipped live crawling.`);
-        return NextResponse.json({ candidates: cached.candidates, debug, continuationToken: null });
-      }
+    const cached = !sourceUrl
+      ? await getCachedLeirdueCandidates({ shooterName, year, disciplines, authorization: request.headers.get("authorization") })
+      : null;
+    const progress = !sourceUrl
+      ? await getLeirdueCrawlProgress({ shooterName, year, disciplines, authorization: request.headers.get("authorization") })
+      : null;
+
+    if (!continuationToken && cached && cached.stats.cachedImportableCandidatesFound > 0) {
+      const debug = emptyLeirdueSearchDebug();
+      debug.selectedYear = year;
+      debug.normalizedSearchName = shooterName.toLowerCase().replace(/\s+/g, " ").trim();
+      debug.selectedDisciplineFilters = disciplines;
+      applyCacheStatsToDebug(debug, cached, progress);
+      debug.cacheDiagnostics.liveFetchesSkippedBecauseCached = cached.stats.cachedImportableCandidatesFound;
+      debug.cacheDiagnostics.elapsedMs = 0;
+      const savedToken = progress?.progress?.status === "incomplete" ? progress.progress.continuation_token : null;
+      const scopeComplete = progress?.progress?.status === "complete";
+      const restartToken = !scopeComplete && !savedToken ? "__restart_incomplete_leirdue_scope__" : null;
+      const nextToken = savedToken || restartToken;
+      debug.cacheDiagnostics.stopReason = scopeComplete ? "completeFreshCacheHit" : savedToken ? "freshCacheHitContinuationRequired" : "freshCacheHitNoSavedProgressRestartRequired";
+      debug.cacheDiagnostics.repeatedSearchShouldBeFaster = true;
+      debug.cacheDiagnostics.cacheWriteOk = true;
+      debug.cacheDiagnostics.cachedCandidatesLoaded = cached.candidates.length;
+      debug.continuationAvailable = Boolean(nextToken);
+      debug.pendingListeIdQueueRemaining = nextToken ? 1 : 0;
+      debug.cacheDiagnostics.continuationRequired = Boolean(nextToken);
+      debug.continuationReason = scopeComplete ? "completeFreshCacheHit" : savedToken ? "cachedResultsLoadedResumeSavedProgress" : "cachedResultsLoadedRestartRequiredBecauseScopeCompletenessUnknown";
+      debug.message = scopeComplete
+        ? `Search complete. Loaded ${cached.stats.cachedImportableCandidatesFound} importable cached Leirdue result${cached.stats.cachedImportableCandidatesFound === 1 ? "" : "s"}.`
+        : `Loaded ${cached.stats.cachedImportableCandidatesFound} cached Leirdue result${cached.stats.cachedImportableCandidatesFound === 1 ? "" : "s"}. Searching for additional results may still find more.`;
+      debug.candidateReasons.unshift(savedToken
+        ? `Cache hit: ${cached.candidates.length} fresh parsed candidates (${cached.stats.cachedImportableCandidatesFound} importable); returning cached results and resuming saved crawl progress.`
+        : `Cache hit: ${cached.candidates.length} fresh parsed candidates (${cached.stats.cachedImportableCandidatesFound} importable); scope is ${scopeComplete ? "complete" : "not proven complete"}.`);
+      return NextResponse.json({ candidates: cached.candidates, debug, continuationToken: nextToken });
     }
-    const result = await searchLeirdueCandidates({ shooterName, year, disciplines, continuationToken, sourceUrl });
-    if (!continuationToken && !sourceUrl) {
-      const stored = await storeLeirdueCandidatesInCache(result.candidates, year);
-      result.debug.candidateReasons.unshift(`Cache ${stored.enabled ? "write" : "disabled"}: stored ${stored.liveCandidatesStored} live candidates.${stored.note ? ` ${stored.note}` : ""}`);
+
+    const savedContinuationToken = progress?.progress?.status === "incomplete" ? progress.progress.continuation_token : null;
+    const liveContinuationToken = savedContinuationToken || continuationToken || null;
+    const result = await searchLeirdueCandidates({ shooterName, year, disciplines, continuationToken: liveContinuationToken, sourceUrl, cachedInvalidListKeys: cached?.stats.invalidListKeys || [] });
+    applyCacheStatsToDebug(result.debug, cached, progress);
+    result.debug.cacheDiagnostics.resumedFromSavedProgress = Boolean(savedContinuationToken);
+    result.debug.cacheDiagnostics.liveRefreshReason = savedContinuationToken ? "savedIncompleteProgress" : continuationToken ? "clientContinuationNoSavedProgress" : cached?.candidates.length ? "cachedRowsButNoCompleteProgress" : "cacheMiss";
+    if (cached?.candidates.length) {
+      const cachedKeys = new Set(cached.candidates.map((candidate) => `${candidate.leirdueUrl}|${candidate.date || ""}|${candidate.shooterName || ""}|${candidate.ownScore ?? ""}`));
+      result.candidates = [...cached.candidates, ...result.candidates.filter((candidate) => !cachedKeys.has(`${candidate.leirdueUrl}|${candidate.date || ""}|${candidate.shooterName || ""}|${candidate.ownScore ?? ""}`))];
+      result.debug.cacheDiagnostics.cachedCandidatesLoaded = cached.candidates.length;
+    }
+    if (!sourceUrl) {
+      const [stored, crawlIndexes, invalidStored] = await Promise.all([
+        storeLeirdueCandidatesInCache(result.candidates, year),
+        storeLeirdueCrawlIndexesInCache(result.debug, year),
+        storeLeirdueInvalidListDecisionsInCache(result.debug.checkedLists),
+      ]);
+      const progressWrite = await storeLeirdueCrawlProgress({ shooterName, year, disciplines, debug: result.debug, continuationToken: result.continuationToken });
+      applyCacheWriteStatsToDebug(result.debug, stored, crawlIndexes, invalidStored);
+      result.debug.cacheDiagnostics.progressWriteOk = progressWrite.ok;
+      result.debug.cacheDiagnostics.progressWriteError = progressWrite.error;
+      result.debug.cacheDiagnostics.crawlMarkedComplete = progressWrite.status === "complete";
+      result.debug.cacheDiagnostics.cacheScopeStatus = progressWrite.status === "complete" || progressWrite.status === "incomplete" || progressWrite.status === "failed" ? progressWrite.status : result.debug.cacheDiagnostics.cacheScopeStatus;
+      result.debug.cacheDiagnostics.cacheScopeComplete = progressWrite.status === "complete";
+      result.debug.cacheDiagnostics.continuationRequired = Boolean(result.continuationToken);
+      result.debug.candidateReasons.unshift(`Cache ${result.debug.cacheDiagnostics.cacheWriteOk ? "write ok" : "write issue"}: stored ${stored.liveCandidatesStored} parsed candidates and ${crawlIndexes.invalidListsStored + invalidStored.invalidListsStored} invalid/index list decisions; progress ${progressWrite.ok ? "write ok" : "write issue"}.${result.debug.cacheDiagnostics.cacheWriteErrors.length ? ` Errors: ${result.debug.cacheDiagnostics.cacheWriteErrors.join(" | ")}` : ""}${progressWrite.error ? ` Progress error: ${progressWrite.error}` : ""}`);
     }
     if (result.debug.fetchedUrls.length > 0 && result.debug.fetchedUrls.every((item) => !item.ok)) {
       return NextResponse.json({ ...result, error: FETCH_ERROR_MESSAGE }, { status: 502 });
     }
     return NextResponse.json(result);
   } catch {
-    return NextResponse.json({ error: FETCH_ERROR_MESSAGE, debug: { selectedYear: year, normalizedSearchName: shooterName.toLowerCase().replace(/\s+/g, " ").trim(), eventOverviewUrls: [], guessedYearOverviewUrlsTried: [], discoveredYearLinks: [], selectedYearLinksFound: [], selectedYearOverviewUrlUsed: null, overviewYearMismatch: false, overviewDiagnostics: [], noSelectedYearEventsReason: null, selectedYearEventLinks: [], eventTitleDebugRows: [], selectedYearEventLinksCount: 0, selectedYearEventIdsCount: 0, actualSelectedYearEventsCount: 0, unknownYearFallbackEventsCount: 0, actualYearMismatchSkippedCount: 0, knownTorbjorn2025Debug: [], regressionPriorityApplied: false, regressionEventsBoosted: [], eventBatchesProcessed: 0, eventQueueRemainingWhenStopped: 0, eventStopReason: null, candidatesFoundPerBatch: [], listeIdPagesScannedPerBatch: [], completeCandidatesFound: 0, completeCandidatesTotal: 0, visibleCompleteCandidates: 0, hiddenCompleteCandidates: 0, importableCompleteCandidates: 0, targetReachedBy: null, partialCandidatesFound: 0, lowQualityCandidatesFound: 0, searchContinuedBecauseOnlyLowQualityCandidates: false, percentageHeavyCandidates: 0, expectedCandidateTarget: 16, visibleCandidatesCount: 0, hiddenLowQualityCandidatesCount: 0, completeCandidatesFoundList: [], nextUnscannedEventQueue: [], continuationAvailable: false, continuationReason: null, scannedListeIdTotal: 0, scannedEventTotal: 0, remainingEventQueueCount: 0, confirmedSelectedYearEventsRemaining: 0, likelySelectedYearEventsRemaining: 0, unknownYearSelectedTextEventsRemaining: 0, unknownYearEventsRemaining: 0, outsideYearFallbackEventsRemaining: 0, pendingListeIdQueueRemaining: 0, oldYearEventsSkippedThisBatch: 0, likelySelectedYearEventsProcessedThisBatch: 0, autoStoppedBecauseOnlyOldFallbackRemains: false, continuationDisabledReason: null, batchNumber: continuationToken ? 2 : 1, completeCandidatesFoundTotal: 0, visibleCandidatesCountTotal: 0, hiddenLowQualityCandidatesCountTotal: 0, previousVisibleCandidatesCount: 0, returnedVisibleCandidatesCount: 0, accumulatedCompleteCandidatesCount: 0, queuedThisBatch: 0, scannedThisBatch: 0, fetchedThisBatch: 0, eventMenusFetchedThisBatch: 0, timeBudgetReason: null, continuationStopReason: null, pendingListeIdQueueAtStart: 0, pendingListeIdQueueAtEnd: 0, listeIdsQueuedThisBatch: 0, listeIdsScannedThisBatch: 0, scanFirstMode: false, batchStopReason: null, candidateQualityStopReason: null, selectedDisciplineFilters: [], eventsFoundBeforeFiltering: 0, selectedYearEventLinksBeforeFilter: 0, hardSkippedUnselectedDiscipline: 0, hardSkippedRankingOrControl: 0, genericFallbackEventsAdded: 0, selectedYearEventLinksAfterSoftFilter: 0, relevantEventsInspected: 0, timedOutAtPhase: null, eventLinksSkippedByReason: { outsideYear: 0, future: 0, ranking: 0, irrelevantDiscipline: 0, duplicate: 0, limit: 0 }, resultMenuDebug: [], prioritizedEventLinks: [], prioritizedListeIdLinks: [], phaseReached: null, candidatesFoundBeforeTimeout: 0, highPriorityListeIdPagesFetched: 0, lowPriorityListeIdPagesSkipped: 0, listeIdPagesQueued: 0, listeIdPagesScannedForName: 0, shooterPagesParsed: 0, scanStoppedReason: null, candidatesFoundAfterDiscovery: 0, candidatesFoundAfterScan: 0, resultMenusBeforeFirstListeIdScan: 0, timedOutBeforeFirstListeIdScan: false, timedOut: false, limitReached: false, whichLimit: null, message: null, lastFetchUrl: null, errorMessage: null, eventIdsFound: [], eventIdsInspected: [], eventDatesParsed: {}, eventYearsFound: {}, eventYearsInspected: {}, candidatesByYear: {}, skippedOutsideSelectedYear: 0, eventIdsSkippedOutsideYear: [], eventIdsSkippedFuture: [], completedEventsInspected: 0, futureEventsSkipped: 0, listeIdLinksByEvent: {}, shooterMatchSnippets: [], hiddenControlCandidates: 0, fetchedUrls: [], eventLinksFound: 0, resultLinksFound: 0, eventPagesFetched: 0, eventInfoPagesFetched: 0, eventResultMenuPagesFetched: 0, listeIdLinksExtracted: 0, listeIdLinksFromResultMenus: 0, listeIdPagesFetched: 0, listeIdShooterPagesFound: 0, firstListeIdUrlsInspected: [], firstShooterMatchUrls: [], listInspectionLimitReached: false, resultMenuDiagnostics: [], validationUrlsInspected: 0, validationShooterMatches: 0, candidateCategoryCounts: { recommended: 0, review: 0, control: 0 }, candidateConfidenceCounts: { high: 0, medium: 0, low: 0 }, duplicatesRemoved: 0, candidatesWithOwnScore: 0, candidatesWithWinningScore: 0, candidatesWithTotalTargets: 0, candidatesWithShootingGround: 0, recommendedWithShootingGround: 0, recommendedWithCompleteScore: 0, candidateDebugRows: [], validationChecklist: [], pagesInspected: 0, shooterPagesFound: 0, candidateRowsCreated: 0, rejectedReasons: [FETCH_ERROR_MESSAGE], candidateReasons: [FETCH_ERROR_MESSAGE], firstUsefulSnippet: null } }, { status: 502 });
+    const debug = emptyLeirdueSearchDebug();
+    debug.selectedYear = year;
+    debug.normalizedSearchName = shooterName.toLowerCase().replace(/\s+/g, " ").trim();
+    debug.batchNumber = continuationToken ? 2 : 1;
+    debug.rejectedReasons = [FETCH_ERROR_MESSAGE];
+    debug.candidateReasons = [FETCH_ERROR_MESSAGE];
+    return NextResponse.json({ error: FETCH_ERROR_MESSAGE, debug }, { status: 502 });
   }
 }
