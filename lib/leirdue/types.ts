@@ -334,6 +334,8 @@ export type LeirdueSearchDebug = {
     recoveryRediscoveryReason: string | null;
     eligibleWorkAfterRestore: number;
     firstRestoredEventIds: string[];
+    restoredEventRejectionCounts: Record<string, number>;
+    firstRestoredEventDiagnostics: { eventId: string | null; title: string | null; detectedYear: number | null; eligible: boolean; rejectionReason: string | null }[];
     batchTimeLimitMs: number | null;
     batchStopReason: string | null;
     noProgressReason: string | null;

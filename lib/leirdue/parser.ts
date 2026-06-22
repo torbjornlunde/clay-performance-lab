@@ -30,7 +30,7 @@ export type LeirdueSearchInput = {
   cachedInvalidListKeys?: string[];
 };
 
-type LeirdueContinuationEvent = Pick<EventLinkMeta, "eventId" | "url" | "titleText" | "eventTitle" | "organizerText" | "dateText" | "rawRowSnippet" | "titleParseSource" | "date" | "parsedYear" | "overviewMatchedYear" | "actualEventYear" | "actualEventDate" | "actualDateText">;
+type LeirdueContinuationEvent = Pick<EventLinkMeta, "eventId" | "url" | "titleText" | "eventTitle" | "organizerText" | "dateText" | "rawRowSnippet" | "titleParseSource" | "date" | "parsedYear" | "overviewMatchedYear" | "actualEventYear" | "actualEventDate" | "actualDateText"> & { sourceUrl: string; rowSnippet: string };
 
 type LeirdueContinuationState = {
   v: 1;
@@ -132,7 +132,7 @@ function continuationTokenPayload(input: LeirdueSearchInput, token: string | nul
       hiddenLowQualityCandidatesCountTotal: Number.isInteger(parsed.hiddenLowQualityCandidatesCountTotal) ? Math.max(0, Number(parsed.hiddenLowQualityCandidatesCountTotal)) : 0,
       candidates: Array.isArray(parsed.candidates) ? parsed.candidates.filter(isLeirdueCandidate) : [],
       pendingListeIdQueue: Array.isArray(parsed.pendingListeIdQueue) ? parsed.pendingListeIdQueue.filter(isContinuationLink) : [],
-      pendingEventQueue: Array.isArray(parsed.pendingEventQueue) ? parsed.pendingEventQueue.filter(isContinuationEvent) : [],
+      pendingEventQueue: Array.isArray(parsed.pendingEventQueue) ? parsed.pendingEventQueue.map(normalizeContinuationEvent).filter((event): event is LeirdueContinuationEvent => Boolean(event)) : [],
     };
   } catch {
     return null;
@@ -165,10 +165,36 @@ function isLeirdueCandidate(value: unknown): value is LeirdueCandidate {
   return typeof candidate.name === "string" && typeof candidate.leirdueUrl === "string" && typeof candidate.discipline === "string";
 }
 
-function isContinuationEvent(value: unknown): value is LeirdueContinuationEvent {
-  if (!value || typeof value !== "object") return false;
-  const event = value as Partial<LeirdueContinuationEvent>;
-  return typeof event.eventId === "string" && typeof event.url === "string" && typeof event.titleText === "string";
+function normalizeContinuationEvent(value: unknown): LeirdueContinuationEvent | null {
+  if (!value || typeof value !== "object") return null;
+  const event = value as Record<string, unknown>;
+  const eventId = typeof event.eventId === "string" ? event.eventId : typeof event.id === "string" ? event.id : null;
+  const url = typeof event.url === "string" ? event.url : typeof event.sourceUrl === "string" ? event.sourceUrl : null;
+  if (!eventId || !url) return null;
+  const title = typeof event.eventTitle === "string" ? event.eventTitle : typeof event.title === "string" ? event.title : `Event ${eventId}`;
+  const titleText = typeof event.titleText === "string" ? event.titleText : title;
+  const rowSnippet = typeof event.rowSnippet === "string" ? event.rowSnippet : typeof event.rawRowSnippet === "string" ? event.rawRowSnippet : titleText;
+  const titleParseSource = event.titleParseSource === "anchorText" || event.titleParseSource === "rowSnippet" || event.titleParseSource === "fallback" ? event.titleParseSource : "fallback";
+  const parsedYearValue = typeof event.parsedYear === "number" ? event.parsedYear : typeof event.selectedYear === "number" ? event.selectedYear : null;
+  const actualYearValue = typeof event.actualEventYear === "number" ? event.actualEventYear : null;
+  return {
+    eventId,
+    url,
+    sourceUrl: url,
+    titleText,
+    eventTitle: title,
+    organizerText: typeof event.organizerText === "string" ? event.organizerText : null,
+    dateText: typeof event.dateText === "string" ? event.dateText : null,
+    rawRowSnippet: rowSnippet,
+    rowSnippet,
+    titleParseSource,
+    date: typeof event.date === "string" ? event.date : null,
+    parsedYear: parsedYearValue,
+    overviewMatchedYear: typeof event.overviewMatchedYear === "boolean" ? event.overviewMatchedYear : parsedYearValue !== null,
+    actualEventYear: actualYearValue,
+    actualEventDate: typeof event.actualEventDate === "string" ? event.actualEventDate : null,
+    actualDateText: typeof event.actualDateText === "string" ? event.actualDateText : null,
+  };
 }
 
 function eventFromContinuation(item: LeirdueContinuationEvent): EventLinkMeta {
@@ -179,11 +205,13 @@ function eventToContinuation(item: EventLinkMeta): LeirdueContinuationEvent {
   return {
     eventId: item.eventId,
     url: item.url,
+    sourceUrl: item.url,
     titleText: item.titleText,
     eventTitle: item.eventTitle,
     organizerText: item.organizerText,
     dateText: item.dateText,
     rawRowSnippet: item.rawRowSnippet,
+    rowSnippet: item.rawRowSnippet,
     titleParseSource: item.titleParseSource,
     date: item.date,
     parsedYear: item.parsedYear,
@@ -399,6 +427,8 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
       recoveryRediscoveryReason: null,
       eligibleWorkAfterRestore: 0,
       firstRestoredEventIds: [],
+      restoredEventRejectionCounts: {},
+      firstRestoredEventDiagnostics: [],
       batchTimeLimitMs: null,
       batchStopReason: null,
       noProgressReason: null,
@@ -1007,6 +1037,39 @@ function eventQueueSortRank(event: EventLinkMeta, input: LeirdueSearchInput) {
   return 3;
 }
 
+function continuationEventRejectionReason(event: EventLinkMeta, input: LeirdueSearchInput, processedEventIds: Set<string>) {
+  if (!event || typeof event !== "object") return "invalidEventShape";
+  if (!event.eventId) return "missingEventId";
+  if (!event.url) return "missingSourceUrl";
+  if (processedEventIds.has(event.eventId)) return "alreadyProcessed";
+  const detectedYear = event.actualEventYear ?? event.parsedYear;
+  if (detectedYear !== null && detectedYear !== input.year) return "wrongYear";
+  if (isHardRankingOrControlEvent(event)) return "rankingOrControl";
+  if (isClearlyUnselectedDisciplineEvent(event, input)) return "unselectedDiscipline";
+  if (!event.eventTitle && !event.titleText && !event.rawRowSnippet) return "missingRequiredFields";
+  const hasYearContext = event.actualEventYear === input.year || event.parsedYear === input.year || event.overviewMatchedYear || eventHasExplicitSelectedYearText(event, input.year);
+  if (!hasYearContext) return "wrongYear";
+  return null;
+}
+
+function addRestoredEventEligibilityDiagnostics(debug: LeirdueSearchDebug, events: EventLinkMeta[], input: LeirdueSearchInput, processedEventIds: Set<string>) {
+  const counts: Record<string, number> = {};
+  const rows: LeirdueSearchDebug["cacheDiagnostics"]["firstRestoredEventDiagnostics"] = [];
+  for (const event of events) {
+    const rejectionReason = continuationEventRejectionReason(event, input, processedEventIds);
+    if (rejectionReason) counts[rejectionReason] = (counts[rejectionReason] || 0) + 1;
+    if (rows.length < 10) rows.push({
+      eventId: event.eventId || null,
+      title: event.eventTitle || event.titleText || null,
+      detectedYear: event.actualEventYear ?? event.parsedYear,
+      eligible: rejectionReason === null,
+      rejectionReason,
+    });
+  }
+  debug.cacheDiagnostics.restoredEventRejectionCounts = counts;
+  debug.cacheDiagnostics.firstRestoredEventDiagnostics = rows;
+}
+
 function shouldUseEventForContinuation(event: EventLinkMeta, input: LeirdueSearchInput, continuation: LeirdueContinuationState | null) {
   if (event.actualEventYear !== null) return event.actualEventYear === input.year;
   if (event.parsedYear !== null) return event.parsedYear === input.year;
@@ -1017,7 +1080,7 @@ function shouldUseEventForContinuation(event: EventLinkMeta, input: LeirdueSearc
 }
 
 function setRemainingQueueDebug(debug: LeirdueSearchDebug, events: EventLinkMeta[], inspectedEventIds: Set<string>, input: LeirdueSearchInput, pendingListeIds: number) {
-  const remaining = events.filter((event) => !inspectedEventIds.has(event.eventId) && !event.skippedReason);
+  const remaining = events.filter((event) => !inspectedEventIds.has(event.eventId) && !event.skippedReason && shouldUseEventForContinuation(event, input, null));
   const likelySelectedYearEvents = remaining.filter((event) => event.actualEventYear === null && eventHasExplicitSelectedYearText(event, input.year));
   const unknownSelectedDisciplineEvents = remaining.filter((event) => event.actualEventYear === null && !eventHasExplicitSelectedYearText(event, input.year) && eventHasSelectedDisciplineContext(event, input));
   debug.confirmedSelectedYearEventsRemaining = remaining.filter((event) => event.actualEventYear === input.year).length;
@@ -2290,7 +2353,10 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   debug.cacheDiagnostics.skippedAlreadyProcessedListeIds = Array.from(listeIdLinks.keys()).filter((key) => scannedListeIdKeys.has(key)).length;
   debug.cacheDiagnostics.restoredEventQueueCount = allRankedEvents.filter((event) => !previouslyScannedEventIds.has(event.eventId)).length;
   debug.cacheDiagnostics.restoredListeIdQueueCount = pendingListeIdQueue(listeIdLinks, scannedListeIdKeys).length;
-  const continuationRankedEvents = allRankedEvents.filter((event) => !previouslyScannedEventIds.has(event.eventId) && shouldUseEventForContinuation(event, input, continuation));
+  addRestoredEventEligibilityDiagnostics(debug, allRankedEvents, input, previouslyScannedEventIds);
+  const continuationRankedEvents = allRankedEvents.filter((event) => continuationEventRejectionReason(event, input, previouslyScannedEventIds) === null && shouldUseEventForContinuation(event, input, continuation));
+  debug.cacheDiagnostics.restoredEventQueueCount = continuationRankedEvents.length;
+  debug.cacheDiagnostics.eligibleWorkAfterRestore = continuationRankedEvents.length + debug.cacheDiagnostics.restoredListeIdQueueCount;
   const rankedEvents = boostKnownTorbjorn2025Events(input, continuationRankedEvents.slice(0, MAX_EVENT_PAGES_INSPECTED), eventLinks, debug).filter((event) => !previouslyScannedEventIds.has(event.eventId));
   if (continuationRankedEvents.length > rankedEvents.length) {
     markLimitReached(debug, "max relevant selected-year event links");
@@ -2497,7 +2563,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   debug.pendingListeIdQueueAtEnd = pendingListeIdQueue(listeIdLinks, scannedListeIdKeys).length;
   debug.pendingListeIdQueueRemaining = debug.pendingListeIdQueueAtEnd;
   debug.scannedListeIdTotal = scannedListeIdKeys.size;
-  const pendingEventQueue = allRankedEvents.filter((event) => !inspectedEventIds.has(event.eventId) && !event.skippedReason && shouldUseEventForContinuation(event, input, continuation)).map(eventToContinuation);
+  const pendingEventQueue = allRankedEvents.filter((event) => !event.skippedReason && continuationEventRejectionReason(event, input, inspectedEventIds) === null && shouldUseEventForContinuation(event, input, continuation)).map(eventToContinuation);
   return { pages: Array.from(listPages.values()), scannedListeIdKeys, pendingListeIdQueue: pendingListeIdQueue(listeIdLinks, scannedListeIdKeys), pendingEventQueue };
 }
 
