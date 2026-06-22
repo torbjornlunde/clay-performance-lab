@@ -352,6 +352,11 @@ export type LeirdueSearchDebug = {
     requestMode: "initial" | "continue" | "revalidateInvalidComplete";
     explicitContinuationRequested: boolean;
     earlyReturnReason: string | null;
+    buttonAction: string | null;
+    sentRequestMode: string | null;
+    sentExplicitContinue: boolean;
+    requestScopeKey: string | null;
+    continuationRequestInFlight: boolean;
     batchTimeLimitMs: number | null;
     batchStopReason: string | null;
     noProgressReason: string | null;

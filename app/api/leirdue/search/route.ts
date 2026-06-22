@@ -11,6 +11,8 @@ type SearchBody = {
   continuationToken?: unknown;
   sourceUrl?: unknown;
   requestMode?: unknown;
+  explicitContinue?: unknown;
+  buttonAction?: unknown;
 };
 
 function validYear(value: unknown) {
@@ -76,7 +78,11 @@ export async function POST(request: Request) {
   const restartIncompleteScopeToken = "__restart_incomplete_leirdue_scope__";
   const restartRequested = continuationToken === restartIncompleteScopeToken;
   const sourceUrl = typeof body.sourceUrl === "string" && body.sourceUrl.trim().length > 0 ? body.sourceUrl.trim() : null;
-  const requestMode = body.requestMode === "continue" || body.requestMode === "revalidateInvalidComplete" || body.requestMode === "initial"
+  const explicitContinue = body.explicitContinue === true;
+  const buttonAction = typeof body.buttonAction === "string" ? body.buttonAction : null;
+  const requestMode = explicitContinue
+    ? "continue"
+    : body.requestMode === "continue" || body.requestMode === "revalidateInvalidComplete" || body.requestMode === "initial"
     ? body.requestMode
     : restartRequested
       ? "revalidateInvalidComplete"
@@ -96,7 +102,7 @@ export async function POST(request: Request) {
       ? await getLeirdueCrawlProgress({ shooterName, year, disciplines, authorization: request.headers.get("authorization") })
       : null;
 
-    if (!continuationToken && cached && cached.stats.cachedImportableCandidatesFound > 0) {
+    if (requestMode === "initial" && !explicitContinue && !continuationToken && cached && cached.stats.cachedImportableCandidatesFound > 0) {
       const debug = emptyLeirdueSearchDebug();
       debug.selectedYear = year;
       debug.normalizedSearchName = shooterName.toLowerCase().replace(/\s+/g, " ").trim();
@@ -104,6 +110,10 @@ export async function POST(request: Request) {
       applyCacheStatsToDebug(debug, cached, progress);
       debug.cacheDiagnostics.requestMode = requestMode;
       debug.cacheDiagnostics.explicitContinuationRequested = false;
+      debug.cacheDiagnostics.buttonAction = buttonAction;
+      debug.cacheDiagnostics.sentRequestMode = typeof body.requestMode === "string" ? body.requestMode : null;
+      debug.cacheDiagnostics.sentExplicitContinue = explicitContinue;
+      debug.cacheDiagnostics.requestScopeKey = `${shooterName.toLowerCase().replace(/\s+/g, " ").trim()}|${year}|${disciplines.map((discipline) => discipline.toLowerCase().trim()).sort().join(",")}`;
       debug.cacheDiagnostics.liveFetchesSkippedBecauseCached = cached.stats.cachedImportableCandidatesFound;
       debug.cacheDiagnostics.elapsedMs = 0;
       const savedToken = progress?.progress?.status === "incomplete" ? progress.progress.continuation_token : null;
@@ -147,7 +157,11 @@ export async function POST(request: Request) {
     const liveContinuationToken = savedContinuationToken || (restartRequested ? null : continuationToken) || null;
     const result = await searchLeirdueCandidates({ shooterName, year, disciplines, continuationToken: liveContinuationToken, sourceUrl, cachedInvalidListKeys: cached?.stats.invalidListKeys || [] });
     result.debug.cacheDiagnostics.requestMode = requestMode;
-    result.debug.cacheDiagnostics.explicitContinuationRequested = Boolean(continuationToken);
+    result.debug.cacheDiagnostics.explicitContinuationRequested = explicitContinue || Boolean(continuationToken);
+    result.debug.cacheDiagnostics.buttonAction = buttonAction;
+    result.debug.cacheDiagnostics.sentRequestMode = typeof body.requestMode === "string" ? body.requestMode : null;
+    result.debug.cacheDiagnostics.sentExplicitContinue = explicitContinue;
+    result.debug.cacheDiagnostics.requestScopeKey = `${shooterName.toLowerCase().replace(/\s+/g, " ").trim()}|${year}|${disciplines.map((discipline) => discipline.toLowerCase().trim()).sort().join(",")}`;
     applyCacheStatsToDebug(result.debug, cached, progress);
     result.debug.cacheDiagnostics.savedContinuationTokenPresent = Boolean(savedContinuationToken || (continuationToken && !restartRequested));
     if (restartRequested) {
