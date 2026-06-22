@@ -365,6 +365,9 @@ export type LeirdueSearchDebug = {
     candidatePipelineReconciled: boolean;
     renderedCandidateCountMatchesBackend: boolean;
     uniqueCandidateKeysValid: boolean;
+    expectedRegressionReviewableCount: number | null;
+    actualRegressionReviewableCount: number | null;
+    regressionReviewableCountPass: boolean;
     invalidCompleteStateRepaired: boolean;
     requestMode: "initial" | "continue" | "revalidateInvalidComplete";
     explicitContinuationRequested: boolean;

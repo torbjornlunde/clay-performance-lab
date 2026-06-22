@@ -459,6 +459,9 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
       candidatePipelineReconciled: true,
       renderedCandidateCountMatchesBackend: true,
       uniqueCandidateKeysValid: true,
+      expectedRegressionReviewableCount: null,
+      actualRegressionReviewableCount: null,
+      regressionReviewableCountPass: true,
       invalidCompleteStateRepaired: false,
       requestMode: "initial",
       explicitContinuationRequested: false,
@@ -1971,6 +1974,17 @@ function isTorbjornLunde2025DebugSearch(input: LeirdueSearchInput) {
   return input.year === 2025 && (shooter.includes("torbjørn lunde") || asciiFoldNorwegian(shooter).includes("torbjorn lunde"));
 }
 
+function expectedTorbjornLundeRegressionCount(input: LeirdueSearchInput) {
+  const shooter = normalizeText(input.shooterName);
+  if (!shooter.includes("torbjørn lunde") && !asciiFoldNorwegian(shooter).includes("torbjorn lunde")) return null;
+  const selected = new Set(input.disciplines.map((discipline) => normalizeText(discipline)));
+  const required = [COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI, "Sporting"].map((discipline) => normalizeText(discipline));
+  if (!required.every((discipline) => selected.has(discipline))) return null;
+  if (input.year === 2023) return 21;
+  if (input.year === 2024) return 23;
+  return null;
+}
+
 function addValidationListeIdLinks(input: LeirdueSearchInput, links: Map<string, Link>, debug: LeirdueSearchDebug) {
   const urls = isTorbjornLunde2026Validation(input)
     ? TORBJORN_LUNDE_2026_VALIDATION_URLS.map((url) => ({ url, label: "Debug validation URL for Torbjørn Lunde 2026" }))
@@ -2832,8 +2846,10 @@ function candidateQuality(candidate: LeirdueCandidate) {
 }
 
 function dedupeKey(candidate: LeirdueCandidate) {
-  const eventKey = extractStevneId(candidate.leirdueUrl) || normalizeText(candidate.name);
-  return [eventKey, candidate.date, candidate.discipline, candidate.ownScore, candidate.totalTargets].join("|");
+  const sourceIds = extractLeirdueSourceIdentifiers(candidate.leirdueUrl);
+  const eventKey = candidate.stevneId || sourceIds.stevneId || extractStevneId(candidate.leirdueUrl) || normalizeText(candidate.name);
+  const listeKey = candidate.listeId || sourceIds.listeId || candidate.leirdueUrl;
+  return [eventKey, listeKey, candidate.leirdueUrl, candidate.date, candidate.discipline, candidate.ownScore, candidate.totalTargets].join("|");
 }
 
 function dedupeCandidates(candidates: LeirdueCandidate[], debug: LeirdueSearchDebug) {
@@ -3366,6 +3382,11 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   debug.targetReachedBy = null;
   debug.visibleCandidatesCountTotal = debug.visibleCandidatesCount;
   debug.hiddenLowQualityCandidatesCountTotal = debug.hiddenLowQualityCandidatesCount;
+  const expectedRegressionReviewableCount = expectedTorbjornLundeRegressionCount(input);
+  const actualRegressionReviewableCount = expectedRegressionReviewableCount === null ? null : returnedCandidates.filter((candidate) => isImportableCompleteCandidate(candidate, input.year)).length;
+  debug.cacheDiagnostics.expectedRegressionReviewableCount = expectedRegressionReviewableCount;
+  debug.cacheDiagnostics.actualRegressionReviewableCount = actualRegressionReviewableCount;
+  debug.cacheDiagnostics.regressionReviewableCountPass = expectedRegressionReviewableCount === null || (actualRegressionReviewableCount ?? 0) >= expectedRegressionReviewableCount;
   const likelySelectedYearWorkRemaining = debug.pendingListeIdQueueRemaining > 0 || debug.confirmedSelectedYearEventsRemaining > 0 || debug.likelySelectedYearEventsRemaining > 0 || debug.unknownYearEventsRemaining > 0;
   const onlyOldFallbackRemains = debug.visibleCandidatesCount > 0 && !likelySelectedYearWorkRemaining && debug.outsideYearFallbackEventsRemaining > 0;
   if (onlyOldFallbackRemains) {
@@ -3434,7 +3455,8 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
     && processedOrSkippedCount > 0
     && debug.cacheDiagnostics.candidatePipelineReconciled
     && debug.cacheDiagnostics.renderedCandidateCountMatchesBackend
-    && debug.cacheDiagnostics.uniqueCandidateKeysValid;
+    && debug.cacheDiagnostics.uniqueCandidateKeysValid
+    && debug.cacheDiagnostics.regressionReviewableCountPass;
   debug.cacheDiagnostics.completionProof = completionProof;
   debug.cacheDiagnostics.completionMarkedThisBatch = completionProof.valid;
   debug.cacheDiagnostics.completionCheckAfterBatch = {
