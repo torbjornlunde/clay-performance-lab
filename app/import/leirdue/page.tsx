@@ -11,6 +11,8 @@ const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduest
 const OPTIONAL_DISCIPLINES = ["Trap", "Skeet", "Other"];
 const DISCIPLINE_CHOICES = [...DEFAULT_DISCIPLINES, ...OPTIONAL_DISCIPLINES];
 const BATCH_TIMEOUT_MS = 20_000;
+const AUTO_CONTINUATION_DELAY_MS = 750;
+const MAX_AUTO_CONTINUATION_FAILURES = 2;
 
 type EditableCandidate = LeirdueCandidate & { selected: boolean; localId: string; saveStatus?: "saved" | "duplicate" | "error"; saveMessage?: string };
 type CandidatePipelineDiagnostics = {
@@ -165,6 +167,10 @@ function candidateReactKey(candidate: LeirdueCandidate) {
 
 function candidateRenderKey(candidate: EditableCandidate) {
   return `${candidateReactKey(candidate)}|${candidate.localId}`;
+}
+
+function leirdueUiScopeKey(name: string, selectedYear: string, selectedDisciplines: string[]) {
+  return `${name.toLowerCase().replace(/\s+/g, " ").trim()}|${selectedYear}|${selectedDisciplines.map((discipline) => discipline.toLowerCase().trim()).sort().join(",")}`;
 }
 
 function duplicateLabel(candidate: EditableCandidate) {
@@ -762,7 +768,7 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         </>
       ) : null}
       {debug.message ? <p className="small muted">Search warning: {debug.message}</p> : null}
-      {debug.cacheDiagnostics ? <p className="small muted">Cache diagnostics: used={debug.cacheDiagnostics.cacheUsed ? "yes" : "no"}; readOk={debug.cacheDiagnostics.cacheReadOk ? "yes" : "no"}; writeOk={debug.cacheDiagnostics.cacheWriteOk ? "yes" : "no"}; cached={debug.cacheDiagnostics.cachedCandidatesFound}; importable={debug.cacheDiagnostics.cachedImportableCandidatesFound}; invalidLists={debug.cacheDiagnostics.cachedInvalidListsFound}; liveStarted={debug.cacheDiagnostics.liveFetchesStarted}; liveSkippedCached={debug.cacheDiagnostics.liveFetchesSkippedBecauseCached}; liveSkippedInvalid={debug.cacheDiagnostics.liveFetchesSkippedBecauseCachedInvalid}; loaded={debug.cacheDiagnostics.cachedCandidatesLoaded}; scopeComplete={debug.cacheDiagnostics.cacheScopeComplete ? "yes" : "no"}; scopeStatus={debug.cacheDiagnostics.cacheScopeStatus}; continuationRequired={debug.cacheDiagnostics.continuationRequired ? "yes" : "no"}; resumed={debug.cacheDiagnostics.resumedFromSavedProgress ? "yes" : "no"}; processedThisBatch={debug.cacheDiagnostics.processedThisBatch}; previouslyProcessed={debug.cacheDiagnostics.previouslyProcessed}; remainingWork={debug.cacheDiagnostics.remainingWork ?? "unknown"}; liveRefresh={debug.cacheDiagnostics.liveRefreshStarted ? "yes" : "no"}; liveReason={debug.cacheDiagnostics.liveRefreshReason || "none"}; markedComplete={debug.cacheDiagnostics.crawlMarkedComplete ? "yes" : "no"}; crawlStop={debug.cacheDiagnostics.crawlStopReason || "none"}; crawlStateFound={debug.cacheDiagnostics.crawlStateFound ? "yes" : "no"}; tokenPresent={debug.cacheDiagnostics.savedContinuationTokenPresent ? "yes" : "no"}; decodeOk={debug.cacheDiagnostics.continuationDecodeOk ? "yes" : "no"}; decodeError={debug.cacheDiagnostics.continuationDecodeError || "none"}; stateVersion={debug.cacheDiagnostics.continuationStateVersion ?? "none"}; storedQueues={debug.cacheDiagnostics.storedEventQueueCount}/{debug.cacheDiagnostics.storedListeIdQueueCount}; restoredQueues={debug.cacheDiagnostics.restoredEventQueueCount}/{debug.cacheDiagnostics.restoredListeIdQueueCount}; eligibleAfterRestore={debug.cacheDiagnostics.eligibleWorkAfterRestore}; recovery={debug.cacheDiagnostics.recoveryRediscoveryUsed ? "yes" : "no"}; recoveryReason={debug.cacheDiagnostics.recoveryRediscoveryReason || "none"}; emptyQueueInterpretation={debug.cacheDiagnostics.emptyQueueInterpretation || "none"}; unfinishedWorkExpected={debug.cacheDiagnostics.unfinishedWorkExpected ? "yes" : "no"}; allRediscoveredEventsAlreadyProcessed={debug.cacheDiagnostics.allRediscoveredEventsAlreadyProcessed ? "yes" : "no"}; finalReconciliationComplete={debug.cacheDiagnostics.finalReconciliationComplete ? "yes" : "no"}; recoveryErrorAffectsCompletion={debug.cacheDiagnostics.recoveryErrorAffectsCompletion ? "yes" : "no"}; completionMarkedThisBatch={debug.cacheDiagnostics.completionMarkedThisBatch ? "yes" : "no"}; completionBefore={JSON.stringify(debug.cacheDiagnostics.completionCheckBeforeBatch)}; completionAfter={JSON.stringify(debug.cacheDiagnostics.completionCheckAfterBatch)}; queuesBefore={JSON.stringify(debug.cacheDiagnostics.queuesBeforeBatch)}; queuesAfter={JSON.stringify(debug.cacheDiagnostics.queuesAfterBatch)}; remainingAfterMutation={debug.cacheDiagnostics.remainingWorkAfterMutation ?? "unknown"}; completionEligibleAfterBatch={debug.cacheDiagnostics.completionEligibleAfterBatch ? "yes" : "no"}; completionPersistedInSameRequest={debug.cacheDiagnostics.completionPersistedInSameRequest ? "yes" : "no"}; extraCompletionRequestRequired={debug.cacheDiagnostics.extraCompletionRequestRequired ? "yes" : "no"}; invalidComplete={debug.cacheDiagnostics.invalidCompleteStateDetected ? "yes" : "no"}; invalidCompleteReason={debug.cacheDiagnostics.invalidCompleteStateReason || "none"}; completionProof={JSON.stringify(debug.cacheDiagnostics.completionProof)}; candidatePipelineReconciled={debug.cacheDiagnostics.candidatePipelineReconciled ? "yes" : "no"}; renderedCandidateCountMatchesBackend={debug.cacheDiagnostics.renderedCandidateCountMatchesBackend ? "yes" : "no"}; uniqueCandidateKeysValid={debug.cacheDiagnostics.uniqueCandidateKeysValid ? "yes" : "no"}; requestMode={debug.cacheDiagnostics.requestMode}; explicitContinue={debug.cacheDiagnostics.explicitContinuationRequested ? "yes" : "no"}; buttonAction={debug.cacheDiagnostics.buttonAction || "none"}; sentMode={debug.cacheDiagnostics.sentRequestMode || "none"}; sentExplicit={debug.cacheDiagnostics.sentExplicitContinue ? "yes" : "no"}; inFlight={debug.cacheDiagnostics.continuationRequestInFlight ? "yes" : "no"}; scopeKey={debug.cacheDiagnostics.requestScopeKey || "none"}; progressCounts={debug.cacheDiagnostics.progressProcessedCount ?? "unknown"}/{debug.cacheDiagnostics.progressRemainingCount ?? "unknown"}/{debug.cacheDiagnostics.progressTotalCount ?? "unknown"}; calculatedProgress={debug.cacheDiagnostics.calculatedProgressPercent?.toFixed(1) ?? "unknown"}; displayedProgress={debug.cacheDiagnostics.displayedProgressPercent?.toFixed(1) ?? "unknown"}; progressSource={debug.cacheDiagnostics.progressCalculationSource || "none"}; progressCappedReason={debug.cacheDiagnostics.progressCappedReason || "none"}; stage={debug.cacheDiagnostics.currentProgressStage || "none"}; stageWork={debug.cacheDiagnostics.stageProcessed ?? "unknown"}/{debug.cacheDiagnostics.stageRemaining ?? "unknown"}/{debug.cacheDiagnostics.stageTotal ?? "unknown"}; rawOverall={debug.cacheDiagnostics.rawOverallProgressPercent?.toFixed(1) ?? "unknown"}; highestDisplayed={debug.cacheDiagnostics.highestDisplayedProgressPercent?.toFixed(1) ?? "unknown"}; newlyDiscovered={debug.cacheDiagnostics.newlyDiscoveredWorkThisBatch}; progressHeld={debug.cacheDiagnostics.progressHeldReason || "none"}; requestStartedAt={debug.cacheDiagnostics.requestStartedAt ?? "unknown"}; batchDeadlineAt={debug.cacheDiagnostics.batchDeadlineAt ?? "unknown"}; beforeFirstEvent={debug.cacheDiagnostics.elapsedBeforeFirstEventMs ?? "unknown"}/{debug.cacheDiagnostics.remainingBudgetBeforeFirstEventMs ?? "unknown"}; scanReserveMs={debug.cacheDiagnostics.scanReserveMs ?? "unknown"}; eventBudgetMs={debug.cacheDiagnostics.eventProcessingBudgetMs ?? "unknown"}; firstEventAttempted={debug.cacheDiagnostics.firstEventProcessingAttempted ? "yes" : "no"}; firstFetchStarted={debug.cacheDiagnostics.firstEventFetchStarted ? "yes" : "no"}; firstFetchResult={debug.cacheDiagnostics.firstEventFetchResult || "none"}; earlyReturn={debug.cacheDiagnostics.earlyReturnReason || "none"}; noProgress={debug.cacheDiagnostics.noProgressReason || "none"}; rejectionCounts={JSON.stringify(debug.cacheDiagnostics.restoredEventRejectionCounts || {})}; firstRestored={JSON.stringify((debug.cacheDiagnostics.firstRestoredEventDiagnostics || []).slice(0, 10))}; progressWrite={debug.cacheDiagnostics.progressWriteOk ? "ok" : "not-ok"}; progressError={debug.cacheDiagnostics.progressWriteError || "none"}; misses={debug.cacheDiagnostics.cacheMisses}; stale={debug.cacheDiagnostics.staleCacheRows}; serviceRole={debug.cacheDiagnostics.serviceRoleCacheWriteEnabled ? "yes" : "no"}; elapsedMs={debug.cacheDiagnostics.elapsedMs ?? "n/a"}; stop={debug.cacheDiagnostics.stopReason || "none"}; repeatFaster={debug.cacheDiagnostics.repeatedSearchShouldBeFaster ? "yes" : "no"}; notUsedReason={debug.cacheDiagnostics.cacheNotUsedReason || "none"}; readErrors={(debug.cacheDiagnostics.cacheReadErrors || []).join(" | ") || "none"}; writeErrors={(debug.cacheDiagnostics.cacheWriteErrors || []).join(" | ") || "none"}; writeWarnings={(debug.cacheDiagnostics.cacheWriteWarnings || []).join(" | ") || "none"}</p> : null}
+      {debug.cacheDiagnostics ? <p className="small muted">Cache diagnostics: used={debug.cacheDiagnostics.cacheUsed ? "yes" : "no"}; readOk={debug.cacheDiagnostics.cacheReadOk ? "yes" : "no"}; writeOk={debug.cacheDiagnostics.cacheWriteOk ? "yes" : "no"}; cached={debug.cacheDiagnostics.cachedCandidatesFound}; importable={debug.cacheDiagnostics.cachedImportableCandidatesFound}; invalidLists={debug.cacheDiagnostics.cachedInvalidListsFound}; liveStarted={debug.cacheDiagnostics.liveFetchesStarted}; liveSkippedCached={debug.cacheDiagnostics.liveFetchesSkippedBecauseCached}; liveSkippedInvalid={debug.cacheDiagnostics.liveFetchesSkippedBecauseCachedInvalid}; loaded={debug.cacheDiagnostics.cachedCandidatesLoaded}; scopeComplete={debug.cacheDiagnostics.cacheScopeComplete ? "yes" : "no"}; scopeStatus={debug.cacheDiagnostics.cacheScopeStatus}; continuationRequired={debug.cacheDiagnostics.continuationRequired ? "yes" : "no"}; resumed={debug.cacheDiagnostics.resumedFromSavedProgress ? "yes" : "no"}; processedThisBatch={debug.cacheDiagnostics.processedThisBatch}; previouslyProcessed={debug.cacheDiagnostics.previouslyProcessed}; remainingWork={debug.cacheDiagnostics.remainingWork ?? "unknown"}; liveRefresh={debug.cacheDiagnostics.liveRefreshStarted ? "yes" : "no"}; liveReason={debug.cacheDiagnostics.liveRefreshReason || "none"}; markedComplete={debug.cacheDiagnostics.crawlMarkedComplete ? "yes" : "no"}; crawlStop={debug.cacheDiagnostics.crawlStopReason || "none"}; crawlStateFound={debug.cacheDiagnostics.crawlStateFound ? "yes" : "no"}; tokenPresent={debug.cacheDiagnostics.savedContinuationTokenPresent ? "yes" : "no"}; decodeOk={debug.cacheDiagnostics.continuationDecodeOk ? "yes" : "no"}; decodeError={debug.cacheDiagnostics.continuationDecodeError || "none"}; stateVersion={debug.cacheDiagnostics.continuationStateVersion ?? "none"}; storedQueues={debug.cacheDiagnostics.storedEventQueueCount}/{debug.cacheDiagnostics.storedListeIdQueueCount}; restoredQueues={debug.cacheDiagnostics.restoredEventQueueCount}/{debug.cacheDiagnostics.restoredListeIdQueueCount}; eligibleAfterRestore={debug.cacheDiagnostics.eligibleWorkAfterRestore}; recovery={debug.cacheDiagnostics.recoveryRediscoveryUsed ? "yes" : "no"}; recoveryReason={debug.cacheDiagnostics.recoveryRediscoveryReason || "none"}; emptyQueueInterpretation={debug.cacheDiagnostics.emptyQueueInterpretation || "none"}; unfinishedWorkExpected={debug.cacheDiagnostics.unfinishedWorkExpected ? "yes" : "no"}; allRediscoveredEventsAlreadyProcessed={debug.cacheDiagnostics.allRediscoveredEventsAlreadyProcessed ? "yes" : "no"}; finalReconciliationComplete={debug.cacheDiagnostics.finalReconciliationComplete ? "yes" : "no"}; recoveryErrorAffectsCompletion={debug.cacheDiagnostics.recoveryErrorAffectsCompletion ? "yes" : "no"}; completionMarkedThisBatch={debug.cacheDiagnostics.completionMarkedThisBatch ? "yes" : "no"}; completionBefore={JSON.stringify(debug.cacheDiagnostics.completionCheckBeforeBatch)}; completionAfter={JSON.stringify(debug.cacheDiagnostics.completionCheckAfterBatch)}; queuesBefore={JSON.stringify(debug.cacheDiagnostics.queuesBeforeBatch)}; queuesAfter={JSON.stringify(debug.cacheDiagnostics.queuesAfterBatch)}; remainingAfterMutation={debug.cacheDiagnostics.remainingWorkAfterMutation ?? "unknown"}; completionEligibleAfterBatch={debug.cacheDiagnostics.completionEligibleAfterBatch ? "yes" : "no"}; completionPersistedInSameRequest={debug.cacheDiagnostics.completionPersistedInSameRequest ? "yes" : "no"}; extraCompletionRequestRequired={debug.cacheDiagnostics.extraCompletionRequestRequired ? "yes" : "no"}; invalidComplete={debug.cacheDiagnostics.invalidCompleteStateDetected ? "yes" : "no"}; invalidCompleteReason={debug.cacheDiagnostics.invalidCompleteStateReason || "none"}; completionProof={JSON.stringify(debug.cacheDiagnostics.completionProof)}; candidatePipelineReconciled={debug.cacheDiagnostics.candidatePipelineReconciled ? "yes" : "no"}; renderedCandidateCountMatchesBackend={debug.cacheDiagnostics.renderedCandidateCountMatchesBackend ? "yes" : "no"}; uniqueCandidateKeysValid={debug.cacheDiagnostics.uniqueCandidateKeysValid ? "yes" : "no"}; requestMode={debug.cacheDiagnostics.requestMode}; explicitContinue={debug.cacheDiagnostics.explicitContinuationRequested ? "yes" : "no"}; buttonAction={debug.cacheDiagnostics.buttonAction || "none"}; sentMode={debug.cacheDiagnostics.sentRequestMode || "none"}; sentExplicit={debug.cacheDiagnostics.sentExplicitContinue ? "yes" : "no"}; inFlight={debug.cacheDiagnostics.continuationRequestInFlight ? "yes" : "no"}; scopeKey={debug.cacheDiagnostics.requestScopeKey || "none"}; progressCounts={debug.cacheDiagnostics.progressProcessedCount ?? "unknown"}/{debug.cacheDiagnostics.progressRemainingCount ?? "unknown"}/{debug.cacheDiagnostics.progressTotalCount ?? "unknown"}; calculatedProgress={debug.cacheDiagnostics.calculatedProgressPercent?.toFixed(1) ?? "unknown"}; displayedProgress={debug.cacheDiagnostics.displayedProgressPercent?.toFixed(1) ?? "unknown"}; progressSource={debug.cacheDiagnostics.progressCalculationSource || "none"}; progressCappedReason={debug.cacheDiagnostics.progressCappedReason || "none"}; progressScopeKey={debug.cacheDiagnostics.progressScopeKey || "none"}; progressGenerationId={debug.cacheDiagnostics.progressGenerationId || "none"}; persistedHighestProgress={debug.cacheDiagnostics.persistedHighestProgress ?? "unknown"}; currentSessionHighestProgress={debug.cacheDiagnostics.currentSessionHighestProgress ?? "unknown"}; progressResetReason={debug.cacheDiagnostics.progressResetReason || "none"}; progressScopeMatch={debug.cacheDiagnostics.progressScopeMatch ? "yes" : "no"}; stage={debug.cacheDiagnostics.currentProgressStage || "none"}; stageWork={debug.cacheDiagnostics.stageProcessed ?? "unknown"}/{debug.cacheDiagnostics.stageRemaining ?? "unknown"}/{debug.cacheDiagnostics.stageTotal ?? "unknown"}; rawOverall={debug.cacheDiagnostics.rawOverallProgressPercent?.toFixed(1) ?? "unknown"}; highestDisplayed={debug.cacheDiagnostics.highestDisplayedProgressPercent?.toFixed(1) ?? "unknown"}; newlyDiscovered={debug.cacheDiagnostics.newlyDiscoveredWorkThisBatch}; progressHeld={debug.cacheDiagnostics.progressHeldReason || "none"}; requestStartedAt={debug.cacheDiagnostics.requestStartedAt ?? "unknown"}; batchDeadlineAt={debug.cacheDiagnostics.batchDeadlineAt ?? "unknown"}; beforeFirstEvent={debug.cacheDiagnostics.elapsedBeforeFirstEventMs ?? "unknown"}/{debug.cacheDiagnostics.remainingBudgetBeforeFirstEventMs ?? "unknown"}; scanReserveMs={debug.cacheDiagnostics.scanReserveMs ?? "unknown"}; eventBudgetMs={debug.cacheDiagnostics.eventProcessingBudgetMs ?? "unknown"}; firstEventAttempted={debug.cacheDiagnostics.firstEventProcessingAttempted ? "yes" : "no"}; firstFetchStarted={debug.cacheDiagnostics.firstEventFetchStarted ? "yes" : "no"}; firstFetchResult={debug.cacheDiagnostics.firstEventFetchResult || "none"}; earlyReturn={debug.cacheDiagnostics.earlyReturnReason || "none"}; noProgress={debug.cacheDiagnostics.noProgressReason || "none"}; rejectionCounts={JSON.stringify(debug.cacheDiagnostics.restoredEventRejectionCounts || {})}; firstRestored={JSON.stringify((debug.cacheDiagnostics.firstRestoredEventDiagnostics || []).slice(0, 10))}; progressWrite={debug.cacheDiagnostics.progressWriteOk ? "ok" : "not-ok"}; progressError={debug.cacheDiagnostics.progressWriteError || "none"}; misses={debug.cacheDiagnostics.cacheMisses}; stale={debug.cacheDiagnostics.staleCacheRows}; serviceRole={debug.cacheDiagnostics.serviceRoleCacheWriteEnabled ? "yes" : "no"}; elapsedMs={debug.cacheDiagnostics.elapsedMs ?? "n/a"}; stop={debug.cacheDiagnostics.stopReason || "none"}; repeatFaster={debug.cacheDiagnostics.repeatedSearchShouldBeFaster ? "yes" : "no"}; notUsedReason={debug.cacheDiagnostics.cacheNotUsedReason || "none"}; readErrors={(debug.cacheDiagnostics.cacheReadErrors || []).join(" | ") || "none"}; writeErrors={(debug.cacheDiagnostics.cacheWriteErrors || []).join(" | ") || "none"}; writeWarnings={(debug.cacheDiagnostics.cacheWriteWarnings || []).join(" | ") || "none"}</p> : null}
       {debug.errorMessage ? <p className="small muted">Last error: {debug.errorMessage}</p> : null}
       {debug.lastFetchUrl ? <p className="small muted">Last fetch URL: {debug.lastFetchUrl}</p> : null}
       {debug.listInspectionLimitReached ? <p className="small muted">Result list inspection limit reached.</p> : null}
@@ -848,7 +854,10 @@ export default function LeirdueImportPage() {
   const [savedImport, setSavedImport] = useState<SavedImportSummary | null>(null);
   const [manualReviewActive, setManualReviewActive] = useState(false);
   const [candidatePipelineDiagnostics, setCandidatePipelineDiagnostics] = useState<CandidatePipelineDiagnostics | null>(null);
+  const [progressScopeKey, setProgressScopeKey] = useState("");
   const continuationRequestInFlightRef = useRef(false);
+  const progressHighByScopeRef = useRef(new Map<string, number>());
+  const continuationFailuresByScopeRef = useRef(new Map<string, number>());
 
   useEffect(() => {
     async function loadShooterName() {
@@ -876,6 +885,22 @@ export default function LeirdueImportPage() {
   const manualOtherCandidates = manualBestCandidate ? manualReviewCandidates.filter((candidate) => candidate.localId !== manualBestCandidate.localId) : manualReviewCandidates;
 
   const selectedCount = candidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate) && canSelectCandidate(candidate) && (candidate.duplicateStatus !== "possible" || candidate.allowDuplicateSave)).length;
+  const currentSearchScopeKey = useMemo(() => leirdueUiScopeKey(shooterName, year, disciplines), [shooterName, year, disciplines]);
+
+  useEffect(() => {
+    setProgressScopeKey((previous) => {
+      if (!previous) return currentSearchScopeKey;
+      if (previous !== currentSearchScopeKey) {
+        setSearchProgress(0);
+        setSearchStatus("");
+        setSearchCounterText("");
+        setContinuationToken(null);
+        setCandidatePipelineDiagnostics(null);
+        return currentSearchScopeKey;
+      }
+      return previous;
+    });
+  }, [currentSearchScopeKey]);
 
   function toggleDiscipline(discipline: string) {
     setDisciplines((current) => (current.includes(discipline) ? current.filter((item) => item !== discipline) : [...current, discipline]));
@@ -1054,27 +1079,33 @@ export default function LeirdueImportPage() {
   async function runAutoSearch(startToken: string | null, reset: boolean) {
     if (searching || continuationRequestInFlightRef.current) return;
     continuationRequestInFlightRef.current = true;
+    const activeScopeKey = currentSearchScopeKey;
+    const scopeChanged = progressScopeKey !== activeScopeKey;
+    if (scopeChanged || reset) {
+      progressHighByScopeRef.current.set(activeScopeKey, 0);
+      setProgressScopeKey(activeScopeKey);
+    }
 
     setError("");
     setSuccess("");
     setSearching(true);
-    setSearchProgress(reset ? 5 : Math.max(searchProgress, 15));
+    setSearchProgress(reset || scopeChanged ? 5 : Math.max(progressHighByScopeRef.current.get(activeScopeKey) || 0, 15));
     setSearchStatus(reset ? "Loading cached results and checking continuation state..." : "Continuing with one short batch...");
     setSearchCounterText("");
     setIsAutoContinuingLeirdue(Boolean(startToken));
-      if (reset) {
+    if (reset) {
       setLeirdueBatchNumber(0);
       setLeirdueVisibleCandidatesCount(0);
       setLeirdueTotalListeIdScanned(0);
       setCandidates([]);
       setDebug(null);
       setContinuationToken(null);
-        setManualReviewActive(false);
-        setCandidatePipelineDiagnostics(null);
-      }
+      setManualReviewActive(false);
+      setCandidatePipelineDiagnostics(null);
+    }
 
-      let currentCandidates = reset ? [] : candidates;
-      const candidatesBeforeMerge = currentCandidates;
+    let currentCandidates = reset ? [] : candidates;
+    const candidatesBeforeMerge = currentCandidates;
 
     try {
       const mode = reset ? "initial" : "continue";
@@ -1087,6 +1118,11 @@ export default function LeirdueImportPage() {
         responseDebug.cacheDiagnostics.sentExplicitContinue = explicitContinue;
         responseDebug.cacheDiagnostics.buttonAction = explicitContinue ? "continue" : "search";
         responseDebug.cacheDiagnostics.continuationRequestInFlight = continuationRequestInFlightRef.current;
+        responseDebug.cacheDiagnostics.progressScopeKey = activeScopeKey;
+        responseDebug.cacheDiagnostics.progressGenerationId = `${activeScopeKey}:${responseDebug.batchNumber || 0}`;
+        responseDebug.cacheDiagnostics.persistedHighestProgress = progressHighByScopeRef.current.get(activeScopeKey) ?? null;
+        responseDebug.cacheDiagnostics.progressResetReason = reset ? "newSearch" : scopeChanged ? "scopeChanged" : null;
+        responseDebug.cacheDiagnostics.progressScopeMatch = !scopeChanged;
       }
       setDebug(responseDebug);
 
@@ -1123,11 +1159,18 @@ export default function LeirdueImportPage() {
       setContinuationToken(shouldContinue ? nextToken : null);
       const nextProgress = estimatedSearchProgress(data.debug);
       const completeProgress = Boolean(data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete);
-      const previousProgress = searchProgress;
+      const previousProgress = reset || scopeChanged ? 0 : progressHighByScopeRef.current.get(activeScopeKey) ?? 0;
       const displayedProgress = nextProgress === null ? Math.max(previousProgress, 15) : completeProgress ? nextProgress : Math.min(Math.max(previousProgress, nextProgress), 99);
+      progressHighByScopeRef.current.set(activeScopeKey, displayedProgress);
       if (data.debug?.cacheDiagnostics) {
         data.debug.cacheDiagnostics.highestDisplayedProgressPercent = displayedProgress;
         data.debug.cacheDiagnostics.displayedProgressPercent = displayedProgress;
+        data.debug.cacheDiagnostics.currentSessionHighestProgress = displayedProgress;
+        data.debug.cacheDiagnostics.progressScopeKey = activeScopeKey;
+        data.debug.cacheDiagnostics.progressGenerationId = `${activeScopeKey}:${data.debug.batchNumber || 0}`;
+        data.debug.cacheDiagnostics.persistedHighestProgress = previousProgress || null;
+        data.debug.cacheDiagnostics.progressResetReason = reset ? "newSearch" : scopeChanged ? "scopeChanged" : null;
+        data.debug.cacheDiagnostics.progressScopeMatch = !scopeChanged;
         data.debug.cacheDiagnostics.progressHeldReason = nextProgress !== null && displayedProgress > nextProgress ? "newlyDiscoveredWorkIncreasedDenominator" : null;
       }
       setSearchProgress(displayedProgress);
@@ -1138,6 +1181,7 @@ export default function LeirdueImportPage() {
 
       const provenComplete = Boolean(data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete);
       if (shouldContinue) {
+        continuationFailuresByScopeRef.current.set(activeScopeKey, 0);
         setSearchStatus("More Leirdue.net work remains. Use Continue search to run another short batch.");
         setSuccess(`${reviewedCounts.reviewableCount} cached or found reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"} loaded. More results may still be available.`);
       } else if (provenComplete) {
@@ -1148,6 +1192,7 @@ export default function LeirdueImportPage() {
         setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No candidates found yet. Try broader filters or add a result manually." : `Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. More results may still be available.`);
       }
     } catch (requestError) {
+      continuationFailuresByScopeRef.current.set(activeScopeKey, (continuationFailuresByScopeRef.current.get(activeScopeKey) || 0) + 1);
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
         const visibleCount = visibleCandidateCount(currentCandidates);
         if (visibleCount > 0) setSuccess(autoSearchIncompleteMessage(visibleCount, "request timeout"));
@@ -1169,6 +1214,20 @@ export default function LeirdueImportPage() {
     if (!continuationToken) return;
     await runAutoSearch(continuationToken, false);
   }
+
+  useEffect(() => {
+    if (!continuationToken || searching || continuationRequestInFlightRef.current) return;
+    const failures = continuationFailuresByScopeRef.current.get(currentSearchScopeKey) || 0;
+    if (failures >= MAX_AUTO_CONTINUATION_FAILURES) return;
+    const scheduledScope = currentSearchScopeKey;
+    const scheduledToken = continuationToken;
+    const timer = window.setTimeout(() => {
+      if (scheduledScope !== leirdueUiScopeKey(shooterName, year, disciplines)) return;
+      if (continuationRequestInFlightRef.current) return;
+      void runAutoSearch(scheduledToken, false);
+    }, AUTO_CONTINUATION_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [continuationToken, searching, currentSearchScopeKey, shooterName, year, disciplines]);
 
   async function search(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

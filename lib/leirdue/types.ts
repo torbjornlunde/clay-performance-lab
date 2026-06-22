@@ -381,6 +381,12 @@ export type LeirdueSearchDebug = {
     displayedProgressPercent: number | null;
     progressCalculationSource: string | null;
     progressCappedReason: string | null;
+    progressScopeKey: string | null;
+    progressGenerationId: string | null;
+    persistedHighestProgress: number | null;
+    currentSessionHighestProgress: number | null;
+    progressResetReason: string | null;
+    progressScopeMatch: boolean;
     currentProgressStage: string | null;
     stageProcessed: number | null;
     stageRemaining: number | null;

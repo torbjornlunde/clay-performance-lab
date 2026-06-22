@@ -149,6 +149,7 @@ function rowFingerprint(candidate: LeirdueCandidate) {
 function candidateToCacheRow(candidate: LeirdueCandidate, year: number) {
   const ids = { stevneId: candidate.stevneId || extractLeirdueSourceIdentifiers(candidate.leirdueUrl).stevneId, listeId: candidate.listeId || extractLeirdueSourceIdentifiers(candidate.leirdueUrl).listeId };
   const notImportable = candidate.category === "control" ? candidate.warnings?.[0] || candidate.notes || "Not importable." : null;
+  const reviewableResult = candidate.category !== "control" && candidate.ownScore !== null && candidate.totalTargets !== null;
   return {
     event_id: ids.stevneId,
     liste_id: ids.listeId,
@@ -167,7 +168,7 @@ function candidateToCacheRow(candidate: LeirdueCandidate, year: number) {
     placement: candidate.placement ?? null,
     row_fingerprint: rowFingerprint(candidate),
     candidate_quality: `${candidate.category}/${candidate.confidence}`,
-    is_importable: candidate.importRecommended === true && candidate.category === "recommended",
+    is_importable: reviewableResult,
     not_importable_reason: notImportable,
     raw_row_text: candidate.notes,
     parsed_at: new Date().toISOString(),
@@ -176,7 +177,7 @@ function candidateToCacheRow(candidate: LeirdueCandidate, year: number) {
 
 function cacheRowToCandidate(row: CachedResultRow): LeirdueCandidate {
   const [storedCategory = "review", confidence = "medium"] = (row.candidate_quality || "review/medium").split("/");
-  const category = row.is_importable === false ? "control" : storedCategory;
+  const category = storedCategory === "recommended" || storedCategory === "review" || storedCategory === "control" ? storedCategory : row.is_importable === false ? "control" : "review";
   return {
     date: row.event_date,
     name: row.event_title || "Leirdue.net cached result",
@@ -245,6 +246,7 @@ export async function getCachedLeirdueCandidates(input: { shooterName: string; y
     .map((row) => leirdueCanonicalListeIdKey(row.source_url || `https://www.leirdue.net/?stevne=${row.event_id}&meny=resultater&liste_id=${row.liste_id}`));
   const filtered = input.disciplines.length > 0 ? rows.filter((row) => !row.discipline || input.disciplines.includes(row.discipline)) : rows;
   const candidates = filtered.map(cacheRowToCandidate);
+  const reviewableCachedCandidates = candidates.filter((candidate) => candidate.category !== "control" && candidate.ownScore !== null && candidate.totalTargets !== null);
   const readErrors = [
     staleResult.error ? `Cache stale-row read failed: ${staleResult.error.message}` : null,
     listResult.error ? `Cache list read failed: ${listResult.error.message}` : null,
@@ -252,7 +254,7 @@ export async function getCachedLeirdueCandidates(input: { shooterName: string; y
   ].filter((value): value is string => Boolean(value));
   return {
     candidates,
-    stats: { enabled: true, cachedCandidatesFound: filtered.length, liveCandidatesStored: 0, cacheMiss: filtered.length === 0, staleCache: (staleResult.count || 0) > 0, staleRowsFound: staleResult.count || 0, cacheUsed: filtered.length > 0, cacheReadOk: readErrors.length === 0, cachedImportableCandidatesFound: candidates.filter((candidate) => candidate.importRecommended).length, eventHits: eventResult.data?.length || 0, listHits: listRows.length, invalidListKeys, invalidListsStored: 0, serviceRoleCacheWriteEnabled: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY), cacheWriteOk: false, cacheWriteErrors: [], cacheWriteWarnings: [], cacheReadErrors: readErrors, note: readErrors[0] || null },
+    stats: { enabled: true, cachedCandidatesFound: filtered.length, liveCandidatesStored: 0, cacheMiss: filtered.length === 0, staleCache: (staleResult.count || 0) > 0, staleRowsFound: staleResult.count || 0, cacheUsed: filtered.length > 0, cacheReadOk: readErrors.length === 0, cachedImportableCandidatesFound: reviewableCachedCandidates.length, eventHits: eventResult.data?.length || 0, listHits: listRows.length, invalidListKeys, invalidListsStored: 0, serviceRoleCacheWriteEnabled: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY), cacheWriteOk: false, cacheWriteErrors: [], cacheWriteWarnings: [], cacheReadErrors: readErrors, note: readErrors[0] || null },
   };
 }
 
