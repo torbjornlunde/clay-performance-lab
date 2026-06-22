@@ -38,10 +38,12 @@ function applyCacheStatsToDebug(debug: ReturnType<typeof emptyLeirdueSearchDebug
   debug.cacheDiagnostics.cacheReadErrors = cached.stats.cacheReadErrors;
   debug.cacheDiagnostics.serviceRoleCacheWriteEnabled = cached.stats.serviceRoleCacheWriteEnabled;
   if (progress) {
+    debug.cacheDiagnostics.crawlStateFound = Boolean(progress.progress);
     debug.cacheDiagnostics.cacheScopeComplete = progress.progress?.status === "complete";
     debug.cacheDiagnostics.cacheScopeStatus = progress.progress?.status || "unknown";
     debug.cacheDiagnostics.continuationRequired = progress.progress?.status === "incomplete" && Boolean(progress.progress.continuation_token);
-    debug.cacheDiagnostics.resumedFromSavedProgress = Boolean(progress.progress?.continuation_token);
+    debug.cacheDiagnostics.savedContinuationTokenPresent = Boolean(progress.progress?.continuation_token);
+    debug.cacheDiagnostics.resumedFromSavedProgress = false;
     debug.cacheDiagnostics.previouslyProcessed = progress.progress?.processed_work_count || 0;
     debug.cacheDiagnostics.previouslyProcessedBeforeBatch = progress.progress?.processed_work_count || 0;
     debug.cacheDiagnostics.remainingWork = progress.progress?.remaining_work_count ?? null;
@@ -117,7 +119,8 @@ export async function POST(request: Request) {
     const liveContinuationToken = savedContinuationToken || continuationToken || null;
     const result = await searchLeirdueCandidates({ shooterName, year, disciplines, continuationToken: liveContinuationToken, sourceUrl, cachedInvalidListKeys: cached?.stats.invalidListKeys || [] });
     applyCacheStatsToDebug(result.debug, cached, progress);
-    result.debug.cacheDiagnostics.resumedFromSavedProgress = Boolean(savedContinuationToken);
+    result.debug.cacheDiagnostics.savedContinuationTokenPresent = Boolean(savedContinuationToken || continuationToken);
+    result.debug.cacheDiagnostics.resumedFromSavedProgress = Boolean(savedContinuationToken && result.debug.cacheDiagnostics.continuationDecodeOk && result.debug.cacheDiagnostics.eligibleWorkAfterRestore > 0);
     result.debug.cacheDiagnostics.liveRefreshReason = savedContinuationToken ? "savedIncompleteProgress" : continuationToken ? "clientContinuationNoSavedProgress" : cached?.candidates.length ? "cachedRowsButNoCompleteProgress" : "cacheMiss";
     if (cached?.candidates.length) {
       const cachedKeys = new Set(cached.candidates.map((candidate) => `${candidate.leirdueUrl}|${candidate.date || ""}|${candidate.shooterName || ""}|${candidate.ownScore ?? ""}`));

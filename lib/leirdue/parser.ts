@@ -30,8 +30,11 @@ export type LeirdueSearchInput = {
   cachedInvalidListKeys?: string[];
 };
 
+type LeirdueContinuationEvent = Pick<EventLinkMeta, "eventId" | "url" | "titleText" | "eventTitle" | "organizerText" | "dateText" | "rawRowSnippet" | "titleParseSource" | "date" | "parsedYear" | "overviewMatchedYear" | "actualEventYear" | "actualEventDate" | "actualDateText">;
+
 type LeirdueContinuationState = {
   v: 1;
+  continuationStateVersion: 1;
   selectedYear: number;
   normalizedShooterName: string;
   disciplines: string[];
@@ -43,6 +46,7 @@ type LeirdueContinuationState = {
   hiddenLowQualityCandidatesCountTotal: number;
   candidates: LeirdueCandidate[];
   pendingListeIdQueue: Link[];
+  pendingEventQueue: LeirdueContinuationEvent[];
 };
 
 type Link = { href: string; text: string; source?: "anchor" | "raw" | "validation" };
@@ -111,11 +115,12 @@ function continuationTokenPayload(input: LeirdueSearchInput, token: string | nul
   if (!token) return null;
   try {
     const parsed = JSON.parse(Buffer.from(token, "base64url").toString("utf8")) as Partial<LeirdueContinuationState>;
-    if (parsed.v !== 1 || parsed.selectedYear !== input.year || parsed.normalizedShooterName !== normalizeName(input.shooterName)) return null;
+    if (parsed.v !== 1 || (parsed.continuationStateVersion !== undefined && parsed.continuationStateVersion !== 1) || parsed.selectedYear !== input.year || parsed.normalizedShooterName !== normalizeName(input.shooterName)) return null;
     const tokenDisciplines = Array.isArray(parsed.disciplines) ? parsed.disciplines : [];
     if (normalizeDisciplinesForToken(tokenDisciplines).join("|") !== normalizeDisciplinesForToken(input.disciplines).join("|")) return null;
     return {
       v: 1,
+      continuationStateVersion: 1,
       selectedYear: parsed.selectedYear,
       normalizedShooterName: parsed.normalizedShooterName,
       disciplines: tokenDisciplines,
@@ -127,9 +132,26 @@ function continuationTokenPayload(input: LeirdueSearchInput, token: string | nul
       hiddenLowQualityCandidatesCountTotal: Number.isInteger(parsed.hiddenLowQualityCandidatesCountTotal) ? Math.max(0, Number(parsed.hiddenLowQualityCandidatesCountTotal)) : 0,
       candidates: Array.isArray(parsed.candidates) ? parsed.candidates.filter(isLeirdueCandidate) : [],
       pendingListeIdQueue: Array.isArray(parsed.pendingListeIdQueue) ? parsed.pendingListeIdQueue.filter(isContinuationLink) : [],
+      pendingEventQueue: Array.isArray(parsed.pendingEventQueue) ? parsed.pendingEventQueue.filter(isContinuationEvent) : [],
     };
   } catch {
     return null;
+  }
+}
+
+function continuationTokenDiagnostics(token: string | null | undefined) {
+  if (!token) return { present: false, version: null as number | null, eventQueueCount: 0, listeIdQueueCount: 0, error: null as string | null };
+  try {
+    const parsed = JSON.parse(Buffer.from(token, "base64url").toString("utf8")) as { continuationStateVersion?: unknown; pendingEventQueue?: unknown; pendingListeIdQueue?: unknown };
+    return {
+      present: true,
+      version: typeof parsed.continuationStateVersion === "number" ? parsed.continuationStateVersion : null,
+      eventQueueCount: Array.isArray(parsed.pendingEventQueue) ? parsed.pendingEventQueue.length : 0,
+      listeIdQueueCount: Array.isArray(parsed.pendingListeIdQueue) ? parsed.pendingListeIdQueue.length : 0,
+      error: null as string | null,
+    };
+  } catch (error) {
+    return { present: true, version: null as number | null, eventQueueCount: 0, listeIdQueueCount: 0, error: error instanceof Error ? error.message : "unknown decode error" };
   }
 }
 
@@ -141,6 +163,35 @@ function isLeirdueCandidate(value: unknown): value is LeirdueCandidate {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<LeirdueCandidate>;
   return typeof candidate.name === "string" && typeof candidate.leirdueUrl === "string" && typeof candidate.discipline === "string";
+}
+
+function isContinuationEvent(value: unknown): value is LeirdueContinuationEvent {
+  if (!value || typeof value !== "object") return false;
+  const event = value as Partial<LeirdueContinuationEvent>;
+  return typeof event.eventId === "string" && typeof event.url === "string" && typeof event.titleText === "string";
+}
+
+function eventFromContinuation(item: LeirdueContinuationEvent): EventLinkMeta {
+  return { ...item, inspected: false, skippedReason: null };
+}
+
+function eventToContinuation(item: EventLinkMeta): LeirdueContinuationEvent {
+  return {
+    eventId: item.eventId,
+    url: item.url,
+    titleText: item.titleText,
+    eventTitle: item.eventTitle,
+    organizerText: item.organizerText,
+    dateText: item.dateText,
+    rawRowSnippet: item.rawRowSnippet,
+    titleParseSource: item.titleParseSource,
+    date: item.date,
+    parsedYear: item.parsedYear,
+    overviewMatchedYear: item.overviewMatchedYear,
+    actualEventYear: item.actualEventYear,
+    actualEventDate: item.actualEventDate,
+    actualDateText: item.actualDateText,
+  };
 }
 
 function isContinuationLink(value: unknown): value is Link {
@@ -323,7 +374,12 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
       cacheScopeComplete: false,
       cacheScopeStatus: "unknown",
       continuationRequired: false,
+      crawlStateFound: false,
       resumedFromSavedProgress: false,
+      continuationStateVersion: null,
+      savedContinuationTokenPresent: false,
+      continuationDecodeOk: false,
+      continuationDecodeError: null,
       processedEventsThisBatch: 0,
       processedListeIdsThisBatch: 0,
       processedThisBatch: 0,
@@ -336,7 +392,13 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
       skippedAlreadyProcessedEvents: 0,
       skippedAlreadyProcessedListeIds: 0,
       restoredEventQueueCount: 0,
+      storedEventQueueCount: 0,
       restoredListeIdQueueCount: 0,
+      storedListeIdQueueCount: 0,
+      recoveryRediscoveryUsed: false,
+      recoveryRediscoveryReason: null,
+      eligibleWorkAfterRestore: 0,
+      firstRestoredEventIds: [],
       batchTimeLimitMs: null,
       batchStopReason: null,
       noProgressReason: null,
@@ -2114,6 +2176,8 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   const listPages = new Map<string, Page>();
   const previouslyScannedEventIds = new Set(continuation?.scannedEventIds ?? []);
   const scannedListeIdKeys = new Set(continuation?.scannedListeIdKeys ?? []);
+  const restoredEventQueue = (continuation?.pendingEventQueue ?? []).map(eventFromContinuation).filter((event) => !previouslyScannedEventIds.has(event.eventId));
+  for (const event of restoredEventQueue) addEventMeta(eventLinks, event, debug);
   for (const link of continuation?.pendingListeIdQueue ?? []) {
     const key = canonicalListeIdKey(link.href);
     if (!scannedListeIdKeys.has(key)) listeIdLinks.set(key, link);
@@ -2128,9 +2192,17 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   }
   const overviewHtmlByUrl = new Map<string, string>();
   const crawlStartedAt = state.deadlineAt - (continuation ? CONTINUATION_SEARCH_TIMEOUT_MS : SEARCH_TIMEOUT_MS);
+  const restoredWorkAvailable = restoredEventQueue.length > 0 || debug.pendingListeIdQueueAtStart > 0;
+  if (continuation && !restoredWorkAvailable) {
+    debug.cacheDiagnostics.recoveryRediscoveryUsed = true;
+    debug.cacheDiagnostics.recoveryRediscoveryReason = "saved continuation token had no restorable event or liste_id queue";
+  }
+  debug.cacheDiagnostics.eligibleWorkAfterRestore = restoredEventQueue.length + debug.pendingListeIdQueueAtStart;
+  if (continuation && debug.cacheDiagnostics.eligibleWorkAfterRestore > 0) debug.cacheDiagnostics.resumedFromSavedProgress = true;
+  debug.cacheDiagnostics.firstRestoredEventIds = restoredEventQueue.slice(0, 10).map((event) => event.eventId);
 
   debug.timedOutAtPhase = "overview";
-  for (const url of guessedUrls) {
+  if (!restoredWorkAvailable) for (const url of guessedUrls) {
     if (shouldStopCrawl(debug, state)) break;
     const html = await fetchLeirdue(url, debug, state);
     if (!html) continue;
@@ -2146,9 +2218,9 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   for (const item of debug.selectedYearLinksFound) {
     if (isOverviewUrl(item.url)) overviewUrls.add(item.url);
   }
-  if (overviewUrls.size === 0) overviewUrls.add(`${LEIRDUE_BASE_URL}?resultater=`);
+  if (!restoredWorkAvailable && overviewUrls.size === 0) overviewUrls.add(`${LEIRDUE_BASE_URL}?resultater=`);
 
-  for (const url of overviewUrls) {
+  if (!restoredWorkAvailable) for (const url of overviewUrls) {
     if (shouldStopCrawl(debug, state)) break;
     let html = overviewHtmlByUrl.get(url);
     if (!html) {
@@ -2202,7 +2274,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   const fallbackEvents = genericFallbackCandidates
     .sort((a, b) => eventPriority(b, input) - eventPriority(a, input) || Number(b.eventId) - Number(a.eventId) || (b.date || "0000-00-00").localeCompare(a.date || "0000-00-00") || a.titleText.localeCompare(b.titleText));
   debug.genericFallbackEventsAdded = fallbackEvents.length;
-  const relevantEventLinks = [...sortedStrictRelevantEvents, ...fallbackEvents];
+  const relevantEventLinks = restoredWorkAvailable ? restoredEventQueue : [...sortedStrictRelevantEvents, ...fallbackEvents];
   debug.selectedYearEventLinksAfterSoftFilter = relevantEventLinks.length;
   debug.selectedYearEventLinks = relevantEventLinks.map((event) => ({ eventId: event.eventId, url: event.url, titleText: event.titleText, eventTitle: event.eventTitle, organizerText: event.organizerText, dateText: event.dateText, rawRowSnippet: event.rawRowSnippet, titleParseSource: event.titleParseSource, date: event.date, parsedYear: event.parsedYear, overviewMatchedYear: event.overviewMatchedYear, actualEventYear: event.actualEventYear, actualEventDate: event.actualEventDate, actualDateText: event.actualDateText, inspected: event.inspected, skippedReason: event.skippedReason }));
   debug.selectedYearEventLinksCount = debug.selectedYearEventLinks.length;
@@ -2425,7 +2497,8 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   debug.pendingListeIdQueueAtEnd = pendingListeIdQueue(listeIdLinks, scannedListeIdKeys).length;
   debug.pendingListeIdQueueRemaining = debug.pendingListeIdQueueAtEnd;
   debug.scannedListeIdTotal = scannedListeIdKeys.size;
-  return { pages: Array.from(listPages.values()), scannedListeIdKeys, pendingListeIdQueue: pendingListeIdQueue(listeIdLinks, scannedListeIdKeys) };
+  const pendingEventQueue = allRankedEvents.filter((event) => !inspectedEventIds.has(event.eventId) && !event.skippedReason && shouldUseEventForContinuation(event, input, continuation)).map(eventToContinuation);
+  return { pages: Array.from(listPages.values()), scannedListeIdKeys, pendingListeIdQueue: pendingListeIdQueue(listeIdLinks, scannedListeIdKeys), pendingEventQueue };
 }
 
 function candidateMatchesExpected(candidate: LeirdueCandidate, expected: ExpectedValidationResult) {
@@ -3055,6 +3128,13 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   const searchStartedAt = Date.now();
   const debug = emptyLeirdueSearchDebug();
   const continuation = continuationTokenPayload(input, input.continuationToken);
+  const tokenDiagnostics = continuationTokenDiagnostics(input.continuationToken);
+  debug.cacheDiagnostics.savedContinuationTokenPresent = tokenDiagnostics.present;
+  debug.cacheDiagnostics.continuationStateVersion = tokenDiagnostics.version;
+  debug.cacheDiagnostics.storedEventQueueCount = tokenDiagnostics.eventQueueCount;
+  debug.cacheDiagnostics.storedListeIdQueueCount = tokenDiagnostics.listeIdQueueCount;
+  debug.cacheDiagnostics.continuationDecodeOk = Boolean(continuation);
+  debug.cacheDiagnostics.continuationDecodeError = tokenDiagnostics.error || (input.continuationToken && !continuation ? "continuation token schema did not match this search" : null);
   debug.selectedYear = input.year;
   debug.normalizedSearchName = normalizeName(input.shooterName);
   debug.batchNumber = (continuation?.batchNumber ?? 0) + 1;
@@ -3140,6 +3220,7 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   const continuationToken = canContinue
     ? encodeContinuationToken({
         v: 1,
+        continuationStateVersion: 1,
         selectedYear: input.year,
         normalizedShooterName: normalizeName(input.shooterName),
         disciplines: input.disciplines,
@@ -3151,6 +3232,7 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
         hiddenLowQualityCandidatesCountTotal: debug.hiddenLowQualityCandidatesCountTotal,
         candidates: returnedCandidates,
         pendingListeIdQueue: discovered.pendingListeIdQueue,
+        pendingEventQueue: discovered.pendingEventQueue,
       })
     : null;
   debug.cacheDiagnostics.processedEventsThisBatch = debug.eventMenusFetchedThisBatch;

@@ -309,7 +309,12 @@ export type LeirdueSearchDebug = {
     cacheScopeComplete: boolean;
     cacheScopeStatus: "unknown" | "incomplete" | "complete" | "failed";
     continuationRequired: boolean;
+    crawlStateFound: boolean;
     resumedFromSavedProgress: boolean;
+    continuationStateVersion: number | null;
+    savedContinuationTokenPresent: boolean;
+    continuationDecodeOk: boolean;
+    continuationDecodeError: string | null;
     processedEventsThisBatch: number;
     processedListeIdsThisBatch: number;
     processedThisBatch: number;
@@ -322,7 +327,13 @@ export type LeirdueSearchDebug = {
     skippedAlreadyProcessedEvents: number;
     skippedAlreadyProcessedListeIds: number;
     restoredEventQueueCount: number;
+    storedEventQueueCount: number;
     restoredListeIdQueueCount: number;
+    storedListeIdQueueCount: number;
+    recoveryRediscoveryUsed: boolean;
+    recoveryRediscoveryReason: string | null;
+    eligibleWorkAfterRestore: number;
+    firstRestoredEventIds: string[];
     batchTimeLimitMs: number | null;
     batchStopReason: string | null;
     noProgressReason: string | null;
