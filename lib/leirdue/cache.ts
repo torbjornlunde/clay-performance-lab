@@ -403,7 +403,7 @@ export async function storeLeirdueCrawlProgress(input: { shooterName: string; ye
     updated_at: now,
   };
   const { error } = await supabase.from("leirdue_search_crawl_state").upsert(row, { onConflict: "scope_key" });
-  return { ok: !error, error: error ? `Crawl progress write failed: ${error.message}` : null, status: row.status, remainingWork };
+  return { ok: !error, error: error ? `Crawl progress write failed: ${error.message}` : null, status: row.status, remainingWork, processedWorkCount: row.processed_work_count };
 }
 
 export async function storeLeirdueCrawlIndexesInCache(debug: LeirdueSearchDebug, year: number) {

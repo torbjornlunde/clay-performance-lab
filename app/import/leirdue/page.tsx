@@ -10,10 +10,7 @@ import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMat
 const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduesti", "Sporting"];
 const OPTIONAL_DISCIPLINES = ["Trap", "Skeet", "Other"];
 const DISCIPLINE_CHOICES = [...DEFAULT_DISCIPLINES, ...OPTIONAL_DISCIPLINES];
-const MAX_AUTO_BATCHES = 250;
-const MAX_AUTO_LISTE_ID_SCANNED = 10_000;
-const MAX_AUTO_SEARCH_MS = 30 * 60 * 1000;
-const BATCH_TIMEOUT_MS = 35_000;
+const BATCH_TIMEOUT_MS = 20_000;
 
 type EditableCandidate = LeirdueCandidate & { selected: boolean; localId: string; saveStatus?: "saved" | "duplicate" | "error"; saveMessage?: string };
 
@@ -214,8 +211,8 @@ function hasLikelySelectedYearWork(debug?: LeirdueSearchDebug) {
 
 function estimatedSearchProgress(debug: LeirdueSearchDebug | undefined, batchIndex: number, visibleCount: number, finished = false) {
   if (finished) return 100;
-  const batchProgress = Math.min(batchIndex / MAX_AUTO_BATCHES, 1) * 55;
-  const scanProgress = Math.min((debug?.scannedListeIdTotal || 0) / MAX_AUTO_LISTE_ID_SCANNED, 1) * 25;
+  const batchProgress = Math.min(batchIndex / 20, 1) * 55;
+  const scanProgress = Math.min((debug?.scannedListeIdTotal || 0) / 1000, 1) * 25;
   const candidateProgress = Math.min(visibleCount / Math.max(debug?.expectedCandidateTarget || 16, 1), 1) * 15;
   return Math.max(10, Math.min(95, Math.round(5 + batchProgress + scanProgress + candidateProgress)));
 }
@@ -897,84 +894,55 @@ export default function LeirdueImportPage() {
     setSuccess("");
     setSearching(true);
     setSearchProgress(reset ? 5 : Math.max(searchProgress, 15));
-    setSearchStatus(reset ? "Finding relevant events..." : "Continuing the search for more results...");
+    setSearchStatus(reset ? "Loading cached results and checking continuation state..." : "Continuing with one short batch...");
     setSearchCounterText("");
-    setIsAutoContinuingLeirdue(false);
+    setIsAutoContinuingLeirdue(Boolean(startToken));
     if (reset) {
       setLeirdueBatchNumber(0);
       setLeirdueVisibleCandidatesCount(0);
       setLeirdueTotalListeIdScanned(0);
-    }
-
-    let token = startToken;
-    let batchCount = 0;
-    let stoppedInsideLoop = false;
-    let currentCandidates = reset ? [] : candidates;
-    const startedAt = Date.now();
-
-    if (reset) {
       setCandidates([]);
       setDebug(null);
       setContinuationToken(null);
       setManualReviewActive(false);
     }
 
+    let currentCandidates = reset ? [] : candidates;
+
     try {
-      while (true) {
-        batchCount += 1;
-        setIsAutoContinuingLeirdue(Boolean(token));
-        setSearchStatus(token ? "Continuing the search for more results..." : "Finding relevant events...");
-        setSearchCounterText(searchCounterMessage(leirdueTotalListeIdScanned, visibleCandidateCount(currentCandidates), Boolean(token)));
+      const { response, data } = await fetchSearchBatch(startToken);
+      const responseDebug = data.debug || null;
+      if (responseDebug?.cacheDiagnostics) responseDebug.cacheDiagnostics.frontendContinuationMode = "manual-single-batch";
+      setDebug(responseDebug);
 
-        const { response, data } = await fetchSearchBatch(token);
-        setDebug(data.debug || null);
-
-        if (!response.ok) {
-          setError(data.error || "Could not fetch Leirdue results right now.");
-          setContinuationToken(token);
-          stoppedInsideLoop = true;
-          break;
-        }
-
-        setSearchStatus("Searching for your name in result lists...");
-        currentCandidates = reset && batchCount === 1 ? (data.candidates || []).map(toEditable) : mergeCandidates(currentCandidates, data.candidates || []);
-        const afterVisible = visibleCandidateCount(currentCandidates);
-        await setReviewedCandidates(currentCandidates);
-
-        const nextToken = data.continuationToken || null;
-        const likelyWorkRemains = hasLikelySelectedYearWork(data.debug);
-        const apiAllowsContinuation = data.debug?.continuationAvailable !== false;
-        const shouldContinue = Boolean(nextToken && apiAllowsContinuation && likelyWorkRemains);
-        setContinuationToken(shouldContinue ? nextToken : null);
-        setSearchProgress(estimatedSearchProgress(data.debug, batchCount, afterVisible, !shouldContinue));
-        setLeirdueBatchNumber(data.debug?.batchNumber || batchCount);
-        setLeirdueVisibleCandidatesCount(afterVisible);
-        setLeirdueTotalListeIdScanned(data.debug?.scannedListeIdTotal || 0);
-        setSearchCounterText(searchCounterMessage(data.debug?.scannedListeIdTotal || 0, afterVisible, shouldContinue));
-
-        if (!shouldContinue) {
-          setSearchStatus("Search complete");
-          if (afterVisible === 0 && reset) setSuccess("No candidates found. Try broader filters or add a result manually.");
-          else setSuccess(autoSearchCompleteMessage(afterVisible));
-          stoppedInsideLoop = true;
-          break;
-        }
-
-        token = nextToken;
-        const scannedTooManyLists = (data.debug?.scannedListeIdTotal || 0) >= MAX_AUTO_LISTE_ID_SCANNED;
-        const searchedTooLong = Date.now() - startedAt >= MAX_AUTO_SEARCH_MS;
-        if (scannedTooManyLists || searchedTooLong) {
-          setContinuationToken(nextToken);
-          setSearchStatus("Search could not be completed");
-          setSuccess(autoSearchIncompleteMessage(afterVisible, scannedTooManyLists ? `internal list scan cap reached (${MAX_AUTO_LISTE_ID_SCANNED} lists) while more work remained` : `internal time cap reached (${Math.round(MAX_AUTO_SEARCH_MS / 60000)} minutes) while more work remained`));
-          setSearchProgress(100);
-          stoppedInsideLoop = true;
-          break;
-        }
-
-        setSearchStatus("Fetching result lists...");
+      if (!response.ok) {
+        setError(data.error || "Could not fetch Leirdue results right now.");
+        setContinuationToken(startToken);
+        return;
       }
 
+      currentCandidates = mergeCandidates(currentCandidates, data.candidates || []);
+      const afterVisible = visibleCandidateCount(currentCandidates);
+      await setReviewedCandidates(currentCandidates);
+
+      const nextToken = data.continuationToken || null;
+      const likelyWorkRemains = hasLikelySelectedYearWork(data.debug);
+      const apiAllowsContinuation = data.debug?.continuationAvailable !== false;
+      const shouldContinue = Boolean(nextToken && apiAllowsContinuation && likelyWorkRemains);
+      setContinuationToken(shouldContinue ? nextToken : null);
+      setSearchProgress(estimatedSearchProgress(data.debug, (data.debug?.batchNumber || 1), afterVisible, !shouldContinue));
+      setLeirdueBatchNumber(data.debug?.batchNumber || 1);
+      setLeirdueVisibleCandidatesCount(afterVisible);
+      setLeirdueTotalListeIdScanned(data.debug?.scannedListeIdTotal || 0);
+      setSearchCounterText(searchCounterMessage(data.debug?.scannedListeIdTotal || 0, afterVisible, false));
+
+      if (shouldContinue) {
+        setSearchStatus("More Leirdue.net work remains. Use Continue search to run another short batch.");
+        setSuccess(`${afterVisible} cached or found result${afterVisible === 1 ? "" : "s"} loaded. More results may still be available.`);
+      } else {
+        setSearchStatus("Search complete");
+        setSuccess(afterVisible === 0 && reset ? "No candidates found. Try broader filters or add a result manually." : autoSearchCompleteMessage(afterVisible));
+      }
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
         const visibleCount = visibleCandidateCount(currentCandidates);
@@ -1096,6 +1064,7 @@ export default function LeirdueImportPage() {
           </fieldset>
           <div className="btns">
             <button disabled={searching || disciplines.length === 0}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
+            {continuationToken ? <button type="button" className="secondary" disabled={searching} onClick={() => runAutoSearch(continuationToken, false)}>{searching ? "Continuing..." : "Continue search"}</button> : null}
           </div>
         </section>
 
@@ -1124,7 +1093,7 @@ export default function LeirdueImportPage() {
         ) : success ? <div className="success">{success} {success.includes("saved") ? <Link href="/stats">Open Stats</Link> : null}</div> : null}
         {searching || searchStatus ? (
           <div className="searchProgressPanel" aria-live="polite">
-            {searching ? <p className="small">This search can take a few minutes. Do not close or refresh the page while we fetch results from Leirdue.net.</p> : null}
+            {searching ? <p className="small">This request runs one short batch. Cached results stay visible while it finishes.</p> : null}
             <div className="progressHeader">
               <span>Estimated progress</span>
               <strong>{Math.round(searchProgress)}%</strong>

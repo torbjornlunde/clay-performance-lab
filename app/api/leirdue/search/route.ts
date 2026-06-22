@@ -43,7 +43,9 @@ function applyCacheStatsToDebug(debug: ReturnType<typeof emptyLeirdueSearchDebug
     debug.cacheDiagnostics.continuationRequired = progress.progress?.status === "incomplete" && Boolean(progress.progress.continuation_token);
     debug.cacheDiagnostics.resumedFromSavedProgress = Boolean(progress.progress?.continuation_token);
     debug.cacheDiagnostics.previouslyProcessed = progress.progress?.processed_work_count || 0;
+    debug.cacheDiagnostics.previouslyProcessedBeforeBatch = progress.progress?.processed_work_count || 0;
     debug.cacheDiagnostics.remainingWork = progress.progress?.remaining_work_count ?? null;
+    debug.cacheDiagnostics.remainingWorkBeforeBatch = progress.progress?.remaining_work_count ?? null;
     if (progress.error) debug.cacheDiagnostics.cacheReadErrors = [...debug.cacheDiagnostics.cacheReadErrors, progress.error];
   }
 }
@@ -136,6 +138,8 @@ export async function POST(request: Request) {
       result.debug.cacheDiagnostics.cacheScopeStatus = progressWrite.status === "complete" || progressWrite.status === "incomplete" || progressWrite.status === "failed" ? progressWrite.status : result.debug.cacheDiagnostics.cacheScopeStatus;
       result.debug.cacheDiagnostics.cacheScopeComplete = progressWrite.status === "complete";
       result.debug.cacheDiagnostics.continuationRequired = Boolean(result.continuationToken);
+      result.debug.cacheDiagnostics.previouslyProcessedAfterBatch = progressWrite.processedWorkCount ?? result.debug.cacheDiagnostics.previouslyProcessedAfterBatch;
+      result.debug.cacheDiagnostics.remainingWorkAfterBatch = progressWrite.remainingWork ?? null;
       result.debug.candidateReasons.unshift(`Cache ${result.debug.cacheDiagnostics.cacheWriteOk ? "write ok" : "write issue"}: stored ${stored.liveCandidatesStored} parsed candidates and ${crawlIndexes.invalidListsStored + invalidStored.invalidListsStored} invalid/index list decisions; progress ${progressWrite.ok ? "write ok" : "write issue"}.${result.debug.cacheDiagnostics.cacheWriteErrors.length ? ` Errors: ${result.debug.cacheDiagnostics.cacheWriteErrors.join(" | ")}` : ""}${progressWrite.error ? ` Progress error: ${progressWrite.error}` : ""}`);
     }
     if (result.debug.fetchedUrls.length > 0 && result.debug.fetchedUrls.every((item) => !item.ok)) {

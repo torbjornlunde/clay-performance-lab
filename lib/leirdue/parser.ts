@@ -72,8 +72,9 @@ const MAX_LISTE_ID_PAGES_SCANNED = 300;
 const MAX_SHOOTER_PAGES_PARSED = 50;
 const TARGET_COMPLETE_CANDIDATES = 16;
 const RESULT_MENU_BATCH_SIZE = 10;
-const MAX_CONTINUATION_EVENT_MENUS_BEFORE_SCAN = 20;
-const MAX_CONTINUATION_LISTE_IDS_TO_SCAN_PER_BATCH = 100;
+const CONTINUATION_SEARCH_TIMEOUT_MS = 12_000;
+const MAX_CONTINUATION_EVENT_MENUS_BEFORE_SCAN = 8;
+const MAX_CONTINUATION_LISTE_IDS_TO_SCAN_PER_BATCH = 20;
 const MAX_RESULT_MENUS_BEFORE_FIRST_SCAN = 40;
 const RESULT_MENU_PHASE_BUDGET_MS = Math.floor(SEARCH_TIMEOUT_MS * 0.4);
 const MIN_LIST_SCAN_RESERVE_MS = Math.floor(SEARCH_TIMEOUT_MS * 0.5);
@@ -323,9 +324,23 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
       cacheScopeStatus: "unknown",
       continuationRequired: false,
       resumedFromSavedProgress: false,
+      processedEventsThisBatch: 0,
+      processedListeIdsThisBatch: 0,
       processedThisBatch: 0,
       previouslyProcessed: 0,
+      previouslyProcessedBeforeBatch: 0,
+      previouslyProcessedAfterBatch: 0,
       remainingWork: null,
+      remainingWorkBeforeBatch: null,
+      remainingWorkAfterBatch: null,
+      skippedAlreadyProcessedEvents: 0,
+      skippedAlreadyProcessedListeIds: 0,
+      restoredEventQueueCount: 0,
+      restoredListeIdQueueCount: 0,
+      batchTimeLimitMs: null,
+      batchStopReason: null,
+      noProgressReason: null,
+      frontendContinuationMode: null,
       liveRefreshStarted: false,
       liveRefreshReason: null,
       crawlMarkedComplete: false,
@@ -2112,7 +2127,7 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     }
   }
   const overviewHtmlByUrl = new Map<string, string>();
-  const crawlStartedAt = state.deadlineAt - SEARCH_TIMEOUT_MS;
+  const crawlStartedAt = state.deadlineAt - (continuation ? CONTINUATION_SEARCH_TIMEOUT_MS : SEARCH_TIMEOUT_MS);
 
   debug.timedOutAtPhase = "overview";
   for (const url of guessedUrls) {
@@ -2199,6 +2214,10 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   const allRankedEvents = rankedEventsAcrossYear(relevantEventLinks, input);
   setEventQueueDebugRows(debug, allRankedEvents, input);
   setNextUnscannedEventQueueDebug(debug, allRankedEvents, input);
+  debug.cacheDiagnostics.skippedAlreadyProcessedEvents = allRankedEvents.filter((event) => previouslyScannedEventIds.has(event.eventId)).length;
+  debug.cacheDiagnostics.skippedAlreadyProcessedListeIds = Array.from(listeIdLinks.keys()).filter((key) => scannedListeIdKeys.has(key)).length;
+  debug.cacheDiagnostics.restoredEventQueueCount = allRankedEvents.filter((event) => !previouslyScannedEventIds.has(event.eventId)).length;
+  debug.cacheDiagnostics.restoredListeIdQueueCount = pendingListeIdQueue(listeIdLinks, scannedListeIdKeys).length;
   const continuationRankedEvents = allRankedEvents.filter((event) => !previouslyScannedEventIds.has(event.eventId) && shouldUseEventForContinuation(event, input, continuation));
   const rankedEvents = boostKnownTorbjorn2025Events(input, continuationRankedEvents.slice(0, MAX_EVENT_PAGES_INSPECTED), eventLinks, debug).filter((event) => !previouslyScannedEventIds.has(event.eventId));
   if (continuationRankedEvents.length > rankedEvents.length) {
@@ -3039,8 +3058,14 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   debug.selectedYear = input.year;
   debug.normalizedSearchName = normalizeName(input.shooterName);
   debug.batchNumber = (continuation?.batchNumber ?? 0) + 1;
-  if (input.continuationToken && !continuation) debug.rejectedReasons.push("Continuation token was invalid for this search and was ignored.");
-  const state: CrawlState = { deadlineAt: Date.now() + SEARCH_TIMEOUT_MS };
+  if (input.continuationToken && !continuation) {
+    debug.rejectedReasons.push("Continuation token was invalid for this search and was ignored.");
+    debug.cacheDiagnostics.noProgressReason = "saved continuation token could not be decoded";
+  }
+  const state: CrawlState = { deadlineAt: Date.now() + (continuation ? CONTINUATION_SEARCH_TIMEOUT_MS : SEARCH_TIMEOUT_MS) };
+  debug.cacheDiagnostics.batchTimeLimitMs = continuation ? CONTINUATION_SEARCH_TIMEOUT_MS : SEARCH_TIMEOUT_MS;
+  debug.cacheDiagnostics.restoredEventQueueCount = continuation?.scannedEventIds ? Math.max(0, continuation.scannedEventIds.length) : 0;
+  debug.cacheDiagnostics.restoredListeIdQueueCount = continuation?.pendingListeIdQueue?.length ?? 0;
   const discovered = await discoverPages(input, debug, state, continuation);
   const pages = discovered.pages;
   if (debug.timedOut) debug.timedOutAtPhase ||= "listeId";
@@ -3128,8 +3153,27 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
         pendingListeIdQueue: discovered.pendingListeIdQueue,
       })
     : null;
+  debug.cacheDiagnostics.processedEventsThisBatch = debug.eventMenusFetchedThisBatch;
+  debug.cacheDiagnostics.processedListeIdsThisBatch = debug.scannedThisBatch;
   debug.cacheDiagnostics.processedThisBatch = debug.scannedThisBatch + debug.eventMenusFetchedThisBatch;
   debug.cacheDiagnostics.remainingWork = debug.pendingListeIdQueueRemaining + debug.remainingEventQueueCount;
+  debug.cacheDiagnostics.previouslyProcessedAfterBatch = debug.scannedListeIdTotal + debug.scannedEventTotal;
+  debug.cacheDiagnostics.remainingWorkAfterBatch = debug.cacheDiagnostics.remainingWork;
+  debug.cacheDiagnostics.batchStopReason = debug.batchStopReason || debug.continuationStopReason || debug.scanStoppedReason || debug.eventStopReason;
+  if ((continuation || input.continuationToken) && debug.cacheDiagnostics.processedThisBatch === 0) {
+    debug.cacheDiagnostics.noProgressReason ||= input.continuationToken && !continuation
+      ? "saved continuation token could not be decoded"
+      : continuation && debug.pendingListeIdQueueAtStart === 0 && debug.selectedYearEventLinksCount === 0
+        ? "event queue was not restored"
+        : continuation && debug.pendingListeIdQueueAtStart === 0 && debug.remainingEventQueueCount === 0
+          ? "all restored work was already processed"
+          : debug.timedOut
+            ? "time budget expired before the first item"
+            : debug.fetchedUrls.length > 0 && debug.fetchedUrls.every((item) => !item.ok)
+              ? "fetch failed before progress"
+              : "no eligible continuation work was restored";
+    debug.rejectedReasons.push(`No continuation progress: ${debug.cacheDiagnostics.noProgressReason}.`);
+  }
   debug.cacheDiagnostics.liveRefreshStarted = debug.cacheDiagnostics.liveFetchesStarted > 0;
   debug.cacheDiagnostics.crawlStopReason = debug.continuationStopReason || debug.scanStoppedReason || debug.eventStopReason;
   debug.cacheDiagnostics.elapsedMs = Date.now() - searchStartedAt;
