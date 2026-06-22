@@ -406,6 +406,26 @@ export async function storeLeirdueCrawlProgress(input: { shooterName: string; ye
   return { ok: !error, error: error ? `Crawl progress write failed: ${error.message}` : null, status: row.status, remainingWork, processedWorkCount: row.processed_work_count };
 }
 
+export async function repairLeirdueInvalidCompleteState(input: { shooterName: string; year: number; disciplines: string[] }) {
+  const supabase = supabaseServiceClient();
+  if (!supabase) return { ok: false, error: "Invalid complete-state repair skipped: missing SUPABASE_SERVICE_ROLE_KEY.", status: null as string | null };
+  const scopeKey = leirdueSearchScopeKey(input);
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("leirdue_search_crawl_state")
+    .update({
+      status: "incomplete",
+      continuation_token: null,
+      remaining_work_count: 1,
+      last_stop_reason: "invalidCompleteStateRevalidationRequired",
+      completed_at: null,
+      updated_at: now,
+      last_run_at: now,
+    })
+    .eq("scope_key", scopeKey);
+  return { ok: !error, error: error ? `Invalid complete-state repair failed: ${error.message}` : null, status: error ? null : "incomplete" };
+}
+
 export async function storeLeirdueCrawlIndexesInCache(debug: LeirdueSearchDebug, year: number) {
   const supabase = supabaseServiceClient();
   if (!supabase) return emptyLeirdueCacheStats("Crawl index cache write skipped: missing SUPABASE_SERVICE_ROLE_KEY.");

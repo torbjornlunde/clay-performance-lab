@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCachedLeirdueCandidates, getLeirdueCrawlProgress, storeLeirdueCandidatesInCache, storeLeirdueCrawlIndexesInCache, storeLeirdueCrawlProgress, storeLeirdueInvalidListDecisionsInCache } from "@/lib/leirdue/cache";
+import { getCachedLeirdueCandidates, getLeirdueCrawlProgress, repairLeirdueInvalidCompleteState, storeLeirdueCandidatesInCache, storeLeirdueCrawlIndexesInCache, storeLeirdueCrawlProgress, storeLeirdueInvalidListDecisionsInCache } from "@/lib/leirdue/cache";
 import { emptyLeirdueSearchDebug, FETCH_ERROR_MESSAGE, searchLeirdueCandidates } from "@/lib/leirdue/parser";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +10,7 @@ type SearchBody = {
   disciplines?: unknown;
   continuationToken?: unknown;
   sourceUrl?: unknown;
+  requestMode?: unknown;
 };
 
 function validYear(value: unknown) {
@@ -75,6 +76,13 @@ export async function POST(request: Request) {
   const restartIncompleteScopeToken = "__restart_incomplete_leirdue_scope__";
   const restartRequested = continuationToken === restartIncompleteScopeToken;
   const sourceUrl = typeof body.sourceUrl === "string" && body.sourceUrl.trim().length > 0 ? body.sourceUrl.trim() : null;
+  const requestMode = body.requestMode === "continue" || body.requestMode === "revalidateInvalidComplete" || body.requestMode === "initial"
+    ? body.requestMode
+    : restartRequested
+      ? "revalidateInvalidComplete"
+      : continuationToken
+        ? "continue"
+        : "initial";
 
   if (!shooterName || !year || disciplines.length === 0) {
     return NextResponse.json({ error: "Shooter name, year and at least one discipline are required." }, { status: 400 });
@@ -94,6 +102,8 @@ export async function POST(request: Request) {
       debug.normalizedSearchName = shooterName.toLowerCase().replace(/\s+/g, " ").trim();
       debug.selectedDisciplineFilters = disciplines;
       applyCacheStatsToDebug(debug, cached, progress);
+      debug.cacheDiagnostics.requestMode = requestMode;
+      debug.cacheDiagnostics.explicitContinuationRequested = false;
       debug.cacheDiagnostics.liveFetchesSkippedBecauseCached = cached.stats.cachedImportableCandidatesFound;
       debug.cacheDiagnostics.elapsedMs = 0;
       const savedToken = progress?.progress?.status === "incomplete" ? progress.progress.continuation_token : null;
@@ -102,10 +112,19 @@ export async function POST(request: Request) {
       if (invalidCompleteState) {
         debug.cacheDiagnostics.invalidCompleteStateDetected = true;
         debug.cacheDiagnostics.invalidCompleteStateReason = "legacy complete crawl state has no completion proof; revalidation required";
+        const repair = await repairLeirdueInvalidCompleteState({ shooterName, year, disciplines });
+        debug.cacheDiagnostics.invalidCompleteStateRepaired = repair.ok;
+        debug.cacheDiagnostics.progressWriteOk = repair.ok;
+        debug.cacheDiagnostics.progressWriteError = repair.error;
+        if (repair.ok) {
+          debug.cacheDiagnostics.cacheScopeComplete = false;
+          debug.cacheDiagnostics.cacheScopeStatus = "incomplete";
+        }
       }
       const restartToken = (!scopeComplete || invalidCompleteState) && !savedToken ? restartIncompleteScopeToken : null;
       const nextToken = savedToken || restartToken;
       debug.cacheDiagnostics.stopReason = invalidCompleteState ? "invalidCompleteStateRevalidationRequired" : scopeComplete ? "completeFreshCacheHit" : savedToken ? "freshCacheHitContinuationRequired" : "freshCacheHitNoSavedProgressRestartRequired";
+      debug.cacheDiagnostics.earlyReturnReason = debug.cacheDiagnostics.stopReason;
       debug.cacheDiagnostics.repeatedSearchShouldBeFaster = true;
       debug.cacheDiagnostics.cacheWriteOk = true;
       debug.cacheDiagnostics.cachedCandidatesLoaded = cached.candidates.length;
@@ -127,11 +146,15 @@ export async function POST(request: Request) {
     const savedContinuationToken = progress?.progress?.status === "incomplete" ? progress.progress.continuation_token : null;
     const liveContinuationToken = savedContinuationToken || (restartRequested ? null : continuationToken) || null;
     const result = await searchLeirdueCandidates({ shooterName, year, disciplines, continuationToken: liveContinuationToken, sourceUrl, cachedInvalidListKeys: cached?.stats.invalidListKeys || [] });
+    result.debug.cacheDiagnostics.requestMode = requestMode;
+    result.debug.cacheDiagnostics.explicitContinuationRequested = Boolean(continuationToken);
     applyCacheStatsToDebug(result.debug, cached, progress);
     result.debug.cacheDiagnostics.savedContinuationTokenPresent = Boolean(savedContinuationToken || (continuationToken && !restartRequested));
     if (restartRequested) {
       result.debug.cacheDiagnostics.invalidCompleteStateDetected = true;
       result.debug.cacheDiagnostics.invalidCompleteStateReason = "restart requested to repair invalid or unproven complete crawl state";
+      result.debug.cacheDiagnostics.recoveryRediscoveryUsed = true;
+      result.debug.cacheDiagnostics.recoveryRediscoveryReason = "revalidating invalid complete crawl state";
     }
     result.debug.cacheDiagnostics.resumedFromSavedProgress = Boolean(savedContinuationToken && result.debug.cacheDiagnostics.continuationDecodeOk && result.debug.cacheDiagnostics.eligibleWorkAfterRestore > 0);
     result.debug.cacheDiagnostics.liveRefreshReason = savedContinuationToken ? "savedIncompleteProgress" : restartRequested ? "invalidCompleteStateRecoveryRestart" : continuationToken ? "clientContinuationNoSavedProgress" : cached?.candidates.length ? "cachedRowsButNoCompleteProgress" : "cacheMiss";
