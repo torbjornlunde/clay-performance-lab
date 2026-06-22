@@ -183,6 +183,17 @@ function visibleCandidateCount(candidates: EditableCandidate[]) {
   return candidates.filter((candidate) => candidate.category !== "control").length;
 }
 
+function candidateReviewCounts(candidateList: EditableCandidate[]) {
+  const sorted = sortCandidatesForReview(candidateList);
+  const confirmed = sorted.filter((candidate) => candidate.category === "recommended" && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported);
+  const possible = sorted.filter((candidate) => (candidate.category === "review" || isManualLinkCandidate(candidate)) && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported);
+  const alreadyImported = sorted.filter((candidate) => candidate.duplicateStatus === "exact" || candidate.alreadyImported);
+  const ignored = sorted.filter((candidate) => candidate.duplicateStatus !== "exact" && !candidate.alreadyImported && !visibleImportCandidate(candidate));
+  const reviewable = confirmed.length + possible.length;
+  const total = reviewable + alreadyImported.length + ignored.length;
+  return { confirmed, possible, alreadyImported, ignored, confirmedCount: confirmed.length, possibleCount: possible.length, alreadyImportedCount: alreadyImported.length, ignoredFailedCount: ignored.length, reviewableCount: reviewable, totalCandidateCount: total };
+}
+
 function mergeCandidates(current: EditableCandidate[], incoming: LeirdueCandidate[]) {
   const merged = new Map(current.map((candidate) => [candidateMergeKey(candidate), candidate]));
   incoming.forEach((candidate, index) => {
@@ -265,7 +276,7 @@ function autoSearchCompleteMessage(visibleCount: number) {
 }
 
 function searchCounterMessage(scannedListCount: number, foundCount: number, autoContinuing = false) {
-  return `Searching Leirdue.net… ${scannedListCount} result lists checked — ${foundCount} results found so far${autoContinuing ? " — continuing automatically" : ""}`;
+  return `Searching Leirdue.net… ${scannedListCount} result lists checked — ${foundCount} reviewable results found so far${autoContinuing ? " — continuing automatically" : ""}`;
 }
 
 function formatDate(date: string | null) {
@@ -733,17 +744,10 @@ export default function LeirdueImportPage() {
     loadShooterName();
   }, []);
 
-  const groupedCandidates = useMemo(() => {
-    const sorted = sortCandidatesForReview(candidates);
-    return {
-      confirmed: sorted.filter((candidate) => candidate.category === "recommended" && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported),
-      possible: sorted.filter((candidate) => (candidate.category === "review" || isManualLinkCandidate(candidate)) && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported),
-      alreadyImported: sorted.filter((candidate) => candidate.duplicateStatus === "exact" || candidate.alreadyImported),
-      ignored: sorted.filter((candidate) => candidate.duplicateStatus !== "exact" && !candidate.alreadyImported && !visibleImportCandidate(candidate)),
-    };
-  }, [candidates]);
-  const reviewableCount = groupedCandidates.confirmed.length + groupedCandidates.possible.length;
+  const groupedCandidates = useMemo(() => candidateReviewCounts(candidates), [candidates]);
+  const reviewableCount = groupedCandidates.reviewableCount;
   const hiddenFromNormalListCount = groupedCandidates.ignored.length;
+  const hiddenControlCount = useMemo(() => candidates.filter((candidate) => candidate.category === "control").length, [candidates]);
   const manualReviewCandidates = useMemo(() => sortCandidatesForReview(candidates.filter((candidate) => isManualLinkCandidate(candidate) && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported)), [candidates]);
   const manualAlreadyImportedCandidates = useMemo(() => sortCandidatesForReview(candidates.filter((candidate) => isManualLinkCandidate(candidate) && (candidate.duplicateStatus === "exact" || candidate.alreadyImported))), [candidates]);
   const manualBestCandidate = manualReviewCandidates.find((candidate) => candidate.shooterMatchStatus === "matched_to_you") || manualReviewCandidates.find((candidate) => candidate.shooterMatchStatus === "possible_match") || manualReviewCandidates[0] || null;
@@ -807,7 +811,9 @@ export default function LeirdueImportPage() {
   async function setReviewedCandidates(candidateList: EditableCandidate[]) {
     const matched = applyShooterMatching(candidateList);
     const withDuplicates = await checkDuplicatesFor(matched);
-    setCandidates(sortCandidatesForReview(withDuplicates));
+    const reviewed = sortCandidatesForReview(withDuplicates);
+    setCandidates(reviewed);
+    return reviewed;
   }
 
   async function parseDirectUrl() {
@@ -967,8 +973,8 @@ export default function LeirdueImportPage() {
       }
 
       currentCandidates = mergeCandidates(currentCandidates, data.candidates || []);
-      const afterVisible = visibleCandidateCount(currentCandidates);
-      await setReviewedCandidates(currentCandidates);
+      const reviewedCandidates = await setReviewedCandidates(currentCandidates);
+      const reviewedCounts = candidateReviewCounts(reviewedCandidates);
 
       const nextToken = data.continuationToken || null;
       const likelyWorkRemains = hasLikelySelectedYearWork(data.debug);
@@ -986,16 +992,20 @@ export default function LeirdueImportPage() {
       }
       setSearchProgress(displayedProgress);
       setLeirdueBatchNumber(data.debug?.batchNumber || 1);
-      setLeirdueVisibleCandidatesCount(afterVisible);
+      setLeirdueVisibleCandidatesCount(reviewedCounts.reviewableCount);
       setLeirdueTotalListeIdScanned(data.debug?.scannedListeIdTotal || 0);
-      setSearchCounterText(`${searchCounterMessage(data.debug?.scannedListeIdTotal || 0, afterVisible, false)}${(data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch || 0) > 0 ? ` — ${data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch} more result lists were discovered` : ""}`);
+      setSearchCounterText(`${data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete ? "Search complete." : "Checking event result lists…"} Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}.${(data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch || 0) > 0 ? ` ${data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch} more result lists were discovered.` : ""}`);
 
+      const provenComplete = Boolean(data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete);
       if (shouldContinue) {
         setSearchStatus("More Leirdue.net work remains. Use Continue search to run another short batch.");
-        setSuccess(`${afterVisible} cached or found result${afterVisible === 1 ? "" : "s"} loaded. More results may still be available.`);
-      } else {
+        setSuccess(`${reviewedCounts.reviewableCount} cached or found reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"} loaded. More results may still be available.`);
+      } else if (provenComplete) {
         setSearchStatus("Search complete");
-        setSuccess(afterVisible === 0 && reset ? "No candidates found. Try broader filters or add a result manually." : autoSearchCompleteMessage(afterVisible));
+        setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No candidates found. Try broader filters or add a result manually." : `Search complete. Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. Please review the list before saving.`);
+      } else {
+        setSearchStatus("Search paused");
+        setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No candidates found yet. Try broader filters or add a result manually." : `Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. More results may still be available.`);
       }
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
@@ -1163,7 +1173,7 @@ export default function LeirdueImportPage() {
             </div>
             <progress value={searchProgress} max={100} />
             {searchStatus ? <p className="small muted">{searchStatus}</p> : null}
-            <p className="small muted">{searchCounterMessage(leirdueTotalListeIdScanned || debug?.scannedListeIdTotal || 0, leirdueVisibleCandidatesCount || visibleCandidateCount(candidates), isAutoContinuingLeirdue)}</p>
+            <p className="small muted">{searchCounterMessage(leirdueTotalListeIdScanned || debug?.scannedListeIdTotal || 0, leirdueVisibleCandidatesCount || reviewableCount, isAutoContinuingLeirdue)}</p>
             {searchCounterText ? <p className="small muted">{searchCounterText}</p> : null}
           </div>
         ) : null}
@@ -1205,11 +1215,12 @@ export default function LeirdueImportPage() {
             <span className="countPill">{checkingDuplicates ? "Checking duplicates… · " : ""}{selectedCount} selected</span>
           </div>
           <div className="compactSummaryGrid" aria-label="Import summary">
-            <span><strong>{groupedCandidates.confirmed.length}</strong> Confirmed</span>
-            <span><strong>{groupedCandidates.possible.length}</strong> Possible</span>
-            <span><strong>{groupedCandidates.alreadyImported.length}</strong> Already imported</span>
-            <span><strong>{groupedCandidates.ignored.length}</strong> Ignored/failed</span>
+            <span><strong>{groupedCandidates.confirmedCount}</strong> Confirmed</span>
+            <span><strong>{groupedCandidates.possibleCount}</strong> Possible</span>
+            <span><strong>{groupedCandidates.alreadyImportedCount}</strong> Already imported</span>
+            <span><strong>{groupedCandidates.ignoredFailedCount}</strong> Ignored/failed</span>
           </div>
+          {debug ? <p className="small muted">Candidate count diagnostics: statusResultCount={reviewableCount}; confirmedCount={groupedCandidates.confirmedCount}; possibleCount={groupedCandidates.possibleCount}; alreadyImportedCount={groupedCandidates.alreadyImportedCount}; ignoredFailedCount={groupedCandidates.ignoredFailedCount}; reviewableCount={groupedCandidates.reviewableCount}; hiddenControlCount={hiddenControlCount}; duplicateFilteredCount={groupedCandidates.alreadyImportedCount}; excludedCandidateCount={hiddenFromNormalListCount}; excludedCandidateReasons={groupedCandidates.ignored.slice(0, 5).map(candidateReason).join(" | ") || "none"}; candidateIdsIncludedInStatus={[...groupedCandidates.confirmed, ...groupedCandidates.possible].map((candidate) => candidate.localId).slice(0, 10).join(", ") || "none"}; candidateIdsIncludedInReview={[...groupedCandidates.confirmed, ...groupedCandidates.possible].map((candidate) => candidate.localId).slice(0, 10).join(", ") || "none"}</p> : null}
           <div className="btns">
             <button onClick={saveSelected} disabled={saving || checkingDuplicates || selectedCount === 0}>{saving ? "Importing..." : manualReviewActive && selectedCount === 1 ? "Import this result" : selectedCount === 1 ? "Import selected result" : "Import selected results"}</button>
             <Link href="/stats" className="button secondary">Stats</Link>
