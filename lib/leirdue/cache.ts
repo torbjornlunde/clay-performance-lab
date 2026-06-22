@@ -380,7 +380,7 @@ export async function storeLeirdueCrawlProgress(input: { shooterName: string; ye
   if (!supabase) return { ok: false, error: "Crawl progress write skipped: missing SUPABASE_SERVICE_ROLE_KEY." };
   const scopeKey = leirdueSearchScopeKey(input);
   const remainingWork = input.debug.pendingListeIdQueueRemaining + input.debug.remainingEventQueueCount;
-  const complete = !input.continuationToken && input.debug.continuationAvailable === false && remainingWork === 0 && !input.debug.timedOut && !input.debug.limitReached;
+  const complete = !input.continuationToken && input.debug.continuationAvailable === false && remainingWork === 0 && !input.debug.timedOut && !input.debug.limitReached && input.debug.cacheDiagnostics.completionProof.valid;
   const failed = !complete && Boolean(input.debug.errorMessage);
   const decoded = decodeContinuationProgress(input.continuationToken);
   const now = new Date().toISOString();

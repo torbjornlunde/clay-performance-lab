@@ -72,6 +72,8 @@ export async function POST(request: Request) {
   const year = validYear(body.year);
   const disciplines = Array.isArray(body.disciplines) ? body.disciplines.filter((value): value is string => typeof value === "string" && value.trim().length > 0) : [];
   const continuationToken = typeof body.continuationToken === "string" && body.continuationToken.length > 0 ? body.continuationToken : null;
+  const restartIncompleteScopeToken = "__restart_incomplete_leirdue_scope__";
+  const restartRequested = continuationToken === restartIncompleteScopeToken;
   const sourceUrl = typeof body.sourceUrl === "string" && body.sourceUrl.trim().length > 0 ? body.sourceUrl.trim() : null;
 
   if (!shooterName || !year || disciplines.length === 0) {
@@ -96,18 +98,25 @@ export async function POST(request: Request) {
       debug.cacheDiagnostics.elapsedMs = 0;
       const savedToken = progress?.progress?.status === "incomplete" ? progress.progress.continuation_token : null;
       const scopeComplete = progress?.progress?.status === "complete";
-      const restartToken = !scopeComplete && !savedToken ? "__restart_incomplete_leirdue_scope__" : null;
+      const invalidCompleteState = Boolean(scopeComplete && !savedToken);
+      if (invalidCompleteState) {
+        debug.cacheDiagnostics.invalidCompleteStateDetected = true;
+        debug.cacheDiagnostics.invalidCompleteStateReason = "legacy complete crawl state has no completion proof; revalidation required";
+      }
+      const restartToken = (!scopeComplete || invalidCompleteState) && !savedToken ? restartIncompleteScopeToken : null;
       const nextToken = savedToken || restartToken;
-      debug.cacheDiagnostics.stopReason = scopeComplete ? "completeFreshCacheHit" : savedToken ? "freshCacheHitContinuationRequired" : "freshCacheHitNoSavedProgressRestartRequired";
+      debug.cacheDiagnostics.stopReason = invalidCompleteState ? "invalidCompleteStateRevalidationRequired" : scopeComplete ? "completeFreshCacheHit" : savedToken ? "freshCacheHitContinuationRequired" : "freshCacheHitNoSavedProgressRestartRequired";
       debug.cacheDiagnostics.repeatedSearchShouldBeFaster = true;
       debug.cacheDiagnostics.cacheWriteOk = true;
       debug.cacheDiagnostics.cachedCandidatesLoaded = cached.candidates.length;
       debug.continuationAvailable = Boolean(nextToken);
       debug.pendingListeIdQueueRemaining = nextToken ? 1 : 0;
       debug.cacheDiagnostics.continuationRequired = Boolean(nextToken);
-      debug.continuationReason = scopeComplete ? "completeFreshCacheHit" : savedToken ? "cachedResultsLoadedResumeSavedProgress" : "cachedResultsLoadedRestartRequiredBecauseScopeCompletenessUnknown";
+      debug.continuationReason = invalidCompleteState ? "cachedResultsLoadedInvalidCompleteStateRevalidationRequired" : scopeComplete ? "completeFreshCacheHit" : savedToken ? "cachedResultsLoadedResumeSavedProgress" : "cachedResultsLoadedRestartRequiredBecauseScopeCompletenessUnknown";
       debug.message = scopeComplete
-        ? `Search complete. Loaded ${cached.stats.cachedImportableCandidatesFound} importable cached Leirdue result${cached.stats.cachedImportableCandidatesFound === 1 ? "" : "s"}.`
+        ? invalidCompleteState
+          ? `Loaded ${cached.stats.cachedImportableCandidatesFound} cached Leirdue result${cached.stats.cachedImportableCandidatesFound === 1 ? "" : "s"}. Previous completion needs revalidation.`
+          : `Search complete. Loaded ${cached.stats.cachedImportableCandidatesFound} importable cached Leirdue result${cached.stats.cachedImportableCandidatesFound === 1 ? "" : "s"}.`
         : `Loaded ${cached.stats.cachedImportableCandidatesFound} cached Leirdue result${cached.stats.cachedImportableCandidatesFound === 1 ? "" : "s"}. Searching for additional results may still find more.`;
       debug.candidateReasons.unshift(savedToken
         ? `Cache hit: ${cached.candidates.length} fresh parsed candidates (${cached.stats.cachedImportableCandidatesFound} importable); returning cached results and resuming saved crawl progress.`
@@ -116,12 +125,16 @@ export async function POST(request: Request) {
     }
 
     const savedContinuationToken = progress?.progress?.status === "incomplete" ? progress.progress.continuation_token : null;
-    const liveContinuationToken = savedContinuationToken || continuationToken || null;
+    const liveContinuationToken = savedContinuationToken || (restartRequested ? null : continuationToken) || null;
     const result = await searchLeirdueCandidates({ shooterName, year, disciplines, continuationToken: liveContinuationToken, sourceUrl, cachedInvalidListKeys: cached?.stats.invalidListKeys || [] });
     applyCacheStatsToDebug(result.debug, cached, progress);
-    result.debug.cacheDiagnostics.savedContinuationTokenPresent = Boolean(savedContinuationToken || continuationToken);
+    result.debug.cacheDiagnostics.savedContinuationTokenPresent = Boolean(savedContinuationToken || (continuationToken && !restartRequested));
+    if (restartRequested) {
+      result.debug.cacheDiagnostics.invalidCompleteStateDetected = true;
+      result.debug.cacheDiagnostics.invalidCompleteStateReason = "restart requested to repair invalid or unproven complete crawl state";
+    }
     result.debug.cacheDiagnostics.resumedFromSavedProgress = Boolean(savedContinuationToken && result.debug.cacheDiagnostics.continuationDecodeOk && result.debug.cacheDiagnostics.eligibleWorkAfterRestore > 0);
-    result.debug.cacheDiagnostics.liveRefreshReason = savedContinuationToken ? "savedIncompleteProgress" : continuationToken ? "clientContinuationNoSavedProgress" : cached?.candidates.length ? "cachedRowsButNoCompleteProgress" : "cacheMiss";
+    result.debug.cacheDiagnostics.liveRefreshReason = savedContinuationToken ? "savedIncompleteProgress" : restartRequested ? "invalidCompleteStateRecoveryRestart" : continuationToken ? "clientContinuationNoSavedProgress" : cached?.candidates.length ? "cachedRowsButNoCompleteProgress" : "cacheMiss";
     if (cached?.candidates.length) {
       const cachedKeys = new Set(cached.candidates.map((candidate) => `${candidate.leirdueUrl}|${candidate.date || ""}|${candidate.shooterName || ""}|${candidate.ownScore ?? ""}`));
       result.candidates = [...cached.candidates, ...result.candidates.filter((candidate) => !cachedKeys.has(`${candidate.leirdueUrl}|${candidate.date || ""}|${candidate.shooterName || ""}|${candidate.ownScore ?? ""}`))];

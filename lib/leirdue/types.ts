@@ -336,6 +336,18 @@ export type LeirdueSearchDebug = {
     firstRestoredEventIds: string[];
     restoredEventRejectionCounts: Record<string, number>;
     firstRestoredEventDiagnostics: { eventId: string | null; title: string | null; detectedYear: number | null; eligible: boolean; rejectionReason: string | null }[];
+    yearSectionFound: boolean;
+    selectedYearSectionStart: number | null;
+    selectedYearSectionEnd: number | null;
+    eventsExtractedFromSelectedYearSection: number;
+    mixedYearEventsRejectedDuringDiscovery: number;
+    eventsAssignedYearFromSectionContext: number;
+    invalidCompleteStateDetected: boolean;
+    invalidCompleteStateReason: string | null;
+    selectedYearEligibleBeforeBatch: number;
+    selectedYearProcessedThisBatch: number;
+    selectedYearRemainingAfterBatch: number;
+    completionProof: { selectedYearDiscoveryComplete: boolean; eventQueueExhausted: boolean; listeIdQueueExhausted: boolean; noRecoveryError: boolean; noUnknownPendingWork: boolean; processedOrSkippedCount: number; valid: boolean };
     batchTimeLimitMs: number | null;
     batchStopReason: string | null;
     noProgressReason: string | null;

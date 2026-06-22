@@ -429,6 +429,18 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
       firstRestoredEventIds: [],
       restoredEventRejectionCounts: {},
       firstRestoredEventDiagnostics: [],
+      yearSectionFound: false,
+      selectedYearSectionStart: null,
+      selectedYearSectionEnd: null,
+      eventsExtractedFromSelectedYearSection: 0,
+      mixedYearEventsRejectedDuringDiscovery: 0,
+      eventsAssignedYearFromSectionContext: 0,
+      invalidCompleteStateDetected: false,
+      invalidCompleteStateReason: null,
+      selectedYearEligibleBeforeBatch: 0,
+      selectedYearProcessedThisBatch: 0,
+      selectedYearRemainingAfterBatch: 0,
+      completionProof: { selectedYearDiscoveryComplete: false, eventQueueExhausted: false, listeIdQueueExhausted: false, noRecoveryError: false, noUnknownPendingWork: false, processedOrSkippedCount: 0, valid: false },
       batchTimeLimitMs: null,
       batchStopReason: null,
       noProgressReason: null,
@@ -2168,11 +2180,23 @@ function overviewEventLinksForYear(html: string, selectedYear: number, debug: Le
     const rowHtml = nearestRowHtml(html, anchorMatch.index);
     const nearbyText = stripTags(rowHtml).replace(/\s+/g, " ").trim();
     const beforeText = stripTags(html.slice(Math.max(0, anchorMatch.index - 1400), anchorMatch.index)).replace(/\s+/g, " ");
-    const nearestHeadingYear = Array.from(beforeText.matchAll(/\b(20\d{2})\b/g)).at(-1)?.[1];
-    if (nearestHeadingYear && Number(nearestHeadingYear) !== selectedYear && !nearbyText.includes(String(selectedYear))) continue;
+    const nearestHeadingYear = Array.from(beforeText.matchAll(/\b(20\d{2})\b/g)).at(-1)?.[1] ?? null;
+    const rowHasSelectedYear = nearbyText.includes(String(selectedYear));
+    if (nearestHeadingYear && Number(nearestHeadingYear) !== selectedYear && !rowHasSelectedYear) {
+      debug.cacheDiagnostics.mixedYearEventsRejectedDuringDiscovery += 1;
+      continue;
+    }
+    if (!nearestHeadingYear && !rowHasSelectedYear) continue;
     const meta = makeEventMeta(href, linkText, selectedYear, rowHtml);
     if (!meta) continue;
-    addEventMeta(linksByEvent, { ...meta, overviewMatchedYear: meta.overviewMatchedYear || nearestHeadingYear === String(selectedYear), parsedYear: meta.parsedYear ?? (nearestHeadingYear === String(selectedYear) ? selectedYear : null) }, debug);
+    const yearFromSection = nearestHeadingYear === String(selectedYear);
+    if (yearFromSection) {
+      debug.cacheDiagnostics.yearSectionFound = true;
+      if (debug.cacheDiagnostics.selectedYearSectionStart === null) debug.cacheDiagnostics.selectedYearSectionStart = Math.max(0, anchorMatch.index - 1400);
+      debug.cacheDiagnostics.eventsAssignedYearFromSectionContext += meta.parsedYear === null ? 1 : 0;
+    }
+    addEventMeta(linksByEvent, { ...meta, overviewMatchedYear: meta.overviewMatchedYear || yearFromSection || rowHasSelectedYear, parsedYear: meta.parsedYear ?? (yearFromSection || rowHasSelectedYear ? selectedYear : null) }, debug);
+    if (yearFromSection || rowHasSelectedYear) debug.cacheDiagnostics.eventsExtractedFromSelectedYearSection += 1;
   }
 
   if (linksByEvent.size > 0) return Array.from(linksByEvent.values());
@@ -2185,13 +2209,19 @@ function overviewEventLinksForYear(html: string, selectedYear: number, debug: Le
     .replace(/<[^>]+>/g, " ");
   let currentYear: number | null = null;
   let recentText = "";
+  const markedLines = marked.split(/\n+/);
 
-  for (const rawLine of marked.split(/\n+/)) {
+  for (const [lineIndex, rawLine] of markedLines.entries()) {
     const line = rawLine.replace(/\s+/g, " ").trim();
     if (!line) continue;
     const headingYear = line.match(/^20\d{2}$/)?.[0];
     if (headingYear) {
+      if (currentYear === selectedYear && Number(headingYear) !== selectedYear && debug.cacheDiagnostics.selectedYearSectionEnd === null) debug.cacheDiagnostics.selectedYearSectionEnd = lineIndex;
       currentYear = Number(headingYear);
+      if (currentYear === selectedYear) {
+        debug.cacheDiagnostics.yearSectionFound = true;
+        debug.cacheDiagnostics.selectedYearSectionStart ??= lineIndex;
+      }
       recentText = line;
       continue;
     }
@@ -2202,11 +2232,14 @@ function overviewEventLinksForYear(html: string, selectedYear: number, debug: Le
       const meta = makeEventMeta(linkMatch[1], linkMatch[2], selectedYear, `${recentText} ${linkMatch[2]}`);
       if (!meta) continue;
       addEventMeta(linksByEvent, { ...meta, overviewMatchedYear: true, parsedYear: meta.parsedYear ?? selectedYear }, debug);
+      debug.cacheDiagnostics.eventsExtractedFromSelectedYearSection += 1;
+      if (meta.parsedYear === null) debug.cacheDiagnostics.eventsAssignedYearFromSectionContext += 1;
       continue;
     }
     recentText = `${recentText} ${line}`.slice(-300);
   }
 
+  if (debug.cacheDiagnostics.yearSectionFound && debug.cacheDiagnostics.selectedYearSectionEnd === null) debug.cacheDiagnostics.selectedYearSectionEnd = markedLines.length;
   return Array.from(linksByEvent.values());
 }
 
@@ -3262,7 +3295,26 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
     debug.message ||= `Search complete. Found ${debug.visibleCandidatesCount} likely results for ${input.year}. Older archived pages were skipped.`;
     debug.rejectedReasons.push("Continuation stopped: only outside-year fallback events remain.");
   }
-  const canContinue = likelySelectedYearWorkRemaining && !onlyOldFallbackRemains;
+  const processedThisBatchForProof = debug.scannedThisBatch + debug.eventMenusFetchedThisBatch;
+  const processedOrSkippedCount = debug.scannedEventTotal + debug.scannedListeIdTotal + debug.cacheDiagnostics.skippedAlreadyProcessedEvents + debug.cacheDiagnostics.skippedAlreadyProcessedListeIds + debug.eventLinksSkippedByReason.outsideYear + debug.eventLinksSkippedByReason.ranking + debug.eventLinksSkippedByReason.irrelevantDiscipline;
+  const completionProof = {
+    selectedYearDiscoveryComplete: debug.cacheDiagnostics.yearSectionFound || debug.selectedYearEventLinksCount > 0 || Boolean(input.sourceUrl),
+    eventQueueExhausted: debug.remainingEventQueueCount === 0,
+    listeIdQueueExhausted: debug.pendingListeIdQueueRemaining === 0,
+    noRecoveryError: !debug.cacheDiagnostics.recoveryRediscoveryUsed && !debug.cacheDiagnostics.noProgressReason && !debug.cacheDiagnostics.restoredEventRejectionCounts.wrongYear && !debug.cacheDiagnostics.restoredEventRejectionCounts.invalidEventShape,
+    noUnknownPendingWork: !debug.timedOut && !debug.limitReached && debug.cacheDiagnostics.eligibleWorkAfterRestore === 0,
+    processedOrSkippedCount,
+    valid: false,
+  };
+  completionProof.valid = completionProof.selectedYearDiscoveryComplete
+    && completionProof.eventQueueExhausted
+    && completionProof.listeIdQueueExhausted
+    && completionProof.noRecoveryError
+    && completionProof.noUnknownPendingWork
+    && processedOrSkippedCount > 0
+    && processedThisBatchForProof > 0;
+  debug.cacheDiagnostics.completionProof = completionProof;
+  const canContinue = (likelySelectedYearWorkRemaining || !completionProof.valid) && !onlyOldFallbackRemains;
   debug.continuationAvailable = canContinue;
   debug.continuationReason = canContinue
     ? debug.timedOut
@@ -3283,7 +3335,7 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
     debug.candidateReasons.push("No candidates found after prioritized scan. Event priority may still be missing relevant events.");
   }
   if (normalized.length === 0 && debug.fetchedUrls.length === 0) debug.rejectedReasons.push("No Leirdue pages could be fetched.");
-  const continuationToken = canContinue
+  const continuationToken = debug.continuationAvailable
     ? encodeContinuationToken({
         v: 1,
         continuationStateVersion: 1,
@@ -3304,7 +3356,10 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   debug.cacheDiagnostics.processedEventsThisBatch = debug.eventMenusFetchedThisBatch;
   debug.cacheDiagnostics.processedListeIdsThisBatch = debug.scannedThisBatch;
   debug.cacheDiagnostics.processedThisBatch = debug.scannedThisBatch + debug.eventMenusFetchedThisBatch;
+  debug.cacheDiagnostics.selectedYearProcessedThisBatch = debug.eventMenusFetchedThisBatch + debug.scannedThisBatch;
+  debug.cacheDiagnostics.selectedYearEligibleBeforeBatch = debug.cacheDiagnostics.eligibleWorkAfterRestore;
   debug.cacheDiagnostics.remainingWork = debug.pendingListeIdQueueRemaining + debug.remainingEventQueueCount;
+  debug.cacheDiagnostics.selectedYearRemainingAfterBatch = debug.cacheDiagnostics.remainingWork;
   debug.cacheDiagnostics.previouslyProcessedAfterBatch = debug.scannedListeIdTotal + debug.scannedEventTotal;
   debug.cacheDiagnostics.remainingWorkAfterBatch = debug.cacheDiagnostics.remainingWork;
   debug.cacheDiagnostics.batchStopReason = debug.batchStopReason || debug.continuationStopReason || debug.scanStoppedReason || debug.eventStopReason;
