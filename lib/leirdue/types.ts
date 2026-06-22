@@ -364,6 +364,14 @@ export type LeirdueSearchDebug = {
     displayedProgressPercent: number | null;
     progressCalculationSource: string | null;
     progressCappedReason: string | null;
+    currentProgressStage: string | null;
+    stageProcessed: number | null;
+    stageRemaining: number | null;
+    stageTotal: number | null;
+    rawOverallProgressPercent: number | null;
+    highestDisplayedProgressPercent: number | null;
+    newlyDiscoveredWorkThisBatch: number;
+    progressHeldReason: string | null;
     requestStartedAt: number | null;
     batchDeadlineAt: number | null;
     elapsedBeforeFirstEventMs: number | null;
