@@ -208,6 +208,8 @@ export async function POST(request: Request) {
       result.debug.cacheDiagnostics.progressWriteError = progressWrite.error;
       result.debug.cacheDiagnostics.crawlMarkedComplete = progressWrite.status === "complete";
       result.debug.cacheDiagnostics.completionMarkedThisBatch = progressWrite.status === "complete";
+      result.debug.cacheDiagnostics.completionPersistedInSameRequest = progressWrite.status === "complete" && result.debug.cacheDiagnostics.completionProof.valid;
+      result.debug.cacheDiagnostics.extraCompletionRequestRequired = result.debug.cacheDiagnostics.completionProof.valid ? progressWrite.status !== "complete" : result.debug.cacheDiagnostics.extraCompletionRequestRequired;
       result.debug.cacheDiagnostics.cacheScopeStatus = progressWrite.status === "complete" || progressWrite.status === "incomplete" || progressWrite.status === "failed" ? progressWrite.status : result.debug.cacheDiagnostics.cacheScopeStatus;
       result.debug.cacheDiagnostics.cacheScopeComplete = progressWrite.status === "complete";
       result.debug.cacheDiagnostics.continuationRequired = Boolean(result.continuationToken);

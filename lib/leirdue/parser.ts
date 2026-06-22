@@ -448,6 +448,14 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
       finalReconciliationComplete: false,
       recoveryErrorAffectsCompletion: false,
       completionMarkedThisBatch: false,
+      completionCheckBeforeBatch: null,
+      completionCheckAfterBatch: null,
+      queuesBeforeBatch: null,
+      queuesAfterBatch: null,
+      remainingWorkAfterMutation: null,
+      completionEligibleAfterBatch: false,
+      completionPersistedInSameRequest: false,
+      extraCompletionRequestRequired: false,
       invalidCompleteStateRepaired: false,
       requestMode: "initial",
       explicitContinuationRequested: false,
@@ -2430,6 +2438,13 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
   const continuationRankedEvents = allRankedEvents.filter((event) => continuationEventRejectionReason(event, input, previouslyScannedEventIds) === null && shouldUseEventForContinuation(event, input, continuation));
   debug.cacheDiagnostics.restoredEventQueueCount = continuationRankedEvents.length;
   debug.cacheDiagnostics.eligibleWorkAfterRestore = continuationRankedEvents.length + debug.cacheDiagnostics.restoredListeIdQueueCount;
+  debug.cacheDiagnostics.queuesBeforeBatch = { eventQueue: continuationRankedEvents.length, listeIdQueue: debug.cacheDiagnostics.restoredListeIdQueueCount };
+  debug.cacheDiagnostics.completionCheckBeforeBatch = {
+    eventQueue: continuationRankedEvents.length,
+    listeIdQueue: debug.cacheDiagnostics.restoredListeIdQueueCount,
+    remainingWork: continuationRankedEvents.length + debug.cacheDiagnostics.restoredListeIdQueueCount,
+    completionProofValid: false,
+  };
   const rankedEvents = boostKnownTorbjorn2025Events(input, continuationRankedEvents.slice(0, MAX_EVENT_PAGES_INSPECTED), eventLinks, debug).filter((event) => !previouslyScannedEventIds.has(event.eventId));
   if (continuationRankedEvents.length > rankedEvents.length) {
     markLimitReached(debug, "max relevant selected-year event links");
@@ -3356,6 +3371,8 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   debug.cacheDiagnostics.selectedYearRemainingAfterBatch = finalRemainingWork;
   debug.cacheDiagnostics.previouslyProcessedAfterBatch = debug.scannedListeIdTotal + debug.scannedEventTotal;
   debug.cacheDiagnostics.remainingWorkAfterBatch = finalRemainingWork;
+  debug.cacheDiagnostics.remainingWorkAfterMutation = finalRemainingWork;
+  debug.cacheDiagnostics.queuesAfterBatch = { eventQueue: debug.remainingEventQueueCount, listeIdQueue: debug.pendingListeIdQueueRemaining };
   const processedOrSkippedCount = debug.scannedEventTotal + debug.scannedListeIdTotal + debug.cacheDiagnostics.skippedAlreadyProcessedEvents + debug.cacheDiagnostics.skippedAlreadyProcessedListeIds + debug.eventLinksSkippedByReason.outsideYear + debug.eventLinksSkippedByReason.ranking + debug.eventLinksSkippedByReason.irrelevantDiscipline;
   const selectedYearDiscoveryComplete = debug.cacheDiagnostics.yearSectionFound || debug.selectedYearEventLinksCount > 0 || Boolean(input.sourceUrl);
   const eventQueueExhausted = debug.remainingEventQueueCount === 0;
@@ -3390,12 +3407,13 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   }
   debug.cacheDiagnostics.recoveryErrorAffectsCompletion = Boolean(debug.cacheDiagnostics.recoveryRediscoveryUsed || structuralRecoveryError);
   debug.cacheDiagnostics.finalReconciliationComplete = selectedYearDiscoveryComplete && eventQueueExhausted && listeIdQueueExhausted && !debug.cacheDiagnostics.unfinishedWorkExpected && !debug.cacheDiagnostics.recoveryErrorAffectsCompletion;
+  debug.cacheDiagnostics.completionEligibleAfterBatch = debug.cacheDiagnostics.finalReconciliationComplete && processedOrSkippedCount > 0 && !debug.timedOut && !debug.limitReached;
   const completionProof = {
     selectedYearDiscoveryComplete,
     eventQueueExhausted,
     listeIdQueueExhausted,
     noRecoveryError: !debug.cacheDiagnostics.recoveryErrorAffectsCompletion,
-    noUnknownPendingWork: !debug.timedOut && !debug.limitReached && finalRemainingWork === 0 && debug.cacheDiagnostics.eligibleWorkAfterRestore === 0,
+    noUnknownPendingWork: !debug.timedOut && !debug.limitReached && finalRemainingWork === 0,
     processedOrSkippedCount,
     valid: false,
   };
@@ -3407,6 +3425,13 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
     && processedOrSkippedCount > 0;
   debug.cacheDiagnostics.completionProof = completionProof;
   debug.cacheDiagnostics.completionMarkedThisBatch = completionProof.valid;
+  debug.cacheDiagnostics.completionCheckAfterBatch = {
+    eventQueue: debug.remainingEventQueueCount,
+    listeIdQueue: debug.pendingListeIdQueueRemaining,
+    remainingWork: finalRemainingWork,
+    completionProofValid: completionProof.valid,
+  };
+  debug.cacheDiagnostics.extraCompletionRequestRequired = finalRemainingWork === 0 && !completionProof.valid;
   const canContinue = (likelySelectedYearWorkRemaining || !completionProof.valid) && !onlyOldFallbackRemains;
   debug.continuationAvailable = canContinue;
   debug.continuationReason = canContinue

@@ -354,6 +354,14 @@ export type LeirdueSearchDebug = {
     finalReconciliationComplete: boolean;
     recoveryErrorAffectsCompletion: boolean;
     completionMarkedThisBatch: boolean;
+    completionCheckBeforeBatch: { eventQueue: number; listeIdQueue: number; remainingWork: number | null; completionProofValid: boolean } | null;
+    completionCheckAfterBatch: { eventQueue: number; listeIdQueue: number; remainingWork: number | null; completionProofValid: boolean } | null;
+    queuesBeforeBatch: { eventQueue: number; listeIdQueue: number } | null;
+    queuesAfterBatch: { eventQueue: number; listeIdQueue: number } | null;
+    remainingWorkAfterMutation: number | null;
+    completionEligibleAfterBatch: boolean;
+    completionPersistedInSameRequest: boolean;
+    extraCompletionRequestRequired: boolean;
     invalidCompleteStateRepaired: boolean;
     requestMode: "initial" | "continue" | "revalidateInvalidComplete";
     explicitContinuationRequested: boolean;
