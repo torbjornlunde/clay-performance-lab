@@ -357,6 +357,13 @@ export type LeirdueSearchDebug = {
     sentExplicitContinue: boolean;
     requestScopeKey: string | null;
     continuationRequestInFlight: boolean;
+    progressProcessedCount: number | null;
+    progressRemainingCount: number | null;
+    progressTotalCount: number | null;
+    calculatedProgressPercent: number | null;
+    displayedProgressPercent: number | null;
+    progressCalculationSource: string | null;
+    progressCappedReason: string | null;
     batchTimeLimitMs: number | null;
     batchStopReason: string | null;
     noProgressReason: string | null;

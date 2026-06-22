@@ -209,12 +209,36 @@ function hasLikelySelectedYearWork(debug?: LeirdueSearchDebug) {
   return debug.pendingListeIdQueueRemaining > 0 || debug.confirmedSelectedYearEventsRemaining > 0 || debug.likelySelectedYearEventsRemaining > 0 || debug.unknownYearEventsRemaining > 0;
 }
 
-function estimatedSearchProgress(debug: LeirdueSearchDebug | undefined, batchIndex: number, visibleCount: number, finished = false) {
-  if (finished) return 100;
-  const batchProgress = Math.min(batchIndex / 20, 1) * 55;
-  const scanProgress = Math.min((debug?.scannedListeIdTotal || 0) / 1000, 1) * 25;
-  const candidateProgress = Math.min(visibleCount / Math.max(debug?.expectedCandidateTarget || 16, 1), 1) * 15;
-  return Math.max(10, Math.min(95, Math.round(5 + batchProgress + scanProgress + candidateProgress)));
+function estimatedSearchProgress(debug: LeirdueSearchDebug | undefined) {
+  const cache = debug?.cacheDiagnostics;
+  const processed = cache?.previouslyProcessedAfterBatch || cache?.previouslyProcessed || debug?.scannedEventTotal || null;
+  const remaining = cache?.remainingWorkAfterBatch ?? cache?.remainingWork ?? null;
+  if (processed === null || remaining === null || processed < 0 || remaining < 0) {
+    if (cache) {
+      cache.progressProcessedCount = processed;
+      cache.progressRemainingCount = remaining;
+      cache.progressTotalCount = null;
+      cache.calculatedProgressPercent = null;
+      cache.displayedProgressPercent = null;
+      cache.progressCalculationSource = "unknown-work-counts";
+      cache.progressCappedReason = "unknownTotalWork";
+    }
+    return null;
+  }
+  const total = processed + remaining;
+  const calculated = total > 0 ? (processed / total) * 100 : 0;
+  const complete = Boolean(cache?.completionProof?.valid && cache.cacheScopeComplete);
+  const capped = complete ? 100 : Math.min(calculated, 99);
+  if (cache) {
+    cache.progressProcessedCount = processed;
+    cache.progressRemainingCount = remaining;
+    cache.progressTotalCount = total;
+    cache.calculatedProgressPercent = calculated;
+    cache.displayedProgressPercent = capped;
+    cache.progressCalculationSource = "processed-over-processed-plus-remaining";
+    cache.progressCappedReason = complete ? null : "notCompleteProofValid";
+  }
+  return Math.max(0, Math.round(capped));
 }
 
 function likelyResultsLabel(count: number) {
@@ -596,7 +620,7 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         </>
       ) : null}
       {debug.message ? <p className="small muted">Search warning: {debug.message}</p> : null}
-      {debug.cacheDiagnostics ? <p className="small muted">Cache diagnostics: used={debug.cacheDiagnostics.cacheUsed ? "yes" : "no"}; readOk={debug.cacheDiagnostics.cacheReadOk ? "yes" : "no"}; writeOk={debug.cacheDiagnostics.cacheWriteOk ? "yes" : "no"}; cached={debug.cacheDiagnostics.cachedCandidatesFound}; importable={debug.cacheDiagnostics.cachedImportableCandidatesFound}; invalidLists={debug.cacheDiagnostics.cachedInvalidListsFound}; liveStarted={debug.cacheDiagnostics.liveFetchesStarted}; liveSkippedCached={debug.cacheDiagnostics.liveFetchesSkippedBecauseCached}; liveSkippedInvalid={debug.cacheDiagnostics.liveFetchesSkippedBecauseCachedInvalid}; loaded={debug.cacheDiagnostics.cachedCandidatesLoaded}; scopeComplete={debug.cacheDiagnostics.cacheScopeComplete ? "yes" : "no"}; scopeStatus={debug.cacheDiagnostics.cacheScopeStatus}; continuationRequired={debug.cacheDiagnostics.continuationRequired ? "yes" : "no"}; resumed={debug.cacheDiagnostics.resumedFromSavedProgress ? "yes" : "no"}; processedThisBatch={debug.cacheDiagnostics.processedThisBatch}; previouslyProcessed={debug.cacheDiagnostics.previouslyProcessed}; remainingWork={debug.cacheDiagnostics.remainingWork ?? "unknown"}; liveRefresh={debug.cacheDiagnostics.liveRefreshStarted ? "yes" : "no"}; liveReason={debug.cacheDiagnostics.liveRefreshReason || "none"}; markedComplete={debug.cacheDiagnostics.crawlMarkedComplete ? "yes" : "no"}; crawlStop={debug.cacheDiagnostics.crawlStopReason || "none"}; crawlStateFound={debug.cacheDiagnostics.crawlStateFound ? "yes" : "no"}; tokenPresent={debug.cacheDiagnostics.savedContinuationTokenPresent ? "yes" : "no"}; decodeOk={debug.cacheDiagnostics.continuationDecodeOk ? "yes" : "no"}; decodeError={debug.cacheDiagnostics.continuationDecodeError || "none"}; stateVersion={debug.cacheDiagnostics.continuationStateVersion ?? "none"}; storedQueues={debug.cacheDiagnostics.storedEventQueueCount}/{debug.cacheDiagnostics.storedListeIdQueueCount}; restoredQueues={debug.cacheDiagnostics.restoredEventQueueCount}/{debug.cacheDiagnostics.restoredListeIdQueueCount}; eligibleAfterRestore={debug.cacheDiagnostics.eligibleWorkAfterRestore}; recovery={debug.cacheDiagnostics.recoveryRediscoveryUsed ? "yes" : "no"}; recoveryReason={debug.cacheDiagnostics.recoveryRediscoveryReason || "none"}; invalidComplete={debug.cacheDiagnostics.invalidCompleteStateDetected ? "yes" : "no"}; invalidCompleteReason={debug.cacheDiagnostics.invalidCompleteStateReason || "none"}; completionProof={JSON.stringify(debug.cacheDiagnostics.completionProof)}; requestMode={debug.cacheDiagnostics.requestMode}; explicitContinue={debug.cacheDiagnostics.explicitContinuationRequested ? "yes" : "no"}; buttonAction={debug.cacheDiagnostics.buttonAction || "none"}; sentMode={debug.cacheDiagnostics.sentRequestMode || "none"}; sentExplicit={debug.cacheDiagnostics.sentExplicitContinue ? "yes" : "no"}; inFlight={debug.cacheDiagnostics.continuationRequestInFlight ? "yes" : "no"}; scopeKey={debug.cacheDiagnostics.requestScopeKey || "none"}; earlyReturn={debug.cacheDiagnostics.earlyReturnReason || "none"}; noProgress={debug.cacheDiagnostics.noProgressReason || "none"}; rejectionCounts={JSON.stringify(debug.cacheDiagnostics.restoredEventRejectionCounts || {})}; firstRestored={JSON.stringify((debug.cacheDiagnostics.firstRestoredEventDiagnostics || []).slice(0, 10))}; progressWrite={debug.cacheDiagnostics.progressWriteOk ? "ok" : "not-ok"}; progressError={debug.cacheDiagnostics.progressWriteError || "none"}; misses={debug.cacheDiagnostics.cacheMisses}; stale={debug.cacheDiagnostics.staleCacheRows}; serviceRole={debug.cacheDiagnostics.serviceRoleCacheWriteEnabled ? "yes" : "no"}; elapsedMs={debug.cacheDiagnostics.elapsedMs ?? "n/a"}; stop={debug.cacheDiagnostics.stopReason || "none"}; repeatFaster={debug.cacheDiagnostics.repeatedSearchShouldBeFaster ? "yes" : "no"}; notUsedReason={debug.cacheDiagnostics.cacheNotUsedReason || "none"}; readErrors={(debug.cacheDiagnostics.cacheReadErrors || []).join(" | ") || "none"}; writeErrors={(debug.cacheDiagnostics.cacheWriteErrors || []).join(" | ") || "none"}; writeWarnings={(debug.cacheDiagnostics.cacheWriteWarnings || []).join(" | ") || "none"}</p> : null}
+      {debug.cacheDiagnostics ? <p className="small muted">Cache diagnostics: used={debug.cacheDiagnostics.cacheUsed ? "yes" : "no"}; readOk={debug.cacheDiagnostics.cacheReadOk ? "yes" : "no"}; writeOk={debug.cacheDiagnostics.cacheWriteOk ? "yes" : "no"}; cached={debug.cacheDiagnostics.cachedCandidatesFound}; importable={debug.cacheDiagnostics.cachedImportableCandidatesFound}; invalidLists={debug.cacheDiagnostics.cachedInvalidListsFound}; liveStarted={debug.cacheDiagnostics.liveFetchesStarted}; liveSkippedCached={debug.cacheDiagnostics.liveFetchesSkippedBecauseCached}; liveSkippedInvalid={debug.cacheDiagnostics.liveFetchesSkippedBecauseCachedInvalid}; loaded={debug.cacheDiagnostics.cachedCandidatesLoaded}; scopeComplete={debug.cacheDiagnostics.cacheScopeComplete ? "yes" : "no"}; scopeStatus={debug.cacheDiagnostics.cacheScopeStatus}; continuationRequired={debug.cacheDiagnostics.continuationRequired ? "yes" : "no"}; resumed={debug.cacheDiagnostics.resumedFromSavedProgress ? "yes" : "no"}; processedThisBatch={debug.cacheDiagnostics.processedThisBatch}; previouslyProcessed={debug.cacheDiagnostics.previouslyProcessed}; remainingWork={debug.cacheDiagnostics.remainingWork ?? "unknown"}; liveRefresh={debug.cacheDiagnostics.liveRefreshStarted ? "yes" : "no"}; liveReason={debug.cacheDiagnostics.liveRefreshReason || "none"}; markedComplete={debug.cacheDiagnostics.crawlMarkedComplete ? "yes" : "no"}; crawlStop={debug.cacheDiagnostics.crawlStopReason || "none"}; crawlStateFound={debug.cacheDiagnostics.crawlStateFound ? "yes" : "no"}; tokenPresent={debug.cacheDiagnostics.savedContinuationTokenPresent ? "yes" : "no"}; decodeOk={debug.cacheDiagnostics.continuationDecodeOk ? "yes" : "no"}; decodeError={debug.cacheDiagnostics.continuationDecodeError || "none"}; stateVersion={debug.cacheDiagnostics.continuationStateVersion ?? "none"}; storedQueues={debug.cacheDiagnostics.storedEventQueueCount}/{debug.cacheDiagnostics.storedListeIdQueueCount}; restoredQueues={debug.cacheDiagnostics.restoredEventQueueCount}/{debug.cacheDiagnostics.restoredListeIdQueueCount}; eligibleAfterRestore={debug.cacheDiagnostics.eligibleWorkAfterRestore}; recovery={debug.cacheDiagnostics.recoveryRediscoveryUsed ? "yes" : "no"}; recoveryReason={debug.cacheDiagnostics.recoveryRediscoveryReason || "none"}; invalidComplete={debug.cacheDiagnostics.invalidCompleteStateDetected ? "yes" : "no"}; invalidCompleteReason={debug.cacheDiagnostics.invalidCompleteStateReason || "none"}; completionProof={JSON.stringify(debug.cacheDiagnostics.completionProof)}; requestMode={debug.cacheDiagnostics.requestMode}; explicitContinue={debug.cacheDiagnostics.explicitContinuationRequested ? "yes" : "no"}; buttonAction={debug.cacheDiagnostics.buttonAction || "none"}; sentMode={debug.cacheDiagnostics.sentRequestMode || "none"}; sentExplicit={debug.cacheDiagnostics.sentExplicitContinue ? "yes" : "no"}; inFlight={debug.cacheDiagnostics.continuationRequestInFlight ? "yes" : "no"}; scopeKey={debug.cacheDiagnostics.requestScopeKey || "none"}; progressCounts={debug.cacheDiagnostics.progressProcessedCount ?? "unknown"}/{debug.cacheDiagnostics.progressRemainingCount ?? "unknown"}/{debug.cacheDiagnostics.progressTotalCount ?? "unknown"}; calculatedProgress={debug.cacheDiagnostics.calculatedProgressPercent?.toFixed(1) ?? "unknown"}; displayedProgress={debug.cacheDiagnostics.displayedProgressPercent?.toFixed(1) ?? "unknown"}; progressSource={debug.cacheDiagnostics.progressCalculationSource || "none"}; progressCappedReason={debug.cacheDiagnostics.progressCappedReason || "none"}; earlyReturn={debug.cacheDiagnostics.earlyReturnReason || "none"}; noProgress={debug.cacheDiagnostics.noProgressReason || "none"}; rejectionCounts={JSON.stringify(debug.cacheDiagnostics.restoredEventRejectionCounts || {})}; firstRestored={JSON.stringify((debug.cacheDiagnostics.firstRestoredEventDiagnostics || []).slice(0, 10))}; progressWrite={debug.cacheDiagnostics.progressWriteOk ? "ok" : "not-ok"}; progressError={debug.cacheDiagnostics.progressWriteError || "none"}; misses={debug.cacheDiagnostics.cacheMisses}; stale={debug.cacheDiagnostics.staleCacheRows}; serviceRole={debug.cacheDiagnostics.serviceRoleCacheWriteEnabled ? "yes" : "no"}; elapsedMs={debug.cacheDiagnostics.elapsedMs ?? "n/a"}; stop={debug.cacheDiagnostics.stopReason || "none"}; repeatFaster={debug.cacheDiagnostics.repeatedSearchShouldBeFaster ? "yes" : "no"}; notUsedReason={debug.cacheDiagnostics.cacheNotUsedReason || "none"}; readErrors={(debug.cacheDiagnostics.cacheReadErrors || []).join(" | ") || "none"}; writeErrors={(debug.cacheDiagnostics.cacheWriteErrors || []).join(" | ") || "none"}; writeWarnings={(debug.cacheDiagnostics.cacheWriteWarnings || []).join(" | ") || "none"}</p> : null}
       {debug.errorMessage ? <p className="small muted">Last error: {debug.errorMessage}</p> : null}
       {debug.lastFetchUrl ? <p className="small muted">Last fetch URL: {debug.lastFetchUrl}</p> : null}
       {debug.listInspectionLimitReached ? <p className="small muted">Result list inspection limit reached.</p> : null}
@@ -912,7 +936,7 @@ export default function LeirdueImportPage() {
     let currentCandidates = reset ? [] : candidates;
 
     try {
-      const mode = reset ? "initial" : startToken === "__restart_incomplete_leirdue_scope__" ? "revalidateInvalidComplete" : "continue";
+      const mode = reset ? "initial" : "continue";
       const explicitContinue = !reset;
       const { response, data } = await fetchSearchBatch(startToken, mode, explicitContinue);
       const responseDebug = data.debug || null;
@@ -940,7 +964,8 @@ export default function LeirdueImportPage() {
       const apiAllowsContinuation = data.debug?.continuationAvailable !== false;
       const shouldContinue = Boolean(nextToken && apiAllowsContinuation && likelyWorkRemains);
       setContinuationToken(shouldContinue ? nextToken : null);
-      setSearchProgress(estimatedSearchProgress(data.debug, (data.debug?.batchNumber || 1), afterVisible, !shouldContinue));
+      const nextProgress = estimatedSearchProgress(data.debug);
+      setSearchProgress(nextProgress ?? Math.max(searchProgress, 15));
       setLeirdueBatchNumber(data.debug?.batchNumber || 1);
       setLeirdueVisibleCandidatesCount(afterVisible);
       setLeirdueTotalListeIdScanned(data.debug?.scannedListeIdTotal || 0);
@@ -965,8 +990,15 @@ export default function LeirdueImportPage() {
       continuationRequestInFlightRef.current = false;
       setSearching(false);
       setIsAutoContinuingLeirdue(false);
-      setSearchProgress((progress) => (progress > 0 ? Math.max(progress, 100) : progress));
+      setSearchProgress((progress) => progress);
     }
+  }
+
+  async function continueSearch(event?: React.MouseEvent<HTMLButtonElement>) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    if (!continuationToken) return;
+    await runAutoSearch(continuationToken, false);
   }
 
   async function search(event: React.FormEvent<HTMLFormElement>) {
@@ -1075,7 +1107,8 @@ export default function LeirdueImportPage() {
           </fieldset>
           <div className="btns">
             <button disabled={searching || disciplines.length === 0}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
-            {continuationToken ? <button type="button" className="secondary" disabled={searching} onClick={() => runAutoSearch(continuationToken, false)}>{searching ? "Continuing..." : "Continue search"}</button> : null}
+            {/* TODO: Replace this temporary testing control with bounded, non-blocking background continuation that keeps cached results visible and merges new results automatically. */}
+            {continuationToken ? <button type="button" className="secondary" disabled={searching || continuationRequestInFlightRef.current} onClick={continueSearch}>{searching ? "Continuing..." : "Continue search"}</button> : null}
           </div>
         </section>
 
@@ -1106,8 +1139,8 @@ export default function LeirdueImportPage() {
           <div className="searchProgressPanel" aria-live="polite">
             {searching ? <p className="small">This request runs one short batch. Cached results stay visible while it finishes.</p> : null}
             <div className="progressHeader">
-              <span>Estimated progress</span>
-              <strong>{Math.round(searchProgress)}%</strong>
+              <span>Estimated search progress</span>
+              <strong>{debug?.cacheDiagnostics?.displayedProgressPercent === null ? "Checking remaining results..." : `${Math.round(searchProgress)}%`}</strong>
             </div>
             <progress value={searchProgress} max={100} />
             {searchStatus ? <p className="small muted">{searchStatus}</p> : null}
