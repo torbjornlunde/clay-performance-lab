@@ -82,6 +82,7 @@ const MAX_CONTINUATION_LISTE_IDS_TO_SCAN_PER_BATCH = 20;
 const MAX_RESULT_MENUS_BEFORE_FIRST_SCAN = 40;
 const RESULT_MENU_PHASE_BUDGET_MS = Math.floor(SEARCH_TIMEOUT_MS * 0.4);
 const MIN_LIST_SCAN_RESERVE_MS = Math.floor(SEARCH_TIMEOUT_MS * 0.5);
+const CONTINUATION_MIN_LIST_SCAN_RESERVE_MS = 1_500;
 const TIME_LIMIT_MESSAGE = "Leirdue search reached time limit. Showing partial results.";
 
 function markTimedOut(debug: LeirdueSearchDebug) {
@@ -457,6 +458,15 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
       displayedProgressPercent: null,
       progressCalculationSource: null,
       progressCappedReason: null,
+      requestStartedAt: null,
+      batchDeadlineAt: null,
+      elapsedBeforeFirstEventMs: null,
+      remainingBudgetBeforeFirstEventMs: null,
+      scanReserveMs: null,
+      eventProcessingBudgetMs: null,
+      firstEventProcessingAttempted: false,
+      firstEventFetchStarted: false,
+      firstEventFetchResult: null,
       batchTimeLimitMs: null,
       batchStopReason: null,
       noProgressReason: null,
@@ -2430,7 +2440,12 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     }
 
     const elapsed = Date.now() - crawlStartedAt;
-    const menuBudgetReason = continuation && debug.eventMenusFetchedThisBatch >= MAX_CONTINUATION_EVENT_MENUS_BEFORE_SCAN ? "continuationMenuBatchLimit" : elapsed >= RESULT_MENU_PHASE_BUDGET_MS ? "resultMenuPhaseBudget" : remainingCrawlMs(state) <= MIN_LIST_SCAN_RESERVE_MS ? "scanReserve" : debug.eventResultMenuPagesFetched >= MAX_RESULT_MENUS_BEFORE_FIRST_SCAN ? "menuCountBeforeFirstScan" : null;
+    if (debug.eventMenusFetchedThisBatch === 0 && debug.cacheDiagnostics.elapsedBeforeFirstEventMs === null) {
+      debug.cacheDiagnostics.elapsedBeforeFirstEventMs = Date.now() - (debug.cacheDiagnostics.requestStartedAt ?? Date.now());
+      debug.cacheDiagnostics.remainingBudgetBeforeFirstEventMs = remainingCrawlMs(state);
+    }
+    const continuationScanReserveSpent = continuation && debug.eventMenusFetchedThisBatch > 0 && remainingCrawlMs(state) <= CONTINUATION_MIN_LIST_SCAN_RESERVE_MS;
+    const menuBudgetReason = continuation && debug.eventMenusFetchedThisBatch >= MAX_CONTINUATION_EVENT_MENUS_BEFORE_SCAN ? "continuationMenuBatchLimit" : continuationScanReserveSpent ? "continuationScanReserve" : !continuation && elapsed >= RESULT_MENU_PHASE_BUDGET_MS ? "resultMenuPhaseBudget" : !continuation && remainingCrawlMs(state) <= MIN_LIST_SCAN_RESERVE_MS ? "scanReserve" : !continuation && debug.eventResultMenuPagesFetched >= MAX_RESULT_MENUS_BEFORE_FIRST_SCAN ? "menuCountBeforeFirstScan" : null;
     const menuBudgetSpent = menuBudgetReason !== null;
     if (menuBudgetSpent && listeIdLinks.size <= scannedListeIdKeys.size && continuation) {
       debug.timeBudgetReason ||= menuBudgetReason;
@@ -2456,10 +2471,16 @@ async function discoverPages(input: LeirdueSearchInput, debug: LeirdueSearchDebu
     }
 
     eventsDequeued += 1;
+    debug.cacheDiagnostics.firstEventProcessingAttempted ||= debug.eventMenusFetchedThisBatch === 0;
     const resultMenuUrl = eventResultMenuUrl(event.eventId);
     const beforeUrls = new Set(listeIdLinks.keys());
+    if (debug.eventMenusFetchedThisBatch === 0) debug.cacheDiagnostics.firstEventFetchStarted = true;
     const resultHtml = await fetchLeirdue(resultMenuUrl, debug, state);
-    if (!resultHtml) continue;
+    if (!resultHtml) {
+      if (!debug.cacheDiagnostics.firstEventFetchResult) debug.cacheDiagnostics.firstEventFetchResult = debug.fetchedUrls.find((entry) => entry.url === resultMenuUrl)?.note || "failed";
+      continue;
+    }
+    if (!debug.cacheDiagnostics.firstEventFetchResult) debug.cacheDiagnostics.firstEventFetchResult = "ok";
     debug.eventPagesFetched += 1;
     debug.cacheDiagnostics.liveEventFetches += 1;
     debug.eventResultMenuPagesFetched += 1;
@@ -3257,8 +3278,13 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
     debug.rejectedReasons.push("Continuation token was invalid for this search and was ignored.");
     debug.cacheDiagnostics.noProgressReason = "saved continuation token could not be decoded";
   }
-  const state: CrawlState = { deadlineAt: Date.now() + (continuation ? CONTINUATION_SEARCH_TIMEOUT_MS : SEARCH_TIMEOUT_MS) };
+  const requestStartedAt = Date.now();
+  const state: CrawlState = { deadlineAt: requestStartedAt + (continuation ? CONTINUATION_SEARCH_TIMEOUT_MS : SEARCH_TIMEOUT_MS) };
+  debug.cacheDiagnostics.requestStartedAt = requestStartedAt;
+  debug.cacheDiagnostics.batchDeadlineAt = state.deadlineAt;
   debug.cacheDiagnostics.batchTimeLimitMs = continuation ? CONTINUATION_SEARCH_TIMEOUT_MS : SEARCH_TIMEOUT_MS;
+  debug.cacheDiagnostics.scanReserveMs = continuation ? CONTINUATION_MIN_LIST_SCAN_RESERVE_MS : MIN_LIST_SCAN_RESERVE_MS;
+  debug.cacheDiagnostics.eventProcessingBudgetMs = continuation ? CONTINUATION_SEARCH_TIMEOUT_MS - CONTINUATION_MIN_LIST_SCAN_RESERVE_MS : SEARCH_TIMEOUT_MS - MIN_LIST_SCAN_RESERVE_MS;
   debug.cacheDiagnostics.restoredEventQueueCount = continuation?.scannedEventIds ? Math.max(0, continuation.scannedEventIds.length) : 0;
   debug.cacheDiagnostics.restoredListeIdQueueCount = continuation?.pendingListeIdQueue?.length ?? 0;
   const discovered = await discoverPages(input, debug, state, continuation);
@@ -3390,7 +3416,9 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
             ? "time budget expired before the first item"
             : debug.fetchedUrls.length > 0 && debug.fetchedUrls.every((item) => !item.ok)
               ? "fetch failed before progress"
-              : "no eligible continuation work was restored";
+              : debug.cacheDiagnostics.eligibleWorkAfterRestore > 0 && debug.batchStopReason
+                ? debug.batchStopReason
+                : "no eligible continuation work was restored";
     debug.rejectedReasons.push(`No continuation progress: ${debug.cacheDiagnostics.noProgressReason}.`);
   }
   debug.cacheDiagnostics.liveRefreshStarted = debug.cacheDiagnostics.liveFetchesStarted > 0;

@@ -364,6 +364,15 @@ export type LeirdueSearchDebug = {
     displayedProgressPercent: number | null;
     progressCalculationSource: string | null;
     progressCappedReason: string | null;
+    requestStartedAt: number | null;
+    batchDeadlineAt: number | null;
+    elapsedBeforeFirstEventMs: number | null;
+    remainingBudgetBeforeFirstEventMs: number | null;
+    scanReserveMs: number | null;
+    eventProcessingBudgetMs: number | null;
+    firstEventProcessingAttempted: boolean;
+    firstEventFetchStarted: boolean;
+    firstEventFetchResult: string | null;
     batchTimeLimitMs: number | null;
     batchStopReason: string | null;
     noProgressReason: string | null;
