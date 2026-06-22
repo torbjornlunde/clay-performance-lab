@@ -318,6 +318,20 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
       cachedCandidatesFound: 0,
       cachedImportableCandidatesFound: 0,
       cachedInvalidListsFound: 0,
+      cachedCandidatesLoaded: 0,
+      cacheScopeComplete: false,
+      cacheScopeStatus: "unknown",
+      continuationRequired: false,
+      resumedFromSavedProgress: false,
+      processedThisBatch: 0,
+      previouslyProcessed: 0,
+      remainingWork: null,
+      liveRefreshStarted: false,
+      liveRefreshReason: null,
+      crawlMarkedComplete: false,
+      crawlStopReason: null,
+      progressWriteOk: false,
+      progressWriteError: null,
       liveCandidatesFound: 0,
       cacheEventHits: 0,
       cacheListHits: 0,
@@ -3113,6 +3127,10 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
         pendingListeIdQueue: discovered.pendingListeIdQueue,
       })
     : null;
+  debug.cacheDiagnostics.processedThisBatch = debug.scannedThisBatch + debug.eventMenusFetchedThisBatch;
+  debug.cacheDiagnostics.remainingWork = debug.pendingListeIdQueueRemaining + debug.remainingEventQueueCount;
+  debug.cacheDiagnostics.liveRefreshStarted = debug.cacheDiagnostics.liveFetchesStarted > 0;
+  debug.cacheDiagnostics.crawlStopReason = debug.continuationStopReason || debug.scanStoppedReason || debug.eventStopReason;
   debug.cacheDiagnostics.elapsedMs = Date.now() - searchStartedAt;
   debug.cacheDiagnostics.stopReason = debug.continuationStopReason || debug.scanStoppedReason || debug.eventStopReason;
   debug.cacheDiagnostics.repeatedSearchShouldBeFaster = debug.cacheDiagnostics.liveCandidatesFound > 0 || debug.cacheDiagnostics.invalidLiveListsCached > 0 || debug.cacheDiagnostics.liveEventFetches > 0;

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCachedLeirdueCandidates, storeLeirdueCandidatesInCache, storeLeirdueCrawlIndexesInCache, storeLeirdueInvalidListDecisionsInCache } from "@/lib/leirdue/cache";
+import { getCachedLeirdueCandidates, getLeirdueCrawlProgress, storeLeirdueCandidatesInCache, storeLeirdueCrawlIndexesInCache, storeLeirdueCrawlProgress, storeLeirdueInvalidListDecisionsInCache } from "@/lib/leirdue/cache";
 import { emptyLeirdueSearchDebug, FETCH_ERROR_MESSAGE, searchLeirdueCandidates } from "@/lib/leirdue/parser";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ function validYear(value: unknown) {
   return year;
 }
 
-function applyCacheStatsToDebug(debug: ReturnType<typeof emptyLeirdueSearchDebug>, cached: Awaited<ReturnType<typeof getCachedLeirdueCandidates>> | null) {
+function applyCacheStatsToDebug(debug: ReturnType<typeof emptyLeirdueSearchDebug>, cached: Awaited<ReturnType<typeof getCachedLeirdueCandidates>> | null, progress?: Awaited<ReturnType<typeof getLeirdueCrawlProgress>> | null) {
   if (!cached) {
     debug.cacheDiagnostics.cacheNotUsedReason = "Manual URL search or continuation request skipped cache pre-read.";
     return;
@@ -37,6 +37,15 @@ function applyCacheStatsToDebug(debug: ReturnType<typeof emptyLeirdueSearchDebug
   debug.cacheDiagnostics.staleCacheRows = cached.stats.staleRowsFound;
   debug.cacheDiagnostics.cacheReadErrors = cached.stats.cacheReadErrors;
   debug.cacheDiagnostics.serviceRoleCacheWriteEnabled = cached.stats.serviceRoleCacheWriteEnabled;
+  if (progress) {
+    debug.cacheDiagnostics.cacheScopeComplete = progress.progress?.status === "complete";
+    debug.cacheDiagnostics.cacheScopeStatus = progress.progress?.status || "unknown";
+    debug.cacheDiagnostics.continuationRequired = progress.progress?.status === "incomplete" && Boolean(progress.progress.continuation_token);
+    debug.cacheDiagnostics.resumedFromSavedProgress = Boolean(progress.progress?.continuation_token);
+    debug.cacheDiagnostics.previouslyProcessed = progress.progress?.processed_work_count || 0;
+    debug.cacheDiagnostics.remainingWork = progress.progress?.remaining_work_count ?? null;
+    if (progress.error) debug.cacheDiagnostics.cacheReadErrors = [...debug.cacheDiagnostics.cacheReadErrors, progress.error];
+  }
 }
 
 function applyCacheWriteStatsToDebug(debug: ReturnType<typeof emptyLeirdueSearchDebug>, ...stats: { serviceRoleCacheWriteEnabled: boolean; cacheWriteOk: boolean; cacheWriteErrors: string[]; invalidListsStored: number }[]) {
@@ -68,35 +77,57 @@ export async function POST(request: Request) {
     const cached = !continuationToken && !sourceUrl
       ? await getCachedLeirdueCandidates({ shooterName, year, disciplines, authorization: request.headers.get("authorization") })
       : null;
+    const progress = !continuationToken && !sourceUrl
+      ? await getLeirdueCrawlProgress({ shooterName, year, disciplines, authorization: request.headers.get("authorization") })
+      : null;
 
     if (cached && cached.stats.cachedImportableCandidatesFound > 0) {
       const debug = emptyLeirdueSearchDebug();
       debug.selectedYear = year;
       debug.normalizedSearchName = shooterName.toLowerCase().replace(/\s+/g, " ").trim();
       debug.selectedDisciplineFilters = disciplines;
-      applyCacheStatsToDebug(debug, cached);
+      applyCacheStatsToDebug(debug, cached, progress);
       debug.cacheDiagnostics.liveFetchesSkippedBecauseCached = cached.stats.cachedImportableCandidatesFound;
       debug.cacheDiagnostics.elapsedMs = 0;
-      debug.cacheDiagnostics.stopReason = "freshImportableCacheHit";
+      const savedToken = progress?.progress?.status === "incomplete" ? progress.progress.continuation_token : null;
+      const scopeComplete = progress?.progress?.status === "complete";
+      const restartToken = !scopeComplete && !savedToken ? "__restart_incomplete_leirdue_scope__" : null;
+      const nextToken = savedToken || restartToken;
+      debug.cacheDiagnostics.stopReason = scopeComplete ? "completeFreshCacheHit" : savedToken ? "freshCacheHitContinuationRequired" : "freshCacheHitNoSavedProgressRestartRequired";
       debug.cacheDiagnostics.repeatedSearchShouldBeFaster = true;
       debug.cacheDiagnostics.cacheWriteOk = true;
-      debug.continuationAvailable = false;
-      debug.continuationReason = "freshImportableCacheHit";
-      debug.message = `Search complete. Loaded ${cached.stats.cachedImportableCandidatesFound} importable cached Leirdue result${cached.stats.cachedImportableCandidatesFound === 1 ? "" : "s"}.`;
-      debug.candidateReasons.unshift(`Cache hit: ${cached.candidates.length} fresh parsed candidates (${cached.stats.cachedImportableCandidatesFound} importable); skipped live crawling.`);
-      return NextResponse.json({ candidates: cached.candidates, debug, continuationToken: null });
+      debug.cacheDiagnostics.cachedCandidatesLoaded = cached.candidates.length;
+      debug.continuationAvailable = Boolean(nextToken);
+      debug.pendingListeIdQueueRemaining = nextToken ? 1 : 0;
+      debug.cacheDiagnostics.continuationRequired = Boolean(nextToken);
+      debug.continuationReason = scopeComplete ? "completeFreshCacheHit" : savedToken ? "cachedResultsLoadedResumeSavedProgress" : "cachedResultsLoadedRestartRequiredBecauseScopeCompletenessUnknown";
+      debug.message = scopeComplete
+        ? `Search complete. Loaded ${cached.stats.cachedImportableCandidatesFound} importable cached Leirdue result${cached.stats.cachedImportableCandidatesFound === 1 ? "" : "s"}.`
+        : `Loaded ${cached.stats.cachedImportableCandidatesFound} cached Leirdue result${cached.stats.cachedImportableCandidatesFound === 1 ? "" : "s"}. Searching for additional results may still find more.`;
+      debug.candidateReasons.unshift(savedToken
+        ? `Cache hit: ${cached.candidates.length} fresh parsed candidates (${cached.stats.cachedImportableCandidatesFound} importable); returning cached results and resuming saved crawl progress.`
+        : `Cache hit: ${cached.candidates.length} fresh parsed candidates (${cached.stats.cachedImportableCandidatesFound} importable); scope is ${scopeComplete ? "complete" : "not proven complete"}.`);
+      return NextResponse.json({ candidates: cached.candidates, debug, continuationToken: nextToken });
     }
 
-    const result = await searchLeirdueCandidates({ shooterName, year, disciplines, continuationToken, sourceUrl, cachedInvalidListKeys: cached?.stats.invalidListKeys || [] });
-    applyCacheStatsToDebug(result.debug, cached);
+    const result = await searchLeirdueCandidates({ shooterName, year, disciplines, continuationToken: continuationToken || progress?.progress?.continuation_token || null, sourceUrl, cachedInvalidListKeys: cached?.stats.invalidListKeys || [] });
+    applyCacheStatsToDebug(result.debug, cached, progress);
+    result.debug.cacheDiagnostics.liveRefreshReason = continuationToken ? "clientContinuation" : progress?.progress?.continuation_token ? "savedIncompleteProgress" : cached?.candidates.length ? "cachedRowsButNoCompleteProgress" : "cacheMiss";
     if (!sourceUrl) {
       const [stored, crawlIndexes, invalidStored] = await Promise.all([
         storeLeirdueCandidatesInCache(result.candidates, year),
         storeLeirdueCrawlIndexesInCache(result.debug, year),
         storeLeirdueInvalidListDecisionsInCache(result.debug.checkedLists),
       ]);
+      const progressWrite = await storeLeirdueCrawlProgress({ shooterName, year, disciplines, debug: result.debug, continuationToken: result.continuationToken });
       applyCacheWriteStatsToDebug(result.debug, stored, crawlIndexes, invalidStored);
-      result.debug.candidateReasons.unshift(`Cache ${result.debug.cacheDiagnostics.cacheWriteOk ? "write ok" : "write issue"}: stored ${stored.liveCandidatesStored} parsed candidates and ${crawlIndexes.invalidListsStored + invalidStored.invalidListsStored} invalid/index list decisions.${result.debug.cacheDiagnostics.cacheWriteErrors.length ? ` Errors: ${result.debug.cacheDiagnostics.cacheWriteErrors.join(" | ")}` : ""}`);
+      result.debug.cacheDiagnostics.progressWriteOk = progressWrite.ok;
+      result.debug.cacheDiagnostics.progressWriteError = progressWrite.error;
+      result.debug.cacheDiagnostics.crawlMarkedComplete = progressWrite.status === "complete";
+      result.debug.cacheDiagnostics.cacheScopeStatus = progressWrite.status === "complete" || progressWrite.status === "incomplete" || progressWrite.status === "failed" ? progressWrite.status : result.debug.cacheDiagnostics.cacheScopeStatus;
+      result.debug.cacheDiagnostics.cacheScopeComplete = progressWrite.status === "complete";
+      result.debug.cacheDiagnostics.continuationRequired = Boolean(result.continuationToken);
+      result.debug.candidateReasons.unshift(`Cache ${result.debug.cacheDiagnostics.cacheWriteOk ? "write ok" : "write issue"}: stored ${stored.liveCandidatesStored} parsed candidates and ${crawlIndexes.invalidListsStored + invalidStored.invalidListsStored} invalid/index list decisions; progress ${progressWrite.ok ? "write ok" : "write issue"}.${result.debug.cacheDiagnostics.cacheWriteErrors.length ? ` Errors: ${result.debug.cacheDiagnostics.cacheWriteErrors.join(" | ")}` : ""}${progressWrite.error ? ` Progress error: ${progressWrite.error}` : ""}`);
     }
     if (result.debug.fetchedUrls.length > 0 && result.debug.fetchedUrls.every((item) => !item.ok)) {
       return NextResponse.json({ ...result, error: FETCH_ERROR_MESSAGE }, { status: 502 });

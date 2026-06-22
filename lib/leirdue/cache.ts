@@ -285,6 +285,84 @@ export async function storeLeirdueInvalidListDecisionsInCache(checkedLists: Leir
 }
 
 
+export type LeirdueCrawlProgress = {
+  scope_key: string;
+  selected_year: number;
+  shooter_name_normalized: string;
+  selected_disciplines: string[];
+  status: "incomplete" | "complete" | "failed";
+  continuation_token: string | null;
+  scanned_event_ids: string[];
+  scanned_liste_id_keys: string[];
+  total_discovered_work: number | null;
+  processed_work_count: number;
+  remaining_work_count: number | null;
+  last_stop_reason: string | null;
+  last_completed_batch: number | null;
+  last_run_at: string | null;
+  completed_at: string | null;
+  updated_at: string | null;
+};
+
+export function leirdueSearchScopeKey(input: { shooterName: string; year: number; disciplines: string[] }) {
+  const name = nordicSafeNameKey(input.shooterName);
+  const disciplines = input.disciplines.map((discipline) => discipline.trim().toLowerCase()).filter(Boolean).sort();
+  return `${input.year}:${name}:${disciplines.join("|")}`;
+}
+
+function decodeContinuationProgress(token: string | null | undefined) {
+  if (!token) return { scannedEventIds: [] as string[], scannedListeIdKeys: [] as string[] };
+  try {
+    const parsed = JSON.parse(Buffer.from(token, "base64url").toString("utf8")) as { scannedEventIds?: unknown; scannedListeIdKeys?: unknown };
+    return {
+      scannedEventIds: Array.isArray(parsed.scannedEventIds) ? parsed.scannedEventIds.filter((id): id is string => typeof id === "string") : [],
+      scannedListeIdKeys: Array.isArray(parsed.scannedListeIdKeys) ? parsed.scannedListeIdKeys.filter((id): id is string => typeof id === "string") : [],
+    };
+  } catch {
+    return { scannedEventIds: [] as string[], scannedListeIdKeys: [] as string[] };
+  }
+}
+
+export async function getLeirdueCrawlProgress(input: { shooterName: string; year: number; disciplines: string[]; authorization?: string | null }) {
+  const supabase = supabaseReadClient(input.authorization);
+  if (!supabase) return { progress: null as LeirdueCrawlProgress | null, error: "Crawl progress read skipped: missing authenticated cache read context." };
+  const scopeKey = leirdueSearchScopeKey(input);
+  const { data, error } = await supabase.from("leirdue_search_crawl_state").select("*").eq("scope_key", scopeKey).maybeSingle();
+  if (error) return { progress: null as LeirdueCrawlProgress | null, error: `Crawl progress read failed: ${error.message}` };
+  return { progress: (data as LeirdueCrawlProgress | null) || null, error: null as string | null };
+}
+
+export async function storeLeirdueCrawlProgress(input: { shooterName: string; year: number; disciplines: string[]; debug: LeirdueSearchDebug; continuationToken?: string | null }) {
+  const supabase = supabaseServiceClient();
+  if (!supabase) return { ok: false, error: "Crawl progress write skipped: missing SUPABASE_SERVICE_ROLE_KEY." };
+  const scopeKey = leirdueSearchScopeKey(input);
+  const remainingWork = input.debug.pendingListeIdQueueRemaining + input.debug.remainingEventQueueCount;
+  const complete = !input.continuationToken && input.debug.continuationAvailable === false && remainingWork === 0 && !input.debug.timedOut && !input.debug.limitReached;
+  const failed = !complete && Boolean(input.debug.errorMessage);
+  const decoded = decodeContinuationProgress(input.continuationToken);
+  const now = new Date().toISOString();
+  const row = {
+    scope_key: scopeKey,
+    selected_year: input.year,
+    shooter_name_normalized: nordicSafeNameKey(input.shooterName),
+    selected_disciplines: input.disciplines,
+    status: complete ? "complete" : failed ? "failed" : "incomplete",
+    continuation_token: input.continuationToken || null,
+    scanned_event_ids: decoded.scannedEventIds.length ? decoded.scannedEventIds : input.debug.eventIdsInspected,
+    scanned_liste_id_keys: decoded.scannedListeIdKeys,
+    total_discovered_work: input.debug.listeIdLinksExtracted + input.debug.selectedYearEventLinksCount,
+    processed_work_count: input.debug.scannedListeIdTotal + input.debug.scannedEventTotal,
+    remaining_work_count: remainingWork,
+    last_stop_reason: input.debug.continuationStopReason || input.debug.scanStoppedReason || input.debug.eventStopReason,
+    last_completed_batch: input.debug.batchNumber,
+    last_run_at: now,
+    completed_at: complete ? now : null,
+    updated_at: now,
+  };
+  const { error } = await supabase.from("leirdue_search_crawl_state").upsert(row, { onConflict: "scope_key" });
+  return { ok: !error, error: error ? `Crawl progress write failed: ${error.message}` : null, status: row.status, remainingWork };
+}
+
 export async function storeLeirdueCrawlIndexesInCache(debug: LeirdueSearchDebug, year: number) {
   const supabase = supabaseServiceClient();
   if (!supabase) return emptyLeirdueCacheStats("Crawl index cache write skipped: missing SUPABASE_SERVICE_ROLE_KEY.");
