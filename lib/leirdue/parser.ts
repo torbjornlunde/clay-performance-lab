@@ -456,6 +456,9 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
       completionEligibleAfterBatch: false,
       completionPersistedInSameRequest: false,
       extraCompletionRequestRequired: false,
+      candidatePipelineReconciled: true,
+      renderedCandidateCountMatchesBackend: true,
+      uniqueCandidateKeysValid: true,
       invalidCompleteStateRepaired: false,
       requestMode: "initial",
       explicitContinuationRequested: false,
@@ -3422,7 +3425,10 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
     && completionProof.listeIdQueueExhausted
     && completionProof.noRecoveryError
     && completionProof.noUnknownPendingWork
-    && processedOrSkippedCount > 0;
+    && processedOrSkippedCount > 0
+    && debug.cacheDiagnostics.candidatePipelineReconciled
+    && debug.cacheDiagnostics.renderedCandidateCountMatchesBackend
+    && debug.cacheDiagnostics.uniqueCandidateKeysValid;
   debug.cacheDiagnostics.completionProof = completionProof;
   debug.cacheDiagnostics.completionMarkedThisBatch = completionProof.valid;
   debug.cacheDiagnostics.completionCheckAfterBatch = {

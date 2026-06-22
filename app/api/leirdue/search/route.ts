@@ -78,6 +78,10 @@ function applyCacheWriteStatsToDebug(debug: ReturnType<typeof emptyLeirdueSearch
   debug.cacheDiagnostics.invalidLiveListsCached += stats.reduce((total, item) => total + item.invalidListsStored, 0);
 }
 
+function responseCandidateKey(candidate: { stevneId?: string | null; listeId?: string | null; leirdueUrl: string; date: string | null; discipline: string; ownScore: number | null; totalTargets: number | null }) {
+  return [candidate.stevneId || "no-event", candidate.listeId || "no-liste", candidate.leirdueUrl || "no-url", candidate.date || "no-date", candidate.discipline || "no-discipline", candidate.ownScore ?? "?", candidate.totalTargets ?? "?"].join("|");
+}
+
 export async function POST(request: Request) {
   let body: SearchBody;
   try {
@@ -196,6 +200,12 @@ export async function POST(request: Request) {
       result.candidates = [...cached.candidates, ...result.candidates.filter((candidate) => !cachedKeys.has(`${candidate.leirdueUrl}|${candidate.date || ""}|${candidate.shooterName || ""}|${candidate.ownScore ?? ""}`))];
       result.debug.cacheDiagnostics.cachedCandidatesLoaded = cached.candidates.length;
     }
+    const responseCandidateKeys = result.candidates.map(responseCandidateKey);
+    const responseUniqueCandidateKeys = new Set(responseCandidateKeys);
+    result.debug.cacheDiagnostics.candidatePipelineReconciled = responseUniqueCandidateKeys.size === responseCandidateKeys.length;
+    result.debug.cacheDiagnostics.renderedCandidateCountMatchesBackend = responseUniqueCandidateKeys.size === responseCandidateKeys.length;
+    result.debug.cacheDiagnostics.uniqueCandidateKeysValid = responseUniqueCandidateKeys.size === responseCandidateKeys.length;
+    if (!result.debug.cacheDiagnostics.candidatePipelineReconciled || !result.debug.cacheDiagnostics.renderedCandidateCountMatchesBackend || !result.debug.cacheDiagnostics.uniqueCandidateKeysValid) result.debug.cacheDiagnostics.completionProof.valid = false;
     if (!sourceUrl) {
       const [stored, crawlIndexes, invalidStored] = await Promise.all([
         storeLeirdueCandidatesInCache(result.candidates, year),

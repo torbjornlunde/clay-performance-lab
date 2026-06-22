@@ -362,6 +362,9 @@ export type LeirdueSearchDebug = {
     completionEligibleAfterBatch: boolean;
     completionPersistedInSameRequest: boolean;
     extraCompletionRequestRequired: boolean;
+    candidatePipelineReconciled: boolean;
+    renderedCandidateCountMatchesBackend: boolean;
+    uniqueCandidateKeysValid: boolean;
     invalidCompleteStateRepaired: boolean;
     requestMode: "initial" | "continue" | "revalidateInvalidComplete";
     explicitContinuationRequested: boolean;
