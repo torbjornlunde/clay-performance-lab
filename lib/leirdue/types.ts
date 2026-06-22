@@ -338,6 +338,7 @@ export type LeirdueSearchDebug = {
     repeatedSearchShouldBeFaster: boolean;
     serviceRoleCacheWriteEnabled: boolean;
     cacheWriteErrors: string[];
+    cacheWriteWarnings: string[];
     cacheReadErrors: string[];
   };
 };

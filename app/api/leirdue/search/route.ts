@@ -48,10 +48,11 @@ function applyCacheStatsToDebug(debug: ReturnType<typeof emptyLeirdueSearchDebug
   }
 }
 
-function applyCacheWriteStatsToDebug(debug: ReturnType<typeof emptyLeirdueSearchDebug>, ...stats: { serviceRoleCacheWriteEnabled: boolean; cacheWriteOk: boolean; cacheWriteErrors: string[]; invalidListsStored: number }[]) {
+function applyCacheWriteStatsToDebug(debug: ReturnType<typeof emptyLeirdueSearchDebug>, ...stats: { serviceRoleCacheWriteEnabled: boolean; cacheWriteOk: boolean; cacheWriteErrors: string[]; cacheWriteWarnings?: string[]; invalidListsStored: number }[]) {
   debug.cacheDiagnostics.serviceRoleCacheWriteEnabled = stats.some((item) => item.serviceRoleCacheWriteEnabled);
   debug.cacheDiagnostics.cacheWriteOk = stats.every((item) => item.cacheWriteOk);
   debug.cacheDiagnostics.cacheWriteErrors = stats.flatMap((item) => item.cacheWriteErrors);
+  debug.cacheDiagnostics.cacheWriteWarnings = stats.flatMap((item) => item.cacheWriteWarnings || []);
   debug.cacheDiagnostics.invalidLiveListsCached += stats.reduce((total, item) => total + item.invalidListsStored, 0);
 }
 
@@ -74,14 +75,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    const cached = !continuationToken && !sourceUrl
+    const cached = !sourceUrl
       ? await getCachedLeirdueCandidates({ shooterName, year, disciplines, authorization: request.headers.get("authorization") })
       : null;
-    const progress = !continuationToken && !sourceUrl
+    const progress = !sourceUrl
       ? await getLeirdueCrawlProgress({ shooterName, year, disciplines, authorization: request.headers.get("authorization") })
       : null;
 
-    if (cached && cached.stats.cachedImportableCandidatesFound > 0) {
+    if (!continuationToken && cached && cached.stats.cachedImportableCandidatesFound > 0) {
       const debug = emptyLeirdueSearchDebug();
       debug.selectedYear = year;
       debug.normalizedSearchName = shooterName.toLowerCase().replace(/\s+/g, " ").trim();
@@ -110,9 +111,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ candidates: cached.candidates, debug, continuationToken: nextToken });
     }
 
-    const result = await searchLeirdueCandidates({ shooterName, year, disciplines, continuationToken: continuationToken || progress?.progress?.continuation_token || null, sourceUrl, cachedInvalidListKeys: cached?.stats.invalidListKeys || [] });
+    const savedContinuationToken = progress?.progress?.status === "incomplete" ? progress.progress.continuation_token : null;
+    const liveContinuationToken = savedContinuationToken || continuationToken || null;
+    const result = await searchLeirdueCandidates({ shooterName, year, disciplines, continuationToken: liveContinuationToken, sourceUrl, cachedInvalidListKeys: cached?.stats.invalidListKeys || [] });
     applyCacheStatsToDebug(result.debug, cached, progress);
-    result.debug.cacheDiagnostics.liveRefreshReason = continuationToken ? "clientContinuation" : progress?.progress?.continuation_token ? "savedIncompleteProgress" : cached?.candidates.length ? "cachedRowsButNoCompleteProgress" : "cacheMiss";
+    result.debug.cacheDiagnostics.resumedFromSavedProgress = Boolean(savedContinuationToken);
+    result.debug.cacheDiagnostics.liveRefreshReason = savedContinuationToken ? "savedIncompleteProgress" : continuationToken ? "clientContinuationNoSavedProgress" : cached?.candidates.length ? "cachedRowsButNoCompleteProgress" : "cacheMiss";
+    if (cached?.candidates.length) {
+      const cachedKeys = new Set(cached.candidates.map((candidate) => `${candidate.leirdueUrl}|${candidate.date || ""}|${candidate.shooterName || ""}|${candidate.ownScore ?? ""}`));
+      result.candidates = [...cached.candidates, ...result.candidates.filter((candidate) => !cachedKeys.has(`${candidate.leirdueUrl}|${candidate.date || ""}|${candidate.shooterName || ""}|${candidate.ownScore ?? ""}`))];
+      result.debug.cacheDiagnostics.cachedCandidatesLoaded = cached.candidates.length;
+    }
     if (!sourceUrl) {
       const [stored, crawlIndexes, invalidStored] = await Promise.all([
         storeLeirdueCandidatesInCache(result.candidates, year),

@@ -351,6 +351,7 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
       repeatedSearchShouldBeFaster: false,
       serviceRoleCacheWriteEnabled: false,
       cacheWriteErrors: [],
+      cacheWriteWarnings: [],
       cacheReadErrors: [],
     },
   };
