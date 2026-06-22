@@ -396,7 +396,7 @@ export async function storeLeirdueCrawlProgress(input: { shooterName: string; ye
     total_discovered_work: input.debug.listeIdLinksExtracted + input.debug.selectedYearEventLinksCount,
     processed_work_count: input.debug.scannedListeIdTotal + input.debug.scannedEventTotal,
     remaining_work_count: remainingWork,
-    last_stop_reason: input.debug.continuationStopReason || input.debug.scanStoppedReason || input.debug.eventStopReason,
+    last_stop_reason: complete ? "completionProofValid" : input.debug.continuationStopReason || input.debug.scanStoppedReason || input.debug.eventStopReason,
     last_completed_batch: input.debug.batchNumber,
     last_run_at: now,
     completed_at: complete ? now : null,

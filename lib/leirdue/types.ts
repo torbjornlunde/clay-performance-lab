@@ -348,6 +348,12 @@ export type LeirdueSearchDebug = {
     selectedYearProcessedThisBatch: number;
     selectedYearRemainingAfterBatch: number;
     completionProof: { selectedYearDiscoveryComplete: boolean; eventQueueExhausted: boolean; listeIdQueueExhausted: boolean; noRecoveryError: boolean; noUnknownPendingWork: boolean; processedOrSkippedCount: number; valid: boolean };
+    emptyQueueInterpretation: string | null;
+    unfinishedWorkExpected: boolean;
+    allRediscoveredEventsAlreadyProcessed: boolean;
+    finalReconciliationComplete: boolean;
+    recoveryErrorAffectsCompletion: boolean;
+    completionMarkedThisBatch: boolean;
     invalidCompleteStateRepaired: boolean;
     requestMode: "initial" | "continue" | "revalidateInvalidComplete";
     explicitContinuationRequested: boolean;

@@ -442,6 +442,12 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
       selectedYearProcessedThisBatch: 0,
       selectedYearRemainingAfterBatch: 0,
       completionProof: { selectedYearDiscoveryComplete: false, eventQueueExhausted: false, listeIdQueueExhausted: false, noRecoveryError: false, noUnknownPendingWork: false, processedOrSkippedCount: 0, valid: false },
+      emptyQueueInterpretation: null,
+      unfinishedWorkExpected: false,
+      allRediscoveredEventsAlreadyProcessed: false,
+      finalReconciliationComplete: false,
+      recoveryErrorAffectsCompletion: false,
+      completionMarkedThisBatch: false,
       invalidCompleteStateRepaired: false,
       requestMode: "initial",
       explicitContinuationRequested: false,
@@ -3345,14 +3351,51 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
     debug.message ||= `Search complete. Found ${debug.visibleCandidatesCount} likely results for ${input.year}. Older archived pages were skipped.`;
     debug.rejectedReasons.push("Continuation stopped: only outside-year fallback events remain.");
   }
-  const processedThisBatchForProof = debug.scannedThisBatch + debug.eventMenusFetchedThisBatch;
+  const finalRemainingWork = debug.pendingListeIdQueueRemaining + debug.remainingEventQueueCount;
+  debug.cacheDiagnostics.remainingWork = finalRemainingWork;
+  debug.cacheDiagnostics.selectedYearRemainingAfterBatch = finalRemainingWork;
+  debug.cacheDiagnostics.previouslyProcessedAfterBatch = debug.scannedListeIdTotal + debug.scannedEventTotal;
+  debug.cacheDiagnostics.remainingWorkAfterBatch = finalRemainingWork;
   const processedOrSkippedCount = debug.scannedEventTotal + debug.scannedListeIdTotal + debug.cacheDiagnostics.skippedAlreadyProcessedEvents + debug.cacheDiagnostics.skippedAlreadyProcessedListeIds + debug.eventLinksSkippedByReason.outsideYear + debug.eventLinksSkippedByReason.ranking + debug.eventLinksSkippedByReason.irrelevantDiscipline;
+  const selectedYearDiscoveryComplete = debug.cacheDiagnostics.yearSectionFound || debug.selectedYearEventLinksCount > 0 || Boolean(input.sourceUrl);
+  const eventQueueExhausted = debug.remainingEventQueueCount === 0;
+  const listeIdQueueExhausted = debug.pendingListeIdQueueRemaining === 0;
+  const alreadyProcessedRestoredEvents = debug.cacheDiagnostics.restoredEventRejectionCounts.alreadyProcessed || 0;
+  const structuralRecoveryError = Boolean(debug.cacheDiagnostics.restoredEventRejectionCounts.wrongYear || debug.cacheDiagnostics.restoredEventRejectionCounts.invalidEventShape || debug.cacheDiagnostics.continuationDecodeError);
+  const emptyContinuationQueues = Boolean(continuation || input.continuationToken)
+    && debug.cacheDiagnostics.storedEventQueueCount === 0
+    && debug.cacheDiagnostics.storedListeIdQueueCount === 0
+    && debug.cacheDiagnostics.restoredEventQueueCount === 0
+    && debug.cacheDiagnostics.restoredListeIdQueueCount === 0;
+  debug.cacheDiagnostics.allRediscoveredEventsAlreadyProcessed = alreadyProcessedRestoredEvents > 0
+    && debug.cacheDiagnostics.restoredEventQueueCount === 0
+    && debug.cacheDiagnostics.restoredListeIdQueueCount === 0
+    && eventQueueExhausted
+    && listeIdQueueExhausted;
+  debug.cacheDiagnostics.unfinishedWorkExpected = finalRemainingWork > 0
+    || debug.timedOut
+    || debug.limitReached
+    || !selectedYearDiscoveryComplete
+    || Boolean(debug.cacheDiagnostics.continuationDecodeError)
+    || (debug.cacheDiagnostics.storedEventQueueCount > 0 && debug.cacheDiagnostics.restoredEventQueueCount === 0)
+    || (debug.cacheDiagnostics.storedListeIdQueueCount > 0 && debug.cacheDiagnostics.restoredListeIdQueueCount === 0);
+  if (debug.cacheDiagnostics.recoveryRediscoveryUsed && emptyContinuationQueues && !debug.cacheDiagnostics.unfinishedWorkExpected && !structuralRecoveryError && processedOrSkippedCount > 0 && eventQueueExhausted && listeIdQueueExhausted) {
+    debug.cacheDiagnostics.emptyQueueInterpretation = debug.cacheDiagnostics.allRediscoveredEventsAlreadyProcessed ? "exhaustedCompleteStateAllRediscoveredEventsAlreadyProcessed" : "exhaustedCompleteState";
+    debug.cacheDiagnostics.recoveryRediscoveryUsed = false;
+    debug.cacheDiagnostics.recoveryRediscoveryReason = null;
+  } else if (emptyContinuationQueues) {
+    debug.cacheDiagnostics.emptyQueueInterpretation = debug.cacheDiagnostics.unfinishedWorkExpected ? "emptyBrokenStateUnfinishedWorkExpected" : "emptyQueueStillNeedsReconciliation";
+  } else {
+    debug.cacheDiagnostics.emptyQueueInterpretation = null;
+  }
+  debug.cacheDiagnostics.recoveryErrorAffectsCompletion = Boolean(debug.cacheDiagnostics.recoveryRediscoveryUsed || structuralRecoveryError);
+  debug.cacheDiagnostics.finalReconciliationComplete = selectedYearDiscoveryComplete && eventQueueExhausted && listeIdQueueExhausted && !debug.cacheDiagnostics.unfinishedWorkExpected && !debug.cacheDiagnostics.recoveryErrorAffectsCompletion;
   const completionProof = {
-    selectedYearDiscoveryComplete: debug.cacheDiagnostics.yearSectionFound || debug.selectedYearEventLinksCount > 0 || Boolean(input.sourceUrl),
-    eventQueueExhausted: debug.remainingEventQueueCount === 0,
-    listeIdQueueExhausted: debug.pendingListeIdQueueRemaining === 0,
-    noRecoveryError: !debug.cacheDiagnostics.recoveryRediscoveryUsed && !debug.cacheDiagnostics.noProgressReason && !debug.cacheDiagnostics.restoredEventRejectionCounts.wrongYear && !debug.cacheDiagnostics.restoredEventRejectionCounts.invalidEventShape,
-    noUnknownPendingWork: !debug.timedOut && !debug.limitReached && debug.cacheDiagnostics.eligibleWorkAfterRestore === 0,
+    selectedYearDiscoveryComplete,
+    eventQueueExhausted,
+    listeIdQueueExhausted,
+    noRecoveryError: !debug.cacheDiagnostics.recoveryErrorAffectsCompletion,
+    noUnknownPendingWork: !debug.timedOut && !debug.limitReached && finalRemainingWork === 0 && debug.cacheDiagnostics.eligibleWorkAfterRestore === 0,
     processedOrSkippedCount,
     valid: false,
   };
@@ -3361,9 +3404,9 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
     && completionProof.listeIdQueueExhausted
     && completionProof.noRecoveryError
     && completionProof.noUnknownPendingWork
-    && processedOrSkippedCount > 0
-    && processedThisBatchForProof > 0;
+    && processedOrSkippedCount > 0;
   debug.cacheDiagnostics.completionProof = completionProof;
+  debug.cacheDiagnostics.completionMarkedThisBatch = completionProof.valid;
   const canContinue = (likelySelectedYearWorkRemaining || !completionProof.valid) && !onlyOldFallbackRemains;
   debug.continuationAvailable = canContinue;
   debug.continuationReason = canContinue
@@ -3408,12 +3451,8 @@ export async function searchLeirdueCandidates(input: LeirdueSearchInput): Promis
   debug.cacheDiagnostics.processedThisBatch = debug.scannedThisBatch + debug.eventMenusFetchedThisBatch;
   debug.cacheDiagnostics.selectedYearProcessedThisBatch = debug.eventMenusFetchedThisBatch + debug.scannedThisBatch;
   debug.cacheDiagnostics.selectedYearEligibleBeforeBatch = debug.cacheDiagnostics.eligibleWorkAfterRestore;
-  debug.cacheDiagnostics.remainingWork = debug.pendingListeIdQueueRemaining + debug.remainingEventQueueCount;
-  debug.cacheDiagnostics.selectedYearRemainingAfterBatch = debug.cacheDiagnostics.remainingWork;
-  debug.cacheDiagnostics.previouslyProcessedAfterBatch = debug.scannedListeIdTotal + debug.scannedEventTotal;
-  debug.cacheDiagnostics.remainingWorkAfterBatch = debug.cacheDiagnostics.remainingWork;
   debug.cacheDiagnostics.batchStopReason = debug.batchStopReason || debug.continuationStopReason || debug.scanStoppedReason || debug.eventStopReason;
-  if ((continuation || input.continuationToken) && debug.cacheDiagnostics.processedThisBatch === 0) {
+  if ((continuation || input.continuationToken) && debug.cacheDiagnostics.processedThisBatch === 0 && !completionProof.valid) {
     debug.cacheDiagnostics.noProgressReason ||= input.continuationToken && !continuation
       ? "saved continuation token could not be decoded"
       : continuation && debug.pendingListeIdQueueAtStart === 0 && debug.selectedYearEventLinksCount === 0

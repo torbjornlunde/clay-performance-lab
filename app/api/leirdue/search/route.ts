@@ -51,6 +51,21 @@ function applyCacheStatsToDebug(debug: ReturnType<typeof emptyLeirdueSearchDebug
     debug.cacheDiagnostics.previouslyProcessedBeforeBatch = progress.progress?.processed_work_count || 0;
     debug.cacheDiagnostics.remainingWork = progress.progress?.remaining_work_count ?? null;
     debug.cacheDiagnostics.remainingWorkBeforeBatch = progress.progress?.remaining_work_count ?? null;
+    if (progress.progress?.status === "complete" && progress.progress.last_stop_reason === "completionProofValid" && (progress.progress.remaining_work_count ?? 0) === 0 && progress.progress.processed_work_count > 0) {
+      debug.cacheDiagnostics.completionProof = {
+        selectedYearDiscoveryComplete: true,
+        eventQueueExhausted: true,
+        listeIdQueueExhausted: true,
+        noRecoveryError: true,
+        noUnknownPendingWork: true,
+        processedOrSkippedCount: progress.progress.processed_work_count,
+        valid: true,
+      };
+      debug.cacheDiagnostics.remainingWorkAfterBatch = 0;
+      debug.cacheDiagnostics.previouslyProcessedAfterBatch = progress.progress.processed_work_count;
+      debug.cacheDiagnostics.emptyQueueInterpretation = "storedCompleteState";
+      debug.cacheDiagnostics.finalReconciliationComplete = true;
+    }
     if (progress.error) debug.cacheDiagnostics.cacheReadErrors = [...debug.cacheDiagnostics.cacheReadErrors, progress.error];
   }
 }
@@ -118,7 +133,8 @@ export async function POST(request: Request) {
       debug.cacheDiagnostics.elapsedMs = 0;
       const savedToken = progress?.progress?.status === "incomplete" ? progress.progress.continuation_token : null;
       const scopeComplete = progress?.progress?.status === "complete";
-      const invalidCompleteState = Boolean(scopeComplete && !savedToken);
+      const provenStoredComplete = Boolean(scopeComplete && progress?.progress?.last_stop_reason === "completionProofValid" && (progress.progress.remaining_work_count ?? 0) === 0 && progress.progress.processed_work_count > 0);
+      const invalidCompleteState = Boolean(scopeComplete && !provenStoredComplete);
       if (invalidCompleteState) {
         debug.cacheDiagnostics.invalidCompleteStateDetected = true;
         debug.cacheDiagnostics.invalidCompleteStateReason = "legacy complete crawl state has no completion proof; revalidation required";
@@ -167,8 +183,11 @@ export async function POST(request: Request) {
     if (restartRequested) {
       result.debug.cacheDiagnostics.invalidCompleteStateDetected = true;
       result.debug.cacheDiagnostics.invalidCompleteStateReason = "restart requested to repair invalid or unproven complete crawl state";
-      result.debug.cacheDiagnostics.recoveryRediscoveryUsed = true;
-      result.debug.cacheDiagnostics.recoveryRediscoveryReason = "revalidating invalid complete crawl state";
+      if (!result.debug.cacheDiagnostics.completionProof.valid) {
+        result.debug.cacheDiagnostics.recoveryRediscoveryUsed = true;
+        result.debug.cacheDiagnostics.recoveryRediscoveryReason = "revalidating invalid complete crawl state";
+        result.debug.cacheDiagnostics.recoveryErrorAffectsCompletion = true;
+      }
     }
     result.debug.cacheDiagnostics.resumedFromSavedProgress = Boolean(savedContinuationToken && result.debug.cacheDiagnostics.continuationDecodeOk && result.debug.cacheDiagnostics.eligibleWorkAfterRestore > 0);
     result.debug.cacheDiagnostics.liveRefreshReason = savedContinuationToken ? "savedIncompleteProgress" : restartRequested ? "invalidCompleteStateRecoveryRestart" : continuationToken ? "clientContinuationNoSavedProgress" : cached?.candidates.length ? "cachedRowsButNoCompleteProgress" : "cacheMiss";
@@ -188,6 +207,7 @@ export async function POST(request: Request) {
       result.debug.cacheDiagnostics.progressWriteOk = progressWrite.ok;
       result.debug.cacheDiagnostics.progressWriteError = progressWrite.error;
       result.debug.cacheDiagnostics.crawlMarkedComplete = progressWrite.status === "complete";
+      result.debug.cacheDiagnostics.completionMarkedThisBatch = progressWrite.status === "complete";
       result.debug.cacheDiagnostics.cacheScopeStatus = progressWrite.status === "complete" || progressWrite.status === "incomplete" || progressWrite.status === "failed" ? progressWrite.status : result.debug.cacheDiagnostics.cacheScopeStatus;
       result.debug.cacheDiagnostics.cacheScopeComplete = progressWrite.status === "complete";
       result.debug.cacheDiagnostics.continuationRequired = Boolean(result.continuationToken);
