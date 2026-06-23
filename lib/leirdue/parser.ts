@@ -3073,6 +3073,97 @@ function manualListChoicesFromHtml(html: string, sourceUrl: string) {
     .slice(0, 25);
 }
 
+
+export type LeirdueSharedParsedResultRow = {
+  originalName: string;
+  club: string | null;
+  placement: number | null;
+  score: number | null;
+  totalTargets: number | null;
+  winningScore: number | null;
+  seriesScores: number[];
+  discipline: string;
+  eventDate: string | null;
+  eventTitle: string | null;
+  organizer: string | null;
+  sourceUrl: string;
+  rawRow: string;
+  validationStatus: "valid" | "needs_review" | "invalid" | "failed";
+};
+
+export function parseLeirdueSharedResultListHtml(input: { html: string; url: string; year: number; listTitle?: string | null; selectedDisciplines?: string[] }): LeirdueSharedParsedResultRow[] {
+  const year = debugSelectedYear(input.year);
+  const selectedDisciplines = input.selectedDisciplines?.length ? input.selectedDisciplines : [COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI, "Sporting", "FITASC Sporting", "Trap", "Skeet", "Jegertrap / Nordisk trap", "Other"];
+  const lines = htmlToLines(input.html);
+  const pageText = lines.join("\n");
+  const ids = extractLeirdueSourceIdentifiers(input.url);
+  const pageTitle = stripTags(input.html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "") || null;
+  const eventTitle = input.listTitle || extractTitle(lines, input.html, year) || pageTitle || "Leirdue result list";
+  const listTitle = `${eventTitle} ${pageTitle || ""}`.trim();
+  const date = parseDate(`${eventTitle}\n${pageText}`, year);
+  const discipline = classifyDiscipline(`${eventTitle}\n${pageText}`, selectedDisciplines);
+  const targetContext = [listTitle, eventTitle, lines.slice(0, 25).join("\n")].join("\n");
+  const initialTotalTargets = extractLikelyTotalTargets(targetContext);
+  const rows = extractTableRows(input.html);
+  const rowTexts = rows.length > 0 ? rows : lines.map((line) => ({ text: line, cells: [], numbers: extractScoreNumbers(line), total: null, seriesScores: [] }));
+  const parsedRows = rowTexts.map((row) => {
+    const parsed = parseCompetitorRow(row.text, year, initialTotalTargets);
+    return parsed ? { ...parsed, cells: row.cells } : null;
+  }).filter((row): row is ParsedRow => Boolean(row));
+  const winningScore = parsedRows.reduce<number | null>((max, row) => row.total === null ? max : Math.max(max ?? row.total, row.total), null);
+  const totalTargets = initialTotalTargets ?? winningScore;
+  const shootingGroundResult = extractShootingGround(eventTitle, lines.slice(0, 25).join("\n"));
+
+  return parsedRows.map((row, index) => {
+    const rowMeta = parseManualShooterFromRow(row);
+    const shooterName = rowMeta.shooterName || `Parsed row ${index + 1}`;
+    const raw: RawCandidate = {
+      date,
+      name: candidateNameFrom(eventTitle, listTitle, discipline.discipline),
+      shootingGround: shootingGroundResult.value || rowMeta.club,
+      discipline: discipline.discipline,
+      ownScore: row.total,
+      totalTargets,
+      winningScore,
+      maxScore: totalTargets,
+      placement: rowMeta.placement,
+      seriesScores: row.seriesScores,
+      shooterName,
+      shooterClass: rowMeta.shooterClass,
+      leirdueUrl: input.url,
+      listType: classifyListType(listTitle),
+      sourceText: pageText,
+      listTitle,
+      notes: [
+        ...discipline.notes,
+        `Shared ingestion parsed row: ${row.text}`,
+        ids.stevneId ? `stevne_id=${ids.stevneId}` : "Could not detect stevne_id.",
+        ids.listeId ? `liste_id=${ids.listeId}` : "Could not detect liste_id.",
+      ],
+      validationSource: true,
+      shootingGroundSource: shootingGroundResult.source,
+    };
+    const candidate = classifyNormalizedCandidate(buildCandidate(raw, Array.from(new Set([...selectedDisciplines, raw.discipline])), parsedYear(date) ?? year), parsedYear(date) ?? year);
+    const validationStatus: LeirdueSharedParsedResultRow["validationStatus"] = candidate.category === "recommended" ? "valid" : candidate.category === "control" ? "invalid" : "needs_review";
+    return {
+      originalName: shooterName,
+      club: rowMeta.club,
+      placement: rowMeta.placement,
+      score: candidate.ownScore,
+      totalTargets: candidate.totalTargets,
+      winningScore: candidate.winningScore,
+      seriesScores: candidate.seriesScores || [],
+      discipline: candidate.discipline,
+      eventDate: candidate.date,
+      eventTitle: candidate.name,
+      organizer: candidate.shootingGround,
+      sourceUrl: input.url,
+      rawRow: row.text,
+      validationStatus,
+    };
+  });
+}
+
 function emptyManualLinkParseResult(url: string, status: number | null, error: string): LeirdueManualLinkParseResult {
   const ids = extractLeirdueSourceIdentifiers(url);
   return {

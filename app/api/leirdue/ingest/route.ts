@@ -2,7 +2,8 @@ import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { canManageBetaAccess } from "@/lib/access";
-import { nordicSafeNameKey, normalizeLeirdueDisciplineLabel } from "@/lib/leirdue/normalize";
+import { nordicSafeNameKey } from "@/lib/leirdue/normalize";
+import { parseLeirdueSharedResultListHtml } from "@/lib/leirdue/parser";
 
 export const dynamic = "force-dynamic";
 
@@ -89,31 +90,34 @@ function listeLinksFromHtml(html: string, eventId: string, year: number) {
   return Array.from(links.values());
 }
 
-function inferDiscipline(text: string) { return normalizeLeirdueDisciplineLabel(text).discipline || "Other"; }
 function rowsFromResultList(html: string, list: ListRow, year: number) {
-  const eventDate = html.match(/(20\d{2})[-.](\d{1,2})[-.](\d{1,2})/)?.[0]?.replace(/\./g, "-") || null;
-  const discipline = inferDiscipline(stripTags(html).slice(0, 2000));
-  const chunks = Array.from(html.matchAll(/<tr[\s\S]*?<\/tr>/gi)).map((m) => m[0]);
-  const sourceRows = chunks.length ? chunks : html.split(/<br\s*\/?|\n/gi);
-  const parsed = [] as Record<string, unknown>[];
-  for (const chunk of sourceRows) {
-    const raw = stripTags(chunk);
-    if (!raw || /ranking|prosent|%|klassef|sum etter/i.test(raw)) continue;
-    const scoreMatch = raw.match(/\b(\d{1,3})\s*[\/ ]\s*(50|75|100|125|150|200)\b/);
-    if (!scoreMatch) continue;
-    const score = Number(scoreMatch[1]);
-    const total = Number(scoreMatch[2]);
-    if (score <= 0 || score > total) continue;
-    const before = raw.slice(0, scoreMatch.index).replace(/^\s*\d+\s*[.)-]?\s*/, "").trim();
-    const name = before.split(/\s{2,}|\t/).find((part) => /[A-Za-zÆØÅæøå]{2,}/.test(part)) || before;
-    if (!name || name.length < 3) continue;
-    const placement = Number(raw.match(/^\s*(\d{1,3})\b/)?.[1] || "") || null;
-    const winningScore = Math.max(score, Number(raw.match(/(?:vinner|winner|best)\D+(\d{1,3})/i)?.[1] || score));
-    const normalized_name = nordicSafeNameKey(name);
-    const row = { year, event_id: list.event_id, liste_id: list.liste_id, normalized_name, original_name: name, club: null, placement, score, total_targets: total, winning_score: winningScore, series_scores: [], discipline, event_date: eventDate, event_title: list.list_title, organizer: null, source_url: list.source_url || `${BASE}?stevne=${list.event_id}&meny=resultater&liste_id=${list.liste_id}`, raw_row: raw, validation_status: "needs_review", parser_version: PARSER_VERSION, parsed_at: new Date().toISOString(), updated_at: new Date().toISOString() };
-    parsed.push({ ...row, result_identity: resultIdentity(row) });
-  }
-  return parsed;
+  const sourceUrl = list.source_url || `${BASE}?stevne=${list.event_id}&meny=resultater&liste_id=${list.liste_id}`;
+  return parseLeirdueSharedResultListHtml({ html, url: sourceUrl, year, listTitle: list.list_title }).map((parsed) => {
+    const row = {
+      year,
+      event_id: list.event_id,
+      liste_id: list.liste_id,
+      normalized_name: nordicSafeNameKey(parsed.originalName),
+      original_name: parsed.originalName,
+      club: parsed.club,
+      placement: parsed.placement,
+      score: parsed.score,
+      total_targets: parsed.totalTargets,
+      winning_score: parsed.winningScore,
+      series_scores: parsed.seriesScores,
+      discipline: parsed.discipline,
+      event_date: parsed.eventDate,
+      event_title: parsed.eventTitle,
+      organizer: parsed.organizer,
+      source_url: sourceUrl,
+      raw_row: parsed.rawRow,
+      validation_status: parsed.validationStatus,
+      parser_version: PARSER_VERSION,
+      parsed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    return { ...row, result_identity: resultIdentity(row) };
+  });
 }
 
 async function refreshStatus(service: Service, year: number, duration: number, errors: unknown[] = []) {
