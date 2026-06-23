@@ -551,25 +551,39 @@ function sharedRowDerivedScoreAndTargets(row: SharedResultRow) {
   const supportedTargetTotals = [25, 50, 75, 100, 125, 150, 200];
   const score = row.score;
   const storedTotal = row.total_targets;
-  const trustedSeries = numericCells.length >= 2 && score !== null && storedTotal !== null && numericCells.every((value) => value >= 0 && value <= 25) && numericCells.reduce((total, value) => total + value, 0) === score && numericCells.length * 25 === storedTotal;
-  const excludedNumericEvidence = numericCells.length && !trustedSeries ? ` Excluded numeric cells from score reconstruction: ${numericCells.join("+")}.` : "";
+  const trustedSeriesFor = (targetTotal: number | null) => {
+    if (score === null || targetTotal === null || targetTotal % 25 !== 0) return [] as number[];
+    const expectedSeriesCount = targetTotal / 25;
+    if (expectedSeriesCount < 2 || expectedSeriesCount > 10 || numericCells.length < expectedSeriesCount) return [] as number[];
+    const candidateSeries = numericCells.slice(-expectedSeriesCount);
+    const candidateSum = candidateSeries.reduce((total, value) => total + value, 0);
+    return candidateSeries.every((value) => value >= 0 && value <= 25) && candidateSum === score ? candidateSeries : [];
+  };
+  const evidenceFor = (seriesScores: number[], message: string) => {
+    const excludedNumericValues = seriesScores.length ? numericCells.slice(0, Math.max(0, numericCells.length - seriesScores.length)) : numericCells;
+    const trustedSeriesEvidence = seriesScores.length ? ` Trusted series values: ${seriesScores.join("+")}.` : "";
+    const excludedNumericEvidence = excludedNumericValues.length ? ` Excluded numeric cells from score reconstruction: ${excludedNumericValues.join("+")}.` : "";
+    return `${message}.${trustedSeriesEvidence}${excludedNumericEvidence}`.trim();
+  };
   if (score === null || storedTotal === null) {
-    return { score, totalTargets: storedTotal, seriesScores: trustedSeries ? numericCells : [], evidence: `missing stored score or target evidence.${excludedNumericEvidence}`.trim() };
+    return { score, totalTargets: storedTotal, seriesScores: [] as number[], evidence: evidenceFor([], "missing stored score or target evidence") };
   }
   if (supportedTargetTotals.includes(storedTotal)) {
-    return { score, totalTargets: storedTotal, seriesScores: trustedSeries ? numericCells : [], evidence: `stored score/target columns.${excludedNumericEvidence}`.trim() };
+    const trustedSeries = trustedSeriesFor(storedTotal);
+    return { score, totalTargets: storedTotal, seriesScores: trustedSeries, evidence: evidenceFor(trustedSeries, "stored score/target columns") };
   }
   const nextSupportedTotal = supportedTargetTotals.find((targetTotal) => score <= targetTotal);
   const canRepairNearProgrammeTotal = nextSupportedTotal !== undefined && nextSupportedTotal <= 100 && Math.abs(nextSupportedTotal - storedTotal) <= 6;
   if (canRepairNearProgrammeTotal) {
+    const trustedSeries = trustedSeriesFor(nextSupportedTotal);
     return {
       score,
       totalTargets: nextSupportedTotal,
-      seriesScores: trustedSeries ? numericCells : [],
-      evidence: `stored shooter score with corrected programme target total ${storedTotal}->${nextSupportedTotal}.${excludedNumericEvidence}`.trim(),
+      seriesScores: trustedSeries,
+      evidence: evidenceFor(trustedSeries, `stored shooter score with corrected programme target total ${storedTotal}->${nextSupportedTotal}`),
     };
   }
-  return { score, totalTargets: storedTotal, seriesScores: trustedSeries ? numericCells : [], evidence: `stored score with unsupported target total ${storedTotal}.${excludedNumericEvidence}`.trim() };
+  return { score, totalTargets: storedTotal, seriesScores: [] as number[], evidence: evidenceFor([], `stored score with unsupported target total ${storedTotal}`) };
 }
 
 function sharedRowHasNonReviewableEvidence(row: SharedResultRow) {
@@ -744,6 +758,12 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
   const failedCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "failed").length;
   const reviewableRows = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "valid" || item.effectiveStatus === "needs_review").map((item) => item.row);
   const ignoredInvalidCount = invalidCount + failedCount;
+  const rowStageDiagnostics = rowsWithEffectiveStatus.slice(0, 100).map(({ row, effectiveStatus }) => {
+    const disciplineAccepted = input.disciplines.length === 0 || !row.discipline || input.disciplines.includes(row.discipline);
+    const rejection = effectiveStatus === "valid" || effectiveStatus === "needs_review" ? "reviewable before semantic grouping" : sharedRowHasNonReviewableEvidence(row) ? "validation/non-reviewable evidence" : effectiveStatus;
+    const candidate = effectiveStatus === "valid" || effectiveStatus === "needs_review" ? sharedResultRowToCandidate(row) : null;
+    return `row event=${row.event_id || "none"} liste=${row.liste_id || "none"} name=${row.original_name || row.normalized_name} normalized=${row.normalized_name} date=${row.event_date || "unknown"} title=${row.event_title || "unknown"} discipline=${row.discipline || "unknown"} raw=${row.score ?? "?"}/${row.total_targets ?? "?"} series=${Array.isArray(row.series_scores) ? row.series_scores.join("+") : "none"} storedStatus=${row.validation_status} effectiveStatus=${effectiveStatus} disciplineAccepted=${disciplineAccepted ? "yes" : "no"} semanticKey=${candidate ? sharedCandidateSemanticKey(candidate, normalizedName) : "not-reviewable"} rejection=${rejection}`;
+  });
   const candidatesBeforeSemanticDeduplication = reviewableRows.map(sharedResultRowToCandidate);
   const deduped = dedupeSharedCandidatesSemantically(candidatesBeforeSemanticDeduplication, normalizedName);
   const candidates = deduped.candidates;
@@ -751,6 +771,6 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
   const coverageStatus = (statusResult.data?.status as SharedLeirdueSearchStats["coverageStatus"] | undefined) || (statusResult.error ? "unknown" : "not_started");
   return {
     candidates,
-    stats: { ok: true, error: statusResult.error ? `Shared Leirdue ingestion status read failed: ${statusResult.error.message}` : null, queryDurationMs: Date.now() - started, rowsFound: reviewableRows.length, totalRows: rows.length, validCount, needsReviewCount, invalidCount, failedCount, reviewableCount, ignoredInvalidCount, exactNameRowsFound: exactRows.length, clubSuffixedRowsFound: prefixedRows.length, ambiguousNameRowsRejected, rowsBeforeSemanticDeduplication: candidatesBeforeSemanticDeduplication.length, canonicalCandidatesAfterSemanticDeduplication: candidates.length, duplicateSourceListsHidden: deduped.hidden, acceptedNameMatchReasons, semanticEventGroupDiagnostics: deduped.diagnostics, coverageStatus, indexingComplete: coverageStatus === "complete", liveCrawlStarted: false as const },
+    stats: { ok: true, error: statusResult.error ? `Shared Leirdue ingestion status read failed: ${statusResult.error.message}` : null, queryDurationMs: Date.now() - started, rowsFound: reviewableRows.length, totalRows: rows.length, validCount, needsReviewCount, invalidCount, failedCount, reviewableCount, ignoredInvalidCount, exactNameRowsFound: exactRows.length, clubSuffixedRowsFound: prefixedRows.length, ambiguousNameRowsRejected, rowsBeforeSemanticDeduplication: candidatesBeforeSemanticDeduplication.length, canonicalCandidatesAfterSemanticDeduplication: candidates.length, duplicateSourceListsHidden: deduped.hidden, acceptedNameMatchReasons, semanticEventGroupDiagnostics: [...rowStageDiagnostics, ...deduped.diagnostics], coverageStatus, indexingComplete: coverageStatus === "complete", liveCrawlStarted: false as const },
   };
 }
