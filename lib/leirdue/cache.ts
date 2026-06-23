@@ -584,6 +584,16 @@ function sharedRowDerivedScoreAndTargets(row: SharedResultRow) {
       evidence: evidenceFor(trustedSeries, `stored shooter score with corrected programme target total ${storedTotal}->${nextSupportedTotal}`),
     };
   }
+  const nonStandardSeriesSum = numericCells.reduce((total, value) => total + value, 0);
+  const nonStandardTargetSupportedBySeries = numericCells.length >= 2 && numericCells.length <= 20 && numericCells.every((value) => value >= 0 && value <= 25) && nonStandardSeriesSum === score && storedTotal >= score && storedTotal <= 250;
+  if (nonStandardTargetSupportedBySeries) {
+    return {
+      score,
+      totalTargets: storedTotal,
+      seriesScores: numericCells,
+      evidence: evidenceFor(numericCells, `stored non-standard target total ${storedTotal} supported by row series`),
+    };
+  }
   return { score, totalTargets: storedTotal, seriesScores: [] as number[], evidence: evidenceFor([], `stored score with unsupported target total ${storedTotal}`) };
 }
 
@@ -594,13 +604,26 @@ function sharedRowHasNonReviewableEvidence(row: SharedResultRow) {
   const derived = sharedRowDerivedScoreAndTargets(row);
   if (derived.score === null || derived.totalTargets === null || derived.score <= 0 || derived.totalTargets <= 0 || derived.score > derived.totalTargets) return true;
   const supportedTargetTotals = new Set([25, 50, 75, 100, 125, 150, 200]);
-  if (!supportedTargetTotals.has(derived.totalTargets)) return true;
+  if (!supportedTargetTotals.has(derived.totalTargets) && !/non-standard target total/.test(derived.evidence)) return true;
   return false;
 }
 
 function effectiveSharedValidationStatus(row: SharedResultRow): SharedResultRow["validation_status"] {
   if ((row.validation_status === "valid" || row.validation_status === "needs_review") && sharedRowHasNonReviewableEvidence(row)) return "invalid";
   return row.validation_status;
+}
+
+function sharedDisciplineMatches(rowDiscipline: string | null, selectedDisciplines: string[]) {
+  if (selectedDisciplines.length === 0 || !rowDiscipline) return true;
+  if (selectedDisciplines.includes(rowDiscipline)) return true;
+  const row = rowDiscipline.toLowerCase();
+  return selectedDisciplines.some((discipline) => {
+    const selected = discipline.toLowerCase();
+    if (selected === "sporting") return row.includes("sporting") && !row.includes("compak") && !row.includes("compact");
+    if (selected.includes("compak") || selected.includes("compact")) return row.includes("compak") || row.includes("compact");
+    if (selected.includes("leirduesti")) return row.includes("leirduesti");
+    return false;
+  });
 }
 
 function sharedResultRowToCandidate(row: SharedResultRow): LeirdueCandidate {
@@ -653,7 +676,7 @@ function candidateRejectionReason(candidate: LeirdueCandidate) {
   if (/(ranking|selection|uttak|cupsummary|multieventsummary|resultat etter standplass|standplass|station|klasseføring|klasseforing)/.test(text)) return "ranking/selection/station/summary list";
   if (candidate.ownScore === null || candidate.totalTargets === null) return "missing score or total targets";
   if (candidate.ownScore > candidate.totalTargets) return "score exceeds total targets";
-  if (![25, 50, 75, 100, 125, 150, 200].includes(candidate.totalTargets)) return "unsupported or inferred target total";
+  if (![25, 50, 75, 100, 125, 150, 200].includes(candidate.totalTargets) && !/non-standard target total/.test(candidate.notes || "")) return "unsupported or inferred target total";
   return null;
 }
 
@@ -753,7 +776,7 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
     else if (acceptedNameMatchReasons.length < 25) acceptedNameMatchReasons.push(`${row.original_name || row.normalized_name}: ${reason}`);
     return accepted;
   });
-  const rows = nameMatchedRows.filter((row) => input.disciplines.length === 0 || !row.discipline || input.disciplines.includes(row.discipline));
+  const rows = nameMatchedRows.filter((row) => sharedDisciplineMatches(row.discipline, input.disciplines));
   const rowsWithEffectiveStatus = rows.map((row) => ({ row, effectiveStatus: effectiveSharedValidationStatus(row) }));
   const validCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "valid").length;
   const needsReviewCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "needs_review").length;
@@ -762,7 +785,7 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
   const reviewableRows = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "valid" || item.effectiveStatus === "needs_review").map((item) => item.row);
   const ignoredInvalidCount = invalidCount + failedCount;
   const rowStageDiagnostics = rowsWithEffectiveStatus.slice(0, 100).map(({ row, effectiveStatus }) => {
-    const disciplineAccepted = input.disciplines.length === 0 || !row.discipline || input.disciplines.includes(row.discipline);
+    const disciplineAccepted = sharedDisciplineMatches(row.discipline, input.disciplines);
     const rejection = effectiveStatus === "valid" || effectiveStatus === "needs_review" ? "reviewable before semantic grouping" : sharedRowHasNonReviewableEvidence(row) ? "validation/non-reviewable evidence" : effectiveStatus;
     const candidate = effectiveStatus === "valid" || effectiveStatus === "needs_review" ? sharedResultRowToCandidate(row) : null;
     return `row event=${row.event_id || "none"} liste=${row.liste_id || "none"} name=${row.original_name || row.normalized_name} normalized=${row.normalized_name} date=${row.event_date || "unknown"} title=${row.event_title || "unknown"} discipline=${row.discipline || "unknown"} raw=${row.score ?? "?"}/${row.total_targets ?? "?"} series=${Array.isArray(row.series_scores) ? row.series_scores.join("+") : "none"} storedStatus=${row.validation_status} effectiveStatus=${effectiveStatus} disciplineAccepted=${disciplineAccepted ? "yes" : "no"} semanticKey=${candidate ? sharedCandidateSemanticKey(candidate, normalizedName) : "not-reviewable"} rejection=${rejection}`;
