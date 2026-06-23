@@ -573,9 +573,10 @@ function sharedRowDerivedScoreAndTargets(row: SharedResultRow) {
     return { score, totalTargets: storedTotal, seriesScores: trustedSeries, evidence: evidenceFor(trustedSeries, "stored score/target columns") };
   }
   const nextSupportedTotal = supportedTargetTotals.find((targetTotal) => score <= targetTotal);
-  const canRepairNearProgrammeTotal = nextSupportedTotal !== undefined && nextSupportedTotal <= 100 && Math.abs(nextSupportedTotal - storedTotal) <= 6;
+  const trustedSeriesForNextTotal = nextSupportedTotal === undefined ? [] as number[] : trustedSeriesFor(nextSupportedTotal);
+  const canRepairNearProgrammeTotal = nextSupportedTotal !== undefined && Math.abs(nextSupportedTotal - storedTotal) <= 6 && (nextSupportedTotal <= 100 || trustedSeriesForNextTotal.length >= 2);
   if (canRepairNearProgrammeTotal) {
-    const trustedSeries = trustedSeriesFor(nextSupportedTotal);
+    const trustedSeries = trustedSeriesForNextTotal;
     return {
       score,
       totalTargets: nextSupportedTotal,
@@ -678,8 +679,10 @@ function sharedCandidatePreference(candidate: LeirdueCandidate) {
   if (hasTrustedSeriesEvidence) score += 25;
   if (/corrected programme target total/.test(candidate.notes || "")) score += 15;
   if (candidateRejectionReason(candidate)) score -= 1000;
+  if (/(medaljeklasse|medal class|individual|individuell)/.test(text)) score += 40;
   if (/\b(overall|main result|resultater|hovedresultat|sammenlagt)\b/.test(text)) score += 10;
   if (/(ranking|prosent|percentage|klasseføring|klasseforing|resultat etter standplass|standplass|station|cupsummary|multieventsummary)/.test(text)) score -= 100;
+  if (/(uttak|selection|lagskyting|lagresultat|team result|kongepokal|king.?s cup|steel challenge)/.test(text)) score -= 150;
   return score;
 }
 
