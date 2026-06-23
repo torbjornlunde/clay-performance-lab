@@ -16,7 +16,7 @@ const PARSER_VERSION = "leirdue-shared-v1";
 type Service = SupabaseClient;
 
 type EventRow = { event_id: string; source_url: string | null; event_title: string | null; year: number | null };
-type ListRow = { event_id: string; liste_id: string; source_url: string | null; list_title: string | null; year?: number | null };
+type ListRow = { event_id: string; liste_id: string; source_url: string | null; list_title: string | null; year?: number | null; ingestion_error?: string | null };
 
 function anonClient(authorization: string | null) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -166,16 +166,18 @@ async function eventBatch(service: Service, year: number) {
 }
 
 async function resultListBatch(service: Service, year: number) {
-  const { data } = await service.from("leirdue_result_list_index").select("event_id,liste_id,source_url,list_title,year").eq("year", year).in("ingestion_status", ["pending", "needs_review"]).limit(LIST_BATCH_LIMIT);
+  const { data } = await service.from("leirdue_result_list_index").select("event_id,liste_id,source_url,list_title,year,ingestion_error").eq("year", year).in("ingestion_status", ["pending", "needs_review"]).limit(LIST_BATCH_LIMIT);
   let listsProcessed = 0, shooterRows = 0, needsReview = 0, invalid = 0; const errors: unknown[] = [];
   for (const list of (data || []) as ListRow[]) {
     try {
       const html = await fetchHtml(list.source_url || `${BASE}?stevne=${list.event_id}&meny=resultater&liste_id=${list.liste_id}`);
       const rows = rowsFromResultList(html, list, year);
       if (rows.length) await service.from("leirdue_shared_shooter_results").upsert(rows, { onConflict: "result_identity" });
-      const ingestion_status = rows.length ? "completed" : "needs_review";
-      await service.from("leirdue_result_list_index").update({ ingestion_status, is_valid_single_event_result: rows.length > 0, last_fetched_at: new Date().toISOString(), ingestion_error: rows.length ? null : "No shooter rows parsed", updated_at: new Date().toISOString() }).eq("event_id", list.event_id).eq("liste_id", list.liste_id);
-      listsProcessed += 1; shooterRows += rows.length; if (!rows.length) needsReview += 1;
+      const unsupportedAfterRetry = rows.length === 0 && Boolean(list.ingestion_error);
+      const ingestion_status = rows.length ? "completed" : unsupportedAfterRetry ? "failed" : "needs_review";
+      const ingestion_error = rows.length ? null : unsupportedAfterRetry ? `Unsupported result list after bounded retry: ${list.ingestion_error || "No shooter rows parsed"}` : "No shooter rows parsed";
+      await service.from("leirdue_result_list_index").update({ ingestion_status, is_valid_single_event_result: rows.length > 0, last_fetched_at: new Date().toISOString(), ingestion_error, updated_at: new Date().toISOString() }).eq("event_id", list.event_id).eq("liste_id", list.liste_id);
+      listsProcessed += 1; shooterRows += rows.length; if (!rows.length && !unsupportedAfterRetry) needsReview += 1; if (unsupportedAfterRetry) invalid += 1;
     } catch (error) {
       errors.push({ listeId: list.liste_id, error: String(error) }); invalid += 1;
       await service.from("leirdue_result_list_index").update({ ingestion_status: "failed", is_valid_single_event_result: false, ingestion_error: String(error), updated_at: new Date().toISOString() }).eq("event_id", list.event_id).eq("liste_id", list.liste_id);

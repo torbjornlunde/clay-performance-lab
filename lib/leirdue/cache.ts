@@ -536,9 +536,24 @@ type SharedResultRow = {
   parsed_at: string | null;
 };
 
+
+function sharedRowHasNonReviewableEvidence(row: SharedResultRow) {
+  const text = `${row.event_title || ""} ${row.raw_row || ""} ${row.source_url || ""}`.toLowerCase();
+  if (/\b\d{1,3}(?:[,.]\d+)?\s*%/.test(text) || /(prosent|percentage)/.test(text)) return true;
+  if (/(ranking|cup sammenlagt|sammenlagt premiering|klasseføring|klasseforing|sesong|season|multieventsummary|cupsummary)/i.test(text)) return true;
+  if (row.score === null || row.total_targets === null || row.score <= 0 || row.total_targets <= 0 || row.score > row.total_targets) return true;
+  return false;
+}
+
+function effectiveSharedValidationStatus(row: SharedResultRow): SharedResultRow["validation_status"] {
+  if ((row.validation_status === "valid" || row.validation_status === "needs_review") && sharedRowHasNonReviewableEvidence(row)) return "invalid";
+  return row.validation_status;
+}
+
 function sharedResultRowToCandidate(row: SharedResultRow): LeirdueCandidate {
-  const reviewable = row.validation_status === "valid" || row.validation_status === "needs_review";
-  const category = row.validation_status === "valid" ? "recommended" : row.validation_status === "needs_review" ? "review" : "control";
+  const effectiveStatus = effectiveSharedValidationStatus(row);
+  const reviewable = effectiveStatus === "valid" || effectiveStatus === "needs_review";
+  const category = effectiveStatus === "valid" ? "recommended" : effectiveStatus === "needs_review" ? "review" : "control";
   return {
     date: row.event_date,
     name: row.event_title || "Leirdue.net cached result",
@@ -554,17 +569,17 @@ function sharedResultRowToCandidate(row: SharedResultRow): LeirdueCandidate {
     shooterClass: null,
     stevneId: row.event_id,
     listeId: row.liste_id,
-    warnings: row.validation_status === "needs_review" ? ["Shared Leirdue cache row needs review."] : row.validation_status === "invalid" ? ["Shared Leirdue cache row marked invalid."] : [],
+    warnings: effectiveStatus === "needs_review" ? ["Shared Leirdue cache row needs review."] : effectiveStatus === "invalid" ? ["Shared Leirdue cache row marked invalid."] : [],
     duplicateStatus: "new",
     duplicateMatches: [],
     shooterMatchStatus: reviewable ? "matched_to_you" : null,
     shooterMatchReason: reviewable ? "exact normalized match" : null,
     leirdueUrl: row.source_url,
     listType: null,
-    confidence: row.validation_status === "valid" ? "high" : row.validation_status === "needs_review" ? "medium" : "low",
+    confidence: effectiveStatus === "valid" ? "high" : effectiveStatus === "needs_review" ? "medium" : "low",
     notes: `${row.raw_row || ""} Shared Leirdue cache source. Cached at ${row.parsed_at || "unknown"}.`.trim(),
     category,
-    importRecommended: row.validation_status === "valid",
+    importRecommended: effectiveStatus === "valid",
   };
 }
 
@@ -591,11 +606,12 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
   ]);
   if (error) return { candidates: [] as LeirdueCandidate[], stats: emptyStats(`Shared Leirdue cache read failed: ${error.message}`) };
   const rows = ((data || []) as SharedResultRow[]).filter((row) => input.disciplines.length === 0 || !row.discipline || input.disciplines.includes(row.discipline));
-  const validCount = rows.filter((row) => row.validation_status === "valid").length;
-  const needsReviewCount = rows.filter((row) => row.validation_status === "needs_review").length;
-  const invalidCount = rows.filter((row) => row.validation_status === "invalid").length;
-  const failedCount = rows.filter((row) => row.validation_status === "failed").length;
-  const reviewableRows = rows.filter((row) => row.validation_status === "valid" || row.validation_status === "needs_review");
+  const rowsWithEffectiveStatus = rows.map((row) => ({ row, effectiveStatus: effectiveSharedValidationStatus(row) }));
+  const validCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "valid").length;
+  const needsReviewCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "needs_review").length;
+  const invalidCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "invalid").length;
+  const failedCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "failed").length;
+  const reviewableRows = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "valid" || item.effectiveStatus === "needs_review").map((item) => item.row);
   const ignoredInvalidCount = invalidCount + failedCount;
   const candidates = reviewableRows.map(sharedResultRowToCandidate);
   const reviewableCount = candidates.filter((candidate) => candidate.category !== "control" && candidate.ownScore !== null && candidate.totalTargets !== null).length;
