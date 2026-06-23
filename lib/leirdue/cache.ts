@@ -635,6 +635,16 @@ function sharedDisciplineMatches(rowDiscipline: string | null, selectedDisciplin
   });
 }
 
+function sharedEffectiveDiscipline(row: SharedResultRow) {
+  if (row.discipline && row.discipline !== "Other") return row.discipline;
+  const text = `${row.event_title || ""} ${row.raw_row || ""} ${row.source_url || ""}`.toLowerCase();
+  if (/kompa(?:k|ct).*leirduesti|leirduesti.*kompa(?:k|ct)/.test(text)) return "Kompakt leirduesti";
+  if (/leirduesti/.test(text)) return "Leirduesti";
+  if (/compak|compact/.test(text)) return "Compak Sporting";
+  if (/fitasc|english sporting|sporting/.test(text)) return "Sporting";
+  return row.discipline || "Other";
+}
+
 function sharedResultRowToCandidate(row: SharedResultRow): LeirdueCandidate {
   const effectiveStatus = effectiveSharedValidationStatus(row);
   const derived = sharedRowDerivedScoreAndTargets(row);
@@ -644,7 +654,7 @@ function sharedResultRowToCandidate(row: SharedResultRow): LeirdueCandidate {
     date: row.event_date,
     name: row.event_title || "Leirdue.net cached result",
     shootingGround: row.organizer || row.club,
-    discipline: row.discipline || "Other",
+    discipline: sharedEffectiveDiscipline(row),
     ownScore: derived.score,
     totalTargets: derived.totalTargets,
     winningScore: row.winning_score,
@@ -822,7 +832,7 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
     else if (acceptedNameMatchReasons.length < 25) acceptedNameMatchReasons.push(`${row.original_name || row.normalized_name}: ${reason}`);
     return accepted;
   });
-  const rows = nameMatchedRows.filter((row) => sharedDisciplineMatches(row.discipline, input.disciplines));
+  const rows = nameMatchedRows.filter((row) => sharedDisciplineMatches(sharedEffectiveDiscipline(row), input.disciplines));
   const rowsWithEffectiveStatus = rows.map((row) => ({ row, effectiveStatus: effectiveSharedValidationStatus(row) }));
   const validCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "valid").length;
   const needsReviewCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "needs_review").length;
@@ -831,10 +841,10 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
   const reviewableRows = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "valid" || item.effectiveStatus === "needs_review").map((item) => item.row);
   const ignoredInvalidCount = invalidCount + failedCount;
   const rowStageDiagnostics = rowsWithEffectiveStatus.slice(0, 100).map(({ row, effectiveStatus }) => {
-    const disciplineAccepted = sharedDisciplineMatches(row.discipline, input.disciplines);
+    const disciplineAccepted = sharedDisciplineMatches(sharedEffectiveDiscipline(row), input.disciplines);
     const rejection = effectiveStatus === "valid" || effectiveStatus === "needs_review" ? "reviewable before semantic grouping" : sharedRowHasNonReviewableEvidence(row) ? "validation/non-reviewable evidence" : effectiveStatus;
     const candidate = effectiveStatus === "valid" || effectiveStatus === "needs_review" ? sharedResultRowToCandidate(row) : null;
-    return `row event=${row.event_id || "none"} liste=${row.liste_id || "none"} name=${row.original_name || row.normalized_name} normalized=${row.normalized_name} date=${row.event_date || "unknown"} title=${row.event_title || "unknown"} discipline=${row.discipline || "unknown"} raw=${row.score ?? "?"}/${row.total_targets ?? "?"} series=${Array.isArray(row.series_scores) ? row.series_scores.join("+") : "none"} storedStatus=${row.validation_status} effectiveStatus=${effectiveStatus} disciplineAccepted=${disciplineAccepted ? "yes" : "no"} semanticKey=${candidate ? sharedCandidateSemanticKey(candidate, normalizedName) : "not-reviewable"} rejection=${rejection}`;
+    return `row event=${row.event_id || "none"} liste=${row.liste_id || "none"} name=${row.original_name || row.normalized_name} normalized=${row.normalized_name} date=${row.event_date || "unknown"} title=${row.event_title || "unknown"} discipline=${row.discipline || "unknown"} effectiveDiscipline=${sharedEffectiveDiscipline(row)} raw=${row.score ?? "?"}/${row.total_targets ?? "?"} series=${Array.isArray(row.series_scores) ? row.series_scores.join("+") : "none"} storedStatus=${row.validation_status} effectiveStatus=${effectiveStatus} disciplineAccepted=${disciplineAccepted ? "yes" : "no"} semanticKey=${candidate ? sharedCandidateSemanticKey(candidate, normalizedName) : "not-reviewable"} rejection=${rejection}`;
   });
   const candidatesBeforeSemanticDeduplication = reviewableRows.map(sharedResultRowToCandidate);
   const deduped = dedupeSharedCandidatesSemantically(candidatesBeforeSemanticDeduplication, normalizedName);

@@ -186,6 +186,38 @@ async function resultListBatch(service: Service, year: number) {
   return { listsProcessed, shooterRows, needsReview, invalid, errors };
 }
 
+async function reparseResultList(service: Service, input: { year: number; eventId?: string | null; listeId?: string | null; sourceUrl?: string | null; listTitle?: string | null }) {
+  if (!input.listeId && !input.sourceUrl) throw new Error("A liste_id or source URL is required for targeted reparse.");
+  let list: ListRow | null = null;
+  if (input.listeId) {
+    const query = service.from("leirdue_result_list_index").select("event_id,liste_id,source_url,list_title,year,ingestion_error").eq("year", input.year).eq("liste_id", input.listeId);
+    const { data } = input.eventId ? await query.eq("event_id", input.eventId).maybeSingle() : await query.maybeSingle();
+    list = data as ListRow | null;
+  }
+  const eventId = input.eventId || list?.event_id || (input.sourceUrl ? eventIdFromUrl(input.sourceUrl) : null);
+  const listeId = input.listeId || list?.liste_id || (input.sourceUrl ? listeIdFromUrl(input.sourceUrl) : null);
+  if (!eventId || !listeId) throw new Error("Could not determine event_id and liste_id for targeted reparse.");
+  const sourceUrl = input.sourceUrl || list?.source_url || `${BASE}?stevne=${eventId}&meny=resultater&liste_id=${listeId}`;
+  const targetList: ListRow = { event_id: eventId, liste_id: listeId, source_url: sourceUrl, list_title: input.listTitle || list?.list_title || `Result list ${listeId}`, year: input.year, ingestion_error: list?.ingestion_error || null };
+  const html = await fetchHtml(sourceUrl);
+  const rows = rowsFromResultList(html, targetList, input.year);
+  if (rows.length) await service.from("leirdue_shared_shooter_results").upsert(rows, { onConflict: "result_identity" });
+  await service.from("leirdue_result_list_index").upsert({
+    event_id: eventId,
+    liste_id: listeId,
+    year: input.year,
+    source_url: sourceUrl,
+    list_title: targetList.list_title,
+    list_type: targetList.list_title,
+    ingestion_status: rows.length ? "completed" : "needs_review",
+    is_valid_single_event_result: rows.length > 0,
+    last_fetched_at: new Date().toISOString(),
+    ingestion_error: rows.length ? null : "Targeted reparse found no shooter rows; source may no longer expose the expected row.",
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "event_id,liste_id" });
+  return { eventId, listeId, rowsParsed: rows.length, upsertedRows: rows.length, parsedNames: rows.slice(0, 25).map((row) => row.original_name), message: rows.length ? "Targeted result list reparsed and shared rows upserted." : "Targeted reparse found no shooter rows; use manual import if the source no longer exposes the expected row." };
+}
+
 export async function GET(request: Request) {
   const admin = await requireAdmin(request);
   if (!admin.ok) return NextResponse.json({ error: admin.error }, { status: 403 });
@@ -207,13 +239,14 @@ export async function POST(request: Request) {
   if (!admin.ok) return NextResponse.json({ error: admin.error }, { status: 403 });
   const service = serviceClient();
   if (!service) return NextResponse.json({ error: "Missing service-role Supabase context." }, { status: 500 });
-  const body = await request.json().catch(() => ({})) as { year?: unknown; action?: unknown };
+  const body = await request.json().catch(() => ({})) as { year?: unknown; action?: unknown; eventId?: unknown; listeId?: unknown; sourceUrl?: unknown; listTitle?: unknown };
   const year = Number(body.year || new Date().getFullYear());
   const action = typeof body.action === "string" ? body.action : "combined";
   const started = Date.now(); const errors: unknown[] = []; let result = {};
   if (action === "discoverYear") result = await discoverYear(service, year);
   else if (action === "eventBatch") result = await eventBatch(service, year);
   else if (action === "resultListBatch") result = await resultListBatch(service, year);
+  else if (action === "reparseList") result = await reparseResultList(service, { year, eventId: typeof body.eventId === "string" ? body.eventId : null, listeId: typeof body.listeId === "string" ? body.listeId : null, sourceUrl: typeof body.sourceUrl === "string" ? body.sourceUrl : null, listTitle: typeof body.listTitle === "string" ? body.listTitle : null });
   else if (action === "retryFailed") {
     await Promise.all([service.from("leirdue_event_index").update({ ingestion_status: "pending" }).eq("year", year).eq("ingestion_status", "failed"), service.from("leirdue_result_list_index").update({ ingestion_status: "pending" }).eq("year", year).eq("ingestion_status", "failed")]);
     result = { retried: true };

@@ -12,6 +12,8 @@ export default function LeirdueCacheAdminPage() {
   const [loading, setLoading] = useState(false);
   const [runningUntilComplete, setRunningUntilComplete] = useState(false);
   const [loopStats, setLoopStats] = useState({ batches: 0, eventsCompleted: 0, listsCompleted: 0, shooterRowsStored: 0, startedAt: 0, lastError: "" });
+  const [targetEventId, setTargetEventId] = useState("");
+  const [targetListeId, setTargetListeId] = useState("");
   const stopRunRef = useRef(false);
 
   async function authHeaders(): Promise<Record<string, string>> {
@@ -34,10 +36,10 @@ export default function LeirdueCacheAdminPage() {
     return data as StatusResponse;
   }
 
-  async function runAction(action: string, options: { quiet?: boolean } = {}) {
+  async function runAction(action: string, options: { quiet?: boolean; eventId?: string; listeId?: string } = {}) {
     if (!options.quiet) setLoading(true);
     const headers = { "Content-Type": "application/json", ...(await authHeaders()) };
-    const response = await fetch("/api/leirdue/ingest", { method: "POST", headers, body: JSON.stringify({ year: Number(year), action }) });
+    const response = await fetch("/api/leirdue/ingest", { method: "POST", headers, body: JSON.stringify({ year: Number(year), action, eventId: options.eventId, listeId: options.listeId }) });
     const data = await response.json();
     if (!options.quiet) setLoading(false);
     if (!response.ok) throw new Error(data.error || "Ingestion batch failed.");
@@ -123,6 +125,11 @@ export default function LeirdueCacheAdminPage() {
           <span><strong>{status?.shooterRowsStored ?? 0}</strong> shooter result rows stored</span>
           <span><strong>{String(statusRow.last_batch_duration_ms ?? "n/a")}</strong> last batch ms</span>
           <span><strong>{String(statusRow.remaining_work_count ?? "unknown")}</strong> remaining work</span>
+        </div>
+        <div className="fieldRow">
+          <label>Event ID<input value={targetEventId} onChange={(event) => setTargetEventId(event.target.value)} placeholder="10225" /></label>
+          <label>Liste ID<input value={targetListeId} onChange={(event) => setTargetListeId(event.target.value)} placeholder="46612" /></label>
+          <button type="button" className="secondary" onClick={() => runAction("reparseList", { eventId: targetEventId.trim(), listeId: targetListeId.trim() })} disabled={loading || !targetListeId.trim()}>Reparse one result list</button>
         </div>
         <div className="btns">
           <button type="button" onClick={() => runAction("discoverYear")} disabled={loading}>Discover year</button>
