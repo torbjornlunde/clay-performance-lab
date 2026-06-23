@@ -335,6 +335,7 @@ export type LeirdueSearchDebug = {
     canonicalCandidatesAfterSemanticDeduplication: number;
     duplicateSourceListsHidden: number;
     acceptedNameMatchReasons: string[];
+    semanticEventGroupDiagnostics: string[];
     cacheScopeComplete: boolean;
     cacheScopeStatus: "unknown" | "incomplete" | "complete" | "failed";
     continuationRequired: boolean;

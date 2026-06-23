@@ -141,6 +141,7 @@ export async function POST(request: Request) {
       debug.cacheDiagnostics.canonicalCandidatesAfterSemanticDeduplication = shared.stats.canonicalCandidatesAfterSemanticDeduplication;
       debug.cacheDiagnostics.duplicateSourceListsHidden = shared.stats.duplicateSourceListsHidden;
       debug.cacheDiagnostics.acceptedNameMatchReasons = shared.stats.acceptedNameMatchReasons;
+      debug.cacheDiagnostics.semanticEventGroupDiagnostics = shared.stats.semanticEventGroupDiagnostics;
       debug.cacheDiagnostics.cacheScopeStatus = shared.stats.indexingComplete ? "complete" : "incomplete";
       debug.cacheDiagnostics.cacheScopeComplete = shared.stats.indexingComplete;
       debug.cacheDiagnostics.continuationRequired = false;

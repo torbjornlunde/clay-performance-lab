@@ -517,6 +517,7 @@ export type SharedLeirdueSearchStats = {
   canonicalCandidatesAfterSemanticDeduplication: number;
   duplicateSourceListsHidden: number;
   acceptedNameMatchReasons: string[];
+  semanticEventGroupDiagnostics: string[];
   coverageStatus: "unknown" | "not_started" | "incomplete" | "complete";
   indexingComplete: boolean;
   liveCrawlStarted: false;
@@ -549,6 +550,8 @@ function sharedRowHasNonReviewableEvidence(row: SharedResultRow) {
   if (/\b\d{1,3}(?:[,.]\d+)?\s*%/.test(text) || /(prosent|percentage)/.test(text)) return true;
   if (/(ranking|cup sammenlagt|sammenlagt premiering|klasseføring|klasseforing|sesong|season|multieventsummary|cupsummary)/i.test(text)) return true;
   if (row.score === null || row.total_targets === null || row.score <= 0 || row.total_targets <= 0 || row.score > row.total_targets) return true;
+  const supportedTargetTotals = new Set([25, 50, 75, 100, 125, 150, 200]);
+  if (!supportedTargetTotals.has(row.total_targets)) return true;
   return false;
 }
 
@@ -591,14 +594,32 @@ function sharedResultRowToCandidate(row: SharedResultRow): LeirdueCandidate {
 }
 
 
+
+function genuineRoundIdentity(candidate: LeirdueCandidate) {
+  const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes || ""}`.toLowerCase();
+  const roundMatch = text.match(/\b(?:runde|round|dag|day)\s*(\d{1,2})\b/);
+  if (roundMatch) return `round-${roundMatch[1]}`;
+  const dateMatch = text.match(/\b(lørdag|lordag|saturday|søndag|sondag|sunday)\b/);
+  return dateMatch?.[1] || "event-overall";
+}
+
+function candidateRejectionReason(candidate: LeirdueCandidate) {
+  const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes || ""}`.toLowerCase();
+  if (/\b\d{1,3}(?:[,.]\d+)?\s*%/.test(text) || /(prosent|percentage)/.test(text)) return "percentage/ranking evidence";
+  if (/(ranking|selection|uttak|cupsummary|multieventsummary|resultat etter standplass|standplass|station|klasseføring|klasseforing)/.test(text)) return "ranking/selection/station/summary list";
+  if (candidate.ownScore === null || candidate.totalTargets === null) return "missing score or total targets";
+  if (candidate.ownScore > candidate.totalTargets) return "score exceeds total targets";
+  if (![25, 50, 75, 100, 125, 150, 200].includes(candidate.totalTargets)) return "unsupported or inferred target total";
+  return null;
+}
+
 function sharedCandidateSemanticKey(candidate: LeirdueCandidate, normalizedName: string) {
   return [
     normalizedName,
     candidate.stevneId || "no-event",
     candidate.date || "no-date",
     candidate.discipline || "no-discipline",
-    candidate.ownScore ?? "no-score",
-    candidate.totalTargets ?? "no-targets",
+    genuineRoundIdentity(candidate),
   ].join("|");
 }
 
@@ -610,15 +631,19 @@ function sharedCandidatePreference(candidate: LeirdueCandidate) {
   if (candidate.stevneId && candidate.listeId) score += 20;
   if (candidate.date) score += 10;
   if (candidate.winningScore !== null) score += 5;
+  if (candidateRejectionReason(candidate)) score -= 1000;
+  if (/\b(overall|main result|resultater|hovedresultat|sammenlagt)\b/.test(text)) score += 10;
   if (/(ranking|prosent|percentage|klasseføring|klasseforing|resultat etter standplass|standplass|station|cupsummary|multieventsummary)/.test(text)) score -= 100;
   return score;
 }
 
 function dedupeSharedCandidatesSemantically(candidates: LeirdueCandidate[], normalizedName: string) {
   const byKey = new Map<string, LeirdueCandidate>();
+  const grouped = new Map<string, LeirdueCandidate[]>();
   let hidden = 0;
   for (const candidate of candidates) {
     const key = sharedCandidateSemanticKey(candidate, normalizedName);
+    grouped.set(key, [...(grouped.get(key) || []), candidate]);
     const existing = byKey.get(key);
     if (!existing) {
       byKey.set(key, candidate);
@@ -627,13 +652,17 @@ function dedupeSharedCandidatesSemantically(candidates: LeirdueCandidate[], norm
     hidden += 1;
     if (sharedCandidatePreference(candidate) > sharedCandidatePreference(existing)) byKey.set(key, candidate);
   }
-  return { candidates: Array.from(byKey.values()), hidden };
+  const diagnostics = Array.from(grouped.entries()).slice(0, 50).map(([key, group]) => {
+    const selected = byKey.get(key);
+    return `${key}: sources=${group.map((candidate) => `${candidate.listeId || "no-list"} ${candidate.ownScore ?? "?"}/${candidate.totalTargets ?? "?"} ${candidateRejectionReason(candidate) || "accepted"}`).join("; ")}; selected=${selected?.listeId || "none"}; reason=${selected ? candidateRejectionReason(selected) || "best supported single-event candidate" : "none"}; genuineRounds=${Array.from(new Set(group.map(genuineRoundIdentity))).join(",")}`;
+  });
+  return { candidates: Array.from(byKey.values()), hidden, diagnostics };
 }
 
 export async function getSharedLeirdueShooterResults(input: { shooterName: string; year: number; disciplines: string[]; authorization?: string | null }) {
   const started = Date.now();
   const supabase = supabaseReadClient(input.authorization);
-  const emptyStats = (error: string | null = null): SharedLeirdueSearchStats => ({ ok: !error, error, queryDurationMs: Date.now() - started, rowsFound: 0, totalRows: 0, validCount: 0, needsReviewCount: 0, invalidCount: 0, failedCount: 0, reviewableCount: 0, ignoredInvalidCount: 0, exactNameRowsFound: 0, clubSuffixedRowsFound: 0, ambiguousNameRowsRejected: 0, rowsBeforeSemanticDeduplication: 0, canonicalCandidatesAfterSemanticDeduplication: 0, duplicateSourceListsHidden: 0, acceptedNameMatchReasons: [], coverageStatus: "unknown", indexingComplete: false, liveCrawlStarted: false });
+  const emptyStats = (error: string | null = null): SharedLeirdueSearchStats => ({ ok: !error, error, queryDurationMs: Date.now() - started, rowsFound: 0, totalRows: 0, validCount: 0, needsReviewCount: 0, invalidCount: 0, failedCount: 0, reviewableCount: 0, ignoredInvalidCount: 0, exactNameRowsFound: 0, clubSuffixedRowsFound: 0, ambiguousNameRowsRejected: 0, rowsBeforeSemanticDeduplication: 0, canonicalCandidatesAfterSemanticDeduplication: 0, duplicateSourceListsHidden: 0, acceptedNameMatchReasons: [], semanticEventGroupDiagnostics: [], coverageStatus: "unknown", indexingComplete: false, liveCrawlStarted: false });
   if (!supabase) return { candidates: [] as LeirdueCandidate[], stats: emptyStats("Shared Leirdue cache read skipped: missing authenticated cache read context.") };
   const normalizedName = nordicSafeNameKey(input.shooterName);
   const selectColumns = "event_id,liste_id,normalized_name,original_name,club,placement,score,total_targets,winning_score,series_scores,discipline,event_date,event_title,organizer,source_url,raw_row,validation_status,parsed_at";
@@ -690,6 +719,6 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
   const coverageStatus = (statusResult.data?.status as SharedLeirdueSearchStats["coverageStatus"] | undefined) || (statusResult.error ? "unknown" : "not_started");
   return {
     candidates,
-    stats: { ok: true, error: statusResult.error ? `Shared Leirdue ingestion status read failed: ${statusResult.error.message}` : null, queryDurationMs: Date.now() - started, rowsFound: reviewableRows.length, totalRows: rows.length, validCount, needsReviewCount, invalidCount, failedCount, reviewableCount, ignoredInvalidCount, exactNameRowsFound: exactRows.length, clubSuffixedRowsFound: prefixedRows.length, ambiguousNameRowsRejected, rowsBeforeSemanticDeduplication: candidatesBeforeSemanticDeduplication.length, canonicalCandidatesAfterSemanticDeduplication: candidates.length, duplicateSourceListsHidden: deduped.hidden, acceptedNameMatchReasons, coverageStatus, indexingComplete: coverageStatus === "complete", liveCrawlStarted: false as const },
+    stats: { ok: true, error: statusResult.error ? `Shared Leirdue ingestion status read failed: ${statusResult.error.message}` : null, queryDurationMs: Date.now() - started, rowsFound: reviewableRows.length, totalRows: rows.length, validCount, needsReviewCount, invalidCount, failedCount, reviewableCount, ignoredInvalidCount, exactNameRowsFound: exactRows.length, clubSuffixedRowsFound: prefixedRows.length, ambiguousNameRowsRejected, rowsBeforeSemanticDeduplication: candidatesBeforeSemanticDeduplication.length, canonicalCandidatesAfterSemanticDeduplication: candidates.length, duplicateSourceListsHidden: deduped.hidden, acceptedNameMatchReasons, semanticEventGroupDiagnostics: deduped.diagnostics, coverageStatus, indexingComplete: coverageStatus === "complete", liveCrawlStarted: false as const },
   };
 }

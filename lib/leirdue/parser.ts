@@ -429,6 +429,7 @@ export function emptyLeirdueSearchDebug(): LeirdueSearchDebug {
       canonicalCandidatesAfterSemanticDeduplication: 0,
       duplicateSourceListsHidden: 0,
       acceptedNameMatchReasons: [],
+      semanticEventGroupDiagnostics: [],
       cacheScopeComplete: false,
       cacheScopeStatus: "unknown",
       continuationRequired: false,
