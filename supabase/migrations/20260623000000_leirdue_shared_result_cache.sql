@@ -121,7 +121,14 @@ select
   organizer,
   source_url,
   raw_row_text,
-  case when is_importable is true then 'valid' else 'needs_review' end,
+  case
+    when lower(concat_ws(' ', event_title, raw_row_text, source_url, candidate_quality, not_importable_reason)) ~ '(ranking|prosent|percentage|%|klassef|sum etter|sammenlagt|cup|kontroll|control|uttak|deltakerliste|påmelding|pamelding)' then 'invalid'
+    when own_score is null or total_targets is null or own_score <= 0 or total_targets <= 0 or own_score > total_targets then 'failed'
+    when source_url is null or liste_id is null then 'needs_review'
+    when candidate_quality like 'recommended/high%' and coalesce(not_importable_reason, '') = '' then 'valid'
+    when candidate_quality like 'recommended/%' and lower(concat_ws(' ', event_title, raw_row_text, source_url, candidate_quality, not_importable_reason)) !~ '(uncertain|review|class/unknown|klasse|could not|missing|ukjent)' then 'valid'
+    else 'needs_review'
+  end,
   'migrated-leirdue-search-cache-v1',
   coalesce(parsed_at, now()),
   now(),

@@ -586,11 +586,13 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
   ]);
   if (error) return { candidates: [] as LeirdueCandidate[], stats: emptyStats(`Shared Leirdue cache read failed: ${error.message}`) };
   const rows = ((data || []) as SharedResultRow[]).filter((row) => input.disciplines.length === 0 || !row.discipline || input.disciplines.includes(row.discipline));
-  const candidates = rows.map(sharedResultRowToCandidate);
+  const reviewableRows = rows.filter((row) => row.validation_status === "valid" || row.validation_status === "needs_review");
+  const ignoredInvalidCount = rows.length - reviewableRows.length;
+  const candidates = reviewableRows.map(sharedResultRowToCandidate);
   const reviewableCount = candidates.filter((candidate) => candidate.category !== "control" && candidate.ownScore !== null && candidate.totalTargets !== null).length;
   const coverageStatus = (statusResult.data?.status as SharedLeirdueSearchStats["coverageStatus"] | undefined) || (statusResult.error ? "unknown" : "not_started");
   return {
     candidates,
-    stats: { ok: true, error: statusResult.error ? `Shared Leirdue ingestion status read failed: ${statusResult.error.message}` : null, queryDurationMs: Date.now() - started, rowsFound: rows.length, reviewableCount, ignoredInvalidCount: rows.length - reviewableCount, coverageStatus, indexingComplete: coverageStatus === "complete", liveCrawlStarted: false as const },
+    stats: { ok: true, error: statusResult.error ? `Shared Leirdue ingestion status read failed: ${statusResult.error.message}` : null, queryDurationMs: Date.now() - started, rowsFound: reviewableRows.length, reviewableCount, ignoredInvalidCount, coverageStatus, indexingComplete: coverageStatus === "complete", liveCrawlStarted: false as const },
   };
 }
