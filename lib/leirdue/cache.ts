@@ -547,14 +547,29 @@ type SharedResultRow = {
 
 
 function sharedRowDerivedScoreAndTargets(row: SharedResultRow) {
-  const series = Array.isArray(row.series_scores) ? row.series_scores.filter((value) => Number.isFinite(value)) : [];
-  const reliableSeries = series.length >= 2 && series.every((value) => value >= 0 && value <= 25);
-  if (reliableSeries) {
-    const seriesScore = series.reduce((total, value) => total + value, 0);
-    const seriesTargets = series.length * 25;
-    if (seriesScore > 0 && seriesScore <= seriesTargets) return { score: seriesScore, totalTargets: seriesTargets, seriesScores: series, evidence: `series sum ${series.join("+")}=${seriesScore}/${seriesTargets}` };
+  const numericCells = Array.isArray(row.series_scores) ? row.series_scores.filter((value) => Number.isFinite(value)) : [];
+  const supportedTargetTotals = [25, 50, 75, 100, 125, 150, 200];
+  const score = row.score;
+  const storedTotal = row.total_targets;
+  const trustedSeries = numericCells.length >= 2 && score !== null && storedTotal !== null && numericCells.every((value) => value >= 0 && value <= 25) && numericCells.reduce((total, value) => total + value, 0) === score && numericCells.length * 25 === storedTotal;
+  const excludedNumericEvidence = numericCells.length && !trustedSeries ? ` Excluded numeric cells from score reconstruction: ${numericCells.join("+")}.` : "";
+  if (score === null || storedTotal === null) {
+    return { score, totalTargets: storedTotal, seriesScores: trustedSeries ? numericCells : [], evidence: `missing stored score or target evidence.${excludedNumericEvidence}`.trim() };
   }
-  return { score: row.score, totalTargets: row.total_targets, seriesScores: series, evidence: row.total_targets ? "stored score/target columns" : "missing target evidence" };
+  if (supportedTargetTotals.includes(storedTotal)) {
+    return { score, totalTargets: storedTotal, seriesScores: trustedSeries ? numericCells : [], evidence: `stored score/target columns.${excludedNumericEvidence}`.trim() };
+  }
+  const nextSupportedTotal = supportedTargetTotals.find((targetTotal) => score <= targetTotal);
+  const canRepairNearProgrammeTotal = nextSupportedTotal !== undefined && nextSupportedTotal <= 100 && Math.abs(nextSupportedTotal - storedTotal) <= 6;
+  if (canRepairNearProgrammeTotal) {
+    return {
+      score,
+      totalTargets: nextSupportedTotal,
+      seriesScores: trustedSeries ? numericCells : [],
+      evidence: `stored shooter score with corrected programme target total ${storedTotal}->${nextSupportedTotal}.${excludedNumericEvidence}`.trim(),
+    };
+  }
+  return { score, totalTargets: storedTotal, seriesScores: trustedSeries ? numericCells : [], evidence: `stored score with unsupported target total ${storedTotal}.${excludedNumericEvidence}`.trim() };
 }
 
 function sharedRowHasNonReviewableEvidence(row: SharedResultRow) {
@@ -645,8 +660,9 @@ function sharedCandidatePreference(candidate: LeirdueCandidate) {
   if (candidate.stevneId && candidate.listeId) score += 20;
   if (candidate.date) score += 10;
   if (candidate.winningScore !== null) score += 5;
-  const seriesScores = candidate.seriesScores || [];
-  if (seriesScores.length >= 2 && seriesScores.reduce((total, value) => total + value, 0) === candidate.ownScore && candidate.totalTargets === seriesScores.length * 25) score += 200;
+  const hasTrustedSeriesEvidence = /stored score\/target columns/.test(candidate.notes || "") && (candidate.seriesScores || []).length >= 2;
+  if (hasTrustedSeriesEvidence) score += 25;
+  if (/corrected programme target total/.test(candidate.notes || "")) score += 15;
   if (candidateRejectionReason(candidate)) score -= 1000;
   if (/\b(overall|main result|resultater|hovedresultat|sammenlagt)\b/.test(text)) score += 10;
   if (/(ranking|prosent|percentage|klasseføring|klasseforing|resultat etter standplass|standplass|station|cupsummary|multieventsummary)/.test(text)) score -= 100;
