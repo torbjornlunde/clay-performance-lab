@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { LeirdueCandidate, LeirdueCheckedListDebug, LeirdueSearchDebug } from "@/lib/leirdue/types";
-import { extractLeirdueSourceIdentifiers, nordicSafeNameKey } from "@/lib/leirdue/normalize";
+import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, nordicSafeNameKey, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 
 const CURRENT_YEAR_TTL_DAYS = 7;
 const PAST_YEAR_TTL_DAYS = 90;
@@ -510,6 +510,13 @@ export type SharedLeirdueSearchStats = {
   failedCount: number;
   reviewableCount: number;
   ignoredInvalidCount: number;
+  exactNameRowsFound: number;
+  clubSuffixedRowsFound: number;
+  ambiguousNameRowsRejected: number;
+  rowsBeforeSemanticDeduplication: number;
+  canonicalCandidatesAfterSemanticDeduplication: number;
+  duplicateSourceListsHidden: number;
+  acceptedNameMatchReasons: string[];
   coverageStatus: "unknown" | "not_started" | "incomplete" | "complete";
   indexingComplete: boolean;
   liveCrawlStarted: false;
@@ -583,29 +590,92 @@ function sharedResultRowToCandidate(row: SharedResultRow): LeirdueCandidate {
   };
 }
 
+
+function sharedCandidateSemanticKey(candidate: LeirdueCandidate, normalizedName: string) {
+  return [
+    normalizedName,
+    candidate.stevneId || "no-event",
+    candidate.date || "no-date",
+    candidate.discipline || "no-discipline",
+    candidate.ownScore ?? "no-score",
+    candidate.totalTargets ?? "no-targets",
+  ].join("|");
+}
+
+function sharedCandidatePreference(candidate: LeirdueCandidate) {
+  const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes || ""}`.toLowerCase();
+  let score = 0;
+  if (candidate.category === "recommended") score += 100;
+  if (candidate.category === "review") score += 50;
+  if (candidate.stevneId && candidate.listeId) score += 20;
+  if (candidate.date) score += 10;
+  if (candidate.winningScore !== null) score += 5;
+  if (/(ranking|prosent|percentage|klasseføring|klasseforing|resultat etter standplass|standplass|station|cupsummary|multieventsummary)/.test(text)) score -= 100;
+  return score;
+}
+
+function dedupeSharedCandidatesSemantically(candidates: LeirdueCandidate[], normalizedName: string) {
+  const byKey = new Map<string, LeirdueCandidate>();
+  let hidden = 0;
+  for (const candidate of candidates) {
+    const key = sharedCandidateSemanticKey(candidate, normalizedName);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, candidate);
+      continue;
+    }
+    hidden += 1;
+    if (sharedCandidatePreference(candidate) > sharedCandidatePreference(existing)) byKey.set(key, candidate);
+  }
+  return { candidates: Array.from(byKey.values()), hidden };
+}
+
 export async function getSharedLeirdueShooterResults(input: { shooterName: string; year: number; disciplines: string[]; authorization?: string | null }) {
   const started = Date.now();
   const supabase = supabaseReadClient(input.authorization);
-  const emptyStats = (error: string | null = null): SharedLeirdueSearchStats => ({ ok: !error, error, queryDurationMs: Date.now() - started, rowsFound: 0, totalRows: 0, validCount: 0, needsReviewCount: 0, invalidCount: 0, failedCount: 0, reviewableCount: 0, ignoredInvalidCount: 0, coverageStatus: "unknown", indexingComplete: false, liveCrawlStarted: false });
+  const emptyStats = (error: string | null = null): SharedLeirdueSearchStats => ({ ok: !error, error, queryDurationMs: Date.now() - started, rowsFound: 0, totalRows: 0, validCount: 0, needsReviewCount: 0, invalidCount: 0, failedCount: 0, reviewableCount: 0, ignoredInvalidCount: 0, exactNameRowsFound: 0, clubSuffixedRowsFound: 0, ambiguousNameRowsRejected: 0, rowsBeforeSemanticDeduplication: 0, canonicalCandidatesAfterSemanticDeduplication: 0, duplicateSourceListsHidden: 0, acceptedNameMatchReasons: [], coverageStatus: "unknown", indexingComplete: false, liveCrawlStarted: false });
   if (!supabase) return { candidates: [] as LeirdueCandidate[], stats: emptyStats("Shared Leirdue cache read skipped: missing authenticated cache read context.") };
   const normalizedName = nordicSafeNameKey(input.shooterName);
-  const [{ data, error }, statusResult] = await Promise.all([
+  const selectColumns = "event_id,liste_id,normalized_name,original_name,club,placement,score,total_targets,winning_score,series_scores,discipline,event_date,event_title,organizer,source_url,raw_row,validation_status,parsed_at";
+  const [{ data: exactData, error: exactError }, { data: prefixedData, error: prefixedError }, statusResult] = await Promise.all([
     supabase
       .from("leirdue_shared_shooter_results")
-      .select("event_id,liste_id,normalized_name,original_name,club,placement,score,total_targets,winning_score,series_scores,discipline,event_date,event_title,organizer,source_url,raw_row,validation_status,parsed_at")
+      .select(selectColumns)
       .eq("year", input.year)
       .eq("normalized_name", normalizedName)
       .in("validation_status", ["valid", "needs_review", "invalid", "failed"])
       .order("event_date", { ascending: true })
       .limit(500),
     supabase
+      .from("leirdue_shared_shooter_results")
+      .select(selectColumns)
+      .eq("year", input.year)
+      .like("normalized_name", `${normalizedName} %`)
+      .in("validation_status", ["valid", "needs_review", "invalid", "failed"])
+      .order("event_date", { ascending: true })
+      .limit(1000),
+    supabase
       .from("leirdue_year_ingestion_status")
       .select("status")
       .eq("year", input.year)
       .maybeSingle(),
   ]);
+  const error = exactError || prefixedError;
   if (error) return { candidates: [] as LeirdueCandidate[], stats: emptyStats(`Shared Leirdue cache read failed: ${error.message}`) };
-  const rows = ((data || []) as SharedResultRow[]).filter((row) => input.disciplines.length === 0 || !row.discipline || input.disciplines.includes(row.discipline));
+  const exactRows = (exactData || []) as SharedResultRow[];
+  const prefixedRows = (prefixedData || []) as SharedResultRow[];
+  const rowMap = new Map<string, SharedResultRow>();
+  for (const row of [...exactRows, ...prefixedRows]) rowMap.set(`${row.source_url}|${row.normalized_name}|${row.score ?? ""}|${row.total_targets ?? ""}`, row);
+  let ambiguousNameRowsRejected = 0;
+  const acceptedNameMatchReasons: string[] = [];
+  const nameMatchedRows = Array.from(rowMap.values()).filter((row) => {
+    const reason = leirdueNameMatchReason(row.original_name || row.normalized_name, input.shooterName);
+    const accepted = row.normalized_name === normalizedName || profileNameContainedInShooterText(row.original_name || row.normalized_name, input.shooterName) || namesLikelyMatch(row.original_name || row.normalized_name, input.shooterName);
+    if (!accepted) ambiguousNameRowsRejected += 1;
+    else if (acceptedNameMatchReasons.length < 25) acceptedNameMatchReasons.push(`${row.original_name || row.normalized_name}: ${reason}`);
+    return accepted;
+  });
+  const rows = nameMatchedRows.filter((row) => input.disciplines.length === 0 || !row.discipline || input.disciplines.includes(row.discipline));
   const rowsWithEffectiveStatus = rows.map((row) => ({ row, effectiveStatus: effectiveSharedValidationStatus(row) }));
   const validCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "valid").length;
   const needsReviewCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "needs_review").length;
@@ -613,11 +683,13 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
   const failedCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "failed").length;
   const reviewableRows = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "valid" || item.effectiveStatus === "needs_review").map((item) => item.row);
   const ignoredInvalidCount = invalidCount + failedCount;
-  const candidates = reviewableRows.map(sharedResultRowToCandidate);
+  const candidatesBeforeSemanticDeduplication = reviewableRows.map(sharedResultRowToCandidate);
+  const deduped = dedupeSharedCandidatesSemantically(candidatesBeforeSemanticDeduplication, normalizedName);
+  const candidates = deduped.candidates;
   const reviewableCount = candidates.filter((candidate) => candidate.category !== "control" && candidate.ownScore !== null && candidate.totalTargets !== null).length;
   const coverageStatus = (statusResult.data?.status as SharedLeirdueSearchStats["coverageStatus"] | undefined) || (statusResult.error ? "unknown" : "not_started");
   return {
     candidates,
-    stats: { ok: true, error: statusResult.error ? `Shared Leirdue ingestion status read failed: ${statusResult.error.message}` : null, queryDurationMs: Date.now() - started, rowsFound: reviewableRows.length, totalRows: rows.length, validCount, needsReviewCount, invalidCount, failedCount, reviewableCount, ignoredInvalidCount, coverageStatus, indexingComplete: coverageStatus === "complete", liveCrawlStarted: false as const },
+    stats: { ok: true, error: statusResult.error ? `Shared Leirdue ingestion status read failed: ${statusResult.error.message}` : null, queryDurationMs: Date.now() - started, rowsFound: reviewableRows.length, totalRows: rows.length, validCount, needsReviewCount, invalidCount, failedCount, reviewableCount, ignoredInvalidCount, exactNameRowsFound: exactRows.length, clubSuffixedRowsFound: prefixedRows.length, ambiguousNameRowsRejected, rowsBeforeSemanticDeduplication: candidatesBeforeSemanticDeduplication.length, canonicalCandidatesAfterSemanticDeduplication: candidates.length, duplicateSourceListsHidden: deduped.hidden, acceptedNameMatchReasons, coverageStatus, indexingComplete: coverageStatus === "complete", liveCrawlStarted: false as const },
   };
 }

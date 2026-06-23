@@ -134,6 +134,13 @@ export async function POST(request: Request) {
       debug.cacheDiagnostics.needsReviewSharedRows = shared.stats.needsReviewCount;
       debug.cacheDiagnostics.invalidSharedRows = shared.stats.invalidCount;
       debug.cacheDiagnostics.failedSharedRows = shared.stats.failedCount;
+      debug.cacheDiagnostics.exactNameRowsFound = shared.stats.exactNameRowsFound;
+      debug.cacheDiagnostics.clubSuffixedRowsFound = shared.stats.clubSuffixedRowsFound;
+      debug.cacheDiagnostics.ambiguousNameRowsRejected = shared.stats.ambiguousNameRowsRejected;
+      debug.cacheDiagnostics.rowsBeforeSemanticDeduplication = shared.stats.rowsBeforeSemanticDeduplication;
+      debug.cacheDiagnostics.canonicalCandidatesAfterSemanticDeduplication = shared.stats.canonicalCandidatesAfterSemanticDeduplication;
+      debug.cacheDiagnostics.duplicateSourceListsHidden = shared.stats.duplicateSourceListsHidden;
+      debug.cacheDiagnostics.acceptedNameMatchReasons = shared.stats.acceptedNameMatchReasons;
       debug.cacheDiagnostics.cacheScopeStatus = shared.stats.indexingComplete ? "complete" : "incomplete";
       debug.cacheDiagnostics.cacheScopeComplete = shared.stats.indexingComplete;
       debug.cacheDiagnostics.continuationRequired = false;
@@ -146,7 +153,7 @@ export async function POST(request: Request) {
       debug.cacheDiagnostics.batchElapsedMs = shared.stats.queryDurationMs;
       debug.continuationAvailable = false;
       debug.message = shared.stats.indexingComplete ? "Search complete. Shared Leirdue cache returned indexed results." : "Results still being indexed. Cached results are shown now. Additional Leirdue.net results may become available as the shared index is updated.";
-      debug.candidateReasons.unshift(`Shared cache-only search: ${shared.stats.totalRows} total rows, ${shared.stats.validCount} valid, ${shared.stats.needsReviewCount} needs_review, ${shared.stats.invalidCount} invalid, ${shared.stats.failedCount} failed, ${shared.stats.reviewableCount} reviewable, coverage=${shared.stats.coverageStatus}, liveCrawlStarted=false.`);
+      debug.candidateReasons.unshift(`Shared cache-only search: ${shared.stats.totalRows} total rows, ${shared.stats.validCount} valid, ${shared.stats.needsReviewCount} needs_review, ${shared.stats.invalidCount} invalid, ${shared.stats.failedCount} failed, exactNameRows=${shared.stats.exactNameRowsFound}, clubSuffixedRows=${shared.stats.clubSuffixedRowsFound}, ambiguousRejected=${shared.stats.ambiguousNameRowsRejected}, beforeSemanticDedup=${shared.stats.rowsBeforeSemanticDeduplication}, afterSemanticDedup=${shared.stats.canonicalCandidatesAfterSemanticDeduplication}, duplicateSourcesHidden=${shared.stats.duplicateSourceListsHidden}, ${shared.stats.reviewableCount} reviewable, coverage=${shared.stats.coverageStatus}, liveCrawlStarted=false.`);
       return NextResponse.json({ candidates: shared.candidates, debug, continuationToken: null });
     }
 

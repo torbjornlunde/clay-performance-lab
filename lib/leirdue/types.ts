@@ -328,6 +328,13 @@ export type LeirdueSearchDebug = {
     invalidSharedRows: number;
     failedSharedRows: number;
     totalSharedRows: number;
+    exactNameRowsFound: number;
+    clubSuffixedRowsFound: number;
+    ambiguousNameRowsRejected: number;
+    rowsBeforeSemanticDeduplication: number;
+    canonicalCandidatesAfterSemanticDeduplication: number;
+    duplicateSourceListsHidden: number;
+    acceptedNameMatchReasons: string[];
     cacheScopeComplete: boolean;
     cacheScopeStatus: "unknown" | "incomplete" | "complete" | "failed";
     continuationRequired: boolean;
