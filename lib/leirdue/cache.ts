@@ -568,6 +568,15 @@ function sharedRowDerivedScoreAndTargets(row: SharedResultRow) {
   if (score === null || storedTotal === null) {
     return { score, totalTargets: storedTotal, seriesScores: [] as number[], evidence: evidenceFor([], "missing stored score or target evidence") };
   }
+  const leirduestiPostTotal = numericCells.length >= 2 && numericCells.length <= 12 && /leirduesti/i.test(row.discipline || row.event_title || "") && numericCells.every((value) => value >= 0 && value <= 10) && numericCells.reduce((total, value) => total + value, 0) === score ? numericCells.length * 10 : null;
+  if (leirduestiPostTotal !== null && leirduestiPostTotal >= score && leirduestiPostTotal !== storedTotal) {
+    return {
+      score,
+      totalTargets: leirduestiPostTotal,
+      seriesScores: numericCells,
+      evidence: evidenceFor(numericCells, `leirduesti post-series target total ${storedTotal}->${leirduestiPostTotal}`),
+    };
+  }
   if (supportedTargetTotals.includes(storedTotal)) {
     const trustedSeries = trustedSeriesFor(storedTotal);
     return { score, totalTargets: storedTotal, seriesScores: trustedSeries, evidence: evidenceFor(trustedSeries, "stored score/target columns") };
@@ -680,11 +689,16 @@ function candidateRejectionReason(candidate: LeirdueCandidate) {
   return null;
 }
 
+function isMultiDayChampionshipCandidate(candidate: LeirdueCandidate) {
+  const text = `${candidate.name} ${candidate.notes || ""}`.toLowerCase();
+  return /\b(?:nm|norgesmesterskap)\b/.test(text) && !/(finale?|kongepokal|king.?s cup|lagskyting|team result)/.test(text);
+}
+
 function sharedCandidateSemanticKey(candidate: LeirdueCandidate, normalizedName: string) {
   return [
     normalizedName,
     candidate.stevneId || "no-event",
-    candidate.date || "no-date",
+    isMultiDayChampionshipCandidate(candidate) ? "event-multiday" : candidate.date || "no-date",
     candidate.discipline || "no-discipline",
     genuineRoundIdentity(candidate),
   ].join("|");
@@ -709,6 +723,34 @@ function sharedCandidatePreference(candidate: LeirdueCandidate) {
   return score;
 }
 
+function aggregateMultiDayChampionshipCandidate(group: LeirdueCandidate[]) {
+  const aggregateable = group.filter((candidate) => {
+    const text = `${candidate.name} ${candidate.notes || ""}`.toLowerCase();
+    return isMultiDayChampionshipCandidate(candidate)
+      && !candidateRejectionReason(candidate)
+      && !/(finale?|kongepokal|king.?s cup|lagskyting|team result|uttak|selection)/.test(text)
+      && candidate.ownScore !== null
+      && candidate.totalTargets !== null
+      && candidate.ownScore > 0
+      && candidate.totalTargets > 0
+      && candidate.totalTargets <= 75;
+  });
+  if (aggregateable.length < 2) return null;
+  const score = aggregateable.reduce((total, candidate) => total + (candidate.ownScore || 0), 0);
+  const totalTargets = aggregateable.reduce((total, candidate) => total + (candidate.totalTargets || 0), 0);
+  if (score <= 0 || totalTargets <= 0 || score > totalTargets || totalTargets > 250) return null;
+  const selected = aggregateable.slice().sort((a, b) => sharedCandidatePreference(b) - sharedCandidatePreference(a))[0];
+  return {
+    ...selected,
+    date: aggregateable.map((candidate) => candidate.date).filter(Boolean).sort()[0] || selected.date,
+    ownScore: score,
+    totalTargets,
+    maxScore: totalTargets,
+    seriesScores: aggregateable.flatMap((candidate) => candidate.seriesScores || []),
+    notes: `${selected.notes || ""} Aggregated multi-day championship result from liste_id ${aggregateable.map((candidate) => candidate.listeId || "unknown").join("+")}; score=${score}/${totalTargets}.`,
+  };
+}
+
 function dedupeSharedCandidatesSemantically(candidates: LeirdueCandidate[], normalizedName: string) {
   const byKey = new Map<string, LeirdueCandidate>();
   const grouped = new Map<string, LeirdueCandidate[]>();
@@ -723,6 +765,10 @@ function dedupeSharedCandidatesSemantically(candidates: LeirdueCandidate[], norm
     }
     hidden += 1;
     if (sharedCandidatePreference(candidate) > sharedCandidatePreference(existing)) byKey.set(key, candidate);
+  }
+  for (const [key, group] of grouped.entries()) {
+    const aggregate = aggregateMultiDayChampionshipCandidate(group);
+    if (aggregate) byKey.set(key, aggregate);
   }
   const diagnostics = Array.from(grouped.entries()).slice(0, 50).map(([key, group]) => {
     const selected = byKey.get(key);
