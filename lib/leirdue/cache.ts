@@ -545,13 +545,26 @@ type SharedResultRow = {
 };
 
 
+
+function sharedRowDerivedScoreAndTargets(row: SharedResultRow) {
+  const series = Array.isArray(row.series_scores) ? row.series_scores.filter((value) => Number.isFinite(value)) : [];
+  const reliableSeries = series.length >= 2 && series.every((value) => value >= 0 && value <= 25);
+  if (reliableSeries) {
+    const seriesScore = series.reduce((total, value) => total + value, 0);
+    const seriesTargets = series.length * 25;
+    if (seriesScore > 0 && seriesScore <= seriesTargets) return { score: seriesScore, totalTargets: seriesTargets, seriesScores: series, evidence: `series sum ${series.join("+")}=${seriesScore}/${seriesTargets}` };
+  }
+  return { score: row.score, totalTargets: row.total_targets, seriesScores: series, evidence: row.total_targets ? "stored score/target columns" : "missing target evidence" };
+}
+
 function sharedRowHasNonReviewableEvidence(row: SharedResultRow) {
   const text = `${row.event_title || ""} ${row.raw_row || ""} ${row.source_url || ""}`.toLowerCase();
   if (/\b\d{1,3}(?:[,.]\d+)?\s*%/.test(text) || /(prosent|percentage)/.test(text)) return true;
   if (/(ranking|cup sammenlagt|sammenlagt premiering|klasseføring|klasseforing|sesong|season|multieventsummary|cupsummary)/i.test(text)) return true;
-  if (row.score === null || row.total_targets === null || row.score <= 0 || row.total_targets <= 0 || row.score > row.total_targets) return true;
+  const derived = sharedRowDerivedScoreAndTargets(row);
+  if (derived.score === null || derived.totalTargets === null || derived.score <= 0 || derived.totalTargets <= 0 || derived.score > derived.totalTargets) return true;
   const supportedTargetTotals = new Set([25, 50, 75, 100, 125, 150, 200]);
-  if (!supportedTargetTotals.has(row.total_targets)) return true;
+  if (!supportedTargetTotals.has(derived.totalTargets)) return true;
   return false;
 }
 
@@ -562,6 +575,7 @@ function effectiveSharedValidationStatus(row: SharedResultRow): SharedResultRow[
 
 function sharedResultRowToCandidate(row: SharedResultRow): LeirdueCandidate {
   const effectiveStatus = effectiveSharedValidationStatus(row);
+  const derived = sharedRowDerivedScoreAndTargets(row);
   const reviewable = effectiveStatus === "valid" || effectiveStatus === "needs_review";
   const category = effectiveStatus === "valid" ? "recommended" : effectiveStatus === "needs_review" ? "review" : "control";
   return {
@@ -569,12 +583,12 @@ function sharedResultRowToCandidate(row: SharedResultRow): LeirdueCandidate {
     name: row.event_title || "Leirdue.net cached result",
     shootingGround: row.organizer || row.club,
     discipline: row.discipline || "Other",
-    ownScore: row.score,
-    totalTargets: row.total_targets,
+    ownScore: derived.score,
+    totalTargets: derived.totalTargets,
     winningScore: row.winning_score,
-    maxScore: row.total_targets,
+    maxScore: derived.totalTargets,
     placement: row.placement,
-    seriesScores: Array.isArray(row.series_scores) ? row.series_scores : [],
+    seriesScores: derived.seriesScores,
     shooterName: row.original_name,
     shooterClass: null,
     stevneId: row.event_id,
@@ -587,7 +601,7 @@ function sharedResultRowToCandidate(row: SharedResultRow): LeirdueCandidate {
     leirdueUrl: row.source_url,
     listType: null,
     confidence: effectiveStatus === "valid" ? "high" : effectiveStatus === "needs_review" ? "medium" : "low",
-    notes: `${row.raw_row || ""} Shared Leirdue cache source. Cached at ${row.parsed_at || "unknown"}.`.trim(),
+    notes: `${row.raw_row || ""} Shared Leirdue cache source. Score evidence: ${derived.evidence}. Cached at ${row.parsed_at || "unknown"}.`.trim(),
     category,
     importRecommended: effectiveStatus === "valid",
   };
@@ -631,6 +645,8 @@ function sharedCandidatePreference(candidate: LeirdueCandidate) {
   if (candidate.stevneId && candidate.listeId) score += 20;
   if (candidate.date) score += 10;
   if (candidate.winningScore !== null) score += 5;
+  const seriesScores = candidate.seriesScores || [];
+  if (seriesScores.length >= 2 && seriesScores.reduce((total, value) => total + value, 0) === candidate.ownScore && candidate.totalTargets === seriesScores.length * 25) score += 200;
   if (candidateRejectionReason(candidate)) score -= 1000;
   if (/\b(overall|main result|resultater|hovedresultat|sammenlagt)\b/.test(text)) score += 10;
   if (/(ranking|prosent|percentage|klasseføring|klasseforing|resultat etter standplass|standplass|station|cupsummary|multieventsummary)/.test(text)) score -= 100;
