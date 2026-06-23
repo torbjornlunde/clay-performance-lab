@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { LeirdueCandidate, LeirdueCheckedListDebug, LeirdueSearchDebug } from "@/lib/leirdue/types";
-import { extractLeirdueSourceIdentifiers, nordicSafeNameKey } from "@/lib/leirdue/normalize";
+import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, nordicSafeNameKey, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 
 const CURRENT_YEAR_TTL_DAYS = 7;
 const PAST_YEAR_TTL_DAYS = 90;
@@ -149,6 +149,7 @@ function rowFingerprint(candidate: LeirdueCandidate) {
 function candidateToCacheRow(candidate: LeirdueCandidate, year: number) {
   const ids = { stevneId: candidate.stevneId || extractLeirdueSourceIdentifiers(candidate.leirdueUrl).stevneId, listeId: candidate.listeId || extractLeirdueSourceIdentifiers(candidate.leirdueUrl).listeId };
   const notImportable = candidate.category === "control" ? candidate.warnings?.[0] || candidate.notes || "Not importable." : null;
+  const reviewableResult = candidate.category !== "control" && candidate.ownScore !== null && candidate.totalTargets !== null;
   return {
     event_id: ids.stevneId,
     liste_id: ids.listeId,
@@ -167,7 +168,7 @@ function candidateToCacheRow(candidate: LeirdueCandidate, year: number) {
     placement: candidate.placement ?? null,
     row_fingerprint: rowFingerprint(candidate),
     candidate_quality: `${candidate.category}/${candidate.confidence}`,
-    is_importable: candidate.importRecommended === true && candidate.category === "recommended",
+    is_importable: reviewableResult,
     not_importable_reason: notImportable,
     raw_row_text: candidate.notes,
     parsed_at: new Date().toISOString(),
@@ -176,7 +177,7 @@ function candidateToCacheRow(candidate: LeirdueCandidate, year: number) {
 
 function cacheRowToCandidate(row: CachedResultRow): LeirdueCandidate {
   const [storedCategory = "review", confidence = "medium"] = (row.candidate_quality || "review/medium").split("/");
-  const category = row.is_importable === false ? "control" : storedCategory;
+  const category = storedCategory === "recommended" || storedCategory === "review" || storedCategory === "control" ? storedCategory : row.is_importable === false ? "control" : "review";
   return {
     date: row.event_date,
     name: row.event_title || "Leirdue.net cached result",
@@ -245,6 +246,7 @@ export async function getCachedLeirdueCandidates(input: { shooterName: string; y
     .map((row) => leirdueCanonicalListeIdKey(row.source_url || `https://www.leirdue.net/?stevne=${row.event_id}&meny=resultater&liste_id=${row.liste_id}`));
   const filtered = input.disciplines.length > 0 ? rows.filter((row) => !row.discipline || input.disciplines.includes(row.discipline)) : rows;
   const candidates = filtered.map(cacheRowToCandidate);
+  const reviewableCachedCandidates = candidates.filter((candidate) => candidate.category !== "control" && candidate.ownScore !== null && candidate.totalTargets !== null);
   const readErrors = [
     staleResult.error ? `Cache stale-row read failed: ${staleResult.error.message}` : null,
     listResult.error ? `Cache list read failed: ${listResult.error.message}` : null,
@@ -252,7 +254,7 @@ export async function getCachedLeirdueCandidates(input: { shooterName: string; y
   ].filter((value): value is string => Boolean(value));
   return {
     candidates,
-    stats: { enabled: true, cachedCandidatesFound: filtered.length, liveCandidatesStored: 0, cacheMiss: filtered.length === 0, staleCache: (staleResult.count || 0) > 0, staleRowsFound: staleResult.count || 0, cacheUsed: filtered.length > 0, cacheReadOk: readErrors.length === 0, cachedImportableCandidatesFound: candidates.filter((candidate) => candidate.importRecommended).length, eventHits: eventResult.data?.length || 0, listHits: listRows.length, invalidListKeys, invalidListsStored: 0, serviceRoleCacheWriteEnabled: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY), cacheWriteOk: false, cacheWriteErrors: [], cacheWriteWarnings: [], cacheReadErrors: readErrors, note: readErrors[0] || null },
+    stats: { enabled: true, cachedCandidatesFound: filtered.length, liveCandidatesStored: 0, cacheMiss: filtered.length === 0, staleCache: (staleResult.count || 0) > 0, staleRowsFound: staleResult.count || 0, cacheUsed: filtered.length > 0, cacheReadOk: readErrors.length === 0, cachedImportableCandidatesFound: reviewableCachedCandidates.length, eventHits: eventResult.data?.length || 0, listHits: listRows.length, invalidListKeys, invalidListsStored: 0, serviceRoleCacheWriteEnabled: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY), cacheWriteOk: false, cacheWriteErrors: [], cacheWriteWarnings: [], cacheReadErrors: readErrors, note: readErrors[0] || null },
   };
 }
 
@@ -380,7 +382,7 @@ export async function storeLeirdueCrawlProgress(input: { shooterName: string; ye
   if (!supabase) return { ok: false, error: "Crawl progress write skipped: missing SUPABASE_SERVICE_ROLE_KEY." };
   const scopeKey = leirdueSearchScopeKey(input);
   const remainingWork = input.debug.pendingListeIdQueueRemaining + input.debug.remainingEventQueueCount;
-  const complete = !input.continuationToken && input.debug.continuationAvailable === false && remainingWork === 0 && !input.debug.timedOut && !input.debug.limitReached;
+  const complete = !input.continuationToken && input.debug.continuationAvailable === false && remainingWork === 0 && !input.debug.timedOut && !input.debug.limitReached && input.debug.cacheDiagnostics.completionProof.valid;
   const failed = !complete && Boolean(input.debug.errorMessage);
   const decoded = decodeContinuationProgress(input.continuationToken);
   const now = new Date().toISOString();
@@ -396,14 +398,34 @@ export async function storeLeirdueCrawlProgress(input: { shooterName: string; ye
     total_discovered_work: input.debug.listeIdLinksExtracted + input.debug.selectedYearEventLinksCount,
     processed_work_count: input.debug.scannedListeIdTotal + input.debug.scannedEventTotal,
     remaining_work_count: remainingWork,
-    last_stop_reason: input.debug.continuationStopReason || input.debug.scanStoppedReason || input.debug.eventStopReason,
+    last_stop_reason: complete ? "completionProofValid" : input.debug.continuationStopReason || input.debug.scanStoppedReason || input.debug.eventStopReason,
     last_completed_batch: input.debug.batchNumber,
     last_run_at: now,
     completed_at: complete ? now : null,
     updated_at: now,
   };
   const { error } = await supabase.from("leirdue_search_crawl_state").upsert(row, { onConflict: "scope_key" });
-  return { ok: !error, error: error ? `Crawl progress write failed: ${error.message}` : null, status: row.status, remainingWork };
+  return { ok: !error, error: error ? `Crawl progress write failed: ${error.message}` : null, status: row.status, remainingWork, processedWorkCount: row.processed_work_count };
+}
+
+export async function repairLeirdueInvalidCompleteState(input: { shooterName: string; year: number; disciplines: string[] }) {
+  const supabase = supabaseServiceClient();
+  if (!supabase) return { ok: false, error: "Invalid complete-state repair skipped: missing SUPABASE_SERVICE_ROLE_KEY.", status: null as string | null };
+  const scopeKey = leirdueSearchScopeKey(input);
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("leirdue_search_crawl_state")
+    .update({
+      status: "incomplete",
+      continuation_token: null,
+      remaining_work_count: 1,
+      last_stop_reason: "invalidCompleteStateRevalidationRequired",
+      completed_at: null,
+      updated_at: now,
+      last_run_at: now,
+    })
+    .eq("scope_key", scopeKey);
+  return { ok: !error, error: error ? `Invalid complete-state repair failed: ${error.message}` : null, status: error ? null : "incomplete" };
 }
 
 export async function storeLeirdueCrawlIndexesInCache(debug: LeirdueSearchDebug, year: number) {
@@ -474,4 +496,363 @@ export async function storeLeirdueCrawlIndexesInCache(debug: LeirdueSearchDebug,
     if (error) writeErrors.push(`Crawl list index write failed: ${error.message}`);
   }
   return { ...emptyLeirdueCacheStats(writeErrors[0] || null), enabled: true, serviceRoleCacheWriteEnabled: true, cacheWriteOk: writeErrors.length === 0, cacheWriteErrors: writeErrors, cacheWriteWarnings: dateWarnings, invalidListsStored: checkedListRows.filter((row) => !row.is_valid_single_event_result).length };
+}
+
+export type SharedLeirdueSearchStats = {
+  ok: boolean;
+  error: string | null;
+  queryDurationMs: number;
+  rowsFound: number;
+  totalRows: number;
+  validCount: number;
+  needsReviewCount: number;
+  invalidCount: number;
+  failedCount: number;
+  reviewableCount: number;
+  ignoredInvalidCount: number;
+  exactNameRowsFound: number;
+  clubSuffixedRowsFound: number;
+  ambiguousNameRowsRejected: number;
+  rowsBeforeSemanticDeduplication: number;
+  canonicalCandidatesAfterSemanticDeduplication: number;
+  duplicateSourceListsHidden: number;
+  acceptedNameMatchReasons: string[];
+  semanticEventGroupDiagnostics: string[];
+  coverageStatus: "unknown" | "not_started" | "incomplete" | "complete";
+  indexingComplete: boolean;
+  liveCrawlStarted: false;
+};
+
+type SharedResultRow = {
+  event_id: string | null;
+  liste_id: string | null;
+  normalized_name: string;
+  original_name: string | null;
+  club: string | null;
+  placement: number | null;
+  score: number | null;
+  total_targets: number | null;
+  winning_score: number | null;
+  series_scores: number[] | null;
+  discipline: string | null;
+  event_date: string | null;
+  event_title: string | null;
+  organizer: string | null;
+  source_url: string;
+  raw_row: string | null;
+  validation_status: "valid" | "needs_review" | "invalid" | "failed";
+  parsed_at: string | null;
+};
+
+
+
+function sharedRowDerivedScoreAndTargets(row: SharedResultRow) {
+  const numericCells = Array.isArray(row.series_scores) ? row.series_scores.filter((value) => Number.isFinite(value)) : [];
+  const supportedTargetTotals = [25, 50, 75, 100, 125, 150, 200];
+  const score = row.score;
+  const storedTotal = row.total_targets;
+  const trustedSeriesFor = (targetTotal: number | null) => {
+    if (score === null || targetTotal === null || targetTotal % 25 !== 0) return [] as number[];
+    const expectedSeriesCount = targetTotal / 25;
+    if (expectedSeriesCount < 2 || expectedSeriesCount > 10 || numericCells.length < expectedSeriesCount) return [] as number[];
+    const candidateSeries = numericCells.slice(-expectedSeriesCount);
+    const candidateSum = candidateSeries.reduce((total, value) => total + value, 0);
+    return candidateSeries.every((value) => value >= 0 && value <= 25) && candidateSum === score ? candidateSeries : [];
+  };
+  const evidenceFor = (seriesScores: number[], message: string) => {
+    const excludedNumericValues = seriesScores.length ? numericCells.slice(0, Math.max(0, numericCells.length - seriesScores.length)) : numericCells;
+    const trustedSeriesEvidence = seriesScores.length ? ` Trusted series values: ${seriesScores.join("+")}.` : "";
+    const excludedNumericEvidence = excludedNumericValues.length ? ` Excluded numeric cells from score reconstruction: ${excludedNumericValues.join("+")}.` : "";
+    return `${message}.${trustedSeriesEvidence}${excludedNumericEvidence}`.trim();
+  };
+  if (score === null || storedTotal === null) {
+    return { score, totalTargets: storedTotal, seriesScores: [] as number[], evidence: evidenceFor([], "missing stored score or target evidence") };
+  }
+  const leirduestiPostTotal = numericCells.length >= 2 && numericCells.length <= 12 && /leirduesti/i.test(row.discipline || row.event_title || "") && numericCells.every((value) => value >= 0 && value <= 10) && numericCells.reduce((total, value) => total + value, 0) === score ? numericCells.length * 10 : null;
+  if (leirduestiPostTotal !== null && leirduestiPostTotal >= score && leirduestiPostTotal !== storedTotal) {
+    return {
+      score,
+      totalTargets: leirduestiPostTotal,
+      seriesScores: numericCells,
+      evidence: evidenceFor(numericCells, `leirduesti post-series target total ${storedTotal}->${leirduestiPostTotal}`),
+    };
+  }
+  if (supportedTargetTotals.includes(storedTotal)) {
+    const trustedSeries = trustedSeriesFor(storedTotal);
+    return { score, totalTargets: storedTotal, seriesScores: trustedSeries, evidence: evidenceFor(trustedSeries, "stored score/target columns") };
+  }
+  const nextSupportedTotal = supportedTargetTotals.find((targetTotal) => score <= targetTotal);
+  const trustedSeriesForNextTotal = nextSupportedTotal === undefined ? [] as number[] : trustedSeriesFor(nextSupportedTotal);
+  const canRepairNearProgrammeTotal = nextSupportedTotal !== undefined && Math.abs(nextSupportedTotal - storedTotal) <= 6 && (nextSupportedTotal <= 100 || trustedSeriesForNextTotal.length >= 2);
+  if (canRepairNearProgrammeTotal) {
+    const trustedSeries = trustedSeriesForNextTotal;
+    return {
+      score,
+      totalTargets: nextSupportedTotal,
+      seriesScores: trustedSeries,
+      evidence: evidenceFor(trustedSeries, `stored shooter score with corrected programme target total ${storedTotal}->${nextSupportedTotal}`),
+    };
+  }
+  const nonStandardSeriesSum = numericCells.reduce((total, value) => total + value, 0);
+  const nonStandardTargetSupportedBySeries = numericCells.length >= 2 && numericCells.length <= 20 && numericCells.every((value) => value >= 0 && value <= 25) && nonStandardSeriesSum === score && storedTotal >= score && storedTotal <= 250;
+  if (nonStandardTargetSupportedBySeries) {
+    return {
+      score,
+      totalTargets: storedTotal,
+      seriesScores: numericCells,
+      evidence: evidenceFor(numericCells, `stored non-standard target total ${storedTotal} supported by row series`),
+    };
+  }
+  return { score, totalTargets: storedTotal, seriesScores: [] as number[], evidence: evidenceFor([], `stored score with unsupported target total ${storedTotal}`) };
+}
+
+function sharedRowHasNonReviewableEvidence(row: SharedResultRow) {
+  const text = `${row.event_title || ""} ${row.raw_row || ""} ${row.source_url || ""}`.toLowerCase();
+  if (/\b\d{1,3}(?:[,.]\d+)?\s*%/.test(text) || /(prosent|percentage)/.test(text)) return true;
+  if (/(ranking|cup sammenlagt|sammenlagt premiering|klasseføring|klasseforing|sesong|season|multieventsummary|cupsummary)/i.test(text)) return true;
+  const derived = sharedRowDerivedScoreAndTargets(row);
+  if (derived.score === null || derived.totalTargets === null || derived.score <= 0 || derived.totalTargets <= 0 || derived.score > derived.totalTargets) return true;
+  const supportedTargetTotals = new Set([25, 50, 75, 100, 125, 150, 200]);
+  if (!supportedTargetTotals.has(derived.totalTargets) && !/non-standard target total/.test(derived.evidence)) return true;
+  return false;
+}
+
+function effectiveSharedValidationStatus(row: SharedResultRow): SharedResultRow["validation_status"] {
+  if ((row.validation_status === "valid" || row.validation_status === "needs_review") && sharedRowHasNonReviewableEvidence(row)) return "invalid";
+  return row.validation_status;
+}
+
+function sharedDisciplineMatches(rowDiscipline: string | null, selectedDisciplines: string[]) {
+  if (selectedDisciplines.length === 0 || !rowDiscipline) return true;
+  if (selectedDisciplines.includes(rowDiscipline)) return true;
+  const row = rowDiscipline.toLowerCase();
+  return selectedDisciplines.some((discipline) => {
+    const selected = discipline.toLowerCase();
+    if (selected === "sporting") return row.includes("sporting") && !row.includes("compak") && !row.includes("compact");
+    if (selected.includes("compak") || selected.includes("compact")) return row.includes("compak") || row.includes("compact");
+    if (selected.includes("leirduesti")) return row.includes("leirduesti");
+    return false;
+  });
+}
+
+function sharedEffectiveDiscipline(row: SharedResultRow) {
+  if (row.discipline && row.discipline !== "Other") return row.discipline;
+  const text = `${row.event_title || ""} ${row.raw_row || ""} ${row.source_url || ""}`.toLowerCase();
+  if (/kompa(?:k|ct).*leirduesti|leirduesti.*kompa(?:k|ct)/.test(text)) return "Kompakt leirduesti";
+  if (/leirduesti/.test(text)) return "Leirduesti";
+  if (/compak|compact/.test(text)) return "Compak Sporting";
+  if (/fitasc|english sporting|sporting/.test(text)) return "Sporting";
+  return row.discipline || "Other";
+}
+
+function sharedResultRowToCandidate(row: SharedResultRow): LeirdueCandidate {
+  const effectiveStatus = effectiveSharedValidationStatus(row);
+  const derived = sharedRowDerivedScoreAndTargets(row);
+  const reviewable = effectiveStatus === "valid" || effectiveStatus === "needs_review";
+  const category = effectiveStatus === "valid" ? "recommended" : effectiveStatus === "needs_review" ? "review" : "control";
+  return {
+    date: row.event_date,
+    name: row.event_title || "Leirdue.net cached result",
+    shootingGround: row.organizer || row.club,
+    discipline: sharedEffectiveDiscipline(row),
+    ownScore: derived.score,
+    totalTargets: derived.totalTargets,
+    winningScore: row.winning_score,
+    maxScore: derived.totalTargets,
+    placement: row.placement,
+    seriesScores: derived.seriesScores,
+    shooterName: row.original_name,
+    shooterClass: null,
+    stevneId: row.event_id,
+    listeId: row.liste_id,
+    warnings: effectiveStatus === "needs_review" ? ["Shared Leirdue cache row needs review."] : effectiveStatus === "invalid" ? ["Shared Leirdue cache row marked invalid."] : [],
+    duplicateStatus: "new",
+    duplicateMatches: [],
+    shooterMatchStatus: reviewable ? "matched_to_you" : null,
+    shooterMatchReason: reviewable ? "exact normalized match" : null,
+    leirdueUrl: row.source_url,
+    listType: null,
+    confidence: effectiveStatus === "valid" ? "high" : effectiveStatus === "needs_review" ? "medium" : "low",
+    notes: `${row.raw_row || ""} Shared Leirdue cache source. Score evidence: ${derived.evidence}. Cached at ${row.parsed_at || "unknown"}.`.trim(),
+    category,
+    importRecommended: effectiveStatus === "valid",
+  };
+}
+
+
+
+function genuineRoundIdentity(candidate: LeirdueCandidate) {
+  const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes || ""}`.toLowerCase();
+  const roundMatch = text.match(/\b(?:runde|round|dag|day)\s*(\d{1,2})\b/);
+  if (roundMatch) return `round-${roundMatch[1]}`;
+  const dateMatch = text.match(/\b(lørdag|lordag|saturday|søndag|sondag|sunday)\b/);
+  return dateMatch?.[1] || "event-overall";
+}
+
+function candidateRejectionReason(candidate: LeirdueCandidate) {
+  const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes || ""}`.toLowerCase();
+  if (/\b\d{1,3}(?:[,.]\d+)?\s*%/.test(text) || /(prosent|percentage)/.test(text)) return "percentage/ranking evidence";
+  if (/(ranking|selection|uttak|cupsummary|multieventsummary|resultat etter standplass|standplass|station|klasseføring|klasseforing)/.test(text)) return "ranking/selection/station/summary list";
+  if (candidate.ownScore === null || candidate.totalTargets === null) return "missing score or total targets";
+  if (candidate.ownScore > candidate.totalTargets) return "score exceeds total targets";
+  if (![25, 50, 75, 100, 125, 150, 200].includes(candidate.totalTargets) && !/non-standard target total/.test(candidate.notes || "")) return "unsupported or inferred target total";
+  return null;
+}
+
+function isMultiDayChampionshipCandidate(candidate: LeirdueCandidate) {
+  const text = `${candidate.name} ${candidate.notes || ""}`.toLowerCase();
+  return /\b(?:nm|norgesmesterskap)\b/.test(text) && !/(finale?|kongepokal|king.?s cup|lagskyting|team result)/.test(text);
+}
+
+function sharedCandidateSemanticKey(candidate: LeirdueCandidate, normalizedName: string) {
+  return [
+    normalizedName,
+    candidate.stevneId || "no-event",
+    isMultiDayChampionshipCandidate(candidate) ? "event-multiday" : candidate.date || "no-date",
+    candidate.discipline || "no-discipline",
+    genuineRoundIdentity(candidate),
+  ].join("|");
+}
+
+function sharedCandidatePreference(candidate: LeirdueCandidate) {
+  const text = `${candidate.name} ${candidate.listType || ""} ${candidate.notes || ""}`.toLowerCase();
+  let score = 0;
+  if (candidate.category === "recommended") score += 100;
+  if (candidate.category === "review") score += 50;
+  if (candidate.stevneId && candidate.listeId) score += 20;
+  if (candidate.date) score += 10;
+  if (candidate.winningScore !== null) score += 5;
+  const hasTrustedSeriesEvidence = /stored score\/target columns/.test(candidate.notes || "") && (candidate.seriesScores || []).length >= 2;
+  if (hasTrustedSeriesEvidence) score += 25;
+  if (/corrected programme target total/.test(candidate.notes || "")) score += 15;
+  if (candidateRejectionReason(candidate)) score -= 1000;
+  if (/(medaljeklasse|medal class|individual|individuell)/.test(text)) score += 40;
+  if (/\b(overall|main result|resultater|hovedresultat|sammenlagt)\b/.test(text)) score += 10;
+  if (/(ranking|prosent|percentage|klasseføring|klasseforing|resultat etter standplass|standplass|station|cupsummary|multieventsummary)/.test(text)) score -= 100;
+  if (/(uttak|selection|lagskyting|lagresultat|team result|kongepokal|king.?s cup|steel challenge)/.test(text)) score -= 150;
+  return score;
+}
+
+function aggregateMultiDayChampionshipCandidate(group: LeirdueCandidate[]) {
+  const aggregateable = group.filter((candidate) => {
+    const text = `${candidate.name} ${candidate.notes || ""}`.toLowerCase();
+    return isMultiDayChampionshipCandidate(candidate)
+      && !candidateRejectionReason(candidate)
+      && !/(finale?|kongepokal|king.?s cup|lagskyting|team result|uttak|selection)/.test(text)
+      && candidate.ownScore !== null
+      && candidate.totalTargets !== null
+      && candidate.ownScore > 0
+      && candidate.totalTargets > 0
+      && candidate.totalTargets <= 75;
+  });
+  if (aggregateable.length < 2) return null;
+  const score = aggregateable.reduce((total, candidate) => total + (candidate.ownScore || 0), 0);
+  const totalTargets = aggregateable.reduce((total, candidate) => total + (candidate.totalTargets || 0), 0);
+  if (score <= 0 || totalTargets <= 0 || score > totalTargets || totalTargets > 250) return null;
+  const selected = aggregateable.slice().sort((a, b) => sharedCandidatePreference(b) - sharedCandidatePreference(a))[0];
+  return {
+    ...selected,
+    date: aggregateable.map((candidate) => candidate.date).filter(Boolean).sort()[0] || selected.date,
+    ownScore: score,
+    totalTargets,
+    maxScore: totalTargets,
+    seriesScores: aggregateable.flatMap((candidate) => candidate.seriesScores || []),
+    notes: `${selected.notes || ""} Aggregated multi-day championship result from liste_id ${aggregateable.map((candidate) => candidate.listeId || "unknown").join("+")}; score=${score}/${totalTargets}.`,
+  };
+}
+
+function dedupeSharedCandidatesSemantically(candidates: LeirdueCandidate[], normalizedName: string) {
+  const byKey = new Map<string, LeirdueCandidate>();
+  const grouped = new Map<string, LeirdueCandidate[]>();
+  let hidden = 0;
+  for (const candidate of candidates) {
+    const key = sharedCandidateSemanticKey(candidate, normalizedName);
+    grouped.set(key, [...(grouped.get(key) || []), candidate]);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, candidate);
+      continue;
+    }
+    hidden += 1;
+    if (sharedCandidatePreference(candidate) > sharedCandidatePreference(existing)) byKey.set(key, candidate);
+  }
+  for (const [key, group] of grouped.entries()) {
+    const aggregate = aggregateMultiDayChampionshipCandidate(group);
+    if (aggregate) byKey.set(key, aggregate);
+  }
+  const diagnostics = Array.from(grouped.entries()).slice(0, 50).map(([key, group]) => {
+    const selected = byKey.get(key);
+    return `${key}: sources=${group.map((candidate) => `${candidate.listeId || "no-list"} ${candidate.ownScore ?? "?"}/${candidate.totalTargets ?? "?"} ${candidateRejectionReason(candidate) || "accepted"}`).join("; ")}; selected=${selected?.listeId || "none"}; reason=${selected ? candidateRejectionReason(selected) || "best supported single-event candidate" : "none"}; genuineRounds=${Array.from(new Set(group.map(genuineRoundIdentity))).join(",")}`;
+  });
+  return { candidates: Array.from(byKey.values()), hidden, diagnostics };
+}
+
+export async function getSharedLeirdueShooterResults(input: { shooterName: string; year: number; disciplines: string[]; authorization?: string | null }) {
+  const started = Date.now();
+  const supabase = supabaseReadClient(input.authorization);
+  const emptyStats = (error: string | null = null): SharedLeirdueSearchStats => ({ ok: !error, error, queryDurationMs: Date.now() - started, rowsFound: 0, totalRows: 0, validCount: 0, needsReviewCount: 0, invalidCount: 0, failedCount: 0, reviewableCount: 0, ignoredInvalidCount: 0, exactNameRowsFound: 0, clubSuffixedRowsFound: 0, ambiguousNameRowsRejected: 0, rowsBeforeSemanticDeduplication: 0, canonicalCandidatesAfterSemanticDeduplication: 0, duplicateSourceListsHidden: 0, acceptedNameMatchReasons: [], semanticEventGroupDiagnostics: [], coverageStatus: "unknown", indexingComplete: false, liveCrawlStarted: false });
+  if (!supabase) return { candidates: [] as LeirdueCandidate[], stats: emptyStats("Shared Leirdue cache read skipped: missing authenticated cache read context.") };
+  const normalizedName = nordicSafeNameKey(input.shooterName);
+  const selectColumns = "event_id,liste_id,normalized_name,original_name,club,placement,score,total_targets,winning_score,series_scores,discipline,event_date,event_title,organizer,source_url,raw_row,validation_status,parsed_at";
+  const [{ data: exactData, error: exactError }, { data: prefixedData, error: prefixedError }, statusResult] = await Promise.all([
+    supabase
+      .from("leirdue_shared_shooter_results")
+      .select(selectColumns)
+      .eq("year", input.year)
+      .eq("normalized_name", normalizedName)
+      .in("validation_status", ["valid", "needs_review", "invalid", "failed"])
+      .order("event_date", { ascending: true })
+      .limit(500),
+    supabase
+      .from("leirdue_shared_shooter_results")
+      .select(selectColumns)
+      .eq("year", input.year)
+      .like("normalized_name", `${normalizedName} %`)
+      .in("validation_status", ["valid", "needs_review", "invalid", "failed"])
+      .order("event_date", { ascending: true })
+      .limit(1000),
+    supabase
+      .from("leirdue_year_ingestion_status")
+      .select("status")
+      .eq("year", input.year)
+      .maybeSingle(),
+  ]);
+  const error = exactError || prefixedError;
+  if (error) return { candidates: [] as LeirdueCandidate[], stats: emptyStats(`Shared Leirdue cache read failed: ${error.message}`) };
+  const exactRows = (exactData || []) as SharedResultRow[];
+  const prefixedRows = (prefixedData || []) as SharedResultRow[];
+  const rowMap = new Map<string, SharedResultRow>();
+  for (const row of [...exactRows, ...prefixedRows]) rowMap.set(`${row.source_url}|${row.normalized_name}|${row.score ?? ""}|${row.total_targets ?? ""}`, row);
+  let ambiguousNameRowsRejected = 0;
+  const acceptedNameMatchReasons: string[] = [];
+  const nameMatchedRows = Array.from(rowMap.values()).filter((row) => {
+    const reason = leirdueNameMatchReason(row.original_name || row.normalized_name, input.shooterName);
+    const accepted = row.normalized_name === normalizedName || profileNameContainedInShooterText(row.original_name || row.normalized_name, input.shooterName) || namesLikelyMatch(row.original_name || row.normalized_name, input.shooterName);
+    if (!accepted) ambiguousNameRowsRejected += 1;
+    else if (acceptedNameMatchReasons.length < 25) acceptedNameMatchReasons.push(`${row.original_name || row.normalized_name}: ${reason}`);
+    return accepted;
+  });
+  const rows = nameMatchedRows.filter((row) => sharedDisciplineMatches(sharedEffectiveDiscipline(row), input.disciplines));
+  const rowsWithEffectiveStatus = rows.map((row) => ({ row, effectiveStatus: effectiveSharedValidationStatus(row) }));
+  const validCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "valid").length;
+  const needsReviewCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "needs_review").length;
+  const invalidCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "invalid").length;
+  const failedCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "failed").length;
+  const reviewableRows = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "valid" || item.effectiveStatus === "needs_review").map((item) => item.row);
+  const ignoredInvalidCount = invalidCount + failedCount;
+  const rowStageDiagnostics = rowsWithEffectiveStatus.slice(0, 100).map(({ row, effectiveStatus }) => {
+    const disciplineAccepted = sharedDisciplineMatches(sharedEffectiveDiscipline(row), input.disciplines);
+    const rejection = effectiveStatus === "valid" || effectiveStatus === "needs_review" ? "reviewable before semantic grouping" : sharedRowHasNonReviewableEvidence(row) ? "validation/non-reviewable evidence" : effectiveStatus;
+    const candidate = effectiveStatus === "valid" || effectiveStatus === "needs_review" ? sharedResultRowToCandidate(row) : null;
+    return `row event=${row.event_id || "none"} liste=${row.liste_id || "none"} name=${row.original_name || row.normalized_name} normalized=${row.normalized_name} date=${row.event_date || "unknown"} title=${row.event_title || "unknown"} discipline=${row.discipline || "unknown"} effectiveDiscipline=${sharedEffectiveDiscipline(row)} raw=${row.score ?? "?"}/${row.total_targets ?? "?"} series=${Array.isArray(row.series_scores) ? row.series_scores.join("+") : "none"} storedStatus=${row.validation_status} effectiveStatus=${effectiveStatus} disciplineAccepted=${disciplineAccepted ? "yes" : "no"} semanticKey=${candidate ? sharedCandidateSemanticKey(candidate, normalizedName) : "not-reviewable"} rejection=${rejection}`;
+  });
+  const candidatesBeforeSemanticDeduplication = reviewableRows.map(sharedResultRowToCandidate);
+  const deduped = dedupeSharedCandidatesSemantically(candidatesBeforeSemanticDeduplication, normalizedName);
+  const candidates = deduped.candidates;
+  const reviewableCount = candidates.filter((candidate) => candidate.category !== "control" && candidate.ownScore !== null && candidate.totalTargets !== null).length;
+  const coverageStatus = (statusResult.data?.status as SharedLeirdueSearchStats["coverageStatus"] | undefined) || (statusResult.error ? "unknown" : "not_started");
+  return {
+    candidates,
+    stats: { ok: true, error: statusResult.error ? `Shared Leirdue ingestion status read failed: ${statusResult.error.message}` : null, queryDurationMs: Date.now() - started, rowsFound: reviewableRows.length, totalRows: rows.length, validCount, needsReviewCount, invalidCount, failedCount, reviewableCount, ignoredInvalidCount, exactNameRowsFound: exactRows.length, clubSuffixedRowsFound: prefixedRows.length, ambiguousNameRowsRejected, rowsBeforeSemanticDeduplication: candidatesBeforeSemanticDeduplication.length, canonicalCandidatesAfterSemanticDeduplication: candidates.length, duplicateSourceListsHidden: deduped.hidden, acceptedNameMatchReasons, semanticEventGroupDiagnostics: [...rowStageDiagnostics, ...deduped.diagnostics], coverageStatus, indexingComplete: coverageStatus === "complete", liveCrawlStarted: false as const },
+  };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
@@ -10,12 +10,37 @@ import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMat
 const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduesti", "Sporting"];
 const OPTIONAL_DISCIPLINES = ["Trap", "Skeet", "Other"];
 const DISCIPLINE_CHOICES = [...DEFAULT_DISCIPLINES, ...OPTIONAL_DISCIPLINES];
-const MAX_AUTO_BATCHES = 250;
-const MAX_AUTO_LISTE_ID_SCANNED = 10_000;
-const MAX_AUTO_SEARCH_MS = 30 * 60 * 1000;
-const BATCH_TIMEOUT_MS = 35_000;
+const BATCH_TIMEOUT_MS = 20_000;
+const AUTO_CONTINUATION_DELAY_MS = 750;
+const MAX_AUTO_CONTINUATION_FAILURES = 2;
 
 type EditableCandidate = LeirdueCandidate & { selected: boolean; localId: string; saveStatus?: "saved" | "duplicate" | "error"; saveMessage?: string };
+type CandidatePipelineDiagnostics = {
+  backendCandidateCount: number;
+  frontendReceivedCandidateCount: number;
+  finalFilteredCandidateCount: number;
+  renderedCardCount: number;
+  confirmedRenderedCount: number;
+  possibleRenderedCount: number;
+  selectedRenderedCount: number;
+  loadedFromCacheCandidateIds: string[];
+  returnedByBackendCandidateIds: string[];
+  receivedByFrontendCandidateIds: string[];
+  afterFrontendDeduplicationCandidateIds: string[];
+  afterStatusCategoryFilteringCandidateIds: string[];
+  afterDisciplineFilteringCandidateIds: string[];
+  afterVisibilityFilteringCandidateIds: string[];
+  renderedCandidateIds: string[];
+  lostBetweenCacheAndBackend: string[];
+  lostBetweenBackendAndFrontend: string[];
+  lostDuringFrontendFiltering: string[];
+  lostDuringDeduplication: string[];
+  lostDuringRendering: string[];
+  exactLossReasonByCandidate: string[];
+  duplicateReactKeys: string[];
+  candidatesPerReactKey: string[];
+  renderedUniqueKeyCount: number;
+};
 
 type SavedImportSummary = { id?: string; eventName: string; date: string | null; score: string };
 
@@ -101,7 +126,7 @@ function toEditable(candidate: LeirdueCandidate, index: number): EditableCandida
     warnings: candidate.warnings || [],
     seriesScores: candidate.seriesScores || [],
     selected: candidateSelectedByDefault(candidate),
-    localId: `${candidate.leirdueUrl}-${candidate.date}-${index}`,
+    localId: `${candidateIdentity({ ...candidate, ...sourceIds })}-${index}`,
     duplicateStatus: candidate.duplicateStatus || "new",
     duplicateMatches: candidate.duplicateMatches || [],
     shooterMatchStatus: candidate.shooterMatchStatus || null,
@@ -121,6 +146,31 @@ function candidateSourceIds(candidate: LeirdueCandidate) {
     stevneId: candidate.stevneId || extractLeirdueSourceIdentifiers(candidate.leirdueUrl).stevneId,
     listeId: candidate.listeId || extractLeirdueSourceIdentifiers(candidate.leirdueUrl).listeId,
   };
+}
+
+function candidateIdentity(candidate: LeirdueCandidate) {
+  const sourceIds = candidateSourceIds(candidate);
+  return [
+    sourceIds.stevneId || "no-event",
+    sourceIds.listeId || "no-liste",
+    candidate.leirdueUrl || "no-url",
+    candidate.date || "no-date",
+    candidate.discipline || "no-discipline",
+    candidate.ownScore ?? "?",
+    candidate.totalTargets ?? "?",
+  ].join("|");
+}
+
+function candidateReactKey(candidate: LeirdueCandidate) {
+  return `leirdue-result|${candidateIdentity(candidate)}`;
+}
+
+function candidateRenderKey(candidate: EditableCandidate) {
+  return `${candidateReactKey(candidate)}|${candidate.localId}`;
+}
+
+function leirdueUiScopeKey(name: string, selectedYear: string, selectedDisciplines: string[]) {
+  return `${name.toLowerCase().replace(/\s+/g, " ").trim()}|${selectedYear}|${selectedDisciplines.map((discipline) => discipline.toLowerCase().trim()).sort().join(",")}`;
 }
 
 function duplicateLabel(candidate: EditableCandidate) {
@@ -143,7 +193,7 @@ function canSelectCandidate(candidate: EditableCandidate) {
 }
 
 function candidateMergeKey(candidate: LeirdueCandidate) {
-  return [candidateEventId(candidate), candidate.date || "no-date", candidate.shooterName || "unknown-shooter", candidate.placement ?? "no-place", candidate.ownScore ?? "?", candidate.totalTargets ?? "?"].join("|");
+  return candidateIdentity(candidate);
 }
 
 function candidateQualityRank(candidate: LeirdueCandidate) {
@@ -186,6 +236,90 @@ function visibleCandidateCount(candidates: EditableCandidate[]) {
   return candidates.filter((candidate) => candidate.category !== "control").length;
 }
 
+function candidateReviewCounts(candidateList: EditableCandidate[]) {
+  const sorted = sortCandidatesForReview(candidateList);
+  const confirmed = sorted.filter((candidate) => candidate.category === "recommended" && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported);
+  const possible = sorted.filter((candidate) => (candidate.category === "review" || isManualLinkCandidate(candidate)) && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported);
+  const alreadyImported = sorted.filter((candidate) => candidate.duplicateStatus === "exact" || candidate.alreadyImported);
+  const ignored = sorted.filter((candidate) => candidate.duplicateStatus !== "exact" && !candidate.alreadyImported && !visibleImportCandidate(candidate));
+  const reviewable = confirmed.length + possible.length;
+  const total = reviewable + alreadyImported.length + ignored.length;
+  return { confirmed, possible, alreadyImported, ignored, confirmedCount: confirmed.length, possibleCount: possible.length, alreadyImportedCount: alreadyImported.length, ignoredFailedCount: ignored.length, reviewableCount: reviewable, totalCandidateCount: total };
+}
+
+function candidateIds(candidateList: LeirdueCandidate[]) {
+  return candidateList.map(candidateIdentity);
+}
+
+function missingIds(source: string[], target: string[]) {
+  const targetSet = new Set(target);
+  return Array.from(new Set(source.filter((id) => !targetSet.has(id))));
+}
+
+function duplicateKeyDiagnostics(candidateList: EditableCandidate[]) {
+  const byKey = new Map<string, string[]>();
+  candidateList.forEach((candidate) => {
+    const key = candidateRenderKey(candidate);
+    byKey.set(key, [...(byKey.get(key) || []), candidateIdentity(candidate)]);
+  });
+  const duplicateReactKeys = Array.from(byKey.entries()).filter(([, ids]) => ids.length > 1).map(([key]) => key);
+  const candidatesPerReactKey = Array.from(byKey.entries()).map(([key, ids]) => `${key}: ${ids.join(", ")}`);
+  return { duplicateReactKeys, candidatesPerReactKey, renderedUniqueKeyCount: byKey.size };
+}
+
+function buildCandidatePipelineDiagnostics(input: {
+  loadedFromCache: EditableCandidate[];
+  backendCandidates: LeirdueCandidate[];
+  frontendReceived: LeirdueCandidate[];
+  afterDeduplication: EditableCandidate[];
+  reviewedCandidates: EditableCandidate[];
+  grouped: ReturnType<typeof candidateReviewCounts>;
+}): CandidatePipelineDiagnostics {
+  const rendered = [...input.grouped.confirmed, ...input.grouped.possible];
+  const loadedFromCacheCandidateIds = candidateIds(input.loadedFromCache);
+  const returnedByBackendCandidateIds = candidateIds(input.backendCandidates);
+  const receivedByFrontendCandidateIds = candidateIds(input.frontendReceived);
+  const afterFrontendDeduplicationCandidateIds = candidateIds(input.afterDeduplication);
+  const afterStatusCategoryFilteringCandidateIds = candidateIds([...input.grouped.confirmed, ...input.grouped.possible, ...input.grouped.alreadyImported, ...input.grouped.ignored]);
+  const afterDisciplineFilteringCandidateIds = afterStatusCategoryFilteringCandidateIds;
+  const afterVisibilityFilteringCandidateIds = candidateIds(rendered);
+  const renderedCandidateIds = candidateIds(rendered);
+  const lostDuringDeduplication = missingIds(receivedByFrontendCandidateIds, afterFrontendDeduplicationCandidateIds);
+  const lostDuringFrontendFiltering = missingIds(afterFrontendDeduplicationCandidateIds, afterVisibilityFilteringCandidateIds);
+  const lostDuringRendering = missingIds(afterVisibilityFilteringCandidateIds, renderedCandidateIds);
+  const ignoredById = new Map(input.grouped.ignored.map((candidate) => [candidateIdentity(candidate), candidateReason(candidate)]));
+  const importedById = new Map(input.grouped.alreadyImported.map((candidate) => [candidateIdentity(candidate), "Already imported or exact duplicate."]));
+  const exactLossReasonByCandidate = Array.from(new Set([...lostDuringDeduplication, ...lostDuringFrontendFiltering, ...lostDuringRendering])).map((id) => {
+    const reason = ignoredById.get(id) || importedById.get(id) || (lostDuringDeduplication.includes(id) ? "Removed during frontend deduplication by stable event/list/result identity." : lostDuringRendering.includes(id) ? "Present after visibility filtering but not rendered." : "Filtered out before rendering.");
+    return `${id} => ${reason}`;
+  });
+  const keyDiagnostics = duplicateKeyDiagnostics(rendered);
+  return {
+    backendCandidateCount: input.backendCandidates.length,
+    frontendReceivedCandidateCount: input.frontendReceived.length,
+    finalFilteredCandidateCount: rendered.length,
+    renderedCardCount: rendered.length,
+    confirmedRenderedCount: input.grouped.confirmed.length,
+    possibleRenderedCount: input.grouped.possible.length,
+    selectedRenderedCount: rendered.filter((candidate) => candidate.selected && canSelectCandidate(candidate) && (candidate.duplicateStatus !== "possible" || candidate.allowDuplicateSave)).length,
+    loadedFromCacheCandidateIds,
+    returnedByBackendCandidateIds,
+    receivedByFrontendCandidateIds,
+    afterFrontendDeduplicationCandidateIds,
+    afterStatusCategoryFilteringCandidateIds,
+    afterDisciplineFilteringCandidateIds,
+    afterVisibilityFilteringCandidateIds,
+    renderedCandidateIds,
+    lostBetweenCacheAndBackend: missingIds(loadedFromCacheCandidateIds, returnedByBackendCandidateIds),
+    lostBetweenBackendAndFrontend: missingIds(returnedByBackendCandidateIds, receivedByFrontendCandidateIds),
+    lostDuringFrontendFiltering,
+    lostDuringDeduplication,
+    lostDuringRendering,
+    exactLossReasonByCandidate,
+    ...keyDiagnostics,
+  };
+}
+
 function mergeCandidates(current: EditableCandidate[], incoming: LeirdueCandidate[]) {
   const merged = new Map(current.map((candidate) => [candidateMergeKey(candidate), candidate]));
   incoming.forEach((candidate, index) => {
@@ -212,12 +346,58 @@ function hasLikelySelectedYearWork(debug?: LeirdueSearchDebug) {
   return debug.pendingListeIdQueueRemaining > 0 || debug.confirmedSelectedYearEventsRemaining > 0 || debug.likelySelectedYearEventsRemaining > 0 || debug.unknownYearEventsRemaining > 0;
 }
 
-function estimatedSearchProgress(debug: LeirdueSearchDebug | undefined, batchIndex: number, visibleCount: number, finished = false) {
-  if (finished) return 100;
-  const batchProgress = Math.min(batchIndex / MAX_AUTO_BATCHES, 1) * 55;
-  const scanProgress = Math.min((debug?.scannedListeIdTotal || 0) / MAX_AUTO_LISTE_ID_SCANNED, 1) * 25;
-  const candidateProgress = Math.min(visibleCount / Math.max(debug?.expectedCandidateTarget || 16, 1), 1) * 15;
-  return Math.max(10, Math.min(95, Math.round(5 + batchProgress + scanProgress + candidateProgress)));
+function estimatedSearchProgress(debug: LeirdueSearchDebug | undefined) {
+  const cache = debug?.cacheDiagnostics;
+  const processed = cache?.previouslyProcessedAfterBatch || cache?.previouslyProcessed || debug?.scannedEventTotal || null;
+  const remaining = cache?.remainingWorkAfterBatch ?? cache?.remainingWork ?? null;
+  if (cache?.userSearchLiveCrawlStarted === false && cache.requestMode === "initial") {
+    cache.progressProcessedCount = null;
+    cache.progressRemainingCount = null;
+    cache.progressTotalCount = null;
+    cache.calculatedProgressPercent = null;
+    cache.rawOverallProgressPercent = null;
+    cache.displayedProgressPercent = null;
+    cache.progressCalculationSource = "shared-cache-only";
+    cache.progressCappedReason = cache.ingestionComplete ? null : "sharedIndexIncomplete";
+    return null;
+  }
+  if (cache) {
+    const stageProcessed = debug?.listeIdsScannedThisBatch || debug?.eventMenusFetchedThisBatch || cache.processedThisBatch || 0;
+    const stageRemaining = debug?.pendingListeIdQueueRemaining || debug?.remainingEventQueueCount || 0;
+    cache.currentProgressStage = debug?.listeIdsScannedThisBatch ? "Checking result lists" : debug?.eventMenusFetchedThisBatch ? "Checking event result menus" : cache.cachedCandidatesLoaded ? "Showing cached results" : "Discovering events";
+    cache.stageProcessed = stageProcessed;
+    cache.stageRemaining = stageRemaining;
+    cache.stageTotal = stageProcessed + stageRemaining;
+    cache.newlyDiscoveredWorkThisBatch = Math.max(debug?.listeIdsQueuedThisBatch || 0, debug?.queuedThisBatch || 0);
+  }
+  if (processed === null || remaining === null || processed < 0 || remaining < 0) {
+    if (cache) {
+      cache.progressProcessedCount = processed;
+      cache.progressRemainingCount = remaining;
+      cache.progressTotalCount = null;
+      cache.calculatedProgressPercent = null;
+      cache.rawOverallProgressPercent = null;
+      cache.displayedProgressPercent = null;
+      cache.progressCalculationSource = "unknown-work-counts";
+      cache.progressCappedReason = "unknownTotalWork";
+    }
+    return null;
+  }
+  const total = processed + remaining;
+  const calculated = total > 0 ? (processed / total) * 100 : 0;
+  const complete = Boolean(cache?.completionProof?.valid && cache.cacheScopeComplete);
+  const capped = complete ? 100 : Math.min(calculated, 99);
+  if (cache) {
+    cache.progressProcessedCount = processed;
+    cache.progressRemainingCount = remaining;
+    cache.progressTotalCount = total;
+    cache.calculatedProgressPercent = calculated;
+    cache.rawOverallProgressPercent = calculated;
+    cache.displayedProgressPercent = capped;
+    cache.progressCalculationSource = "processed-over-processed-plus-remaining";
+    cache.progressCappedReason = complete ? null : "notCompleteProofValid";
+  }
+  return Math.max(0, Math.round(capped));
 }
 
 function likelyResultsLabel(count: number) {
@@ -233,7 +413,7 @@ function autoSearchCompleteMessage(visibleCount: number) {
 }
 
 function searchCounterMessage(scannedListCount: number, foundCount: number, autoContinuing = false) {
-  return `Searching Leirdue.net… ${scannedListCount} result lists checked — ${foundCount} results found so far${autoContinuing ? " — continuing automatically" : ""}`;
+  return `Searching Leirdue.net… ${scannedListCount} result lists checked — ${foundCount} reviewable results found so far${autoContinuing ? " — continuing automatically" : ""}`;
 }
 
 function formatDate(date: string | null) {
@@ -599,7 +779,7 @@ function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | 
         </>
       ) : null}
       {debug.message ? <p className="small muted">Search warning: {debug.message}</p> : null}
-      {debug.cacheDiagnostics ? <p className="small muted">Cache diagnostics: used={debug.cacheDiagnostics.cacheUsed ? "yes" : "no"}; readOk={debug.cacheDiagnostics.cacheReadOk ? "yes" : "no"}; writeOk={debug.cacheDiagnostics.cacheWriteOk ? "yes" : "no"}; cached={debug.cacheDiagnostics.cachedCandidatesFound}; importable={debug.cacheDiagnostics.cachedImportableCandidatesFound}; invalidLists={debug.cacheDiagnostics.cachedInvalidListsFound}; liveStarted={debug.cacheDiagnostics.liveFetchesStarted}; liveSkippedCached={debug.cacheDiagnostics.liveFetchesSkippedBecauseCached}; liveSkippedInvalid={debug.cacheDiagnostics.liveFetchesSkippedBecauseCachedInvalid}; loaded={debug.cacheDiagnostics.cachedCandidatesLoaded}; scopeComplete={debug.cacheDiagnostics.cacheScopeComplete ? "yes" : "no"}; scopeStatus={debug.cacheDiagnostics.cacheScopeStatus}; continuationRequired={debug.cacheDiagnostics.continuationRequired ? "yes" : "no"}; resumed={debug.cacheDiagnostics.resumedFromSavedProgress ? "yes" : "no"}; processedThisBatch={debug.cacheDiagnostics.processedThisBatch}; previouslyProcessed={debug.cacheDiagnostics.previouslyProcessed}; remainingWork={debug.cacheDiagnostics.remainingWork ?? "unknown"}; liveRefresh={debug.cacheDiagnostics.liveRefreshStarted ? "yes" : "no"}; liveReason={debug.cacheDiagnostics.liveRefreshReason || "none"}; markedComplete={debug.cacheDiagnostics.crawlMarkedComplete ? "yes" : "no"}; crawlStop={debug.cacheDiagnostics.crawlStopReason || "none"}; progressWrite={debug.cacheDiagnostics.progressWriteOk ? "ok" : "not-ok"}; progressError={debug.cacheDiagnostics.progressWriteError || "none"}; misses={debug.cacheDiagnostics.cacheMisses}; stale={debug.cacheDiagnostics.staleCacheRows}; serviceRole={debug.cacheDiagnostics.serviceRoleCacheWriteEnabled ? "yes" : "no"}; elapsedMs={debug.cacheDiagnostics.elapsedMs ?? "n/a"}; stop={debug.cacheDiagnostics.stopReason || "none"}; repeatFaster={debug.cacheDiagnostics.repeatedSearchShouldBeFaster ? "yes" : "no"}; notUsedReason={debug.cacheDiagnostics.cacheNotUsedReason || "none"}; readErrors={(debug.cacheDiagnostics.cacheReadErrors || []).join(" | ") || "none"}; writeErrors={(debug.cacheDiagnostics.cacheWriteErrors || []).join(" | ") || "none"}; writeWarnings={(debug.cacheDiagnostics.cacheWriteWarnings || []).join(" | ") || "none"}</p> : null}
+      {debug.cacheDiagnostics ? <p className="small muted">Cache diagnostics: used={debug.cacheDiagnostics.cacheUsed ? "yes" : "no"}; readOk={debug.cacheDiagnostics.cacheReadOk ? "yes" : "no"}; writeOk={debug.cacheDiagnostics.cacheWriteOk ? "yes" : "no"}; cached={debug.cacheDiagnostics.cachedCandidatesFound}; importable={debug.cacheDiagnostics.cachedImportableCandidatesFound}; invalidLists={debug.cacheDiagnostics.cachedInvalidListsFound}; liveStarted={debug.cacheDiagnostics.liveFetchesStarted}; liveSkippedCached={debug.cacheDiagnostics.liveFetchesSkippedBecauseCached}; liveSkippedInvalid={debug.cacheDiagnostics.liveFetchesSkippedBecauseCachedInvalid}; loaded={debug.cacheDiagnostics.cachedCandidatesLoaded}; scopeComplete={debug.cacheDiagnostics.cacheScopeComplete ? "yes" : "no"}; scopeStatus={debug.cacheDiagnostics.cacheScopeStatus}; continuationRequired={debug.cacheDiagnostics.continuationRequired ? "yes" : "no"}; resumed={debug.cacheDiagnostics.resumedFromSavedProgress ? "yes" : "no"}; processedThisBatch={debug.cacheDiagnostics.processedThisBatch}; previouslyProcessed={debug.cacheDiagnostics.previouslyProcessed}; remainingWork={debug.cacheDiagnostics.remainingWork ?? "unknown"}; liveRefresh={debug.cacheDiagnostics.liveRefreshStarted ? "yes" : "no"}; liveReason={debug.cacheDiagnostics.liveRefreshReason || "none"}; markedComplete={debug.cacheDiagnostics.crawlMarkedComplete ? "yes" : "no"}; crawlStop={debug.cacheDiagnostics.crawlStopReason || "none"}; crawlStateFound={debug.cacheDiagnostics.crawlStateFound ? "yes" : "no"}; tokenPresent={debug.cacheDiagnostics.savedContinuationTokenPresent ? "yes" : "no"}; decodeOk={debug.cacheDiagnostics.continuationDecodeOk ? "yes" : "no"}; decodeError={debug.cacheDiagnostics.continuationDecodeError || "none"}; stateVersion={debug.cacheDiagnostics.continuationStateVersion ?? "none"}; storedQueues={debug.cacheDiagnostics.storedEventQueueCount}/{debug.cacheDiagnostics.storedListeIdQueueCount}; restoredQueues={debug.cacheDiagnostics.restoredEventQueueCount}/{debug.cacheDiagnostics.restoredListeIdQueueCount}; eligibleAfterRestore={debug.cacheDiagnostics.eligibleWorkAfterRestore}; recovery={debug.cacheDiagnostics.recoveryRediscoveryUsed ? "yes" : "no"}; recoveryReason={debug.cacheDiagnostics.recoveryRediscoveryReason || "none"}; emptyQueueInterpretation={debug.cacheDiagnostics.emptyQueueInterpretation || "none"}; unfinishedWorkExpected={debug.cacheDiagnostics.unfinishedWorkExpected ? "yes" : "no"}; allRediscoveredEventsAlreadyProcessed={debug.cacheDiagnostics.allRediscoveredEventsAlreadyProcessed ? "yes" : "no"}; finalReconciliationComplete={debug.cacheDiagnostics.finalReconciliationComplete ? "yes" : "no"}; recoveryErrorAffectsCompletion={debug.cacheDiagnostics.recoveryErrorAffectsCompletion ? "yes" : "no"}; completionMarkedThisBatch={debug.cacheDiagnostics.completionMarkedThisBatch ? "yes" : "no"}; completionBefore={JSON.stringify(debug.cacheDiagnostics.completionCheckBeforeBatch)}; completionAfter={JSON.stringify(debug.cacheDiagnostics.completionCheckAfterBatch)}; queuesBefore={JSON.stringify(debug.cacheDiagnostics.queuesBeforeBatch)}; queuesAfter={JSON.stringify(debug.cacheDiagnostics.queuesAfterBatch)}; remainingAfterMutation={debug.cacheDiagnostics.remainingWorkAfterMutation ?? "unknown"}; completionEligibleAfterBatch={debug.cacheDiagnostics.completionEligibleAfterBatch ? "yes" : "no"}; completionPersistedInSameRequest={debug.cacheDiagnostics.completionPersistedInSameRequest ? "yes" : "no"}; extraCompletionRequestRequired={debug.cacheDiagnostics.extraCompletionRequestRequired ? "yes" : "no"}; invalidComplete={debug.cacheDiagnostics.invalidCompleteStateDetected ? "yes" : "no"}; invalidCompleteReason={debug.cacheDiagnostics.invalidCompleteStateReason || "none"}; completionProof={JSON.stringify(debug.cacheDiagnostics.completionProof)}; candidatePipelineReconciled={debug.cacheDiagnostics.candidatePipelineReconciled ? "yes" : "no"}; renderedCandidateCountMatchesBackend={debug.cacheDiagnostics.renderedCandidateCountMatchesBackend ? "yes" : "no"}; uniqueCandidateKeysValid={debug.cacheDiagnostics.uniqueCandidateKeysValid ? "yes" : "no"}; expectedRegressionReviewableCount={debug.cacheDiagnostics.expectedRegressionReviewableCount ?? "none"}; actualRegressionReviewableCount={debug.cacheDiagnostics.actualRegressionReviewableCount ?? "none"}; regressionReviewableCountPass={debug.cacheDiagnostics.regressionReviewableCountPass ? "yes" : "no"}; requestMode={debug.cacheDiagnostics.requestMode}; explicitContinue={debug.cacheDiagnostics.explicitContinuationRequested ? "yes" : "no"}; buttonAction={debug.cacheDiagnostics.buttonAction || "none"}; sentMode={debug.cacheDiagnostics.sentRequestMode || "none"}; sentExplicit={debug.cacheDiagnostics.sentExplicitContinue ? "yes" : "no"}; inFlight={debug.cacheDiagnostics.continuationRequestInFlight ? "yes" : "no"}; scopeKey={debug.cacheDiagnostics.requestScopeKey || "none"}; progressCounts={debug.cacheDiagnostics.progressProcessedCount ?? "unknown"}/{debug.cacheDiagnostics.progressRemainingCount ?? "unknown"}/{debug.cacheDiagnostics.progressTotalCount ?? "unknown"}; calculatedProgress={debug.cacheDiagnostics.calculatedProgressPercent?.toFixed(1) ?? "unknown"}; displayedProgress={debug.cacheDiagnostics.displayedProgressPercent?.toFixed(1) ?? "unknown"}; progressSource={debug.cacheDiagnostics.progressCalculationSource || "none"}; progressCappedReason={debug.cacheDiagnostics.progressCappedReason || "none"}; progressScopeKey={debug.cacheDiagnostics.progressScopeKey || "none"}; progressGenerationId={debug.cacheDiagnostics.progressGenerationId || "none"}; persistedHighestProgress={debug.cacheDiagnostics.persistedHighestProgress ?? "unknown"}; currentSessionHighestProgress={debug.cacheDiagnostics.currentSessionHighestProgress ?? "unknown"}; progressResetReason={debug.cacheDiagnostics.progressResetReason || "none"}; progressScopeMatch={debug.cacheDiagnostics.progressScopeMatch ? "yes" : "no"}; stage={debug.cacheDiagnostics.currentProgressStage || "none"}; stageWork={debug.cacheDiagnostics.stageProcessed ?? "unknown"}/{debug.cacheDiagnostics.stageRemaining ?? "unknown"}/{debug.cacheDiagnostics.stageTotal ?? "unknown"}; rawOverall={debug.cacheDiagnostics.rawOverallProgressPercent?.toFixed(1) ?? "unknown"}; highestDisplayed={debug.cacheDiagnostics.highestDisplayedProgressPercent?.toFixed(1) ?? "unknown"}; newlyDiscovered={debug.cacheDiagnostics.newlyDiscoveredWorkThisBatch}; progressHeld={debug.cacheDiagnostics.progressHeldReason || "none"}; requestStartedAt={debug.cacheDiagnostics.requestStartedAt ?? "unknown"}; batchDeadlineAt={debug.cacheDiagnostics.batchDeadlineAt ?? "unknown"}; beforeFirstEvent={debug.cacheDiagnostics.elapsedBeforeFirstEventMs ?? "unknown"}/{debug.cacheDiagnostics.remainingBudgetBeforeFirstEventMs ?? "unknown"}; scanReserveMs={debug.cacheDiagnostics.scanReserveMs ?? "unknown"}; eventBudgetMs={debug.cacheDiagnostics.eventProcessingBudgetMs ?? "unknown"}; firstEventAttempted={debug.cacheDiagnostics.firstEventProcessingAttempted ? "yes" : "no"}; firstFetchStarted={debug.cacheDiagnostics.firstEventFetchStarted ? "yes" : "no"}; firstFetchResult={debug.cacheDiagnostics.firstEventFetchResult || "none"}; earlyReturn={debug.cacheDiagnostics.earlyReturnReason || "none"}; noProgress={debug.cacheDiagnostics.noProgressReason || "none"}; rejectionCounts={JSON.stringify(debug.cacheDiagnostics.restoredEventRejectionCounts || {})}; firstRestored={JSON.stringify((debug.cacheDiagnostics.firstRestoredEventDiagnostics || []).slice(0, 10))}; progressWrite={debug.cacheDiagnostics.progressWriteOk ? "ok" : "not-ok"}; progressError={debug.cacheDiagnostics.progressWriteError || "none"}; misses={debug.cacheDiagnostics.cacheMisses}; stale={debug.cacheDiagnostics.staleCacheRows}; serviceRole={debug.cacheDiagnostics.serviceRoleCacheWriteEnabled ? "yes" : "no"}; elapsedMs={debug.cacheDiagnostics.elapsedMs ?? "n/a"}; stop={debug.cacheDiagnostics.stopReason || "none"}; repeatFaster={debug.cacheDiagnostics.repeatedSearchShouldBeFaster ? "yes" : "no"}; notUsedReason={debug.cacheDiagnostics.cacheNotUsedReason || "none"}; readErrors={(debug.cacheDiagnostics.cacheReadErrors || []).join(" | ") || "none"}; writeErrors={(debug.cacheDiagnostics.cacheWriteErrors || []).join(" | ") || "none"}; writeWarnings={(debug.cacheDiagnostics.cacheWriteWarnings || []).join(" | ") || "none"}</p> : null}
       {debug.errorMessage ? <p className="small muted">Last error: {debug.errorMessage}</p> : null}
       {debug.lastFetchUrl ? <p className="small muted">Last fetch URL: {debug.lastFetchUrl}</p> : null}
       {debug.listInspectionLimitReached ? <p className="small muted">Result list inspection limit reached.</p> : null}
@@ -684,6 +864,11 @@ export default function LeirdueImportPage() {
   const [leirdueTotalListeIdScanned, setLeirdueTotalListeIdScanned] = useState(0);
   const [savedImport, setSavedImport] = useState<SavedImportSummary | null>(null);
   const [manualReviewActive, setManualReviewActive] = useState(false);
+  const [candidatePipelineDiagnostics, setCandidatePipelineDiagnostics] = useState<CandidatePipelineDiagnostics | null>(null);
+  const [progressScopeKey, setProgressScopeKey] = useState("");
+  const continuationRequestInFlightRef = useRef(false);
+  const progressHighByScopeRef = useRef(new Map<string, number>());
+  const continuationFailuresByScopeRef = useRef(new Map<string, number>());
 
   useEffect(() => {
     async function loadShooterName() {
@@ -700,23 +885,33 @@ export default function LeirdueImportPage() {
     loadShooterName();
   }, []);
 
-  const groupedCandidates = useMemo(() => {
-    const sorted = sortCandidatesForReview(candidates);
-    return {
-      confirmed: sorted.filter((candidate) => candidate.category === "recommended" && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported),
-      possible: sorted.filter((candidate) => (candidate.category === "review" || isManualLinkCandidate(candidate)) && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported),
-      alreadyImported: sorted.filter((candidate) => candidate.duplicateStatus === "exact" || candidate.alreadyImported),
-      ignored: sorted.filter((candidate) => candidate.duplicateStatus !== "exact" && !candidate.alreadyImported && !visibleImportCandidate(candidate)),
-    };
-  }, [candidates]);
-  const reviewableCount = groupedCandidates.confirmed.length + groupedCandidates.possible.length;
+  const groupedCandidates = useMemo(() => candidateReviewCounts(candidates), [candidates]);
+  const renderedReviewCandidates = useMemo(() => [...groupedCandidates.confirmed, ...groupedCandidates.possible], [groupedCandidates]);
+  const reviewableCount = groupedCandidates.reviewableCount;
   const hiddenFromNormalListCount = groupedCandidates.ignored.length;
+  const hiddenControlCount = useMemo(() => candidates.filter((candidate) => candidate.category === "control").length, [candidates]);
   const manualReviewCandidates = useMemo(() => sortCandidatesForReview(candidates.filter((candidate) => isManualLinkCandidate(candidate) && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported)), [candidates]);
   const manualAlreadyImportedCandidates = useMemo(() => sortCandidatesForReview(candidates.filter((candidate) => isManualLinkCandidate(candidate) && (candidate.duplicateStatus === "exact" || candidate.alreadyImported))), [candidates]);
   const manualBestCandidate = manualReviewCandidates.find((candidate) => candidate.shooterMatchStatus === "matched_to_you") || manualReviewCandidates.find((candidate) => candidate.shooterMatchStatus === "possible_match") || manualReviewCandidates[0] || null;
   const manualOtherCandidates = manualBestCandidate ? manualReviewCandidates.filter((candidate) => candidate.localId !== manualBestCandidate.localId) : manualReviewCandidates;
 
   const selectedCount = candidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate) && canSelectCandidate(candidate) && (candidate.duplicateStatus !== "possible" || candidate.allowDuplicateSave)).length;
+  const currentSearchScopeKey = useMemo(() => leirdueUiScopeKey(shooterName, year, disciplines), [shooterName, year, disciplines]);
+
+  useEffect(() => {
+    setProgressScopeKey((previous) => {
+      if (!previous) return currentSearchScopeKey;
+      if (previous !== currentSearchScopeKey) {
+        setSearchProgress(0);
+        setSearchStatus("");
+        setSearchCounterText("");
+        setContinuationToken(null);
+        setCandidatePipelineDiagnostics(null);
+        return currentSearchScopeKey;
+      }
+      return previous;
+    });
+  }, [currentSearchScopeKey]);
 
   function toggleDiscipline(discipline: string) {
     setDisciplines((current) => (current.includes(discipline) ? current.filter((item) => item !== discipline) : [...current, discipline]));
@@ -774,7 +969,9 @@ export default function LeirdueImportPage() {
   async function setReviewedCandidates(candidateList: EditableCandidate[]) {
     const matched = applyShooterMatching(candidateList);
     const withDuplicates = await checkDuplicatesFor(matched);
-    setCandidates(sortCandidatesForReview(withDuplicates));
+    const reviewed = sortCandidatesForReview(withDuplicates);
+    setCandidates(reviewed);
+    return reviewed;
   }
 
   async function parseDirectUrl() {
@@ -868,7 +1065,7 @@ export default function LeirdueImportPage() {
     setCandidates((current) => current.map((candidate) => (candidate.localId === updated.localId ? updated : candidate)));
   }
 
-  async function fetchSearchBatch(token: string | null) {
+  async function fetchSearchBatch(token: string | null, mode: "initial" | "continue" | "revalidateInvalidComplete", explicitContinue: boolean) {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), BATCH_TIMEOUT_MS);
     const { data: sessionData } = await supabase.auth.getSession();
@@ -880,7 +1077,7 @@ export default function LeirdueImportPage() {
           "Content-Type": "application/json",
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
-        body: JSON.stringify({ shooterName, year: Number(year), disciplines, continuationToken: token, sourceUrl: sourceUrl.trim() || null }),
+        body: JSON.stringify({ shooterName, year: Number(year), disciplines, continuationToken: token, sourceUrl: sourceUrl.trim() || null, requestMode: mode, explicitContinue, buttonAction: explicitContinue ? "continue" : "search" }),
         signal: controller.signal,
       });
       const data = (await response.json()) as SearchResponse;
@@ -891,91 +1088,129 @@ export default function LeirdueImportPage() {
   }
 
   async function runAutoSearch(startToken: string | null, reset: boolean) {
-    if (searching) return;
+    if (searching || continuationRequestInFlightRef.current) return;
+    continuationRequestInFlightRef.current = true;
+    const activeScopeKey = currentSearchScopeKey;
+    const scopeChanged = progressScopeKey !== activeScopeKey;
+    if (scopeChanged || reset) {
+      progressHighByScopeRef.current.set(activeScopeKey, 0);
+      setProgressScopeKey(activeScopeKey);
+    }
 
     setError("");
     setSuccess("");
     setSearching(true);
-    setSearchProgress(reset ? 5 : Math.max(searchProgress, 15));
-    setSearchStatus(reset ? "Finding relevant events..." : "Continuing the search for more results...");
+    setSearchProgress(reset || scopeChanged ? 0 : Math.max(progressHighByScopeRef.current.get(activeScopeKey) || 0, 15));
+    setSearchStatus(reset ? "Loading shared cached results..." : "Continuing with one short batch...");
     setSearchCounterText("");
-    setIsAutoContinuingLeirdue(false);
+    setIsAutoContinuingLeirdue(Boolean(startToken));
     if (reset) {
       setLeirdueBatchNumber(0);
       setLeirdueVisibleCandidatesCount(0);
       setLeirdueTotalListeIdScanned(0);
-    }
-
-    let token = startToken;
-    let batchCount = 0;
-    let stoppedInsideLoop = false;
-    let currentCandidates = reset ? [] : candidates;
-    const startedAt = Date.now();
-
-    if (reset) {
       setCandidates([]);
       setDebug(null);
       setContinuationToken(null);
       setManualReviewActive(false);
+      setCandidatePipelineDiagnostics(null);
     }
 
+    let currentCandidates = reset ? [] : candidates;
+    const candidatesBeforeMerge = currentCandidates;
+
     try {
-      while (true) {
-        batchCount += 1;
-        setIsAutoContinuingLeirdue(Boolean(token));
-        setSearchStatus(token ? "Continuing the search for more results..." : "Finding relevant events...");
-        setSearchCounterText(searchCounterMessage(leirdueTotalListeIdScanned, visibleCandidateCount(currentCandidates), Boolean(token)));
+      const mode = reset ? "initial" : "continue";
+      const explicitContinue = !reset;
+      const { response, data } = await fetchSearchBatch(startToken, mode, explicitContinue);
+      const responseDebug = data.debug || null;
+      if (responseDebug?.cacheDiagnostics) {
+        responseDebug.cacheDiagnostics.frontendContinuationMode = "manual-single-batch";
+        responseDebug.cacheDiagnostics.sentRequestMode = mode;
+        responseDebug.cacheDiagnostics.sentExplicitContinue = explicitContinue;
+        responseDebug.cacheDiagnostics.buttonAction = explicitContinue ? "continue" : "search";
+        responseDebug.cacheDiagnostics.continuationRequestInFlight = continuationRequestInFlightRef.current;
+        responseDebug.cacheDiagnostics.progressScopeKey = activeScopeKey;
+        responseDebug.cacheDiagnostics.progressGenerationId = `${activeScopeKey}:${responseDebug.batchNumber || 0}`;
+        responseDebug.cacheDiagnostics.persistedHighestProgress = progressHighByScopeRef.current.get(activeScopeKey) ?? null;
+        responseDebug.cacheDiagnostics.progressResetReason = reset ? "newSearch" : scopeChanged ? "scopeChanged" : null;
+        responseDebug.cacheDiagnostics.progressScopeMatch = !scopeChanged;
+      }
+      setDebug(responseDebug);
 
-        const { response, data } = await fetchSearchBatch(token);
-        setDebug(data.debug || null);
-
-        if (!response.ok) {
-          setError(data.error || "Could not fetch Leirdue results right now.");
-          setContinuationToken(token);
-          stoppedInsideLoop = true;
-          break;
-        }
-
-        setSearchStatus("Searching for your name in result lists...");
-        currentCandidates = reset && batchCount === 1 ? (data.candidates || []).map(toEditable) : mergeCandidates(currentCandidates, data.candidates || []);
-        const afterVisible = visibleCandidateCount(currentCandidates);
-        await setReviewedCandidates(currentCandidates);
-
-        const nextToken = data.continuationToken || null;
-        const likelyWorkRemains = hasLikelySelectedYearWork(data.debug);
-        const apiAllowsContinuation = data.debug?.continuationAvailable !== false;
-        const shouldContinue = Boolean(nextToken && apiAllowsContinuation && likelyWorkRemains);
-        setContinuationToken(shouldContinue ? nextToken : null);
-        setSearchProgress(estimatedSearchProgress(data.debug, batchCount, afterVisible, !shouldContinue));
-        setLeirdueBatchNumber(data.debug?.batchNumber || batchCount);
-        setLeirdueVisibleCandidatesCount(afterVisible);
-        setLeirdueTotalListeIdScanned(data.debug?.scannedListeIdTotal || 0);
-        setSearchCounterText(searchCounterMessage(data.debug?.scannedListeIdTotal || 0, afterVisible, shouldContinue));
-
-        if (!shouldContinue) {
-          setSearchStatus("Search complete");
-          if (afterVisible === 0 && reset) setSuccess("No candidates found. Try broader filters or add a result manually.");
-          else setSuccess(autoSearchCompleteMessage(afterVisible));
-          stoppedInsideLoop = true;
-          break;
-        }
-
-        token = nextToken;
-        const scannedTooManyLists = (data.debug?.scannedListeIdTotal || 0) >= MAX_AUTO_LISTE_ID_SCANNED;
-        const searchedTooLong = Date.now() - startedAt >= MAX_AUTO_SEARCH_MS;
-        if (scannedTooManyLists || searchedTooLong) {
-          setContinuationToken(nextToken);
-          setSearchStatus("Search could not be completed");
-          setSuccess(autoSearchIncompleteMessage(afterVisible, scannedTooManyLists ? `internal list scan cap reached (${MAX_AUTO_LISTE_ID_SCANNED} lists) while more work remained` : `internal time cap reached (${Math.round(MAX_AUTO_SEARCH_MS / 60000)} minutes) while more work remained`));
-          setSearchProgress(100);
-          stoppedInsideLoop = true;
-          break;
-        }
-
-        setSearchStatus("Fetching result lists...");
+      if (!response.ok) {
+        setError(data.error || "Could not fetch Leirdue results right now.");
+        setContinuationToken(startToken);
+        return;
       }
 
+      const backendCandidates = data.candidates || [];
+      currentCandidates = mergeCandidates(currentCandidates, backendCandidates);
+      const reviewedCandidates = await setReviewedCandidates(currentCandidates);
+      const reviewedCounts = candidateReviewCounts(reviewedCandidates);
+      const pipelineDiagnostics = buildCandidatePipelineDiagnostics({
+        loadedFromCache: candidatesBeforeMerge,
+        backendCandidates,
+        frontendReceived: backendCandidates,
+        afterDeduplication: currentCandidates,
+        reviewedCandidates,
+        grouped: reviewedCounts,
+      });
+      setCandidatePipelineDiagnostics(pipelineDiagnostics);
+      if (data.debug?.cacheDiagnostics) {
+        data.debug.cacheDiagnostics.frontendReviewableCount = reviewedCounts.reviewableCount;
+        data.debug.cacheDiagnostics.candidatePipelineReconciled = pipelineDiagnostics.lostDuringDeduplication.length === 0 && pipelineDiagnostics.lostDuringFrontendFiltering.length === 0 && pipelineDiagnostics.lostDuringRendering.length === 0 && (data.debug.cacheDiagnostics.backendReviewableCount || pipelineDiagnostics.frontendReceivedCandidateCount) === reviewedCounts.reviewableCount;
+        data.debug.cacheDiagnostics.renderedCandidateCountMatchesBackend = pipelineDiagnostics.renderedCardCount === reviewedCounts.reviewableCount && (data.debug.cacheDiagnostics.backendReviewableCount || pipelineDiagnostics.frontendReceivedCandidateCount) === reviewedCounts.reviewableCount;
+        data.debug.cacheDiagnostics.uniqueCandidateKeysValid = pipelineDiagnostics.duplicateReactKeys.length === 0 && pipelineDiagnostics.renderedUniqueKeyCount === pipelineDiagnostics.renderedCardCount;
+      }
+      setDebug(data.debug || responseDebug);
+
+      const nextToken = data.continuationToken || null;
+      const likelyWorkRemains = hasLikelySelectedYearWork(data.debug);
+      const apiAllowsContinuation = data.debug?.continuationAvailable !== false;
+      const shouldContinue = Boolean(nextToken && apiAllowsContinuation && likelyWorkRemains);
+      setContinuationToken(shouldContinue ? nextToken : null);
+      const cacheOnlyInitialSearch = Boolean(data.debug?.cacheDiagnostics?.userSearchLiveCrawlStarted === false && data.debug.cacheDiagnostics.requestMode === "initial");
+      const nextProgress = estimatedSearchProgress(data.debug);
+      const completeProgress = Boolean(data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete);
+      const previousProgress = reset || scopeChanged ? 0 : progressHighByScopeRef.current.get(activeScopeKey) ?? 0;
+      const displayedProgress = cacheOnlyInitialSearch ? (completeProgress ? 100 : 0) : nextProgress === null ? Math.max(previousProgress, 15) : completeProgress ? nextProgress : Math.min(Math.max(previousProgress, nextProgress), 99);
+      progressHighByScopeRef.current.set(activeScopeKey, displayedProgress);
+      if (data.debug?.cacheDiagnostics) {
+        data.debug.cacheDiagnostics.highestDisplayedProgressPercent = displayedProgress;
+        data.debug.cacheDiagnostics.displayedProgressPercent = displayedProgress;
+        data.debug.cacheDiagnostics.currentSessionHighestProgress = displayedProgress;
+        data.debug.cacheDiagnostics.progressScopeKey = activeScopeKey;
+        data.debug.cacheDiagnostics.progressGenerationId = `${activeScopeKey}:${data.debug.batchNumber || 0}`;
+        data.debug.cacheDiagnostics.persistedHighestProgress = previousProgress || null;
+        data.debug.cacheDiagnostics.progressResetReason = reset ? "newSearch" : scopeChanged ? "scopeChanged" : null;
+        data.debug.cacheDiagnostics.progressScopeMatch = !scopeChanged;
+        data.debug.cacheDiagnostics.progressHeldReason = nextProgress !== null && displayedProgress > nextProgress ? "newlyDiscoveredWorkIncreasedDenominator" : null;
+      }
+      setSearchProgress(displayedProgress);
+      setLeirdueBatchNumber(data.debug?.batchNumber || 1);
+      setLeirdueVisibleCandidatesCount(reviewedCounts.reviewableCount);
+      setLeirdueTotalListeIdScanned(data.debug?.scannedListeIdTotal || 0);
+      setSearchCounterText(cacheOnlyInitialSearch
+        ? `${data.debug?.cacheDiagnostics?.ingestionComplete ? "Shared index complete." : "Shared index incomplete."} Found ${reviewedCounts.reviewableCount} cached reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. Total shared rows=${data.debug?.cacheDiagnostics?.totalSharedRows ?? "unknown"}; valid=${data.debug?.cacheDiagnostics?.validSharedRows ?? "unknown"}; possible=${data.debug?.cacheDiagnostics?.needsReviewSharedRows ?? "unknown"}; ignored=${(data.debug?.cacheDiagnostics?.invalidSharedRows || 0) + (data.debug?.cacheDiagnostics?.failedSharedRows || 0)}.`
+        : `${data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete ? "Search complete." : "Checking event result lists…"} Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}.${(data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch || 0) > 0 ? ` ${data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch} more result lists were discovered.` : ""}`);
+
+      const provenComplete = Boolean(data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete);
+      if (cacheOnlyInitialSearch) {
+        setSearchStatus(data.debug?.cacheDiagnostics?.ingestionComplete ? "Shared index complete" : "Shared index incomplete");
+        setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No shared cached results found yet. Additional Leirdue.net results may become available as the shared index is updated." : `Found ${reviewedCounts.reviewableCount} cached reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. ${data.debug?.cacheDiagnostics?.ingestionComplete ? "Shared indexing is complete." : "Shared indexing is incomplete; more results may become available."}`);
+      } else if (shouldContinue) {
+        continuationFailuresByScopeRef.current.set(activeScopeKey, 0);
+        setSearchStatus("More Leirdue.net work remains. Use Continue search to run another short batch.");
+        setSuccess(`${reviewedCounts.reviewableCount} cached or found reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"} loaded. More results may still be available.`);
+      } else if (provenComplete) {
+        setSearchStatus("Search complete");
+        setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No candidates found. Try broader filters or add a result manually." : `Search complete. Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. Please review the list before saving.`);
+      } else {
+        setSearchStatus("Shared index incomplete");
+        setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No candidates found yet. Try broader filters or add a result manually." : `Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. More results may still be available.`);
+      }
     } catch (requestError) {
+      continuationFailuresByScopeRef.current.set(activeScopeKey, (continuationFailuresByScopeRef.current.get(activeScopeKey) || 0) + 1);
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
         const visibleCount = visibleCandidateCount(currentCandidates);
         if (visibleCount > 0) setSuccess(autoSearchIncompleteMessage(visibleCount, "request timeout"));
@@ -984,11 +1219,33 @@ export default function LeirdueImportPage() {
         setError("Could not fetch Leirdue results right now.");
       }
     } finally {
+      continuationRequestInFlightRef.current = false;
       setSearching(false);
       setIsAutoContinuingLeirdue(false);
-      setSearchProgress((progress) => (progress > 0 ? Math.max(progress, 100) : progress));
+      setSearchProgress((progress) => progress);
     }
   }
+
+  async function continueSearch(event?: React.MouseEvent<HTMLButtonElement>) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    if (!continuationToken) return;
+    await runAutoSearch(continuationToken, false);
+  }
+
+  useEffect(() => {
+    if (!continuationToken || searching || continuationRequestInFlightRef.current) return;
+    const failures = continuationFailuresByScopeRef.current.get(currentSearchScopeKey) || 0;
+    if (failures >= MAX_AUTO_CONTINUATION_FAILURES) return;
+    const scheduledScope = currentSearchScopeKey;
+    const scheduledToken = continuationToken;
+    const timer = window.setTimeout(() => {
+      if (scheduledScope !== leirdueUiScopeKey(shooterName, year, disciplines)) return;
+      if (continuationRequestInFlightRef.current) return;
+      void runAutoSearch(scheduledToken, false);
+    }, AUTO_CONTINUATION_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [continuationToken, searching, currentSearchScopeKey, shooterName, year, disciplines]);
 
   async function search(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1096,6 +1353,8 @@ export default function LeirdueImportPage() {
           </fieldset>
           <div className="btns">
             <button disabled={searching || disciplines.length === 0}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
+            {/* TODO: Replace this temporary testing control with bounded, non-blocking background continuation that keeps cached results visible and merges new results automatically. */}
+            {continuationToken ? <button type="button" className="secondary" disabled={searching || continuationRequestInFlightRef.current} onClick={continueSearch}>{searching ? "Continuing..." : "Continue search"}</button> : null}
           </div>
         </section>
 
@@ -1124,15 +1383,24 @@ export default function LeirdueImportPage() {
         ) : success ? <div className="success">{success} {success.includes("saved") ? <Link href="/stats">Open Stats</Link> : null}</div> : null}
         {searching || searchStatus ? (
           <div className="searchProgressPanel" aria-live="polite">
-            {searching ? <p className="small">This search can take a few minutes. Do not close or refresh the page while we fetch results from Leirdue.net.</p> : null}
-            <div className="progressHeader">
-              <span>Estimated progress</span>
-              <strong>{Math.round(searchProgress)}%</strong>
-            </div>
-            <progress value={searchProgress} max={100} />
-            {searchStatus ? <p className="small muted">{searchStatus}</p> : null}
-            <p className="small muted">{searchCounterMessage(leirdueTotalListeIdScanned || debug?.scannedListeIdTotal || 0, leirdueVisibleCandidatesCount || visibleCandidateCount(candidates), isAutoContinuingLeirdue)}</p>
-            {searchCounterText ? <p className="small muted">{searchCounterText}</p> : null}
+            {debug?.cacheDiagnostics?.userSearchLiveCrawlStarted === false && debug.cacheDiagnostics.requestMode === "initial" ? (
+              <>
+                {searchStatus ? <p className="small muted">{searchStatus}</p> : null}
+                {searchCounterText ? <p className="small muted">{searchCounterText}</p> : null}
+              </>
+            ) : (
+              <>
+                {searching ? <p className="small">This request runs one short batch. Cached results stay visible while it finishes.</p> : null}
+                <div className="progressHeader">
+                  <span>Estimated search progress</span>
+                  <strong>{debug?.cacheDiagnostics?.displayedProgressPercent === null ? "Checking remaining results..." : `${Math.round(searchProgress)}%`}</strong>
+                </div>
+                <progress value={searchProgress} max={100} />
+                {searchStatus ? <p className="small muted">{searchStatus}</p> : null}
+                <p className="small muted">{searchCounterMessage(leirdueTotalListeIdScanned || debug?.scannedListeIdTotal || 0, leirdueVisibleCandidatesCount || reviewableCount, isAutoContinuingLeirdue)}</p>
+                {searchCounterText ? <p className="small muted">{searchCounterText}</p> : null}
+              </>
+            )}
           </div>
         ) : null}
 
@@ -1173,11 +1441,13 @@ export default function LeirdueImportPage() {
             <span className="countPill">{checkingDuplicates ? "Checking duplicates… · " : ""}{selectedCount} selected</span>
           </div>
           <div className="compactSummaryGrid" aria-label="Import summary">
-            <span><strong>{groupedCandidates.confirmed.length}</strong> Confirmed</span>
-            <span><strong>{groupedCandidates.possible.length}</strong> Possible</span>
-            <span><strong>{groupedCandidates.alreadyImported.length}</strong> Already imported</span>
-            <span><strong>{groupedCandidates.ignored.length}</strong> Ignored/failed</span>
+            <span><strong>{groupedCandidates.confirmedCount}</strong> Confirmed</span>
+            <span><strong>{groupedCandidates.possibleCount}</strong> Possible</span>
+            <span><strong>{groupedCandidates.alreadyImportedCount}</strong> Already imported</span>
+            <span><strong>{groupedCandidates.ignoredFailedCount}</strong> Ignored/failed</span>
           </div>
+          {debug ? <p className="small muted">Candidate count diagnostics: statusResultCount={reviewableCount}; confirmedCount={groupedCandidates.confirmedCount}; possibleCount={groupedCandidates.possibleCount}; alreadyImportedCount={groupedCandidates.alreadyImportedCount}; ignoredFailedCount={groupedCandidates.ignoredFailedCount}; reviewableCount={groupedCandidates.reviewableCount}; hiddenControlCount={hiddenControlCount}; duplicateFilteredCount={groupedCandidates.alreadyImportedCount}; excludedCandidateCount={hiddenFromNormalListCount}; excludedCandidateReasons={groupedCandidates.ignored.slice(0, 5).map(candidateReason).join(" | ") || "none"}; candidateIdsIncludedInStatus={renderedReviewCandidates.map(candidateIdentity).slice(0, 10).join(", ") || "none"}; candidateIdsIncludedInReview={renderedReviewCandidates.map(candidateIdentity).slice(0, 10).join(", ") || "none"}</p> : null}
+          {candidatePipelineDiagnostics ? <p className="small muted">Candidate pipeline diagnostics: backendCandidateCount={candidatePipelineDiagnostics.backendCandidateCount}; frontendReceivedCandidateCount={candidatePipelineDiagnostics.frontendReceivedCandidateCount}; finalFilteredCandidateCount={candidatePipelineDiagnostics.finalFilteredCandidateCount}; renderedCardCount={candidatePipelineDiagnostics.renderedCardCount}; confirmedRenderedCount={candidatePipelineDiagnostics.confirmedRenderedCount}; possibleRenderedCount={candidatePipelineDiagnostics.possibleRenderedCount}; selectedRenderedCount={candidatePipelineDiagnostics.selectedRenderedCount}; duplicateReactKeys={candidatePipelineDiagnostics.duplicateReactKeys.join(", ") || "none"}; renderedUniqueKeyCount={candidatePipelineDiagnostics.renderedUniqueKeyCount}; loadedFromCache={candidatePipelineDiagnostics.loadedFromCacheCandidateIds.slice(0, 8).join(" || ") || "none"}; returnedByBackend={candidatePipelineDiagnostics.returnedByBackendCandidateIds.slice(0, 8).join(" || ") || "none"}; receivedByFrontend={candidatePipelineDiagnostics.receivedByFrontendCandidateIds.slice(0, 8).join(" || ") || "none"}; afterDedup={candidatePipelineDiagnostics.afterFrontendDeduplicationCandidateIds.slice(0, 8).join(" || ") || "none"}; afterStatusCategoryFiltering={candidatePipelineDiagnostics.afterStatusCategoryFilteringCandidateIds.slice(0, 8).join(" || ") || "none"}; afterDisciplineFiltering={candidatePipelineDiagnostics.afterDisciplineFilteringCandidateIds.slice(0, 8).join(" || ") || "none"}; afterVisibilityFiltering={candidatePipelineDiagnostics.afterVisibilityFilteringCandidateIds.slice(0, 8).join(" || ") || "none"}; rendered={candidatePipelineDiagnostics.renderedCandidateIds.slice(0, 8).join(" || ") || "none"}; lostBetweenCacheAndBackend={candidatePipelineDiagnostics.lostBetweenCacheAndBackend.slice(0, 5).join(" || ") || "none"}; lostBetweenBackendAndFrontend={candidatePipelineDiagnostics.lostBetweenBackendAndFrontend.slice(0, 5).join(" || ") || "none"}; lostDuringDeduplication={candidatePipelineDiagnostics.lostDuringDeduplication.slice(0, 5).join(" || ") || "none"}; lostDuringFrontendFiltering={candidatePipelineDiagnostics.lostDuringFrontendFiltering.slice(0, 5).join(" || ") || "none"}; lostDuringRendering={candidatePipelineDiagnostics.lostDuringRendering.slice(0, 5).join(" || ") || "none"}; exactLossReasonByCandidate={candidatePipelineDiagnostics.exactLossReasonByCandidate.slice(0, 5).join(" || ") || "none"}; candidatesPerReactKey={candidatePipelineDiagnostics.candidatesPerReactKey.slice(0, 5).join(" || ") || "none"}</p> : null}
           <div className="btns">
             <button onClick={saveSelected} disabled={saving || checkingDuplicates || selectedCount === 0}>{saving ? "Importing..." : manualReviewActive && selectedCount === 1 ? "Import this result" : selectedCount === 1 ? "Import selected result" : "Import selected results"}</button>
             <Link href="/stats" className="button secondary">Stats</Link>
@@ -1218,7 +1488,7 @@ export default function LeirdueImportPage() {
             <span className="countPill">{manualOtherCandidates.length}</span>
           </summary>
           {manualOtherCandidates.map((candidate) => (
-            <CandidateCard key={candidate.localId} candidate={candidate} shooterName={shooterName} onChange={updateCandidate} />
+            <CandidateCard key={candidateRenderKey(candidate)} candidate={candidate} shooterName={shooterName} onChange={updateCandidate} />
           ))}
         </details>
       ) : null}
@@ -1233,7 +1503,7 @@ export default function LeirdueImportPage() {
             <span className="countPill">{manualAlreadyImportedCandidates.length}</span>
           </summary>
           {manualAlreadyImportedCandidates.map((candidate) => (
-            <CandidateCard key={candidate.localId} candidate={candidate} shooterName={shooterName} onChange={updateCandidate} />
+            <CandidateCard key={candidateRenderKey(candidate)} candidate={candidate} shooterName={shooterName} onChange={updateCandidate} />
           ))}
         </details>
       ) : null}
@@ -1253,7 +1523,7 @@ export default function LeirdueImportPage() {
               <span className="countPill">{groupedCandidates[section.key].length}</span>
             </div>
             {groupedCandidates[section.key].map((candidate) => (
-              <CandidateCard key={candidate.localId} candidate={candidate} shooterName={shooterName} onChange={updateCandidate} />
+              <CandidateCard key={candidateRenderKey(candidate)} candidate={candidate} shooterName={shooterName} onChange={updateCandidate} />
             ))}
           </section>
         ) : null
@@ -1269,7 +1539,7 @@ export default function LeirdueImportPage() {
             <span className="countPill">{hiddenFromNormalListCount}</span>
           </summary>
           {groupedCandidates.ignored.map((candidate) => (
-            <CandidateCard key={candidate.localId} candidate={candidate} shooterName={shooterName} onChange={updateCandidate} />
+            <CandidateCard key={candidateRenderKey(candidate)} candidate={candidate} shooterName={shooterName} onChange={updateCandidate} />
           ))}
         </details>
       ) : null}
