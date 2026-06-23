@@ -503,6 +503,11 @@ export type SharedLeirdueSearchStats = {
   error: string | null;
   queryDurationMs: number;
   rowsFound: number;
+  totalRows: number;
+  validCount: number;
+  needsReviewCount: number;
+  invalidCount: number;
+  failedCount: number;
   reviewableCount: number;
   ignoredInvalidCount: number;
   coverageStatus: "unknown" | "not_started" | "incomplete" | "complete";
@@ -566,7 +571,7 @@ function sharedResultRowToCandidate(row: SharedResultRow): LeirdueCandidate {
 export async function getSharedLeirdueShooterResults(input: { shooterName: string; year: number; disciplines: string[]; authorization?: string | null }) {
   const started = Date.now();
   const supabase = supabaseReadClient(input.authorization);
-  const emptyStats = (error: string | null = null): SharedLeirdueSearchStats => ({ ok: !error, error, queryDurationMs: Date.now() - started, rowsFound: 0, reviewableCount: 0, ignoredInvalidCount: 0, coverageStatus: "unknown", indexingComplete: false, liveCrawlStarted: false });
+  const emptyStats = (error: string | null = null): SharedLeirdueSearchStats => ({ ok: !error, error, queryDurationMs: Date.now() - started, rowsFound: 0, totalRows: 0, validCount: 0, needsReviewCount: 0, invalidCount: 0, failedCount: 0, reviewableCount: 0, ignoredInvalidCount: 0, coverageStatus: "unknown", indexingComplete: false, liveCrawlStarted: false });
   if (!supabase) return { candidates: [] as LeirdueCandidate[], stats: emptyStats("Shared Leirdue cache read skipped: missing authenticated cache read context.") };
   const normalizedName = nordicSafeNameKey(input.shooterName);
   const [{ data, error }, statusResult] = await Promise.all([
@@ -586,13 +591,17 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
   ]);
   if (error) return { candidates: [] as LeirdueCandidate[], stats: emptyStats(`Shared Leirdue cache read failed: ${error.message}`) };
   const rows = ((data || []) as SharedResultRow[]).filter((row) => input.disciplines.length === 0 || !row.discipline || input.disciplines.includes(row.discipline));
+  const validCount = rows.filter((row) => row.validation_status === "valid").length;
+  const needsReviewCount = rows.filter((row) => row.validation_status === "needs_review").length;
+  const invalidCount = rows.filter((row) => row.validation_status === "invalid").length;
+  const failedCount = rows.filter((row) => row.validation_status === "failed").length;
   const reviewableRows = rows.filter((row) => row.validation_status === "valid" || row.validation_status === "needs_review");
-  const ignoredInvalidCount = rows.length - reviewableRows.length;
+  const ignoredInvalidCount = invalidCount + failedCount;
   const candidates = reviewableRows.map(sharedResultRowToCandidate);
   const reviewableCount = candidates.filter((candidate) => candidate.category !== "control" && candidate.ownScore !== null && candidate.totalTargets !== null).length;
   const coverageStatus = (statusResult.data?.status as SharedLeirdueSearchStats["coverageStatus"] | undefined) || (statusResult.error ? "unknown" : "not_started");
   return {
     candidates,
-    stats: { ok: true, error: statusResult.error ? `Shared Leirdue ingestion status read failed: ${statusResult.error.message}` : null, queryDurationMs: Date.now() - started, rowsFound: reviewableRows.length, reviewableCount, ignoredInvalidCount, coverageStatus, indexingComplete: coverageStatus === "complete", liveCrawlStarted: false as const },
+    stats: { ok: true, error: statusResult.error ? `Shared Leirdue ingestion status read failed: ${statusResult.error.message}` : null, queryDurationMs: Date.now() - started, rowsFound: reviewableRows.length, totalRows: rows.length, validCount, needsReviewCount, invalidCount, failedCount, reviewableCount, ignoredInvalidCount, coverageStatus, indexingComplete: coverageStatus === "complete", liveCrawlStarted: false as const },
   };
 }

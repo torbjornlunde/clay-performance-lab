@@ -350,6 +350,17 @@ function estimatedSearchProgress(debug: LeirdueSearchDebug | undefined) {
   const cache = debug?.cacheDiagnostics;
   const processed = cache?.previouslyProcessedAfterBatch || cache?.previouslyProcessed || debug?.scannedEventTotal || null;
   const remaining = cache?.remainingWorkAfterBatch ?? cache?.remainingWork ?? null;
+  if (cache?.userSearchLiveCrawlStarted === false && cache.requestMode === "initial") {
+    cache.progressProcessedCount = null;
+    cache.progressRemainingCount = null;
+    cache.progressTotalCount = null;
+    cache.calculatedProgressPercent = null;
+    cache.rawOverallProgressPercent = null;
+    cache.displayedProgressPercent = null;
+    cache.progressCalculationSource = "shared-cache-only";
+    cache.progressCappedReason = cache.ingestionComplete ? null : "sharedIndexIncomplete";
+    return null;
+  }
   if (cache) {
     const stageProcessed = debug?.listeIdsScannedThisBatch || debug?.eventMenusFetchedThisBatch || cache.processedThisBatch || 0;
     const stageRemaining = debug?.pendingListeIdQueueRemaining || debug?.remainingEventQueueCount || 0;
@@ -1089,8 +1100,8 @@ export default function LeirdueImportPage() {
     setError("");
     setSuccess("");
     setSearching(true);
-    setSearchProgress(reset || scopeChanged ? 5 : Math.max(progressHighByScopeRef.current.get(activeScopeKey) || 0, 15));
-    setSearchStatus(reset ? "Loading cached results and checking continuation state..." : "Continuing with one short batch...");
+    setSearchProgress(reset || scopeChanged ? 0 : Math.max(progressHighByScopeRef.current.get(activeScopeKey) || 0, 15));
+    setSearchStatus(reset ? "Loading shared cached results..." : "Continuing with one short batch...");
     setSearchCounterText("");
     setIsAutoContinuingLeirdue(Boolean(startToken));
     if (reset) {
@@ -1146,8 +1157,9 @@ export default function LeirdueImportPage() {
       });
       setCandidatePipelineDiagnostics(pipelineDiagnostics);
       if (data.debug?.cacheDiagnostics) {
-        data.debug.cacheDiagnostics.candidatePipelineReconciled = pipelineDiagnostics.lostDuringDeduplication.length === 0 && pipelineDiagnostics.lostDuringFrontendFiltering.length === 0 && pipelineDiagnostics.lostDuringRendering.length === 0;
-        data.debug.cacheDiagnostics.renderedCandidateCountMatchesBackend = pipelineDiagnostics.renderedCardCount === pipelineDiagnostics.frontendReceivedCandidateCount;
+        data.debug.cacheDiagnostics.frontendReviewableCount = reviewedCounts.reviewableCount;
+        data.debug.cacheDiagnostics.candidatePipelineReconciled = pipelineDiagnostics.lostDuringDeduplication.length === 0 && pipelineDiagnostics.lostDuringFrontendFiltering.length === 0 && pipelineDiagnostics.lostDuringRendering.length === 0 && (data.debug.cacheDiagnostics.backendReviewableCount || pipelineDiagnostics.frontendReceivedCandidateCount) === reviewedCounts.reviewableCount;
+        data.debug.cacheDiagnostics.renderedCandidateCountMatchesBackend = pipelineDiagnostics.renderedCardCount === reviewedCounts.reviewableCount && (data.debug.cacheDiagnostics.backendReviewableCount || pipelineDiagnostics.frontendReceivedCandidateCount) === reviewedCounts.reviewableCount;
         data.debug.cacheDiagnostics.uniqueCandidateKeysValid = pipelineDiagnostics.duplicateReactKeys.length === 0 && pipelineDiagnostics.renderedUniqueKeyCount === pipelineDiagnostics.renderedCardCount;
       }
       setDebug(data.debug || responseDebug);
@@ -1157,10 +1169,11 @@ export default function LeirdueImportPage() {
       const apiAllowsContinuation = data.debug?.continuationAvailable !== false;
       const shouldContinue = Boolean(nextToken && apiAllowsContinuation && likelyWorkRemains);
       setContinuationToken(shouldContinue ? nextToken : null);
+      const cacheOnlyInitialSearch = Boolean(data.debug?.cacheDiagnostics?.userSearchLiveCrawlStarted === false && data.debug.cacheDiagnostics.requestMode === "initial");
       const nextProgress = estimatedSearchProgress(data.debug);
       const completeProgress = Boolean(data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete);
       const previousProgress = reset || scopeChanged ? 0 : progressHighByScopeRef.current.get(activeScopeKey) ?? 0;
-      const displayedProgress = nextProgress === null ? Math.max(previousProgress, 15) : completeProgress ? nextProgress : Math.min(Math.max(previousProgress, nextProgress), 99);
+      const displayedProgress = cacheOnlyInitialSearch ? (completeProgress ? 100 : 0) : nextProgress === null ? Math.max(previousProgress, 15) : completeProgress ? nextProgress : Math.min(Math.max(previousProgress, nextProgress), 99);
       progressHighByScopeRef.current.set(activeScopeKey, displayedProgress);
       if (data.debug?.cacheDiagnostics) {
         data.debug.cacheDiagnostics.highestDisplayedProgressPercent = displayedProgress;
@@ -1177,10 +1190,15 @@ export default function LeirdueImportPage() {
       setLeirdueBatchNumber(data.debug?.batchNumber || 1);
       setLeirdueVisibleCandidatesCount(reviewedCounts.reviewableCount);
       setLeirdueTotalListeIdScanned(data.debug?.scannedListeIdTotal || 0);
-      setSearchCounterText(`${data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete ? "Search complete." : "Checking event result lists…"} Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}.${(data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch || 0) > 0 ? ` ${data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch} more result lists were discovered.` : ""}`);
+      setSearchCounterText(cacheOnlyInitialSearch
+        ? `${data.debug?.cacheDiagnostics?.ingestionComplete ? "Shared index complete." : "Shared index incomplete."} Found ${reviewedCounts.reviewableCount} cached reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. Total shared rows=${data.debug?.cacheDiagnostics?.totalSharedRows ?? "unknown"}; valid=${data.debug?.cacheDiagnostics?.validSharedRows ?? "unknown"}; possible=${data.debug?.cacheDiagnostics?.needsReviewSharedRows ?? "unknown"}; ignored=${(data.debug?.cacheDiagnostics?.invalidSharedRows || 0) + (data.debug?.cacheDiagnostics?.failedSharedRows || 0)}.`
+        : `${data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete ? "Search complete." : "Checking event result lists…"} Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}.${(data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch || 0) > 0 ? ` ${data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch} more result lists were discovered.` : ""}`);
 
       const provenComplete = Boolean(data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete);
-      if (shouldContinue) {
+      if (cacheOnlyInitialSearch) {
+        setSearchStatus(data.debug?.cacheDiagnostics?.ingestionComplete ? "Shared index complete" : "Shared index incomplete");
+        setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No shared cached results found yet. Additional Leirdue.net results may become available as the shared index is updated." : `Found ${reviewedCounts.reviewableCount} cached reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. ${data.debug?.cacheDiagnostics?.ingestionComplete ? "Shared indexing is complete." : "Shared indexing is incomplete; more results may become available."}`);
+      } else if (shouldContinue) {
         continuationFailuresByScopeRef.current.set(activeScopeKey, 0);
         setSearchStatus("More Leirdue.net work remains. Use Continue search to run another short batch.");
         setSuccess(`${reviewedCounts.reviewableCount} cached or found reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"} loaded. More results may still be available.`);
@@ -1188,7 +1206,7 @@ export default function LeirdueImportPage() {
         setSearchStatus("Search complete");
         setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No candidates found. Try broader filters or add a result manually." : `Search complete. Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. Please review the list before saving.`);
       } else {
-        setSearchStatus("Search paused");
+        setSearchStatus("Shared index incomplete");
         setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No candidates found yet. Try broader filters or add a result manually." : `Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. More results may still be available.`);
       }
     } catch (requestError) {
@@ -1365,15 +1383,24 @@ export default function LeirdueImportPage() {
         ) : success ? <div className="success">{success} {success.includes("saved") ? <Link href="/stats">Open Stats</Link> : null}</div> : null}
         {searching || searchStatus ? (
           <div className="searchProgressPanel" aria-live="polite">
-            {searching ? <p className="small">This request runs one short batch. Cached results stay visible while it finishes.</p> : null}
-            <div className="progressHeader">
-              <span>Estimated search progress</span>
-              <strong>{debug?.cacheDiagnostics?.displayedProgressPercent === null ? "Checking remaining results..." : `${Math.round(searchProgress)}%`}</strong>
-            </div>
-            <progress value={searchProgress} max={100} />
-            {searchStatus ? <p className="small muted">{searchStatus}</p> : null}
-            <p className="small muted">{searchCounterMessage(leirdueTotalListeIdScanned || debug?.scannedListeIdTotal || 0, leirdueVisibleCandidatesCount || reviewableCount, isAutoContinuingLeirdue)}</p>
-            {searchCounterText ? <p className="small muted">{searchCounterText}</p> : null}
+            {debug?.cacheDiagnostics?.userSearchLiveCrawlStarted === false && debug.cacheDiagnostics.requestMode === "initial" ? (
+              <>
+                {searchStatus ? <p className="small muted">{searchStatus}</p> : null}
+                {searchCounterText ? <p className="small muted">{searchCounterText}</p> : null}
+              </>
+            ) : (
+              <>
+                {searching ? <p className="small">This request runs one short batch. Cached results stay visible while it finishes.</p> : null}
+                <div className="progressHeader">
+                  <span>Estimated search progress</span>
+                  <strong>{debug?.cacheDiagnostics?.displayedProgressPercent === null ? "Checking remaining results..." : `${Math.round(searchProgress)}%`}</strong>
+                </div>
+                <progress value={searchProgress} max={100} />
+                {searchStatus ? <p className="small muted">{searchStatus}</p> : null}
+                <p className="small muted">{searchCounterMessage(leirdueTotalListeIdScanned || debug?.scannedListeIdTotal || 0, leirdueVisibleCandidatesCount || reviewableCount, isAutoContinuingLeirdue)}</p>
+                {searchCounterText ? <p className="small muted">{searchCounterText}</p> : null}
+              </>
+            )}
           </div>
         ) : null}
 

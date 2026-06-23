@@ -123,9 +123,17 @@ export async function POST(request: Request) {
       debug.cacheDiagnostics.cacheUsed = true;
       debug.cacheDiagnostics.cacheReadOk = shared.stats.ok;
       debug.cacheDiagnostics.cacheReadErrors = shared.stats.error ? [shared.stats.error] : [];
-      debug.cacheDiagnostics.cachedCandidatesFound = shared.stats.rowsFound;
+      debug.cacheDiagnostics.cachedCandidatesFound = shared.stats.totalRows;
       debug.cacheDiagnostics.cachedImportableCandidatesFound = shared.stats.reviewableCount;
       debug.cacheDiagnostics.cachedCandidatesLoaded = shared.candidates.length;
+      debug.cacheDiagnostics.backendCandidateCount = shared.stats.totalRows;
+      debug.cacheDiagnostics.backendReviewableCount = shared.stats.reviewableCount;
+      debug.cacheDiagnostics.frontendReviewableCount = shared.candidates.length;
+      debug.cacheDiagnostics.totalSharedRows = shared.stats.totalRows;
+      debug.cacheDiagnostics.validSharedRows = shared.stats.validCount;
+      debug.cacheDiagnostics.needsReviewSharedRows = shared.stats.needsReviewCount;
+      debug.cacheDiagnostics.invalidSharedRows = shared.stats.invalidCount;
+      debug.cacheDiagnostics.failedSharedRows = shared.stats.failedCount;
       debug.cacheDiagnostics.cacheScopeStatus = shared.stats.indexingComplete ? "complete" : "incomplete";
       debug.cacheDiagnostics.cacheScopeComplete = shared.stats.indexingComplete;
       debug.cacheDiagnostics.continuationRequired = false;
@@ -138,7 +146,7 @@ export async function POST(request: Request) {
       debug.cacheDiagnostics.batchElapsedMs = shared.stats.queryDurationMs;
       debug.continuationAvailable = false;
       debug.message = shared.stats.indexingComplete ? "Search complete. Shared Leirdue cache returned indexed results." : "Results still being indexed. Cached results are shown now. Additional Leirdue.net results may become available as the shared index is updated.";
-      debug.candidateReasons.unshift(`Shared cache-only search: ${shared.stats.rowsFound} rows, ${shared.stats.reviewableCount} reviewable, coverage=${shared.stats.coverageStatus}, liveCrawlStarted=false.`);
+      debug.candidateReasons.unshift(`Shared cache-only search: ${shared.stats.totalRows} total rows, ${shared.stats.validCount} valid, ${shared.stats.needsReviewCount} needs_review, ${shared.stats.invalidCount} invalid, ${shared.stats.failedCount} failed, ${shared.stats.reviewableCount} reviewable, coverage=${shared.stats.coverageStatus}, liveCrawlStarted=false.`);
       return NextResponse.json({ candidates: shared.candidates, debug, continuationToken: null });
     }
 

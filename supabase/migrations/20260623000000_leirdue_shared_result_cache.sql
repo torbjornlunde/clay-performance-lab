@@ -122,11 +122,12 @@ select
   source_url,
   raw_row_text,
   case
-    when lower(concat_ws(' ', event_title, raw_row_text, source_url, candidate_quality, not_importable_reason)) ~ '(ranking|prosent|percentage|%|klassef|sum etter|sammenlagt|cup|kontroll|control|uttak|deltakerliste|påmelding|pamelding)' then 'invalid'
+    when lower(concat_ws(' ', raw_row_text)) ~ '(prosent|percentage|%)' or lower(concat_ws(' ', source_url, candidate_quality, not_importable_reason)) ~ '(ranking|rankering|kontroll|control|deltakerliste|påmelding|pamelding|startliste|registration|participant)' then 'invalid'
+    when lower(concat_ws(' ', raw_row_text, source_url, candidate_quality, not_importable_reason)) ~ '(sum etter|etter [0-9]+ stevner|etter [0-9]+ runder|rankingpoeng|ranking points)' then 'invalid'
     when own_score is null or total_targets is null or own_score <= 0 or total_targets <= 0 or own_score > total_targets then 'failed'
     when source_url is null or liste_id is null then 'needs_review'
     when candidate_quality like 'recommended/high%' and coalesce(not_importable_reason, '') = '' then 'valid'
-    when candidate_quality like 'recommended/%' and lower(concat_ws(' ', event_title, raw_row_text, source_url, candidate_quality, not_importable_reason)) !~ '(uncertain|review|class/unknown|klasse|could not|missing|ukjent)' then 'valid'
+    when candidate_quality like 'recommended/%' and lower(concat_ws(' ', candidate_quality, not_importable_reason)) !~ '(uncertain|review|class/unknown|could not|missing|ukjent)' and lower(coalesce(source_url, '')) !~ '(klassevis|klasse result|class result)' then 'valid'
     else 'needs_review'
   end,
   'migrated-leirdue-search-cache-v1',

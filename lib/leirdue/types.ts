@@ -320,6 +320,14 @@ export type LeirdueSearchDebug = {
     cachedImportableCandidatesFound: number;
     cachedInvalidListsFound: number;
     cachedCandidatesLoaded: number;
+    backendCandidateCount: number;
+    backendReviewableCount: number;
+    frontendReviewableCount: number;
+    validSharedRows: number;
+    needsReviewSharedRows: number;
+    invalidSharedRows: number;
+    failedSharedRows: number;
+    totalSharedRows: number;
     cacheScopeComplete: boolean;
     cacheScopeStatus: "unknown" | "incomplete" | "complete" | "failed";
     continuationRequired: boolean;
