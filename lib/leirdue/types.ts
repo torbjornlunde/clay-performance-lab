@@ -299,6 +299,20 @@ export type LeirdueSearchDebug = {
   firstUsefulSnippet: string | null;
   cacheDiagnostics: {
     cacheUsed: boolean;
+    ingestionScopeKey: string | null;
+    ingestionYear: number | null;
+    ingestionGenerationId: string | null;
+    eventsProcessedThisBatch: number;
+    listeIdsProcessedThisBatch: number;
+    shooterRowsInserted: number;
+    shooterRowsUpdated: number;
+    invalidListsProcessed: number;
+    needsReviewListsProcessed: number;
+    remainingEvents: number | null;
+    remainingListeIds: number | null;
+    ingestionComplete: boolean;
+    batchElapsedMs: number | null;
+    userSearchLiveCrawlStarted: boolean;
     cacheReadOk: boolean;
     cacheWriteOk: boolean;
     cacheNotUsedReason: string | null;

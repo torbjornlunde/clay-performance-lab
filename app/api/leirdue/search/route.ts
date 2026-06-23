@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCachedLeirdueCandidates, getLeirdueCrawlProgress, repairLeirdueInvalidCompleteState, storeLeirdueCandidatesInCache, storeLeirdueCrawlIndexesInCache, storeLeirdueCrawlProgress, storeLeirdueInvalidListDecisionsInCache } from "@/lib/leirdue/cache";
+import { getCachedLeirdueCandidates, getLeirdueCrawlProgress, getSharedLeirdueShooterResults, repairLeirdueInvalidCompleteState, storeLeirdueCandidatesInCache, storeLeirdueCrawlIndexesInCache, storeLeirdueCrawlProgress, storeLeirdueInvalidListDecisionsInCache } from "@/lib/leirdue/cache";
 import { emptyLeirdueSearchDebug, FETCH_ERROR_MESSAGE, searchLeirdueCandidates } from "@/lib/leirdue/parser";
 
 export const dynamic = "force-dynamic";
@@ -114,6 +114,34 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (requestMode === "initial" && !explicitContinue && !continuationToken && !sourceUrl) {
+      const shared = await getSharedLeirdueShooterResults({ shooterName, year, disciplines, authorization: request.headers.get("authorization") });
+      const debug = emptyLeirdueSearchDebug();
+      debug.selectedYear = year;
+      debug.normalizedSearchName = shooterName.toLowerCase().replace(/\s+/g, " ").trim();
+      debug.selectedDisciplineFilters = disciplines;
+      debug.cacheDiagnostics.cacheUsed = true;
+      debug.cacheDiagnostics.cacheReadOk = shared.stats.ok;
+      debug.cacheDiagnostics.cacheReadErrors = shared.stats.error ? [shared.stats.error] : [];
+      debug.cacheDiagnostics.cachedCandidatesFound = shared.stats.rowsFound;
+      debug.cacheDiagnostics.cachedImportableCandidatesFound = shared.stats.reviewableCount;
+      debug.cacheDiagnostics.cachedCandidatesLoaded = shared.candidates.length;
+      debug.cacheDiagnostics.cacheScopeStatus = shared.stats.indexingComplete ? "complete" : "incomplete";
+      debug.cacheDiagnostics.cacheScopeComplete = shared.stats.indexingComplete;
+      debug.cacheDiagnostics.continuationRequired = false;
+      debug.cacheDiagnostics.requestMode = requestMode;
+      debug.cacheDiagnostics.explicitContinuationRequested = false;
+      debug.cacheDiagnostics.userSearchLiveCrawlStarted = false;
+      debug.cacheDiagnostics.ingestionYear = year;
+      debug.cacheDiagnostics.ingestionScopeKey = `${year}:shared:v1`;
+      debug.cacheDiagnostics.ingestionComplete = shared.stats.indexingComplete;
+      debug.cacheDiagnostics.batchElapsedMs = shared.stats.queryDurationMs;
+      debug.continuationAvailable = false;
+      debug.message = shared.stats.indexingComplete ? "Search complete. Shared Leirdue cache returned indexed results." : "Results still being indexed. Cached results are shown now. Additional Leirdue.net results may become available as the shared index is updated.";
+      debug.candidateReasons.unshift(`Shared cache-only search: ${shared.stats.rowsFound} rows, ${shared.stats.reviewableCount} reviewable, coverage=${shared.stats.coverageStatus}, liveCrawlStarted=false.`);
+      return NextResponse.json({ candidates: shared.candidates, debug, continuationToken: null });
+    }
+
     const cached = !sourceUrl
       ? await getCachedLeirdueCandidates({ shooterName, year, disciplines, authorization: request.headers.get("authorization") })
       : null;
