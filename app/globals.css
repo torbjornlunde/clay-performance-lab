@@ -6045,3 +6045,145 @@ details.equipmentDetails[open] summary::after {
     justify-content: stretch;
   }
 }
+
+.comboField {
+  position: relative;
+  display: grid;
+  gap: 6px;
+}
+
+.comboControl {
+  display: grid;
+  grid-template-columns: 1fr 44px;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(10, 16, 24, 0.72);
+  overflow: hidden;
+}
+
+.comboControl input {
+  min-height: 46px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.comboControl button {
+  min-height: 46px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.comboPanel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 80;
+  display: grid;
+  gap: 6px;
+  max-height: min(360px, 70vh);
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel2);
+  box-shadow: var(--shadow);
+}
+
+.comboSearch {
+  min-height: 42px;
+}
+
+.comboOption {
+  justify-content: flex-start;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(10, 16, 24, 0.72);
+  color: var(--text);
+  text-align: left;
+}
+
+.fastSetup {
+  gap: 10px;
+}
+
+.chokeSelectRow,
+.chokeOption {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+  justify-items: start;
+  min-height: 68px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  text-align: left;
+}
+
+.chokeSelectRow strong,
+.chokeOption strong {
+  font-size: 1rem;
+}
+
+.chokeOption.selected {
+  border-color: var(--accent);
+  background: rgba(218, 165, 32, 0.14);
+}
+
+.sheetBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.chokeSheet {
+  display: grid;
+  gap: 10px;
+  width: min(520px, 100%);
+  max-height: min(720px, 86vh);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--panel2);
+  box-shadow: var(--shadow);
+}
+
+.sheetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+@media (max-width: 680px) {
+  .comboPanel {
+    position: fixed;
+    inset: auto 10px 10px;
+    max-height: 70vh;
+  }
+
+  .sheetBackdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .chokeSheet {
+    width: 100%;
+    max-height: 82vh;
+    border-radius: 22px 22px 0 0;
+  }
+}
