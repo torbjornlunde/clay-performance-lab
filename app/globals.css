@@ -5948,3 +5948,68 @@ details.equipmentDetails[open] summary::after {
     right: 0;
   }
 }
+
+.dashboardTopRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+}
+
+.dashboardMenuWrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.dashboardTopMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 6px;
+  min-width: 210px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel2);
+  box-shadow: var(--shadow);
+}
+
+.dashboardTopMenu a,
+.dashboardTopMenu button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(10, 16, 24, 0.7);
+  color: var(--text);
+  border: 1px solid var(--line);
+  font-weight: 900;
+  text-align: left;
+}
+
+.equipmentCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 680px) {
+  .dashboardTopRow {
+    display: grid;
+  }
+
+  .dashboardMenuWrap,
+  .dashboardTopMenu {
+    width: 100%;
+  }
+
+  .dashboardTopMenu {
+    position: static;
+    margin-top: 10px;
+  }
+}
