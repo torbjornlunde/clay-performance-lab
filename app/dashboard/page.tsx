@@ -891,6 +891,10 @@ export default function DashboardPage() {
             <span>Shooter profile</span>
             <small>Manage your name, country, and disciplines.</small>
           </Link>
+          <Link href="/equipment" className="compactAction">
+            <span>Equipment</span>
+            <small>Manage weapons, chokes, and ammunition.</small>
+          </Link>
           <button className="compactAction" onClick={exportMyData} disabled={exporting || loading}>
             <span>{exporting ? "Exporting..." : "Export my data"}</span>
           </button>

@@ -5778,3 +5778,61 @@ html, body {
     grid-column: 1 / -1;
   }
 }
+
+details.equipmentDetails summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+details.equipmentDetails summary::-webkit-details-marker {
+  display: none;
+}
+
+details.equipmentDetails summary::after {
+  content: "Open";
+  flex: 0 0 auto;
+  color: var(--gold2);
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid var(--lineStrong);
+  border-radius: 999px;
+  padding: 7px 10px;
+}
+
+details.equipmentDetails[open] summary::after {
+  content: "Close";
+}
+
+.equipmentCardBody {
+  padding-top: 12px;
+}
+
+.equipmentListItem {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkboxLabel input {
+  width: auto;
+  min-height: auto;
+}
+
+@media (max-width: 680px) {
+  .equipmentListItem {
+    display: grid;
+  }
+}
