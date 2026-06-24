@@ -8,55 +8,71 @@ export type ChokeStandardDesignation = {
 
 export const OTHER_CUSTOM = "Other / Custom";
 
-export const SHOTGUN_MODELS_BY_MANUFACTURER: Record<string, string[]> = {
-  Beretta: ["686 Silver Pigeon", "687 Silver Pigeon", "690", "691", "692", "693", "694", "DT10", "DT11", "A300", "A400 Xcel", "A400 Xtreme", "AL391"],
-  Browning: ["B525", "B725", "Ultra XS", "Cynergy", "Maxus", "Maxus 2", "A5"],
-  Blaser: ["F3", "F16", "FBX"],
-  Benelli: ["828U", "828U Sport", "SuperSport", "M2", "Ethos", "Raffaello", "Montefeltro"],
-  Perazzi: ["MX8", "MX2000", "High Tech", "High Tech S", "HTS", "SC3"],
-  Krieghoff: ["K-80", "K-20", "KX-6"],
-  Miroku: ["MK38", "MK60", "MK70", "3800"],
-  "Caesar Guerini": ["Invictus", "Summit", "Magnus", "Tempio"],
-  Zoli: ["Z-Sport", "Z-Trap", "Columbus"],
-  Fabarm: ["Axis RS 12", "Elos N2", "XLR5"],
-  Rizzini: ["BR460", "BR110"],
-  Kolar: ["Max"],
-  Kemen: ["KM4"],
-  Winchester: ["Select", "SX4", "SXP"],
-  Remington: ["1100", "11-87", "870", "V3", "Versa Max"],
-  Franchi: ["Affinity", "Instinct"],
-  Stoeger: ["M3000", "M3500", "Condor"],
-  Mossberg: ["500", "930", "940"],
+const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+const naturalSort = (values: string[]) => [...values].sort((a, b) => collator.compare(a, b));
+
+const shotgunModels: Record<string, string[]> = {
   "ATA Arms": ["SP", "Venza"],
-  Yildiz: ["Pro", "SPZ"],
-  Fausti: [],
+  Benelli: ["828U", "828U Sport", "SuperSport", "M2", "Ethos", "Raffaello", "Montefeltro"],
+  Beretta: ["686 Silver Pigeon", "687 Silver Pigeon", "690", "691", "692", "693", "694", "DT10", "DT11", "A300", "A400 Xcel", "A400 Xtreme", "AL391"],
+  Blaser: ["F3", "F16", "FBX"],
   Breda: [],
+  Browning: ["B525", "B725", "Ultra XS", "Cynergy", "Maxus", "Maxus 2", "A5"],
+  "Caesar Guerini": ["Invictus", "Summit", "Magnus", "Tempio"],
+  Chapuis: [],
+  Fabarm: ["Axis RS 12", "Elos N2", "XLR5"],
+  Fausti: [],
+  Franchi: ["Affinity", "Instinct"],
+  Kemen: ["KM4"],
+  Kofs: [],
+  Kolar: ["Max"],
+  Krieghoff: ["K-80", "K-20", "KX-6"],
+  Longthorne: [],
   Marocchi: [],
   Merkel: [],
-  Chapuis: [],
+  Miroku: ["MK38", "MK60", "MK70", "3800"],
+  Mossberg: ["500", "930", "940"],
+  Perazzi: ["MX8", "MX2000", "High Tech", "High Tech S", "HTS", "SC3"],
+  Remington: ["1100", "11-87", "870", "V3", "Versa Max"],
   "Renato Gamba": [],
-  Longthorne: [],
-  Kofs: [],
+  Rizzini: ["BR460", "BR110"],
+  Stoeger: ["M3000", "M3500", "Condor"],
+  Winchester: ["Select", "SX4", "SXP"],
+  Yildiz: ["Pro", "SPZ"],
+  Zoli: ["Z-Sport", "Z-Trap", "Columbus"],
 };
+
+export const SHOTGUN_MODELS_BY_MANUFACTURER = Object.fromEntries(
+  Object.entries(shotgunModels)
+    .sort(([a], [b]) => collator.compare(a, b))
+    .map(([maker, models]) => [maker, naturalSort(models)]),
+) as Record<string, string[]>;
 
 export const SHOTGUN_MANUFACTURERS = [...Object.keys(SHOTGUN_MODELS_BY_MANUFACTURER), OTHER_CUSTOM];
 
-export const CHOKE_MANUFACTURERS = [
+export const CHOKE_MANUFACTURERS = naturalSort([
   "Beretta", "Browning", "Blaser", "Benelli", "Perazzi", "Krieghoff", "Miroku", "Caesar Guerini", "Zoli", "Fabarm",
-  "Briley", "Teague", "Muller", "Gemini", "Carlson’s", "Comp-N-Choke", "Kick’s", "Patternmaster", "Trulock", "Rhino", OTHER_CUSTOM,
-];
+  "Briley", "Teague", "Muller", "Gemini", "Carlson’s", "Comp-N-Choke", "Kick’s", "Patternmaster", "Trulock", "Rhino",
+]).concat(OTHER_CUSTOM);
 
-export const CHOKE_SYSTEMS_BY_MANUFACTURER: Record<string, string[]> = {
+const chokeSystems: Record<string, string[]> = {
+  Benelli: ["Mobil", "Crio", "Crio Plus"],
   Beretta: ["Mobilchoke", "Optima-Choke", "Optima-Choke Plus", "Optima-Choke HP"],
   Browning: ["Invector", "Invector Plus", "Invector DS"],
   Miroku: ["Invector", "Invector Plus"],
-  Benelli: ["Mobil", "Crio", "Crio Plus"],
   Winchester: ["Win-Choke", "Invector Plus"],
 };
+
+export const CHOKE_SYSTEMS_BY_MANUFACTURER = Object.fromEntries(
+  Object.entries(chokeSystems)
+    .sort(([a], [b]) => collator.compare(a, b))
+    .map(([maker, systems]) => [maker, naturalSort(systems)]),
+) as Record<string, string[]>;
 
 export const GAUGE_OPTIONS = ["12 gauge", "16 gauge", "20 gauge", "28 gauge", ".410 bore", OTHER_CUSTOM];
 
 export const STANDARD_CHOKE_DESIGNATIONS: ChokeStandardDesignation[] = [
+  { value: "spreader_diffusion", name: "Spreader / Diffusion" },
   { value: "cylinder", name: "Cylinder", abbreviation: "C", alternateAbbreviation: "CYL", fraction: "0" },
   { value: "skeet", name: "Skeet", abbreviation: "SK", fraction: "1/8" },
   { value: "improved_cylinder", name: "Improved Cylinder", abbreviation: "IC", fraction: "1/4" },
@@ -67,9 +83,12 @@ export const STANDARD_CHOKE_DESIGNATIONS: ChokeStandardDesignation[] = [
   { value: "light_full", name: "Light Full", abbreviation: "LF", fraction: "7/8" },
   { value: "full", name: "Full", abbreviation: "F", fraction: "1/1" },
   { value: "extra_full", name: "Extra Full", abbreviation: "XF" },
-  { value: "spreader_diffusion", name: "Spreader / Diffusion" },
   { value: "other_custom", name: OTHER_CUSTOM },
 ];
+
+export function sortByName<T>(values: T[], getName: (value: T) => string) {
+  return [...values].sort((a, b) => collator.compare(getName(a), getName(b)));
+}
 
 export function normalizeGauge(value: string | null | undefined) {
   const raw = (value || "").trim();
@@ -95,6 +114,7 @@ export function chokeDesignationLabel(value: string | null | undefined, fallback
 export function chokeValueFromLegacyLabel(label: string | null | undefined) {
   const normalized = (label || "").trim().toLowerCase().replace(/\s+/g, " ");
   const aliases: Record<string, string> = {
+    spreader: "spreader_diffusion", diffusion: "spreader_diffusion", "spreader / diffusion": "spreader_diffusion",
     c: "cylinder", cyl: "cylinder", cylinder: "cylinder", "0": "cylinder",
     sk: "skeet", skeet: "skeet", "1/8": "skeet",
     ic: "improved_cylinder", "improved cylinder": "improved_cylinder", "1/4": "improved_cylinder", quarter: "improved_cylinder",
@@ -105,7 +125,6 @@ export function chokeValueFromLegacyLabel(label: string | null | undefined) {
     lf: "light_full", "light full": "light_full", "7/8": "light_full",
     f: "full", full: "full", "1/1": "full",
     xf: "extra_full", "extra full": "extra_full",
-    spreader: "spreader_diffusion", diffusion: "spreader_diffusion", "spreader / diffusion": "spreader_diffusion",
   };
   return aliases[normalized] || null;
 }

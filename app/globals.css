@@ -5836,3 +5836,115 @@ details.equipmentDetails[open] summary::after {
     display: grid;
   }
 }
+
+.pageIntro {
+  padding: 10px 2px 2px;
+}
+
+.pageIntro p {
+  margin-top: 4px;
+}
+
+.equipmentToolbar,
+.setupRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.setupTable {
+  display: grid;
+  gap: 10px;
+}
+
+.setupRow {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.setupRow > strong {
+  min-width: 110px;
+}
+
+.setupRow select,
+.setupRow input {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+.inlineAdvanced {
+  flex: 1 1 180px;
+}
+
+.inlineAdvanced summary,
+.actionMenu summary,
+.compactForm details summary {
+  cursor: pointer;
+  color: var(--gold2);
+  font-weight: 900;
+}
+
+.actionMenu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.actionMenu summary {
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 9px 11px;
+  background: rgba(10, 16, 24, 0.8);
+  font-size: 12px;
+}
+
+.actionMenu summary::-webkit-details-marker {
+  display: none;
+}
+
+.actionMenu > div {
+  position: absolute;
+  right: 0;
+  z-index: 5;
+  display: grid;
+  gap: 6px;
+  min-width: 140px;
+  padding: 8px;
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel2);
+  box-shadow: var(--shadow);
+}
+
+.actionMenu button {
+  justify-content: flex-start;
+  min-height: 38px;
+  padding: 9px 10px;
+}
+
+.compactForm {
+  display: grid;
+  gap: 4px;
+}
+
+.compactItem {
+  align-items: center;
+}
+
+@media (max-width: 680px) {
+  .equipmentToolbar,
+  .setupRow {
+    display: grid;
+  }
+
+  .setupRow > strong {
+    min-width: 0;
+  }
+
+  .actionMenu > div {
+    left: auto;
+    right: 0;
+  }
+}
