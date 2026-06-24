@@ -6187,3 +6187,98 @@ details.equipmentDetails[open] summary::after {
     border-radius: 22px 22px 0 0;
   }
 }
+
+.selectorField {
+  display: grid;
+  gap: 6px;
+}
+
+.selectorButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(10, 16, 24, 0.72);
+  color: var(--text);
+  text-align: left;
+}
+
+.customSelectorInput {
+  margin-top: 8px;
+}
+
+.mobileSheet {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  width: min(620px, 100%);
+  max-height: min(760px, calc(100dvh - 32px));
+  overflow: hidden;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--panel2);
+  box-shadow: var(--shadow);
+}
+
+.sheetContent {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.sheetSearchLabel,
+.sheetOptionList {
+  display: grid;
+  gap: 8px;
+}
+
+.sheetOptionList {
+  margin-top: 10px;
+}
+
+.sheetOption {
+  display: grid;
+  justify-items: start;
+  min-height: 48px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  text-align: left;
+}
+
+@media (max-width: 680px) {
+  input,
+  select,
+  textarea,
+  button,
+  .selectorButton,
+  .comboControl input,
+  .comboSearch,
+  .sheetSearchLabel input,
+  .customSelectorInput {
+    min-height: 44px;
+    font-size: 16px;
+    line-height: 1.35;
+  }
+
+  .mobileSheet {
+    width: 100%;
+    max-height: calc(100dvh - env(safe-area-inset-top));
+    border-radius: 22px 22px 0 0;
+  }
+
+  .sheetContent .row,
+  .sheetContent .ammoCompactRow {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
