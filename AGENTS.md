@@ -47,13 +47,15 @@ These instructions apply to the entire repository unless a more specific `AGENTS
 
 ## Testing
 
-Run the checks relevant to the changed area:
+Use the quickest useful check while iterating, then run the full production build once before completion:
 
-- `npm run build`
+- `npm run typecheck` during implementation
+- `npm run build` before reporting completion
 - `npm run check:score-sheet-safety` when Training Score Sheet code is affected
-- TypeScript/type-check through the production build
 - mobile widths around 320px, 375px, 390px and 430px for UI work
 - desktop layout for regressions
+
+Do not repeatedly run the full build after every small edit unless the task requires it.
 
 Where the environment cannot run a check, say so explicitly. Never claim a test passed unless it was actually run.
 
