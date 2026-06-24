@@ -70,6 +70,28 @@ export const CHOKE_SYSTEMS_BY_MANUFACTURER = Object.fromEntries(
 ) as Record<string, string[]>;
 
 export const GAUGE_OPTIONS = ["12 gauge", "16 gauge", "20 gauge", "28 gauge", ".410 bore", OTHER_CUSTOM];
+export const AMMUNITION_MANUFACTURERS = naturalSort([
+  "Baschieri & Pellagri",
+  "Bornaghi",
+  "Cheddite",
+  "Clever Mirage",
+  "Eley",
+  "Federal",
+  "Fiocchi",
+  "Gamebore",
+  "Hull Cartridge",
+  "J&G Excopesa",
+  "Mary Arm",
+  "Nobel Sport Italia",
+  "RC",
+  "Remington",
+  "RIO",
+  "Rottweil",
+  "Saga",
+  "Sellier & Bellot",
+  "Winchester",
+]).concat(OTHER_CUSTOM);
+
 
 export const STANDARD_CHOKE_DESIGNATIONS: ChokeStandardDesignation[] = [
   { value: "spreader_diffusion", name: "Spreader / Diffusion" },

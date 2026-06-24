@@ -6013,3 +6013,35 @@ details.equipmentDetails[open] summary::after {
     margin-top: 10px;
   }
 }
+
+.equipmentSectionHeader {
+  align-items: flex-end;
+}
+
+.equipmentSectionActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.equipmentSectionActions label {
+  min-width: min(260px, 100%);
+  margin: 0;
+}
+
+.ammoCompactRow {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.4fr) minmax(90px, 0.7fr) minmax(90px, 0.7fr);
+  gap: 12px;
+}
+
+@media (max-width: 680px) {
+  .equipmentSectionHeader,
+  .equipmentSectionActions,
+  .ammoCompactRow {
+    display: grid;
+    justify-content: stretch;
+  }
+}
