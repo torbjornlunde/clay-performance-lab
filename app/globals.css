@@ -4225,7 +4225,7 @@ html, body {
 }
 
 .collapsibleSubcard summary::after {
-  content: "Open";
+  content: "▾";
   color: var(--gold2);
   font-size: 11px;
   font-weight: 950;
@@ -4238,7 +4238,7 @@ html, body {
 }
 
 .collapsibleSubcard[open] summary::after {
-  content: "Close";
+  content: "▴";
 }
 
 .liveHero,
@@ -5793,7 +5793,7 @@ details.equipmentDetails summary::-webkit-details-marker {
 }
 
 details.equipmentDetails summary::after {
-  content: "Open";
+  content: "▾";
   flex: 0 0 auto;
   color: var(--gold2);
   font-size: 12px;
@@ -5804,7 +5804,7 @@ details.equipmentDetails summary::after {
 }
 
 details.equipmentDetails[open] summary::after {
-  content: "Close";
+  content: "▴";
 }
 
 .equipmentCardBody {
