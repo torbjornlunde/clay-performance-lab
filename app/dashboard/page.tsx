@@ -610,10 +610,19 @@ export default function DashboardPage() {
   const [showAllResults, setShowAllResults] = useState(false);
   const [showAllTraining, setShowAllTraining] = useState(false);
   const [feedbackHref, setFeedbackHref] = useState("");
+  const [dashboardMenuOpen, setDashboardMenuOpen] = useState(false);
 
   useEffect(() => {
     setFeedbackHref(betaFeedbackMailto("Dashboard beta"));
     load();
+  }, []);
+
+  useEffect(() => {
+    function closeMenu() { setDashboardMenuOpen(false); }
+    function onKey(event: KeyboardEvent) { if (event.key === "Escape") closeMenu(); }
+    window.addEventListener("click", closeMenu);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("click", closeMenu); window.removeEventListener("keydown", onKey); };
   }, []);
 
   async function load() {
@@ -766,10 +775,26 @@ export default function DashboardPage() {
   return (
     <main className="dashboardMain">
       <div className="heroCard dashboardHero polishedDashboardHero">
-        <div>
-          <p className="eyebrow">Shooter workspace</p>
-          <h2>Dashboard</h2>
-          <p className="dashboardHeroCopy">Choose a product area and continue with the right workflow.</p>
+        <div className="dashboardTopRow">
+          <div>
+            <p className="eyebrow">Shooter workspace</p>
+            <h2>Dashboard</h2>
+            <p className="dashboardHeroCopy">Choose a product area and continue with the right workflow.</p>
+          </div>
+          <div className="dashboardMenuWrap" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="secondary smallButton" aria-expanded={dashboardMenuOpen} aria-haspopup="menu" onClick={() => setDashboardMenuOpen((open) => !open)}>Menu</button>
+            {dashboardMenuOpen && (
+              <div className="dashboardTopMenu" role="menu">
+                <Link role="menuitem" href="/profile" onClick={() => setDashboardMenuOpen(false)}>Shooter profile</Link>
+                <Link role="menuitem" href="/equipment" onClick={() => setDashboardMenuOpen(false)}>Equipment</Link>
+                <button role="menuitem" type="button" onClick={() => { setDashboardMenuOpen(false); exportMyData(); }} disabled={exporting || loading}>{exporting ? "Exporting..." : "Export my data"}</button>
+                {feedbackHref && <a role="menuitem" href={feedbackHref} onClick={() => setDashboardMenuOpen(false)}>Send feedback</a>}
+                <Link role="menuitem" href="/beta/checklist" onClick={() => setDashboardMenuOpen(false)}>Beta test checklist</Link>
+                <button role="menuitem" type="button" onClick={() => { setDashboardMenuOpen(false); load(); }}>Refresh</button>
+                <button role="menuitem" type="button" className="danger" onClick={() => { setDashboardMenuOpen(false); logout(); }}>Sign out</button>
+              </div>
+            )}
+          </div>
         </div>
         <div className="dashboardPrimaryActions" aria-label="Dashboard product areas">
           <Link href="/log-competition" className="dashboardActionCard secondaryAction">
@@ -790,21 +815,6 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
-
-      <section className="card betaInfoPanel" aria-labelledby="closed-beta-heading">
-        <div>
-          <p className="eyebrow">Closed beta</p>
-          <h2 id="closed-beta-heading">Closed beta</h2>
-          <p>
-            You are testing an early version of Clay Performance Lab. Please report bugs, confusing screens,
-            or anything that feels slow, unclear or difficult to use during real shooting.
-          </p>
-        </div>
-        <div className="betaInfoActions">
-          {feedbackHref && <a className="button smallButton" href={feedbackHref}>Send feedback</a>}
-          <Link href="/beta/checklist" className="button secondary smallButton">Beta test checklist</Link>
-        </div>
-      </section>
 
       <PerformanceTrendCard sessions={sessions} missCounts={missCounts} />
 
@@ -877,33 +887,6 @@ export default function DashboardPage() {
             )}
           </>
         )}
-      </section>
-
-      <section className="card moreActionsCard subduedActionsCard" aria-labelledby="more-actions-heading">
-        <div className="sectionHeader compactSectionHeader">
-          <div>
-            <p className="eyebrow">Secondary tools</p>
-            <h2 id="more-actions-heading">More actions</h2>
-          </div>
-        </div>
-        <div className="moreActionsGrid subduedActionsGrid">
-          <Link href="/profile" className="compactAction">
-            <span>Shooter profile</span>
-            <small>Manage your name, country, and disciplines.</small>
-          </Link>
-          <button className="compactAction" onClick={exportMyData} disabled={exporting || loading}>
-            <span>{exporting ? "Exporting..." : "Export my data"}</span>
-          </button>
-          {feedbackHref && (
-            <a className="compactAction" href={feedbackHref}>
-              <span>Beta feedback</span>
-              <small>Send a bug or usability note with build info.</small>
-            </a>
-          )}
-          <button className="compactAction" onClick={load}><span>Refresh</span></button>
-          <button className="compactAction dangerAction" onClick={logout}><span>Logout</span></button>
-        </div>
-        {exportError && <div className="error">{exportError}</div>}
       </section>
     </main>
   );

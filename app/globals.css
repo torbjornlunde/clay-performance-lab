@@ -4225,7 +4225,7 @@ html, body {
 }
 
 .collapsibleSubcard summary::after {
-  content: "Open";
+  content: "▾";
   color: var(--gold2);
   font-size: 11px;
   font-weight: 950;
@@ -4238,7 +4238,7 @@ html, body {
 }
 
 .collapsibleSubcard[open] summary::after {
-  content: "Close";
+  content: "▴";
 }
 
 .liveHero,
@@ -5776,5 +5776,509 @@ html, body {
   .quickScoreRow strong,
   .quickScoreRow span {
     grid-column: 1 / -1;
+  }
+}
+
+details.equipmentDetails summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+details.equipmentDetails summary::-webkit-details-marker {
+  display: none;
+}
+
+details.equipmentDetails summary::after {
+  content: "▾";
+  flex: 0 0 auto;
+  color: var(--gold2);
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid var(--lineStrong);
+  border-radius: 999px;
+  padding: 7px 10px;
+}
+
+details.equipmentDetails[open] summary::after {
+  content: "▴";
+}
+
+.equipmentCardBody {
+  padding-top: 12px;
+}
+
+.equipmentListItem {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkboxLabel input {
+  width: auto;
+  min-height: auto;
+}
+
+@media (max-width: 680px) {
+  .equipmentListItem {
+    display: grid;
+  }
+}
+
+.pageIntro {
+  padding: 10px 2px 2px;
+}
+
+.pageIntro p {
+  margin-top: 4px;
+}
+
+.equipmentToolbar,
+.setupRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.setupTable {
+  display: grid;
+  gap: 10px;
+}
+
+.setupRow {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.setupRow > strong {
+  min-width: 110px;
+}
+
+.setupRow select,
+.setupRow input {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+.inlineAdvanced {
+  flex: 1 1 180px;
+}
+
+.inlineAdvanced summary,
+.actionMenu summary,
+.compactForm details summary {
+  cursor: pointer;
+  color: var(--gold2);
+  font-weight: 900;
+}
+
+.actionMenu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.actionMenu summary {
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 9px 11px;
+  background: rgba(10, 16, 24, 0.8);
+  font-size: 12px;
+}
+
+.actionMenu summary::-webkit-details-marker {
+  display: none;
+}
+
+.actionMenu > div {
+  position: absolute;
+  right: 0;
+  z-index: 5;
+  display: grid;
+  gap: 6px;
+  min-width: 140px;
+  padding: 8px;
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel2);
+  box-shadow: var(--shadow);
+}
+
+.actionMenu button {
+  justify-content: flex-start;
+  min-height: 38px;
+  padding: 9px 10px;
+}
+
+.compactForm {
+  display: grid;
+  gap: 4px;
+}
+
+.compactItem {
+  align-items: center;
+}
+
+@media (max-width: 680px) {
+  .equipmentToolbar,
+  .setupRow {
+    display: grid;
+  }
+
+  .setupRow > strong {
+    min-width: 0;
+  }
+
+  .actionMenu > div {
+    left: auto;
+    right: 0;
+  }
+}
+
+.dashboardTopRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+}
+
+.dashboardMenuWrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.dashboardTopMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 6px;
+  min-width: 210px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel2);
+  box-shadow: var(--shadow);
+}
+
+.dashboardTopMenu a,
+.dashboardTopMenu button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(10, 16, 24, 0.7);
+  color: var(--text);
+  border: 1px solid var(--line);
+  font-weight: 900;
+  text-align: left;
+}
+
+.equipmentCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 680px) {
+  .dashboardTopRow {
+    display: grid;
+  }
+
+  .dashboardMenuWrap,
+  .dashboardTopMenu {
+    width: 100%;
+  }
+
+  .dashboardTopMenu {
+    position: static;
+    margin-top: 10px;
+  }
+}
+
+.equipmentSectionHeader {
+  align-items: flex-end;
+}
+
+.equipmentSectionActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.equipmentSectionActions label {
+  min-width: min(260px, 100%);
+  margin: 0;
+}
+
+.ammoCompactRow {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.4fr) minmax(90px, 0.7fr) minmax(90px, 0.7fr);
+  gap: 12px;
+}
+
+@media (max-width: 680px) {
+  .equipmentSectionHeader,
+  .equipmentSectionActions,
+  .ammoCompactRow {
+    display: grid;
+    justify-content: stretch;
+  }
+}
+
+.comboField {
+  position: relative;
+  display: grid;
+  gap: 6px;
+}
+
+.comboControl {
+  display: grid;
+  grid-template-columns: 1fr 44px;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(10, 16, 24, 0.72);
+  overflow: hidden;
+}
+
+.comboControl input {
+  min-height: 46px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.comboControl button {
+  min-height: 46px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.comboPanel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 80;
+  display: grid;
+  gap: 6px;
+  max-height: min(360px, 70vh);
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel2);
+  box-shadow: var(--shadow);
+}
+
+.comboSearch {
+  min-height: 42px;
+}
+
+.comboOption {
+  justify-content: flex-start;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(10, 16, 24, 0.72);
+  color: var(--text);
+  text-align: left;
+}
+
+.fastSetup {
+  gap: 10px;
+}
+
+.chokeSelectRow,
+.chokeOption {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+  justify-items: start;
+  min-height: 68px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  text-align: left;
+}
+
+.chokeSelectRow strong,
+.chokeOption strong {
+  font-size: 1rem;
+}
+
+.chokeOption.selected {
+  border-color: var(--accent);
+  background: rgba(218, 165, 32, 0.14);
+}
+
+.sheetBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.chokeSheet {
+  display: grid;
+  gap: 10px;
+  width: min(520px, 100%);
+  max-height: min(720px, 86vh);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--panel2);
+  box-shadow: var(--shadow);
+}
+
+.sheetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+@media (max-width: 680px) {
+  .comboPanel {
+    position: fixed;
+    inset: auto 10px 10px;
+    max-height: 70vh;
+  }
+
+  .sheetBackdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .chokeSheet {
+    width: 100%;
+    max-height: 82vh;
+    border-radius: 22px 22px 0 0;
+  }
+}
+
+.selectorField {
+  display: grid;
+  gap: 6px;
+}
+
+.selectorButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(10, 16, 24, 0.72);
+  color: var(--text);
+  text-align: left;
+}
+
+.customSelectorInput {
+  margin-top: 8px;
+}
+
+.mobileSheet {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  width: min(620px, 100%);
+  max-height: min(760px, calc(100dvh - 32px));
+  overflow: hidden;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--panel2);
+  box-shadow: var(--shadow);
+}
+
+.sheetContent {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.sheetSearchLabel,
+.sheetOptionList {
+  display: grid;
+  gap: 8px;
+}
+
+.sheetOptionList {
+  margin-top: 10px;
+}
+
+.sheetOption {
+  display: grid;
+  justify-items: start;
+  min-height: 48px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  text-align: left;
+}
+
+@media (max-width: 680px) {
+  input,
+  select,
+  textarea,
+  button,
+  .selectorButton,
+  .comboControl input,
+  .comboSearch,
+  .sheetSearchLabel input,
+  .customSelectorInput {
+    min-height: 44px;
+    font-size: 16px;
+    line-height: 1.35;
+  }
+
+  .mobileSheet {
+    width: 100%;
+    max-height: calc(100dvh - env(safe-area-inset-top));
+    border-radius: 22px 22px 0 0;
+  }
+
+  .sheetContent .row,
+  .sheetContent .ammoCompactRow {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 }
