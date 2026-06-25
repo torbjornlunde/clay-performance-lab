@@ -35,7 +35,7 @@ export default function EditSimpleTrainingLogPage() {
 
       const { data, error } = await supabase
         .from("training_logs")
-        .select("id,date,targets_fired,hits,discipline,location,notes,source_type")
+        .select("id,date,targets_fired,hits,discipline,location,notes,source_type,equipment_weapon_id,equipment_ammunition_profile_id,equipment_snapshot")
         .eq("id", params.id)
         .eq("source_type", "simple_training")
         .maybeSingle<SimpleTrainingLogRow>();

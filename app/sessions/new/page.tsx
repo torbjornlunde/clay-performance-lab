@@ -6,7 +6,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DISCIPLINE_OPTIONS, isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 import { defaultStartPlateForShooter, getSchemeOptions, plateRotation } from "@/lib/fitasc/schemes";
+import { EquipmentUsedSelector } from "@/app/components/EquipmentUsedSelector";
 import { supabase } from "@/lib/supabase/client";
+import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { userFacingSaveError } from "@/lib/userFacingErrors";
 
 type CourseSetup = {
@@ -56,6 +58,8 @@ export default function NewSessionPage() {
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [myDisciplines, setMyDisciplines] = useState<string[]>([]);
+  const [equipmentSelection, setEquipmentSelection] = useState<EquipmentSelection>({ weaponId: "", ammunitionId: "", includeChokes: true });
+  const [equipmentSnapshot, setEquipmentSnapshot] = useState<any>(null);
   const disciplineOptions = useMemo(
     () => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, myDisciplines),
     [myDisciplines],
@@ -131,6 +135,9 @@ export default function NewSessionPage() {
         own_score: ownScore === "" ? null : Number(ownScore),
         winning_score: winningScore === "" ? null : Number(winningScore),
         leirdue_result_url: leirdueResultUrl.trim() || null,
+        equipment_weapon_id: equipmentSelection.weaponId || null,
+        equipment_ammunition_profile_id: equipmentSelection.ammunitionId || null,
+        equipment_snapshot: equipmentSnapshot,
       })
       .select("id")
       .single();
@@ -222,6 +229,11 @@ export default function NewSessionPage() {
           </div>
         )}
 
+
+        <EquipmentUsedSelector
+          value={equipmentSelection}
+          onChange={(selection, snapshot) => { setEquipmentSelection(selection); setEquipmentSnapshot(snapshot); }}
+        />
         {discipline === "Sporttrap" && (
           <div className="subcard">
             <h3>Sporttrap setup</h3>

@@ -18,6 +18,8 @@ import {
   plateRotation,
 } from "@/lib/fitasc/schemes";
 import { presentationOverrideOptions } from "@/lib/misses/presentation";
+import { EquipmentUsedSelector } from "@/app/components/EquipmentUsedSelector";
+import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { supabase } from "@/lib/supabase/client";
 
 type Session = {
@@ -38,6 +40,9 @@ type Session = {
   own_score: number | null;
   winning_score: number | null;
   notes: string | null;
+  equipment_weapon_id?: string | null;
+  equipment_ammunition_profile_id?: string | null;
+  equipment_snapshot?: any;
 };
 
 type CourseSetup = {
@@ -100,6 +105,8 @@ export default function EditSessionPage() {
   const [advancedSetupEnabled, setAdvancedSetupEnabled] = useState(true);
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const [equipmentSelection, setEquipmentSelection] = useState<EquipmentSelection>({ weaponId: "", ammunitionId: "", includeChokes: true });
+  const [equipmentSnapshot, setEquipmentSnapshot] = useState<any>(null);
 
   const load = useCallback(async () => {
     setLoaded(false);
@@ -126,7 +133,7 @@ export default function EditSessionPage() {
     const { data: baseSession, error: sessionError } = await supabase
       .from("sessions")
       .select(
-        "id,name,discipline,session_type,shooting_format,course_count,total_targets,leirdue_result_url,shooting_ground,competition_date,own_score,winning_score,notes",
+        "id,name,discipline,session_type,shooting_format,course_count,total_targets,leirdue_result_url,shooting_ground,competition_date,own_score,winning_score,notes,equipment_weapon_id,equipment_ammunition_profile_id,equipment_snapshot",
       )
       .eq("id", sessionId)
       .maybeSingle<Session>();
@@ -239,6 +246,8 @@ export default function EditSessionPage() {
     setShootingGround(session.shooting_ground || "");
     setLeirdueResultUrl(session.leirdue_result_url || "");
     setNotes(session.notes || "");
+    setEquipmentSelection({ weaponId: session.equipment_weapon_id || "", ammunitionId: session.equipment_ammunition_profile_id || "", includeChokes: true });
+    setEquipmentSnapshot(session.equipment_snapshot || null);
     setIsResultOnlyImport(resultOnlyImport);
     setAdvancedSetupEnabled(!resultOnlyImport);
     setOwnScore(
@@ -347,6 +356,9 @@ export default function EditSessionPage() {
           winning_score: winningScore === "" ? null : Number(winningScore),
           leirdue_result_url: leirdueResultUrl.trim() || null,
           notes: notes.trim() || null,
+          equipment_weapon_id: equipmentSelection.weaponId || null,
+          equipment_ammunition_profile_id: equipmentSelection.ammunitionId || null,
+          equipment_snapshot: equipmentSnapshot,
         })
         .eq("id", sessionId);
 
@@ -397,6 +409,9 @@ export default function EditSessionPage() {
         winning_score: winningScore === "" ? null : Number(winningScore),
         leirdue_result_url: leirdueResultUrl.trim() || null,
         notes: notes.trim() || null,
+        equipment_weapon_id: equipmentSelection.weaponId || null,
+        equipment_ammunition_profile_id: equipmentSelection.ammunitionId || null,
+        equipment_snapshot: equipmentSnapshot,
       })
       .eq("id", sessionId);
 
@@ -615,6 +630,11 @@ export default function EditSessionPage() {
             </div>
           </div>
         )}
+
+        <EquipmentUsedSelector
+          value={equipmentSelection}
+          onChange={(selection, snapshot) => { setEquipmentSelection(selection); setEquipmentSnapshot(snapshot); }}
+        />
         <label>Notes</label>
         <textarea
           value={notes}

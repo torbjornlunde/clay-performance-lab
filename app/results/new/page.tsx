@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
+import { EquipmentUsedSelector } from "@/app/components/EquipmentUsedSelector";
 import { supabase } from "@/lib/supabase/client";
+import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { userFacingSaveError } from "@/lib/userFacingErrors";
 
 export default function NewResultPage() {
@@ -22,6 +24,8 @@ export default function NewResultPage() {
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [myDisciplines, setMyDisciplines] = useState<string[]>([]);
+  const [equipmentSelection, setEquipmentSelection] = useState<EquipmentSelection>({ weaponId: "", ammunitionId: "", includeChokes: true });
+  const [equipmentSnapshot, setEquipmentSnapshot] = useState<any>(null);
   const disciplineOptions = useMemo(
     () => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, myDisciplines),
     [myDisciplines],
@@ -76,6 +80,9 @@ export default function NewResultPage() {
       own_score: Number(ownScore),
       winning_score: Number(winningScore),
       leirdue_result_url: leirdueResultUrl.trim() || null,
+        equipment_weapon_id: equipmentSelection.weaponId || null,
+        equipment_ammunition_profile_id: equipmentSelection.ammunitionId || null,
+        equipment_snapshot: equipmentSnapshot,
       notes: notes.trim() || null,
     });
     setSaving(false);
@@ -124,6 +131,11 @@ export default function NewResultPage() {
         <input value={winningScore} onChange={(e) => setWinningScore(e.target.value)} type="number" min="1" inputMode="numeric" required />
         <label>Leirdue.net result URL</label>
         <input value={leirdueResultUrl} onChange={(e) => setLeirdueResultUrl(e.target.value)} type="url" placeholder="Optional" />
+
+        <EquipmentUsedSelector
+          value={equipmentSelection}
+          onChange={(selection, snapshot) => { setEquipmentSelection(selection); setEquipmentSnapshot(snapshot); }}
+        />
         <label>Notes</label>
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
         {err && <div className="error">{err}</div>}
