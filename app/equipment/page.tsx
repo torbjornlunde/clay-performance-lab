@@ -282,6 +282,10 @@ function sortAmmo(values: Ammo[]) { return [...values].sort((a, b) => Number(b.i
 function MobileSheet({ title, subtitle, children, onClose }: { title: string; subtitle?: string; children: React.ReactNode; onClose: () => void }) {
   const [mounted, setMounted] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  const latestOnCloseRef = useRef(onClose);
+
+  useEffect(() => { latestOnCloseRef.current = onClose; }, [onClose]);
+
   useEffect(() => {
     setMounted(true);
     const scrollY = window.scrollY;
@@ -294,7 +298,7 @@ function MobileSheet({ title, subtitle, children, onClose }: { title: string; su
     document.body.style.top = `-${scrollY}px`;
     document.body.style.width = "100%";
     window.setTimeout(() => panelRef.current?.focus(), 0);
-    function onKey(event: KeyboardEvent) { if (event.key === "Escape") onClose(); }
+    function onKey(event: KeyboardEvent) { if (event.key === "Escape") latestOnCloseRef.current(); }
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
@@ -304,9 +308,12 @@ function MobileSheet({ title, subtitle, children, onClose }: { title: string; su
       document.body.style.width = previousWidth;
       window.scrollTo(0, scrollY);
     };
-  }, [onClose]);
+  }, []);
+
+  function handleClose() { latestOnCloseRef.current(); }
+
   if (!mounted) return null;
-  return createPortal(<div className="sheetBackdrop" role="presentation" onMouseDown={onClose}><div className="mobileSheet" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={panelRef} onMouseDown={(event) => event.stopPropagation()}><div className="sheetHeader"><div><h3>{title}</h3>{subtitle && <p className="muted">{subtitle}</p>}</div><button type="button" className="secondary smallButton" onClick={onClose}>Close</button></div><div className="sheetContent">{children}</div></div></div>, document.body);
+  return createPortal(<div className="sheetBackdrop" role="presentation" onMouseDown={handleClose}><div className="mobileSheet" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={panelRef} onMouseDown={(event) => event.stopPropagation()}><div className="sheetHeader"><div><h3>{title}</h3>{subtitle && <p className="muted">{subtitle}</p>}</div><button type="button" className="secondary smallButton" onClick={handleClose}>Close</button></div><div className="sheetContent">{children}</div></div></div>, document.body);
 }
 
 function ResponsiveSelector({ label, value, options, onChange, placeholder }: { label: string; value: string; options: string[]; onChange: (value: string) => void; placeholder?: string }) {
