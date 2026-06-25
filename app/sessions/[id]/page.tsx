@@ -10,6 +10,7 @@ import { normalizeLeirduestiLabel, shortMissedTarget } from "@/lib/misses/labels
 import { scoreFromMisses, totalMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
 import { isQuickScoreNotes, parseQuickScoreMetadata } from "@/lib/quick-score/metadata";
+import { equipmentSnapshotLines } from "@/lib/equipment/logSnapshots";
 
 type Miss = {
   id: string;
@@ -241,6 +242,7 @@ export default function Page() {
     { label: "Vs winner", value: performanceLine, show: Boolean(performanceLine) },
   ].filter((metric) => metric.show);
   const hasAdvancedDetails = isSporttrap || isLeirduesti || (isCompact && courses.length > 0);
+  const equipmentLines = equipmentSnapshotLines(session.equipment_snapshot);
 
   return (
     <main>
@@ -272,6 +274,12 @@ export default function Page() {
           {resultOnly ? <>Detailed misses: <strong>Not added yet</strong></> : <>Misses logged: <strong>{quickScore?.totalMisses ?? count}</strong></>}
           {typeof session.winning_score === "number" && <> · Winning score: <strong>{session.winning_score}</strong></>}
         </p>
+        {equipmentLines.length > 0 && (
+          <div className="compactNotice equipmentSummary">
+            <strong>Equipment used</strong>
+            {equipmentLines.map((line) => <div className="small" key={line}>{line}</div>)}
+          </div>
+        )}
         {hasScoreMismatch && (
           <div className="compactNotice">{resultOnly ? "This is a result-only entry. Detailed misses have not been logged yet." : "Manual score differs from logged misses. This can happen if not all misses were logged."}</div>
         )}
@@ -347,6 +355,14 @@ export default function Page() {
             </div>
           )}
         </DetailSection>
+
+        {equipmentLines.length > 0 && (
+          <DetailSection title="Equipment used" badge="Saved">
+            <div className="detailRowsGrid singleColumnRows">
+              {equipmentLines.map((line) => <ResultRow label="Equipment" key={line}>{line}</ResultRow>)}
+            </div>
+          </DetailSection>
+        )}
 
         <DetailSection title="Result details" badge="Full">
           <div className="detailRowsGrid">

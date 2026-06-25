@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { generateCourseOrder, serializeQuickScoreNotes, type QuickScoreCourse } from "@/lib/quick-score/metadata";
+import { EquipmentUsedSelector } from "@/app/components/EquipmentUsedSelector";
 import { supabase } from "@/lib/supabase/client";
+import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { userFacingSaveError } from "@/lib/userFacingErrors";
 
 const disciplines = ["Leirduesti", "Compak Sporting", "FITASC Sporting", "English Sporting", "Other"];
@@ -32,6 +34,8 @@ export default function QuickCompetitionScorePage() {
   const [entries, setEntries] = useState<Record<number, string>>({});
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const [equipmentSelection, setEquipmentSelection] = useState<EquipmentSelection>({ weaponId: "", ammunitionId: "", includeChokes: true });
+  const [equipmentSnapshot, setEquipmentSnapshot] = useState<any>(null);
 
   const targetTotal = Math.max(1, Math.floor(numberValue(totalTargets, 100)));
   const postCount = Math.max(1, Math.floor(numberValue(courseCount, 1)));
@@ -85,6 +89,9 @@ export default function QuickCompetitionScorePage() {
       own_score: totalHits,
       winning_score: null,
       notes: serializeQuickScoreNotes({ marker: "quick_competition_score", version: 1, resultOnly: true, totalTargets: targetTotal, totalHits, totalMisses, startCourse: start, courseOrder: order, breakdown: rows, userNotes: notes }),
+      equipment_weapon_id: equipmentSelection.weaponId || null,
+      equipment_ammunition_profile_id: equipmentSelection.ammunitionId || null,
+      equipment_snapshot: equipmentSnapshot,
     }).select("id").single<{ id: string }>();
     setSaving(false);
     if (error) {
@@ -144,6 +151,11 @@ export default function QuickCompetitionScorePage() {
         </div>
 
         <div className="quickScoreSummary"><strong>Total score {totalHits} / {calculatedTargets}</strong><span>Misses {totalMisses}</span></div>
+
+        <EquipmentUsedSelector
+          value={equipmentSelection}
+          onChange={(selection, snapshot) => { setEquipmentSelection(selection); setEquipmentSnapshot(snapshot); }}
+        />
         <label>Notes</label><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
         {err && <div className="error">{err}</div>}
         <div className="btns"><button disabled={saving}>{saving ? "Saving..." : "Save quick score"}</button><Link className="button secondary" href="/log-competition">Cancel</Link></div>

@@ -4,6 +4,8 @@ import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
+import { EquipmentUsedSelector } from "@/app/components/EquipmentUsedSelector";
+import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { supabase } from "@/lib/supabase/client";
 import { userFacingDeleteError, userFacingSaveError } from "@/lib/userFacingErrors";
 
@@ -15,6 +17,9 @@ export type SimpleTrainingLogFormValues = {
   discipline: string | null;
   location: string | null;
   notes: string | null;
+  equipment_weapon_id?: string | null;
+  equipment_ammunition_profile_id?: string | null;
+  equipment_snapshot?: any;
 };
 
 type SimpleTrainingLogFormProps = {
@@ -45,6 +50,8 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
   const [discipline, setDiscipline] = useState(initialValues?.discipline || "");
   const [location, setLocation] = useState(initialValues?.location || "");
   const [notes, setNotes] = useState(initialValues?.notes || "");
+  const [equipmentSelection, setEquipmentSelection] = useState<EquipmentSelection>({ weaponId: initialValues?.equipment_weapon_id || "", ammunitionId: initialValues?.equipment_ammunition_profile_id || "", includeChokes: true });
+  const [equipmentSnapshot, setEquipmentSnapshot] = useState<any>(initialValues?.equipment_snapshot || null);
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -94,6 +101,9 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
       location: location.trim() || null,
       notes: notes.trim() || null,
       source_type: "simple_training",
+      equipment_weapon_id: equipmentSelection.weaponId || null,
+      equipment_ammunition_profile_id: equipmentSelection.ammunitionId || null,
+      equipment_snapshot: equipmentSnapshot,
     };
 
     if (isEdit) {
@@ -247,6 +257,11 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
           rows={4}
         />
       </details>
+
+        <EquipmentUsedSelector
+          value={equipmentSelection}
+          onChange={(selection, snapshot) => { setEquipmentSelection(selection); setEquipmentSnapshot(snapshot); }}
+        />
 
       {isEdit && (
         <section className="subcard simpleTrainingFutureDetails" aria-labelledby="simple-training-future-details">
