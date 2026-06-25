@@ -6480,3 +6480,303 @@ button:disabled, .button[aria-disabled="true"] { background: var(--action-disabl
 [class*="Backdrop"], [class*="backdrop"], .modalOverlay { background: var(--surface-overlay); }
 html[data-theme="light"] .liveScoreOverview button.scored { background: rgba(29, 107, 58, 0.14) !important; color: #18572f !important; border-color: rgba(29, 107, 58, 0.44) !important; }
 html[data-theme="light"] .liveScoreOverview button.missed { background: rgba(134, 41, 28, 0.13) !important; color: #741f15 !important; border-color: rgba(134, 41, 28, 0.44) !important; }
+
+/* Field Mode operational contrast tokens and scoped Training Score Sheet overrides. */
+:root {
+  --field-surface-primary: linear-gradient(180deg, rgba(14, 21, 30, 0.98), rgba(7, 11, 17, 0.98));
+  --field-surface-secondary: rgba(12, 18, 27, 0.94);
+  --field-surface-raised: rgba(22, 31, 43, 0.98);
+  --field-text-primary: #fff8e8;
+  --field-text-secondary: #dbe3ec;
+  --field-text-muted: #aebccd;
+  --field-text-accent: #f6c95b;
+  --field-border-subtle: rgba(174, 188, 205, 0.28);
+  --field-border-strong: rgba(235, 213, 163, 0.42);
+  --field-border-active: rgba(246, 201, 91, 0.78);
+  --field-hit-bg: linear-gradient(180deg, rgba(80, 196, 116, 0.94), rgba(24, 112, 58, 0.94));
+  --field-hit-text: #f4fff7;
+  --field-hit-border: rgba(171, 255, 199, 0.62);
+  --field-miss-bg: linear-gradient(180deg, rgba(232, 99, 76, 0.96), rgba(137, 39, 28, 0.96));
+  --field-miss-text: #fff7f4;
+  --field-miss-border: rgba(255, 197, 185, 0.62);
+  --field-unscored-bg: rgba(7, 12, 18, 0.94);
+  --field-unscored-text: #e9eef4;
+  --field-unscored-border: rgba(174, 188, 205, 0.32);
+  --field-active-bg: linear-gradient(180deg, rgba(246, 201, 91, 0.28), rgba(111, 72, 8, 0.34));
+  --field-active-text: #fff4ce;
+  --field-active-border: rgba(246, 201, 91, 0.9);
+  --field-complete-bg: rgba(45, 128, 75, 0.24);
+  --field-complete-text: #d9ffe5;
+  --field-complete-border: rgba(107, 208, 140, 0.66);
+  --field-shadow: 0 18px 46px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+html[data-theme="light"] {
+  --field-surface-primary: linear-gradient(180deg, #20282f, #11171d);
+  --field-surface-secondary: #172029;
+  --field-surface-raised: linear-gradient(180deg, #2a333b, #192128);
+  --field-text-primary: #fff8e8;
+  --field-text-secondary: #e7dcc3;
+  --field-text-muted: #c7bda8;
+  --field-text-accent: #f2c85c;
+  --field-border-subtle: rgba(255, 248, 232, 0.2);
+  --field-border-strong: rgba(242, 200, 92, 0.48);
+  --field-border-active: rgba(242, 200, 92, 0.95);
+  --field-hit-bg: linear-gradient(180deg, #33a25f, #176a38);
+  --field-hit-text: #f5fff7;
+  --field-hit-border: rgba(151, 244, 181, 0.72);
+  --field-miss-bg: linear-gradient(180deg, #d94f3d, #8c281d);
+  --field-miss-text: #fff8f4;
+  --field-miss-border: rgba(255, 183, 169, 0.74);
+  --field-unscored-bg: #0f151b;
+  --field-unscored-text: #f0e8d6;
+  --field-unscored-border: rgba(255, 248, 232, 0.22);
+  --field-active-bg: linear-gradient(180deg, rgba(242, 200, 92, 0.34), rgba(86, 58, 12, 0.56));
+  --field-active-text: #fff3ca;
+  --field-active-border: rgba(242, 200, 92, 0.96);
+  --field-complete-bg: rgba(31, 124, 67, 0.32);
+  --field-complete-text: #eaffef;
+  --field-complete-border: rgba(125, 225, 158, 0.78);
+  --field-shadow: 0 18px 46px rgba(26, 22, 15, 0.36), inset 0 1px 0 rgba(255, 248, 232, 0.07);
+}
+
+.liveScoringCard,
+.liveScoringCard p,
+.liveScoringCard .muted,
+.liveScoringCard label,
+.liveScoringCard .small,
+.liveContextHeader .muted,
+.liveScoreOverview .muted,
+.postShootingOrder .muted,
+.targetProgressPanel .muted,
+.postCompleteCard .muted,
+.compakLiveProgram .muted,
+.localAutosaveStatus {
+  color: var(--field-text-muted);
+}
+
+.liveContextHeader,
+.compakCurrentStatusCard,
+.compakLiveProgram,
+.liveScoreOverview,
+.postShootingOrder,
+.targetProgressPanel,
+.postCompleteCard,
+.pairGroupingHint {
+  background: var(--field-surface-primary);
+  border-color: var(--field-border-strong);
+  box-shadow: var(--field-shadow);
+  color: var(--field-text-primary);
+}
+
+.liveContextHeader strong,
+.compakCurrentStatusCard strong,
+.compakLiveProgram strong,
+.liveScoreOverview h4,
+.postShootingOrder h4,
+.targetProgressPanel h4,
+.postCompleteCard strong,
+.postCompleteCard p,
+.liveScoringCard .scoreTotalCell {
+  color: var(--field-text-primary);
+}
+
+.liveContextHeader strong,
+.compakLiveProgram strong,
+.postCompleteCard strong,
+.pairGroupingHint strong,
+.wakeLockStatus strong {
+  color: var(--field-text-accent);
+}
+
+.liveScoringSelectors label {
+  color: var(--field-text-secondary);
+}
+
+.liveScoringSelectors select {
+  background: var(--field-surface-raised);
+  border-color: var(--field-border-strong);
+  color: var(--field-text-primary);
+  box-shadow: var(--field-shadow);
+}
+
+.liveScoringSelectors select:focus {
+  border-color: var(--field-border-active);
+  box-shadow: 0 0 0 4px rgba(246, 201, 91, 0.26);
+}
+
+.liveScoreOverview thead th,
+.liveScoreOverview th[scope="row"],
+.liveScoreOverview td {
+  color: var(--field-text-secondary);
+}
+
+.liveScoreOverview th[scope="row"] {
+  font-weight: 950;
+}
+
+.liveScoreOverview thead th {
+  color: var(--field-text-muted);
+}
+
+.liveScoreOverview button,
+.compakDotTarget,
+.targetCorrectionButton,
+.postShootingOrder button {
+  background: var(--field-unscored-bg) !important;
+  border-color: var(--field-unscored-border) !important;
+  color: var(--field-unscored-text) !important;
+  box-shadow: none;
+}
+
+.liveScoreOverview button:hover,
+.compakDotTarget:hover,
+.targetCorrectionButton:hover,
+.postShootingOrder button:hover {
+  border-color: var(--field-border-strong) !important;
+  filter: brightness(1.08);
+}
+
+.liveScoreOverview button:focus-visible,
+.compakDotTarget:focus-visible,
+.targetCorrectionButton:focus-visible,
+.postShootingOrder button:focus-visible,
+.hitButton:focus-visible,
+.missButton:focus-visible,
+.syncStatusPill button:focus-visible,
+.compactLiveTools button:focus-visible,
+.postCompleteCard button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px rgba(246, 201, 91, 0.32) !important;
+}
+
+.liveScoreOverview button.scored,
+.compakDotTarget.hit,
+.targetCorrectionButton.hit {
+  background: var(--field-hit-bg) !important;
+  border-color: var(--field-hit-border) !important;
+  color: var(--field-hit-text) !important;
+}
+
+.compakDotTarget.miss,
+.targetCorrectionButton.miss {
+  background: var(--field-miss-bg) !important;
+  border-color: var(--field-miss-border) !important;
+  color: var(--field-miss-text) !important;
+}
+
+.targetCorrectionButton.empty,
+.compakDotTarget.empty {
+  background: var(--field-unscored-bg) !important;
+  border-color: var(--field-unscored-border) !important;
+  color: var(--field-unscored-text) !important;
+}
+
+.targetCorrectionButton.selected,
+.targetCorrectionButton.empty.selected,
+.targetCorrectionButton.hit.selected,
+.targetCorrectionButton.miss.selected {
+  background: var(--field-active-bg) !important;
+  border-color: var(--field-active-border) !important;
+  color: var(--field-active-text) !important;
+  box-shadow: 0 0 0 3px rgba(246, 201, 91, 0.34) !important;
+}
+
+.targetCorrectionButton span,
+.targetCorrectionButton.selected span {
+  color: var(--field-text-muted);
+}
+
+.targetCorrectionButton strong,
+.targetCorrectionButton.selected strong {
+  color: inherit;
+}
+
+.postShootingOrder li > span {
+  background: var(--field-unscored-bg);
+  border-color: var(--field-unscored-border);
+  color: var(--field-text-secondary);
+}
+
+.postShootingOrder li.active > span,
+.postShootingOrder li.active button {
+  background: var(--field-active-bg) !important;
+  border-color: var(--field-active-border) !important;
+  color: var(--field-active-text) !important;
+}
+
+.compactOrder li.next > span,
+.compactOrder li.next button {
+  border-color: var(--field-border-active) !important;
+  color: var(--field-text-accent) !important;
+}
+
+.hitButton {
+  background: var(--field-hit-bg) !important;
+  border-color: var(--field-hit-border) !important;
+  color: var(--field-hit-text) !important;
+}
+
+.missButton {
+  background: var(--field-miss-bg) !important;
+  border-color: var(--field-miss-border) !important;
+  color: var(--field-miss-text) !important;
+}
+
+.hitButton:active,
+.missButton:active,
+.targetCorrectionButton:active,
+.liveScoreOverview button:active,
+.postShootingOrder button:active {
+  transform: translateY(1px);
+  filter: brightness(0.94) saturate(1.08);
+}
+
+.hitButton:disabled,
+.missButton:disabled,
+.compactLiveTools button:disabled,
+.postCompleteCard button:disabled,
+.syncStatusPill button:disabled {
+  background: rgba(123, 134, 145, 0.24) !important;
+  border-color: rgba(174, 188, 205, 0.22) !important;
+  color: rgba(233, 238, 244, 0.64) !important;
+}
+
+.postCompleteCard {
+  background: var(--field-surface-raised);
+}
+
+.postCompleteCard .secondary,
+.compactLiveTools .secondary,
+.syncStatusPill .secondary,
+.liveNavigationControls .secondary {
+  background: var(--field-surface-raised);
+  border-color: var(--field-border-strong);
+  color: var(--field-text-primary);
+}
+
+.syncStatusPill strong,
+.syncStatus-synced strong,
+.syncStatus-saved_locally strong,
+.syncStatus-idle strong {
+  color: var(--field-complete-text);
+}
+
+.syncStatus-sync_failed strong,
+.syncStatus-offline strong {
+  color: #ffd18a;
+}
+
+.syncStatusPill button,
+.localAutosaveStatus button {
+  background: var(--field-surface-raised);
+  border-color: var(--field-border-strong);
+  color: var(--field-text-primary);
+}
+
+.localAutosaveStatus {
+  background: var(--surface-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
