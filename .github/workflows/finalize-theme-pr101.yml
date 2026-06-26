@@ -1,0 +1,113 @@
+name: Finalize theme corrections
+
+on:
+  push:
+    branches:
+      - fix/finalize-theme-from-pr101
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
+    steps:
+      - name: Check out exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/finalize-theme-from-pr101
+          fetch-depth: 0
+
+      - name: Verify required starting commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          parent="$(git rev-parse HEAD^)"
+          test "$parent" = "084b7d70f5b6e73679c34908b4374843678138f8"
+
+      - name: Apply the two final corrections
+        shell: python
+        run: |
+          from pathlib import Path
+
+          css_path = Path("app/globals.css")
+          css = css_path.read_text()
+          obsolete_scored = 'html[data-theme="light"] .liveScoreOverview button.scored { background: rgba(29, 107, 58, 0.14) !important; color: #18572f !important; border-color: rgba(29, 107, 58, 0.44) !important; }\n'
+          obsolete_missed = 'html[data-theme="light"] .liveScoreOverview button.missed { background: rgba(134, 41, 28, 0.13) !important; color: #741f15 !important; border-color: rgba(134, 41, 28, 0.44) !important; }\n'
+          if obsolete_scored not in css or obsolete_missed not in css:
+              raise SystemExit("Expected obsolete Light-mode score selectors were not found")
+          css = css.replace(obsolete_scored, "").replace(obsolete_missed, "")
+          css_path.write_text(css)
+
+          theme_path = Path("app/components/ThemeProvider.tsx")
+          theme = theme_path.read_text()
+          old_read = '''  useEffect(() => {
+            const storedMode = window.localStorage.getItem(STORAGE_KEY) as AppearanceMode | null;
+            const nextMode: AppearanceMode = storedMode === "light" || storedMode === "dark" ? storedMode : "system";
+            setModeState(nextMode);
+            setResolvedTheme(applyTheme(nextMode));
+          }, []);
+          '''
+          new_read = '''  useEffect(() => {
+            let storedMode: AppearanceMode | null = null;
+            try {
+              storedMode = window.localStorage.getItem(STORAGE_KEY) as AppearanceMode | null;
+            } catch {
+              storedMode = null;
+            }
+            const nextMode: AppearanceMode = storedMode === "light" || storedMode === "dark" ? storedMode : "system";
+            setModeState(nextMode);
+            setResolvedTheme(applyTheme(nextMode));
+          }, []);
+          '''
+          old_write = '''  function setMode(nextMode: AppearanceMode) {
+            if (nextMode === "system") window.localStorage.removeItem(STORAGE_KEY);
+            else window.localStorage.setItem(STORAGE_KEY, nextMode);
+            setModeState(nextMode);
+            setResolvedTheme(applyTheme(nextMode));
+          }
+          '''
+          new_write = '''  function setMode(nextMode: AppearanceMode) {
+            try {
+              if (nextMode === "system") window.localStorage.removeItem(STORAGE_KEY);
+              else window.localStorage.setItem(STORAGE_KEY, nextMode);
+            } catch {
+              // Persistence may be blocked, but the current-session theme switch should still work.
+            }
+            setModeState(nextMode);
+            setResolvedTheme(applyTheme(nextMode));
+          }
+          '''
+          if old_read not in theme or old_write not in theme:
+              raise SystemExit("Expected ThemeProvider localStorage code was not found")
+          theme = theme.replace(old_read, new_read).replace(old_write, new_write)
+          theme_path.write_text(theme)
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Training score sheet safety check
+        run: npm run check:score-sheet-safety
+
+      - name: Production build
+        run: npm run build
+
+      - name: Remove one-time workflow and commit results
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/finalize-theme-pr101.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/globals.css app/components/ThemeProvider.tsx .github/workflows/finalize-theme-pr101.yml
+          git commit -m "Finalize Field Mode contrast and theme storage"
+          git push origin HEAD:fix/finalize-theme-from-pr101
