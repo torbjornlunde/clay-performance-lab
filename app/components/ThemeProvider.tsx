@@ -32,7 +32,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("dark");
 
   useEffect(() => {
-    const storedMode = window.localStorage.getItem(STORAGE_KEY) as AppearanceMode | null;
+    let storedMode: AppearanceMode | null = null;
+    try {
+      storedMode = window.localStorage.getItem(STORAGE_KEY) as AppearanceMode | null;
+    } catch {
+      storedMode = null;
+    }
+
     const nextMode: AppearanceMode = storedMode === "light" || storedMode === "dark" ? storedMode : "system";
     setModeState(nextMode);
     setResolvedTheme(applyTheme(nextMode));
@@ -48,8 +54,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [mode]);
 
   function setMode(nextMode: AppearanceMode) {
-    if (nextMode === "system") window.localStorage.removeItem(STORAGE_KEY);
-    else window.localStorage.setItem(STORAGE_KEY, nextMode);
+    try {
+      if (nextMode === "system") window.localStorage.removeItem(STORAGE_KEY);
+      else window.localStorage.setItem(STORAGE_KEY, nextMode);
+    } catch {
+      // Storage can be blocked; the current-session theme switch must still work.
+    }
+
     setModeState(nextMode);
     setResolvedTheme(applyTheme(nextMode));
   }
