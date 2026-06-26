@@ -1,0 +1,13 @@
+/* Final compatibility overrides for Field Mode.
+   These selectors intentionally outrank legacy Light-theme score rules in globals.css. */
+html[data-theme="light"] body .liveScoreOverview button.scored {
+  background: var(--field-hit-bg) !important;
+  color: var(--field-hit-text) !important;
+  border-color: var(--field-hit-border) !important;
+}
+
+html[data-theme="light"] body .liveScoreOverview button.missed {
+  background: var(--field-miss-bg) !important;
+  color: var(--field-miss-text) !important;
+  border-color: var(--field-miss-border) !important;
+}
