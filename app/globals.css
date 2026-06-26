@@ -4061,6 +4061,19 @@ html, body {
     padding: 6px 4px;
   }
 
+  .shooterPostCellHeader {
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    text-align: center;
+  }
+
+  .liveScoreBadge {
+    padding-inline: 3px;
+    font-size: 8px;
+    letter-spacing: 0.04em;
+  }
+
   .shooterPostCell input {
     min-height: 48px;
     font-size: 16px;
@@ -7067,4 +7080,3 @@ html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview .compactPane
   box-shadow: none !important;
   transform: none;
 }
-
