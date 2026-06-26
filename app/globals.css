@@ -6569,7 +6569,7 @@ button.danger:disabled:hover,
 button.secondary:disabled,
 button.secondary:disabled:hover,
 .button.secondary[aria-disabled="true"] {
-  background: color-mix(in srgb, var(--action-secondary-bg) 52%, var(--action-disabled-bg)) !important;
+  background: var(--action-disabled-bg) !important;
   border-color: var(--action-disabled-border) !important;
   color: var(--action-disabled-text) !important;
 }
@@ -6908,4 +6908,25 @@ html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview .scoreTotalC
 
 html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview .compactPanelHeader .muted {
   color: var(--field-text-muted) !important;
+}
+
+
+.trainingScoreSheetCard .setupApplyPanel button:disabled,
+.trainingScoreSheetCard .setupApplyPanel button:disabled:hover {
+  background: rgba(31, 38, 44, 0.92) !important;
+  border-color: var(--field-border-subtle) !important;
+  color: var(--field-text-primary) !important;
+  cursor: not-allowed;
+  filter: grayscale(0.2) saturate(0.7);
+  opacity: 0.74;
+  box-shadow: none !important;
+  transform: none;
+}
+
+.trainingScoreSheetCard .trainingScoreTable thead th {
+  color: var(--field-text-primary);
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .trainingScoreTable thead th {
+  color: var(--field-text-primary) !important;
 }
