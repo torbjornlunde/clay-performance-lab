@@ -6859,3 +6859,53 @@ html[data-theme="light"] body .liveScoreOverview button.missed {
 .trainingScoreSheetCard .debugBuildInfo > summary.small.muted {
   color: var(--field-text-primary);
 }
+
+html[data-theme="light"] .trainingScoreSheetCard .betaTestNote {
+  background: #f4e2b8;
+  border-color: #9b6a18;
+  color: #3f2a0a;
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .betaTestNote strong,
+html[data-theme="light"] .trainingScoreSheetCard .betaTestNote b {
+  color: inherit;
+}
+
+.trainingScoreSheetCard .compactMoreActions > summary {
+  color: var(--field-text-primary);
+}
+
+.trainingScoreSheetCard .compactMoreActions > summary::after {
+  color: var(--field-active-text);
+}
+
+.trainingScoreSheetCard .compactMoreActions > summary:focus-visible {
+  outline: 0;
+  box-shadow: var(--field-focus-ring);
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .compactMoreActions > summary {
+  color: var(--field-text-primary) !important;
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .compactMoreActions > summary::after {
+  color: var(--field-active-text) !important;
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview thead th,
+html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview thead th:first-child,
+html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview thead th:last-child {
+  color: var(--field-text-muted) !important;
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview tbody th[scope="row"] {
+  color: var(--field-text-primary) !important;
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview .scoreTotalCell {
+  color: var(--field-text-secondary) !important;
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview .compactPanelHeader .muted {
+  color: var(--field-text-muted) !important;
+}
