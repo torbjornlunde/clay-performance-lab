@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { appBuildLabel } from "@/lib/appBuildInfo";
@@ -3541,41 +3541,55 @@ export default function TrainingScoreSheetPage() {
               </p>
             </div>
           </div>
-          <div
-            className="scoreSheetScroller"
-            role="region"
-            aria-label="Training score entry table"
-          >
-            <table className="trainingScoreTable">
-              <thead>
-                <tr>
-                  <th>Shooter</th>
-                  {postNumbers.map((post) => (
-                    <th key={post}>{isCompak ? `Stand ${post}` : `Post ${post}`}</th>
-                  ))}
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {validShooters.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={postNumbers.length + 2}
-                      className="emptyScoreGridCell"
+          <div className="scoreCardGrid" aria-label="Training score entry cards">
+            {validShooters.length === 0 ? (
+              <div className="emptyScoreCard" role="status">
+                Add at least one shooter.
+              </div>
+            ) : (
+              validShooters.map((shooter, shooterIndex) => {
+                const shooterTotal = totalFor(shooter, targetResults);
+                const postColumnCount = Math.min(5, postNumbers.length);
+                return (
+                  <article className="shooterScoreCard" key={shooter.localId}>
+                    <div className="shooterScoreCardHeader">
+                      <h4>{shooter.displayName}</h4>
+                      <div
+                        className="shooterScoreTotal"
+                        aria-label={`${shooter.displayName} total score ${shooterTotal} of ${sheetTotalTargets}`}
+                      >
+                        <span>Total</span>
+                        <strong>{shooterTotal} / {sheetTotalTargets}</strong>
+                      </div>
+                    </div>
+                    <div
+                      className="shooterPostGrid"
+                      style={{ "--score-post-columns": postColumnCount } as CSSProperties}
                     >
-                      Add at least one shooter.
-                    </td>
-                  </tr>
-                ) : (
-                  validShooters.map((shooter, shooterIndex) => (
-                    <tr key={shooter.localId}>
-                      <th scope="row">{shooter.displayName}</th>
                       {postNumbers.map((post, index) => {
                         const scoreIndex = shooterIndex * numberOfPosts + index;
+                        const isLiveScore = hasTargetResults(
+                          targetResults,
+                          shooter.localId,
+                          post,
+                        );
+                        const inputLabel = `${shooter.displayName} ${isCompak ? "stand" : "post"} ${post}`;
                         return (
-                          <td key={post}>
+                          <div
+                            className={`shooterPostCell${isLiveScore ? " liveCalculated" : ""}`}
+                            key={post}
+                          >
+                            <div className="shooterPostCellHeader">
+                              <span>{isCompak ? `S${post}` : `P${post}`}</span>
+                              {isLiveScore && (
+                                <span className="liveScoreBadge" aria-label="Calculated from live target results">
+                                  LIVE
+                                </span>
+                              )}
+                            </div>
                             <input
-                              aria-label={`${shooter.displayName} ${isCompak ? "stand" : "post"} ${post}`}
+                              aria-label={inputLabel}
+                              aria-describedby={isLiveScore ? `score-${scoreIndex}-live-score-note` : undefined}
                               data-score-index={scoreIndex}
                               value={
                                 displayedPostScore(
@@ -3591,17 +3605,9 @@ export default function TrainingScoreSheetPage() {
                                   event.target.value,
                                 )
                               }
-                              disabled={hasTargetResults(
-                                targetResults,
-                                shooter.localId,
-                                post,
-                              )}
+                              disabled={isLiveScore}
                               title={
-                                hasTargetResults(
-                                  targetResults,
-                                  shooter.localId,
-                                  post,
-                                )
+                                isLiveScore
                                   ? "Calculated from live target results"
                                   : "Manual post-total score"
                               }
@@ -3618,17 +3624,24 @@ export default function TrainingScoreSheetPage() {
                               enterKeyHint="next"
                               pattern="[0-9]*"
                             />
-                          </td>
+                            {isLiveScore ? (
+                              <span
+                                className="liveScoreNote"
+                                id={`score-${scoreIndex}-live-score-note`}
+                              >
+                                Target results
+                              </span>
+                            ) : (
+                              <span className="manualScoreNote">Manual total</span>
+                            )}
+                          </div>
                         );
                       })}
-                      <td className="scoreTotalCell">
-                        {totalFor(shooter, targetResults)} / {sheetTotalTargets}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                    </div>
+                  </article>
+                );
+              })
+            )}
           </div>
         </details>
 
