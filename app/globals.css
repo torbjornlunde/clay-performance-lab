@@ -6478,8 +6478,122 @@ button:disabled, .button[aria-disabled="true"] { background: var(--action-disabl
 
 .mobileSheet { background: var(--surface-raised); border-color: var(--border-strong); box-shadow: 0 22px 80px rgba(0, 0, 0, 0.32); }
 [class*="Backdrop"], [class*="backdrop"], .modalOverlay { background: var(--surface-overlay); }
-html[data-theme="light"] .liveScoreOverview button.scored { background: rgba(29, 107, 58, 0.14) !important; color: #18572f !important; border-color: rgba(29, 107, 58, 0.44) !important; }
-html[data-theme="light"] .liveScoreOverview button.missed { background: rgba(134, 41, 28, 0.13) !important; color: #741f15 !important; border-color: rgba(134, 41, 28, 0.44) !important; }
+
+.trainingScoreSheetCard .collapsibleSubcard,
+.trainingScoreSheetCard .advancedSetupPanel,
+.trainingScoreSheetCard .compakSettingsPanel,
+.trainingScoreSheetCard .setupApplyPanel,
+.trainingScoreSheetCard .subtleActionPanel,
+.trainingScoreSheetCard .debugBuildInfo {
+  border-color: var(--field-border-subtle);
+  color: var(--field-text-secondary);
+}
+
+.trainingScoreSheetCard .collapsibleSubcard > summary,
+.trainingScoreSheetCard .advancedSetupPanel > summary,
+.trainingScoreSheetCard .debugBuildInfo > summary,
+.trainingScoreSheetCard .compakSettingsPanel h3,
+.trainingScoreSheetCard .setupApplyPanel strong,
+.trainingScoreSheetCard .subtleActionPanel h3 {
+  color: var(--field-text-primary);
+}
+
+.trainingScoreSheetCard .collapsibleSubcard > summary::after,
+.trainingScoreSheetCard .advancedSetupPanel > summary::after,
+.trainingScoreSheetCard .debugBuildInfo > summary::after {
+  color: var(--field-active-text);
+}
+
+.trainingScoreSheetCard .collapsibleSubcard .muted,
+.trainingScoreSheetCard .advancedSetupPanel .muted,
+.trainingScoreSheetCard .compakSettingsPanel .muted,
+.trainingScoreSheetCard .setupApplyPanel .muted,
+.trainingScoreSheetCard .subtleActionPanel .muted,
+.trainingScoreSheetCard .debugBuildInfo .muted {
+  color: var(--field-text-muted);
+}
+
+.trainingScoreSheetCard .collapsibleSubcard label,
+.trainingScoreSheetCard .advancedSetupPanel label,
+.trainingScoreSheetCard .compakSettingsPanel label {
+  color: var(--field-text-secondary);
+}
+
+.trainingScoreSheetCard .collapsibleSubcard input,
+.trainingScoreSheetCard .collapsibleSubcard select,
+.trainingScoreSheetCard .collapsibleSubcard textarea,
+.trainingScoreSheetCard .advancedSetupPanel input,
+.trainingScoreSheetCard .advancedSetupPanel select,
+.trainingScoreSheetCard .advancedSetupPanel textarea,
+.trainingScoreSheetCard .compakSettingsPanel input,
+.trainingScoreSheetCard .compakSettingsPanel select,
+.trainingScoreSheetCard .compakSettingsPanel textarea {
+  background: var(--field);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.trainingScoreSheetCard .collapsibleSubcard input:focus,
+.trainingScoreSheetCard .collapsibleSubcard select:focus,
+.trainingScoreSheetCard .collapsibleSubcard textarea:focus,
+.trainingScoreSheetCard .advancedSetupPanel input:focus,
+.trainingScoreSheetCard .advancedSetupPanel select:focus,
+.trainingScoreSheetCard .advancedSetupPanel textarea:focus,
+.trainingScoreSheetCard .compakSettingsPanel input:focus,
+.trainingScoreSheetCard .compakSettingsPanel select:focus,
+.trainingScoreSheetCard .compakSettingsPanel textarea:focus {
+  border-color: var(--border-accent);
+  box-shadow: var(--focus-ring);
+}
+
+button.secondary:disabled,
+button.secondary:disabled:hover,
+.button.secondary[aria-disabled="true"],
+button.danger:disabled,
+button.danger:disabled:hover,
+.hitButton:disabled,
+.hitButton:disabled:hover,
+.missButton:disabled,
+.missButton:disabled:hover,
+.compakDotTarget:disabled,
+.targetCorrectionButton:disabled,
+.liveScoreOverview button:disabled,
+.postShootingOrder button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.28) saturate(0.72);
+  opacity: 0.68;
+  box-shadow: none !important;
+  transform: none;
+}
+
+button.secondary:disabled,
+button.secondary:disabled:hover,
+.button.secondary[aria-disabled="true"] {
+  background: var(--action-disabled-bg) !important;
+  border-color: var(--action-disabled-border) !important;
+  color: var(--action-disabled-text) !important;
+}
+
+button.danger:disabled,
+button.danger:disabled:hover {
+  background: color-mix(in srgb, var(--danger-bg) 45%, var(--action-disabled-bg)) !important;
+  border-color: color-mix(in srgb, var(--danger-border) 45%, var(--action-disabled-border)) !important;
+  color: color-mix(in srgb, var(--danger-text) 70%, var(--action-disabled-text)) !important;
+}
+
+.hitButton:disabled,
+.hitButton:disabled:hover {
+  background: linear-gradient(180deg, rgba(107, 208, 140, 0.42), rgba(48, 148, 82, 0.36)) !important;
+  border-color: rgba(186, 255, 204, 0.26) !important;
+  color: rgba(6, 19, 10, 0.76) !important;
+}
+
+.missButton:disabled,
+.missButton:disabled:hover {
+  background: linear-gradient(180deg, rgba(239, 118, 95, 0.42), rgba(170, 62, 45, 0.36)) !important;
+  border-color: rgba(255, 207, 198, 0.26) !important;
+  color: rgba(255, 247, 244, 0.78) !important;
+}
 
 /* Field Mode keeps operational scoring panels dark in every appearance mode. */
 :root {
@@ -6651,6 +6765,15 @@ html[data-theme="light"] {
   color: var(--field-text-muted);
 }
 
+.liveScoreOverview tbody th,
+.liveScoreOverview .shooterNameCell {
+  color: var(--field-text-primary);
+}
+
+.liveScoreOverview .scoreTotalCell {
+  color: var(--field-text-secondary);
+}
+
 .liveScoreOverview button {
   background: var(--field-surface-inset);
   border-color: var(--field-border-subtle);
@@ -6669,9 +6792,141 @@ html[data-theme="light"] {
   color: var(--field-miss-text) !important;
 }
 
+html[data-theme="light"] body .liveScoreOverview button.scored {
+  background: var(--field-hit-bg) !important;
+  border-color: var(--field-hit-border) !important;
+  color: var(--field-hit-text) !important;
+}
+
+html[data-theme="light"] body .liveScoreOverview button.missed {
+  background: var(--field-miss-bg) !important;
+  border-color: var(--field-miss-border) !important;
+  color: var(--field-miss-text) !important;
+}
+
+.compakCurrentStatusCard > .small,
+.compakCurrentStatusCard .muted {
+  color: var(--field-text-muted);
+}
+
+.compakCurrentStatusCard .compakCurrentStatusMeta span:not(.small) {
+  color: var(--field-text-secondary);
+}
+
+.compakCurrentStatusCard .compakCurrentStatusMeta:first-of-type span:not(.small),
+.compakCurrentStatusCard .compakCurrentStatusMeta:nth-of-type(3) span:nth-child(2) {
+  color: var(--field-text-primary);
+}
+
 .compakTargetGroup.pair,
 .compakMissDetailCard {
   background: var(--field-surface-inset);
   border-color: var(--field-border-strong);
   color: var(--field-text-primary);
+}
+
+.trainingScoreSheetCard .liveScoreOverview .muted {
+  color: var(--field-text-muted);
+}
+
+.trainingScoreSheetCard .collapsibleSubcard,
+.trainingScoreSheetCard .advancedSetupPanel,
+.trainingScoreSheetCard .compakSettingsPanel,
+.trainingScoreSheetCard .setupApplyPanel,
+.trainingScoreSheetCard .subtleActionPanel,
+.trainingScoreSheetCard .debugBuildInfo {
+  background: var(--field-surface-secondary);
+}
+
+.postShootingOrder button:disabled,
+.postShootingOrder button:disabled:hover,
+.liveScoreOverview button:disabled,
+.liveScoreOverview button:disabled:hover,
+.targetCorrectionButton:disabled,
+.targetCorrectionButton:disabled:hover,
+.compakDotTarget:disabled,
+.compakDotTarget:disabled:hover {
+  background: color-mix(in srgb, var(--field-surface-inset) 58%, var(--action-disabled-bg)) !important;
+  border-color: color-mix(in srgb, var(--field-border-subtle) 60%, var(--action-disabled-border)) !important;
+  color: var(--field-text-muted) !important;
+  cursor: not-allowed;
+  filter: grayscale(0.28) saturate(0.72);
+  opacity: 0.68;
+  box-shadow: none !important;
+  transform: none;
+}
+
+.trainingScoreSheetCard .debugBuildInfo > summary.small.muted {
+  color: var(--field-text-primary);
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .betaTestNote {
+  background: #f4e2b8;
+  border-color: #9b6a18;
+  color: #3f2a0a;
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .betaTestNote strong,
+html[data-theme="light"] .trainingScoreSheetCard .betaTestNote b {
+  color: inherit;
+}
+
+.trainingScoreSheetCard .compactMoreActions > summary {
+  color: var(--field-text-primary);
+}
+
+.trainingScoreSheetCard .compactMoreActions > summary::after {
+  color: var(--field-active-text);
+}
+
+.trainingScoreSheetCard .compactMoreActions > summary:focus-visible {
+  outline: 0;
+  box-shadow: var(--field-focus-ring);
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .compactMoreActions > summary {
+  color: var(--field-text-primary) !important;
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .compactMoreActions > summary::after {
+  color: var(--field-active-text) !important;
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview thead th,
+html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview thead th:first-child,
+html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview thead th:last-child {
+  color: var(--field-text-muted) !important;
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview tbody th[scope="row"] {
+  color: var(--field-text-primary) !important;
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview .scoreTotalCell {
+  color: var(--field-text-secondary) !important;
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview .compactPanelHeader .muted {
+  color: var(--field-text-muted) !important;
+}
+
+
+.trainingScoreSheetCard .setupApplyPanel button:disabled,
+.trainingScoreSheetCard .setupApplyPanel button:disabled:hover {
+  background: rgba(31, 38, 44, 0.92) !important;
+  border-color: var(--field-border-subtle) !important;
+  color: var(--field-text-primary) !important;
+  cursor: not-allowed;
+  filter: grayscale(0.2) saturate(0.7);
+  opacity: 0.74;
+  box-shadow: none !important;
+  transform: none;
+}
+
+.trainingScoreSheetCard .trainingScoreTable thead th {
+  color: var(--field-text-primary);
+}
+
+html[data-theme="light"] .trainingScoreSheetCard .trainingScoreTable thead th {
+  color: var(--field-text-primary) !important;
 }
