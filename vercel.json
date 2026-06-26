@@ -1,0 +1,3 @@
+{
+  "buildCommand": "npm run check:score-sheet-safety && npm run build"
+}
