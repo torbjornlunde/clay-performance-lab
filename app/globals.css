@@ -3872,46 +3872,217 @@ html, body {
   border-radius: 18px;
 }
 
-.trainingScoreTable {
-  width: 100%;
-  min-width: 720px;
-  border-collapse: collapse;
-  background: rgba(10, 16, 24, 0.5);
-}
-
-.trainingScoreTable th,
-.trainingScoreTable td {
-  border-bottom: 1px solid var(--line);
-  padding: 10px;
-  text-align: left;
-  vertical-align: middle;
-}
-
-.trainingScoreTable thead th {
-  color: var(--muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.trainingScoreTable tbody tr:last-child th,
-.trainingScoreTable tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.trainingScoreTable input {
-  min-width: 86px;
-  min-height: 56px;
-  padding: 14px 12px;
-  text-align: center;
-  font-size: 18px;
-  font-weight: 900;
-}
-
 .scoreTotalCell {
   color: #ffe2a0;
   font-weight: 950;
   white-space: nowrap;
+}
+
+.scoreCardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 14px;
+}
+
+.shooterScoreCard,
+.emptyScoreCard {
+  border: 1px solid var(--field-border-subtle);
+  border-radius: 20px;
+  background: var(--field-surface-secondary);
+  color: var(--field-text-primary);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+}
+
+.emptyScoreCard {
+  padding: 18px;
+  color: var(--field-text-muted);
+  font-weight: 850;
+  text-align: center;
+}
+
+.shooterScoreCard {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.shooterScoreCardHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.shooterScoreCardHeader h4 {
+  margin: 0;
+  color: var(--field-text-primary);
+  font-size: clamp(18px, 4vw, 22px);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.shooterScoreTotal {
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+  min-width: max-content;
+  border: 1px solid var(--field-border-strong);
+  border-radius: 16px;
+  background: var(--field-active-bg);
+  padding: 8px 10px;
+  color: var(--field-active-text);
+}
+
+.shooterScoreTotal span {
+  color: var(--field-text-muted);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shooterScoreTotal strong {
+  color: var(--field-active-text);
+  font-size: 20px;
+  font-weight: 950;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.shooterPostGrid {
+  --score-post-columns: 5;
+  display: grid;
+  grid-template-columns: repeat(var(--score-post-columns), minmax(0, 1fr));
+  gap: 8px;
+}
+
+.shooterPostCell {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid var(--field-border-subtle);
+  border-radius: 16px;
+  background: var(--field-surface-inset);
+  padding: 8px;
+}
+
+.shooterPostCell.liveCalculated {
+  border-color: var(--field-hit-border);
+  background: color-mix(in srgb, var(--field-surface-inset) 84%, var(--field-hit-bg));
+}
+
+.shooterPostCellHeader {
+  display: flex;
+  min-height: 18px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  color: var(--field-text-secondary);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.05em;
+}
+
+.liveScoreBadge {
+  border: 1px solid var(--field-hit-border);
+  border-radius: 999px;
+  background: var(--field-hit-bg);
+  color: var(--field-hit-text);
+  padding: 1px 5px;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.shooterPostCell input {
+  width: 100%;
+  min-width: 0;
+  min-height: 50px;
+  border-color: var(--field-border-subtle);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--field-text-primary);
+  padding: 10px 4px;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.shooterPostCell input:focus-visible {
+  border-color: var(--field-border-strong);
+  box-shadow: var(--field-focus-ring);
+}
+
+.shooterPostCell input:disabled {
+  -webkit-text-fill-color: var(--field-hit-text);
+  border-color: var(--field-hit-border);
+  background: var(--field-hit-bg);
+  color: var(--field-hit-text);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.liveScoreNote,
+.manualScoreNote {
+  min-height: 13px;
+  color: var(--field-text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.liveScoreNote {
+  color: var(--field-hit-text);
+}
+
+@media (max-width: 374px) {
+  .scoreCardGrid {
+    gap: 12px;
+  }
+
+  .shooterScoreCard {
+    padding: 10px;
+  }
+
+  .shooterScoreCardHeader {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .shooterScoreTotal {
+    justify-items: start;
+  }
+
+  .shooterPostGrid {
+    gap: 6px;
+  }
+
+  .shooterPostCell {
+    padding: 6px 4px;
+  }
+
+  .shooterPostCellHeader {
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    text-align: center;
+  }
+
+  .liveScoreBadge {
+    padding-inline: 3px;
+    font-size: 8px;
+    letter-spacing: 0.04em;
+  }
+
+  .shooterPostCell input {
+    min-height: 48px;
+    font-size: 16px;
+  }
+
+  .manualScoreNote,
+  .liveScoreNote {
+    font-size: 9px;
+  }
 }
 
 
@@ -4067,19 +4238,6 @@ html, body {
     margin-inline: -4px;
   }
 
-  .trainingScoreTable {
-    min-width: 640px;
-  }
-
-  .trainingScoreTable input {
-    min-width: 90px;
-    min-height: 58px;
-  }
-
-  .trainingScoreTable th,
-  .trainingScoreTable td {
-    padding: 8px;
-  }
 }
 
 .emptyScoreGridCell {
@@ -6921,12 +7079,4 @@ html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview .compactPane
   opacity: 0.74;
   box-shadow: none !important;
   transform: none;
-}
-
-.trainingScoreSheetCard .trainingScoreTable thead th {
-  color: var(--field-text-primary);
-}
-
-html[data-theme="light"] .trainingScoreSheetCard .trainingScoreTable thead th {
-  color: var(--field-text-primary) !important;
 }
