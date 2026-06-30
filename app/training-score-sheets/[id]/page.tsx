@@ -639,7 +639,7 @@ export default function TrainingScoreSheetPage() {
     isEnabled: wakeLockEnabled,
     isActive: wakeLockActive,
     setEnabled: setWakeLockEnabled,
-  } = useScreenWakeLock(true);
+  } = useScreenWakeLock(false);
   const [currentShooterId, setCurrentShooterId] = useState("");
   const [currentPost, setCurrentPost] = useState(1);
   const [currentTarget, setCurrentTarget] = useState(1);
@@ -682,6 +682,11 @@ export default function TrainingScoreSheetPage() {
   const shooterSetupOpen = !liveMode || showShootersDuringLive;
   const fullScoreTableOpen = !liveMode || showFullScoreTableDuringLive;
   const resultsSummaryOpen = !liveMode || showResultsSummaryDuringLive;
+
+  useEffect(() => {
+    setWakeLockEnabled(liveMode);
+  }, [liveMode, setWakeLockEnabled]);
+
   const hasEnteredScores = shooters.some((shooter) =>
     shooter.scores.some(
       (score, index) => displayedPostScore(shooter, index, targetResults) > 0,
