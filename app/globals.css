@@ -4729,7 +4729,8 @@ html, body {
   backdrop-filter: blur(10px);
 }
 
-.liveContextHeader > div {
+.liveContextHeader > div,
+.liveContextHeader > .wakeLockStatus {
   display: grid;
   gap: 3px;
   min-width: 0;
@@ -4745,8 +4746,20 @@ html, body {
   white-space: nowrap;
 }
 
+.wakeLockStatus {
+  border: 1px solid rgba(189, 245, 212, 0.28);
+  border-radius: 12px;
+  background: rgba(189, 245, 212, 0.08);
+  padding: 7px 8px;
+  text-align: left;
+}
+
 .wakeLockStatus strong {
   color: #bdf5d4;
+}
+
+.wakeLockStatus:not(.wakeLockStatusEnabled) strong {
+  color: var(--muted);
 }
 
 .liveScoreOverview {
@@ -5232,8 +5245,7 @@ html, body {
     padding: 8px;
   }
 
-  .syncStatusPill,
-  .wakeLockStatus {
+  .syncStatusPill {
     display: none !important;
   }
 
