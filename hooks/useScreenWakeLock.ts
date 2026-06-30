@@ -27,6 +27,7 @@ export function useScreenWakeLock(defaultEnabled = true) {
   const [isSupported, setIsSupported] = useState(false);
   const [isEnabled, setIsEnabled] = useState(defaultEnabled);
   const [isActive, setIsActive] = useState(false);
+  const enabledRef = useRef(defaultEnabled);
   const sentinelRef = useRef<WakeLockSentinelLike | null>(null);
   const requestInFlightRef = useRef<Promise<void> | null>(null);
   const mountedRef = useRef(false);
@@ -48,7 +49,7 @@ export function useScreenWakeLock(defaultEnabled = true) {
   const requestWakeLock = useCallback(async () => {
     if (
       !mountedRef.current ||
-      !isEnabled ||
+      !enabledRef.current ||
       !canUseWakeLock() ||
       !isDocumentVisible()
     ) {
@@ -65,7 +66,11 @@ export function useScreenWakeLock(defaultEnabled = true) {
         const sentinel = await wakeLockApi?.request("screen");
         if (!sentinel) return;
 
-        if (!mountedRef.current || !isEnabled || !isDocumentVisible()) {
+        if (
+          !mountedRef.current ||
+          !enabledRef.current ||
+          !isDocumentVisible()
+        ) {
           try {
             await sentinel.release();
           } catch {
@@ -89,10 +94,11 @@ export function useScreenWakeLock(defaultEnabled = true) {
 
     requestInFlightRef.current = requestPromise;
     return requestPromise;
-  }, [isEnabled]);
+  }, []);
 
   const setEnabled = useCallback(
     (enabled: boolean) => {
+      enabledRef.current = enabled;
       setIsEnabled(enabled);
       if (!enabled) void releaseWakeLock();
     },
@@ -127,7 +133,7 @@ export function useScreenWakeLock(defaultEnabled = true) {
         return;
       }
 
-      void requestWakeLock();
+      if (enabledRef.current) void requestWakeLock();
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
