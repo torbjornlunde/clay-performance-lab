@@ -13,6 +13,7 @@ import {
   getMachineLabelFromRow,
   getPresentationLabel,
 } from "@/lib/fitasc/compakSchemes";
+import { useScreenWakeLock } from "@/hooks/useScreenWakeLock";
 import { supabase } from "@/lib/supabase/client";
 import {
   clampScore,
@@ -93,18 +94,6 @@ type LocalSaveStatus = "idle" | "saved_local" | "syncing" | "synced" | "sync_fai
 type SetupDraft = {
   numberOfPosts: string;
   targetsPerPost: string;
-};
-
-type WakeLockSentinelLike = {
-  released: boolean;
-  release: () => Promise<void>;
-  addEventListener?: (type: "release", listener: () => void) => void;
-};
-
-type NavigatorWithWakeLock = Navigator & {
-  wakeLock?: {
-    request: (type: "screen") => Promise<WakeLockSentinelLike>;
-  };
 };
 
 type PostCompleteState = {
@@ -645,8 +634,12 @@ export default function TrainingScoreSheetPage() {
   const [showFullScoreTableDuringLive, setShowFullScoreTableDuringLive] = useState(false);
   const [showResultsSummaryDuringLive, setShowResultsSummaryDuringLive] = useState(false);
   const [postComplete, setPostComplete] = useState<PostCompleteState | null>(null);
-  const [wakeLockActive, setWakeLockActive] = useState(false);
-  const [wakeLockUnsupported, setWakeLockUnsupported] = useState(false);
+  const {
+    isSupported: wakeLockSupported,
+    isEnabled: wakeLockEnabled,
+    isActive: wakeLockActive,
+    setEnabled: setWakeLockEnabled,
+  } = useScreenWakeLock(true);
   const [currentShooterId, setCurrentShooterId] = useState("");
   const [currentPost, setCurrentPost] = useState(1);
   const [currentTarget, setCurrentTarget] = useState(1);
@@ -1152,44 +1145,6 @@ export default function TrainingScoreSheetPage() {
     setCurrentPost((value) => Math.min(Math.max(value, 1), numberOfPosts));
     setCurrentTarget((value) => Math.min(Math.max(value, 1), targetsPerPost));
   }, [numberOfPosts, targetsPerPost]);
-
-  useEffect(() => {
-    if (typeof navigator === "undefined") return;
-    let wakeLock: WakeLockSentinelLike | null = null;
-    let cancelled = false;
-
-    async function requestWakeLock() {
-      const wakeLockApi = (navigator as NavigatorWithWakeLock).wakeLock;
-      if (!liveMode || !wakeLockApi) {
-        setWakeLockActive(false);
-        if (liveMode && !wakeLockApi) setWakeLockUnsupported(true);
-        return;
-      }
-
-      try {
-        wakeLock = await wakeLockApi.request("screen");
-        if (cancelled) {
-          await wakeLock.release();
-          return;
-        }
-        setWakeLockUnsupported(false);
-        setWakeLockActive(true);
-        wakeLock.addEventListener?.("release", () => setWakeLockActive(false));
-      } catch {
-        setWakeLockActive(false);
-        setWakeLockUnsupported(true);
-      }
-    }
-
-    requestWakeLock();
-
-    return () => {
-      cancelled = true;
-      if (wakeLock && !wakeLock.released) {
-        wakeLock.release().catch(() => undefined);
-      }
-    };
-  }, [liveMode]);
 
   useEffect(() => {
     if (!isCompak) return;
@@ -3011,13 +2966,21 @@ export default function TrainingScoreSheetPage() {
                     </button>
                   )}
                 </div>
-                <div className="wakeLockStatus">
+                <button
+                  type="button"
+                  className={`wakeLockStatus ${wakeLockEnabled ? "wakeLockStatusEnabled" : ""}`}
+                  onClick={() => setWakeLockEnabled(!wakeLockEnabled)}
+                  aria-pressed={wakeLockEnabled}
+                >
                   <span className="small muted">Screen</span>
-                  <strong>{wakeLockActive ? "Awake" : wakeLockUnsupported ? "Normal" : "Ready"}</strong>
-                  {wakeLockUnsupported && (
-                    <span className="small muted">Wake Lock unsupported</span>
-                  )}
-                </div>
+                  <strong>
+                    {wakeLockSupported
+                      ? wakeLockActive
+                        ? "Screen awake"
+                        : "Keep screen awake"
+                      : "Screen awake unavailable"}
+                  </strong>
+                </button>
 </div>
 
               {isCompak && currentShooter && currentCompakSequence && (
