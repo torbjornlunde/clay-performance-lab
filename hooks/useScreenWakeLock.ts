@@ -30,23 +30,33 @@ export function useScreenWakeLock(defaultEnabled = true) {
   const enabledRef = useRef(defaultEnabled);
   const sentinelRef = useRef<WakeLockSentinelLike | null>(null);
   const requestInFlightRef = useRef<Promise<void> | null>(null);
+  const releaseInFlightRef = useRef<Promise<void> | null>(null);
+  const requestAfterInFlightRef = useRef(false);
   const mountedRef = useRef(false);
 
-  const releaseWakeLock = useCallback(async () => {
+  const releaseWakeLock = useCallback(() => {
     const sentinel = sentinelRef.current;
     sentinelRef.current = null;
     if (mountedRef.current) setIsActive(false);
 
-    if (sentinel && !sentinel.released) {
-      try {
-        await sentinel.release();
-      } catch {
-        // Wake Lock release failures should not interrupt score logging.
+    if (releaseInFlightRef.current) return releaseInFlightRef.current;
+    if (!sentinel || sentinel.released) return Promise.resolve();
+
+    const releasePromise = sentinel.release().catch(() => {
+      // Wake Lock release failures should not interrupt score logging.
+    });
+    releaseInFlightRef.current = releasePromise;
+
+    void releasePromise.finally(() => {
+      if (releaseInFlightRef.current === releasePromise) {
+        releaseInFlightRef.current = null;
       }
-    }
+    });
+
+    return releasePromise;
   }, []);
 
-  const requestWakeLock = useCallback(async () => {
+  const requestWakeLock = useCallback(async function requestWakeLockInternal() {
     if (
       !mountedRef.current ||
       !enabledRef.current ||
@@ -58,10 +68,25 @@ export function useScreenWakeLock(defaultEnabled = true) {
 
     const currentSentinel = sentinelRef.current;
     if (currentSentinel && !currentSentinel.released) return;
-    if (requestInFlightRef.current) return requestInFlightRef.current;
+    if (requestInFlightRef.current) {
+      requestAfterInFlightRef.current = true;
+      return requestInFlightRef.current;
+    }
 
     const requestPromise = (async () => {
       try {
+        const releaseInFlight = releaseInFlightRef.current;
+        if (releaseInFlight) {
+          await releaseInFlight;
+          if (
+            !mountedRef.current ||
+            !enabledRef.current ||
+            !isDocumentVisible()
+          ) {
+            return;
+          }
+        }
+
         const wakeLockApi = (navigator as NavigatorWithWakeLock).wakeLock;
         const sentinel = await wakeLockApi?.request("screen");
         if (!sentinel) return;
@@ -89,6 +114,19 @@ export function useScreenWakeLock(defaultEnabled = true) {
         if (mountedRef.current) setIsActive(false);
       } finally {
         requestInFlightRef.current = null;
+
+        if (requestAfterInFlightRef.current) {
+          requestAfterInFlightRef.current = false;
+          const activeSentinel = sentinelRef.current;
+          if (
+            mountedRef.current &&
+            enabledRef.current &&
+            isDocumentVisible() &&
+            (!activeSentinel || activeSentinel.released)
+          ) {
+            void requestWakeLockInternal();
+          }
+        }
       }
     })();
 
@@ -100,7 +138,10 @@ export function useScreenWakeLock(defaultEnabled = true) {
     (enabled: boolean) => {
       enabledRef.current = enabled;
       setIsEnabled(enabled);
-      if (!enabled) void releaseWakeLock();
+      if (!enabled) {
+        requestAfterInFlightRef.current = false;
+        void releaseWakeLock();
+      }
     },
     [releaseWakeLock],
   );
@@ -111,6 +152,7 @@ export function useScreenWakeLock(defaultEnabled = true) {
 
     return () => {
       mountedRef.current = false;
+      requestAfterInFlightRef.current = false;
       void releaseWakeLock();
     };
   }, [releaseWakeLock]);
