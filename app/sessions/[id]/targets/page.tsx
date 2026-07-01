@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { isPostBasedSportingDiscipline } from "@/lib/disciplines";
+import { PostTargetEditor } from "./PostTargetEditor";
 
 const machines = ["A", "B", "C", "D", "E", "F"];
 const targetTypes = [
@@ -92,7 +94,7 @@ export default function TargetDefinitionsPage() {
     }
     const { data: sessionData } = await supabase
       .from("sessions")
-      .select("id,name,course_count")
+      .select("id,name,discipline,course_count,post_count")
       .eq("id", params.id)
       .single();
     const { data: courseRows } = await supabase
@@ -287,6 +289,14 @@ export default function TargetDefinitionsPage() {
         <div className="card">Loading...</div>
       </main>
     );
+  if (isPostBasedSportingDiscipline(session.discipline)) {
+    return (
+      <main>
+        <PostTargetEditor session={session} courseRows={courses.map((course_number) => ({ course_number }))} />
+      </main>
+    );
+  }
+
   return (
     <main>
       <div className="card">

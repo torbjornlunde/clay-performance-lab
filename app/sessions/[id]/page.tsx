@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { analysisPresentation } from "@/lib/analysis/sessionAnalysis";
-import { isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
+import { isCompactDiscipline, isOrdinaryLeirduesti, isPostBasedSportingDiscipline } from "@/lib/disciplines";
 import { getSchemeType, plateRotation } from "@/lib/fitasc/schemes";
 import { normalizeLeirduestiLabel, shortMissedTarget } from "@/lib/misses/labels";
 import { scoreFromMisses, totalMisses } from "@/lib/misses/scoring";
@@ -399,7 +399,14 @@ export default function Page() {
           </DetailSection>
         )}
 
-        {targetDefinitions.length > 0 && (
+        {isPostBasedSportingDiscipline(session.discipline) && (
+          <DetailSection title="Target definitions" badge="Setup">
+            <p className="small muted">Describe each stable post or stand target position for later score-sheet matching.</p>
+            <Link href={`/sessions/${session.id}/targets`} className="button secondary smallButton">Describe posts and targets</Link>
+          </DetailSection>
+        )}
+
+        {!isPostBasedSportingDiscipline(session.discipline) && targetDefinitions.length > 0 && (
           <DetailSection title="Target definitions" badge={targetDefinitions.length}>
             <div className="targetDefinitionList">
               {targetDefinitions.map((definition) => (

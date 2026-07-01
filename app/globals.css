@@ -7325,3 +7325,47 @@ html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview .compactPane
   box-shadow: none !important;
   transform: none;
 }
+
+.postTargetEditor {
+  max-width: 980px;
+  overflow-wrap: anywhere;
+}
+
+.postTargetEditor .btns {
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.presentationCard,
+.targetCard {
+  border-left: 3px solid var(--accent, #2f7dd1);
+}
+
+.targetCard h4 {
+  margin-top: 0;
+}
+
+.postTargetEditor select,
+.postTargetEditor input,
+.postTargetEditor textarea,
+.postTargetEditor button,
+.postTargetEditor .button {
+  min-height: 44px;
+  font-size: 16px;
+}
+
+.postTargetEditor textarea {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 430px) {
+  .postTargetEditor .btns {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .postTargetEditor .row {
+    grid-template-columns: 1fr;
+  }
+}
