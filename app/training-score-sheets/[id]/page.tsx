@@ -511,6 +511,17 @@ function targetStatsForShooter(
   return { scored: results.length, hits, misses };
 }
 
+function shooterHasRecordedData(
+  shooter: ShooterDraft,
+  targetResults: TargetResultMap,
+) {
+  const hasManualScore = shooter.scores.some((score) => score > 0);
+  const hasTargetResult = Object.values(targetResults[shooter.localId] || {}).some(
+    (post) => Object.keys(post || {}).length > 0,
+  );
+  return hasManualScore || hasTargetResult;
+}
+
 function setupTrimDetails(options: {
   shooters: ShooterDraft[];
   targetResults: TargetResultMap;
@@ -1487,14 +1498,31 @@ export default function TrainingScoreSheetPage() {
   }
 
   function removeShooter(localId: string) {
+    const shooter = shooters.find((item) => item.localId === localId);
+    if (!shooter) return;
+
+    if (shooterHasRecordedData(shooter, targetResults)) {
+      const shooterName = formatShooterName(shooter.name) || "this shooter";
+      const confirmed = window.confirm(
+        `Remove ${shooterName}? This will remove their recorded scores and target results from this score sheet. This cannot be undone.`,
+      );
+      if (!confirmed) return;
+    }
+
     setShooters((current) =>
-      current.filter((shooter) => shooter.localId !== localId),
+      current.filter((item) => item.localId !== localId),
     );
     setTargetResults((current) => {
       const next = { ...current };
       delete next[localId];
       return next;
     });
+    setInputHistory((current) =>
+      current.filter((item) => item.shooterId !== localId),
+    );
+    setPostComplete((current) =>
+      current?.shooterId === localId ? null : current,
+    );
   }
 
   function syncShooterPostScore(
@@ -1642,7 +1670,7 @@ export default function TrainingScoreSheetPage() {
   }
 
   function markTarget(result: TargetResultValue) {
-    if (!currentShooterId || postComplete || (isCompak && isCompakRoundComplete)) return;
+    if (!currentShooter || postComplete || (isCompak && isCompakRoundComplete)) return;
     const postNumber = activePostNumber;
     const targetNumber = activeTargetNumber;
     const previousResult =
@@ -1744,6 +1772,10 @@ export default function TrainingScoreSheetPage() {
   function undoLastInput() {
     const lastInput = inputHistory[inputHistory.length - 1];
     if (!lastInput) return;
+    if (!validShooters.some((shooter) => shooter.localId === lastInput.shooterId)) {
+      setInputHistory((current) => current.slice(0, -1));
+      return;
+    }
     const nextTargetResults: TargetResultMap = {
       ...targetResults,
       [lastInput.shooterId]: { ...(targetResults[lastInput.shooterId] || {}) },
