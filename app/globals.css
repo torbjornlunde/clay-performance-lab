@@ -7481,3 +7481,82 @@ select { -webkit-appearance: menulist; appearance: auto; }
   .btns .button,
   .btns button { width: 100%; }
 }
+
+/* Log miss readability uses Field Mode variables in every appearance mode. */
+.logMissCard .logSection,
+.logMissCard .optionalDetails,
+.logMissCard .saveSection {
+  background: var(--field-surface-secondary);
+  border-color: var(--field-border-subtle);
+  color: var(--field-text-primary);
+}
+.logMissCard .saveSection {
+  border-color: var(--field-border-strong);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32);
+}
+.logMissCard .logSectionTitle > span {
+  background: var(--field-active-bg);
+  border-color: var(--field-border-strong);
+  color: var(--field-active-text);
+}
+.logMissCard h2,
+.logMissCard h3,
+.logMissCard h4,
+.logMissCard label,
+.logMissCard strong,
+.logMissCard .logSectionTitle h3,
+.logMissCard .optionalDetails summary {
+  color: var(--field-text-primary);
+}
+.logMissCard p,
+.logMissCard .muted,
+.logMissCard .small,
+.logMissCard .logSectionTitle p,
+.logMissCard .optionalDetails p {
+  color: var(--field-text-secondary) !important;
+}
+.logMissCard input,
+.logMissCard select,
+.logMissCard textarea {
+  background: var(--field-surface-inset);
+  border-color: var(--field-border-subtle);
+  color: var(--field-text-primary);
+}
+.logMissCard input:focus,
+.logMissCard select:focus,
+.logMissCard textarea:focus {
+  border-color: var(--field-border-strong);
+  box-shadow: var(--field-focus-ring);
+}
+.logMissCard .quickButton {
+  background: var(--field-surface-inset);
+  border-color: var(--field-border-subtle);
+  color: var(--field-text-primary);
+  box-shadow: none;
+}
+.logMissCard .quickButton:hover {
+  border-color: var(--field-border-strong);
+  color: var(--field-active-text);
+}
+.logMissCard .quickButton.selected,
+.logMissCard .quickButton[aria-pressed="true"] {
+  background: var(--field-active-bg);
+  border-color: var(--field-border-strong);
+  color: var(--field-active-text);
+  box-shadow: var(--field-focus-ring);
+}
+.logMissCard .quickButton:disabled,
+.logMissCard button:disabled,
+.logMissCard .button[aria-disabled="true"] {
+  -webkit-text-fill-color: var(--field-text-muted);
+  background: color-mix(in srgb, var(--field-surface-inset) 78%, transparent);
+  border-color: var(--field-border-subtle);
+  color: var(--field-text-muted);
+  opacity: 1;
+}
+.logMissCard .notice,
+.logMissCard .calculatedNotice {
+  background: var(--field-active-bg);
+  border-color: var(--field-border-strong);
+  color: var(--field-active-text) !important;
+}

@@ -101,12 +101,17 @@ function isCompetitionResult(session: SessionRow) {
 }
 
 function statusBadges(session: SessionRow, missCounts: Record<string, number>, courseCounts: Record<string, number>) {
-  const badges: string[] = [];
+  const badges: string[] = ["Competition"];
   if (isImported(session)) badges.push("Imported");
-  if (isDraftOrIncomplete(session, missCounts, courseCounts)) badges.push("Draft", "Incomplete");
-  if (!hasScore(session)) badges.push("No score");
-  if (!isImported(session) && resultSource(session, missCounts, courseCounts) === "Manual") badges.push("Test/manual");
+  if (!hasScore(session)) badges.push("Needs result");
+  else if (isDetailedLog(session, missCounts, courseCounts) && !missCounts[session.id] && !isUsableNumber(session.own_score)) badges.push("Setup incomplete");
   return Array.from(new Set(badges));
+}
+
+function resultState(session: SessionRow, missCounts: Record<string, number>, courseCounts: Record<string, number>) {
+  if (!hasScore(session)) return "Needs result";
+  if (isDetailedLog(session, missCounts, courseCounts) && !missCounts[session.id] && !isUsableNumber(session.own_score)) return "Setup incomplete";
+  return "Competition";
 }
 
 function resultMatchesFilter(session: SessionRow, filter: ResultFilter, missCounts: Record<string, number>, courseCounts: Record<string, number>) {
@@ -261,9 +266,9 @@ export default function ResultsPage() {
                     <div className="small muted">
                       Score {score === null ? "-" : score} / {session.total_targets ?? "-"}
                       {isUsableNumber(session.winning_score) ? ` · Winning score ${session.winning_score}` : ""}
-                      {badges.length ? ` · ${badges.join(", ")}` : " · Complete"}
+                      {` · ${resultState(session, missCounts, courseCounts)}`}
                     </div>
-                    <div className="small muted">Source: {source}</div>
+                    <div className="small muted">Technical source: {source}</div>
                     {parseQuickScoreMetadata(session.notes) && (
                       <div className="small muted">
                         Order {parseQuickScoreMetadata(session.notes)?.courseOrder.join(" → ")} · Misses {parseQuickScoreMetadata(session.notes)?.totalMisses}
@@ -278,8 +283,7 @@ export default function ResultsPage() {
                       </div>
                     )}
                     <div className="sheetStatusBadges">
-                      <span className="badge badgeBlue">{source}</span>
-                      {badges.map((badge) => <span className="badge" key={badge}>{badge}</span>)}
+                      {badges.map((badge, index) => <span className={index === 0 ? "badge badgeBlue" : "badge"} key={badge}>{badge}</span>)}
                     </div>
                     <div className="btns archiveActions">
                       <Link className="button secondary smallButton" href={`/sessions/${session.id}`}>Open</Link>
