@@ -5142,6 +5142,103 @@ html, body {
   margin-top: 10px;
 }
 
+.trainingScoreSheetArchiveItem {
+  grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
+}
+
+.trainingScoreSheetArchiveItem .sessionContent {
+  min-width: 0;
+}
+
+.archiveCardHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: start;
+}
+
+.archiveCardHeader strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.primaryStatusBadges {
+  justify-content: flex-end;
+  margin-top: 0;
+}
+
+.archivePrimaryMeta span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.archiveProgressSummary {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.archiveProgressSummary span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.archiveDetails {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 8px 10px;
+}
+
+.archiveDetails > summary {
+  cursor: pointer;
+  font-weight: 900;
+  list-style-position: inside;
+}
+
+.archiveDetails > summary:focus-visible {
+  outline: 2px solid var(--gold2);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
+.archiveDetails .scoreSheetMetrics {
+  margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+  .trainingScoreSheetArchiveItem {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .archiveCardHeader {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .primaryStatusBadges {
+    justify-content: flex-start;
+  }
+
+  .archiveActions,
+  .archiveActions > .button,
+  .archiveActions > .compactMoreActions {
+    width: 100%;
+  }
+
+  .archiveActions > .button,
+  .compactMoreActions > summary,
+  .compactMoreActions > button {
+    justify-content: center;
+    min-height: 44px;
+  }
+}
+
 .sheetStatusBadges {
   display: flex;
   flex-wrap: wrap;

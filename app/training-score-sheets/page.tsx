@@ -186,6 +186,39 @@ function isDraftOrIncomplete(item: SheetListItem) {
   return !isCompleted(item) || statusBadges(item).some((badge) => ["No shooters", "No scores", "Draft", "Incomplete"].includes(badge));
 }
 
+function progressSummary(item: SheetListItem) {
+  const expectedTargetResults = item.shooterCount * item.totalTargets;
+  const shooterLabel = item.shooterCount === 1 ? "shooter" : "shooters";
+  const targetsLabel = item.totalTargets === 1 ? "target" : "targets";
+  const setupLine =
+    item.shooterCount > 0 && item.totalTargets > 0
+      ? `${item.shooterCount} ${shooterLabel} · ${item.totalTargets} ${targetsLabel} each`
+      : item.shooterCount > 0
+        ? `${item.shooterCount} ${shooterLabel} · target total not set`
+        : item.totalTargets > 0
+          ? `No shooters · ${item.totalTargets} ${targetsLabel} each`
+          : "No shooters · target total not set";
+
+  const resultsLabel = item.targetResultCount === 1 ? "target result" : "target results";
+  const resultLine =
+    expectedTargetResults > 0
+      ? `${item.targetResultCount} of ${expectedTargetResults} target results logged`
+      : `${item.targetResultCount} ${resultsLabel} logged`;
+
+  return [setupLine, resultLine];
+}
+
+function workflowStatus(item: SheetListItem) {
+  if (isCompleted(item)) return "Completed";
+  if (statusBadges(item).includes("Incomplete")) return "Incomplete";
+  return "Draft";
+}
+
+function secondaryStatusBadges(item: SheetListItem) {
+  const primaryStatuses = new Set([item.syncStatus, workflowStatus(item), "Unsynced local draft", "Local draft"]);
+  return statusBadges(item).filter((badge) => !primaryStatuses.has(badge));
+}
+
 function sortNewestFirst(a: SheetListItem, b: SheetListItem) {
   const aTime = new Date(a.updatedAt || a.createdAt || a.sessionDate).getTime();
   const bTime = new Date(b.updatedAt || b.createdAt || b.sessionDate).getTime();
@@ -474,41 +507,51 @@ export default function TrainingScoreSheetsPage() {
         ) : (
           <div className="scoreSheetArchiveList">
             {visibleItems.map((item) => {
-              const badges = statusBadges(item);
               const canDelete = item.isLocalOnly || item.ownerUserId === currentUserId;
+              const primaryWorkflowStatus = workflowStatus(item);
+              const secondaryBadges = secondaryStatusBadges(item);
+              const progressLines = progressSummary(item);
               return (
                 <article key={item.id} className="sessionItem trainingScoreSheetArchiveItem">
                   <div className="sessionContent">
-                    <div className="sessionTopline compactTopline">
+                    <div className="archiveCardHeader">
                       <strong>{item.title}</strong>
-                      <span className={item.hasUnsyncedLocalDraft ? "badge badgeGold" : "badge badgeGreen"}>
-                        {item.syncStatus}
-                      </span>
+                      <div className="sheetStatusBadges primaryStatusBadges" aria-label="Score sheet status">
+                        <span className={item.hasUnsyncedLocalDraft ? "badge badgeGold" : "badge badgeGreen"}>
+                          {item.syncStatus}
+                        </span>
+                        <span className="badge badgeBlue">{primaryWorkflowStatus}</span>
+                      </div>
                     </div>
-                    <div className="small muted sessionMeta compactMeta">
+                    <div className="small muted sessionMeta compactMeta archivePrimaryMeta">
                       <span>{formatDate(item.sessionDate)}</span>
                       {item.location && <span>{item.location}</span>}
                       <span>{item.discipline}</span>
                       <span>{sessionTypeLabel(item.sessionType)}</span>
                     </div>
-                    <div className="resultMetrics scoreSheetMetrics">
-                      <span>Shooters <strong>{item.shooterCount}</strong></span>
-                      <span>Total targets <strong>{item.totalTargets}</strong></span>
-                      <span>Setup <strong>{item.numberOfPosts} × {item.targetsPerPost}</strong></span>
-                      <span>Scores <strong>{item.scoreCount}</strong></span>
-                      <span>Target results <strong>{item.targetResultCount}</strong></span>
+                    <div className="archiveProgressSummary" aria-label="Scoring progress">
+                      <span>{progressLines[0]}</span>
+                      <span>{progressLines[1]}</span>
                     </div>
-                    <div className="small muted sessionMeta compactMeta">
-                      <span>Created {formatDateTime(item.createdAt)}</span>
-                      <span>Updated {formatDateTime(item.updatedAt)}</span>
-                    </div>
-                    {badges.length > 0 && (
-                      <div className="sheetStatusBadges">
-                        {badges.map((badge) => (
-                          <span key={badge} className="badge badgeBlue">{badge}</span>
-                        ))}
+                    <details className="archiveDetails">
+                      <summary>Details</summary>
+                      <div className="resultMetrics scoreSheetMetrics">
+                        <span>Setup <strong>{item.numberOfPosts} × {item.targetsPerPost}</strong></span>
+                        <span>Score rows <strong>{item.scoreCount}</strong></span>
+                        <span>Target results <strong>{item.targetResultCount}</strong></span>
                       </div>
-                    )}
+                      <div className="small muted sessionMeta compactMeta">
+                        <span>Created {formatDateTime(item.createdAt)}</span>
+                        <span>Updated {formatDateTime(item.updatedAt)}</span>
+                      </div>
+                      {secondaryBadges.length > 0 && (
+                        <div className="sheetStatusBadges">
+                          {secondaryBadges.map((badge) => (
+                            <span key={badge} className="badge badgeBlue">{badge}</span>
+                          ))}
+                        </div>
+                      )}
+                    </details>
                   </div>
                   <div className="sessionActions archiveActions">
                     <button type="button" className="button secondary smallButton" onClick={() => openItem(item)}>
