@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "check:score-sheet-safety": "node scripts/training-score-sheet-safety-check.mjs"
+    "check:score-sheet-safety": "node scripts/training-score-sheet-safety-check.mjs",
+    "test:scorecard": "node scripts/run-scorecard-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",

@@ -1,0 +1,212 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { isPostBasedSportingDiscipline } from "@/lib/disciplines";
+import {
+  SCORECARD_MAX_TOTAL_TARGETS,
+  canonicalizeReviewedGrid,
+  summarizeGrid,
+  type ScorecardCell,
+} from "@/lib/scorecards/scorecardAnalysis";
+import { mapReviewedMisses } from "@/lib/scorecards/scorecardMissMapping";
+export const dynamic = "force-dynamic";
+const uuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  fp = /^[a-f0-9]{64}$/i;
+function sb(req: Request) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const auth = req.headers.get("authorization") || undefined;
+  return createClient(url, key, {
+    global: { headers: auth ? { Authorization: auth } : {} },
+  });
+}
+function out(body: any, status = 200) {
+  return NextResponse.json(body, { status });
+}
+export async function POST(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await context.params;
+    const supabase = sb(request);
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user)
+      return out(
+        {
+          error: {
+            category: "login_required",
+            message: "Log in to apply a scorecard.",
+          },
+        },
+        401,
+      );
+    const body = await request.json();
+    if (!uuid.test(body.clientImportId) || !fp.test(body.imageFingerprint))
+      return out(
+        {
+          error: {
+            category: "analysis_failed",
+            message: "Invalid import identifiers.",
+          },
+        },
+        400,
+      );
+    const { data: s } = await supabase
+      .from("sessions")
+      .select("*")
+      .eq("id", id)
+      .single();
+    if (!s || s.user_id !== u.user.id)
+      return out(
+        {
+          error: {
+            category: "forbidden",
+            message: "You do not have access to this session.",
+          },
+        },
+        403,
+      );
+    if (!isPostBasedSportingDiscipline(s.discipline))
+      return out(
+        {
+          error: {
+            category: "unsupported_discipline",
+            message: "Unsupported discipline.",
+          },
+        },
+        422,
+      );
+    const postCount = Number(s.post_count || s.course_count),
+      targetsPerPost = Number(s.targets_per_post),
+      total = postCount * targetsPerPost;
+    if (
+      !Number.isInteger(postCount) ||
+      !Number.isInteger(targetsPerPost) ||
+      postCount < 1 ||
+      targetsPerPost < 1 ||
+      total > SCORECARD_MAX_TOTAL_TARGETS
+    )
+      return out(
+        {
+          error: {
+            category: "setup_required",
+            message:
+              "Set up the number of posts and targets per post before importing a scorecard.",
+          },
+        },
+        422,
+      );
+    if (s.total_targets !== null && s.total_targets !== total)
+      return out(
+        {
+          error: {
+            category: "setup_required",
+            message:
+              "Saved total targets conflicts with post setup. Review post setup before applying.",
+          },
+        },
+        409,
+      );
+    const canonical = canonicalizeReviewedGrid(body.grid as ScorecardCell[], {
+      postCount,
+      targetsPerPost,
+    });
+    if (!canonical.ok)
+      return out(
+        {
+          error: {
+            category: "analysis_failed",
+            message:
+              "Review grid must contain exactly one reviewed hit/miss cell for every expected target.",
+            details: canonical.errors.slice(0, 10),
+          },
+        },
+        400,
+      );
+    const clean = canonical.grid;
+    const summary = summarizeGrid(clean);
+    if (summary.unknowns > 0)
+      return out(
+        {
+          error: {
+            category: "analysis_failed",
+            message: "Unknown cells block apply.",
+          },
+        },
+        400,
+      );
+    const [
+      { data: targets, error: targetError },
+      { data: misses, error: missError },
+    ] = await Promise.all([
+      supabase
+        .from("session_post_targets")
+        .select(
+          "post_number,target_position,presentation_number,presentation_type,position_in_presentation,target_label,target_type",
+        )
+        .eq("session_id", id),
+      supabase
+        .from("misses")
+        .select(
+          "course_number,target_position,target_number,missed_target,source_type",
+        )
+        .eq("session_id", id),
+    ]);
+    if (targetError || missError)
+      return out(
+        {
+          error: {
+            category: "analysis_failed",
+            message: "Could not load existing target or miss data safely.",
+          },
+        },
+        500,
+      );
+    const mapped = mapReviewedMisses(clean, targets || [], misses || []);
+    if (mapped.ambiguousExisting && !body.acknowledgeAmbiguousExisting)
+      return out(
+        {
+          error: {
+            category: "ambiguous_existing_misses",
+            message:
+              "Some existing misses could not be matched to an exact target position. They will be kept. Review the final miss list for possible duplicates.",
+          },
+          duplicatePreview: mapped,
+        },
+        409,
+      );
+    const useScorecardScore =
+      body.scoreChoice !== "keep_existing" &&
+      (s.own_score === null ||
+        s.own_score === summary.score ||
+        body.scoreChoice === "use_scorecard");
+    const { data: rpc, error } = await supabase.rpc(
+      "apply_scorecard_import_v1",
+      {
+        p_session_id: id,
+        p_client_import_id: body.clientImportId,
+        p_image_fingerprint: body.imageFingerprint,
+        p_post_count: postCount,
+        p_targets_per_post: targetsPerPost,
+        p_reviewed_hits: summary.hits,
+        p_reviewed_misses: summary.misses,
+        p_pre_skipped_duplicates: mapped.skippedDuplicates,
+        p_use_scorecard_score: useScorecardScore,
+        p_expected_own_score: s.own_score,
+        p_misses: mapped.rows,
+      },
+    );
+    if (error)
+      return out(
+        { error: { category: "analysis_failed", message: error.message } },
+        400,
+      );
+    return out({ result: rpc });
+  } catch {
+    return out(
+      { error: { category: "analysis_failed", message: "Apply failed." } },
+      500,
+    );
+  }
+}
