@@ -3881,7 +3881,7 @@ html, body {
 .scoreCardGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
-  gap: 14px;
+  gap: 10px;
 }
 
 .shooterScoreCard,
@@ -3902,8 +3902,8 @@ html, body {
 
 .shooterScoreCard {
   display: grid;
-  gap: 14px;
-  padding: 14px;
+  gap: 9px;
+  padding: 10px;
 }
 
 .shooterScoreCardHeader {
@@ -3923,13 +3923,10 @@ html, body {
 
 .shooterScoreTotal {
   display: grid;
-  gap: 2px;
+  gap: 1px;
   justify-items: end;
   min-width: max-content;
-  border: 1px solid var(--field-border-strong);
-  border-radius: 16px;
-  background: var(--field-active-bg);
-  padding: 8px 10px;
+  padding: 2px 0;
   color: var(--field-active-text);
 }
 
@@ -3943,7 +3940,7 @@ html, body {
 
 .shooterScoreTotal strong {
   color: var(--field-active-text);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 950;
   line-height: 1;
   white-space: nowrap;
@@ -3953,17 +3950,17 @@ html, body {
   --score-post-columns: 5;
   display: grid;
   grid-template-columns: repeat(var(--score-post-columns), minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .shooterPostCell {
   display: grid;
-  gap: 7px;
+  gap: 4px;
   min-width: 0;
   border: 1px solid var(--field-border-subtle);
-  border-radius: 16px;
+  border-radius: 12px;
   background: var(--field-surface-inset);
-  padding: 8px;
+  padding: 6px;
 }
 
 .shooterPostCell.liveCalculated {
@@ -3997,11 +3994,11 @@ html, body {
 .shooterPostCell input {
   width: 100%;
   min-width: 0;
-  min-height: 50px;
+  min-height: 46px;
   border-color: var(--field-border-subtle);
   background: rgba(255, 255, 255, 0.06);
   color: var(--field-text-primary);
-  padding: 10px 4px;
+  padding: 8px 3px;
   text-align: center;
   font-size: 18px;
   font-weight: 950;
@@ -4021,18 +4018,15 @@ html, body {
   opacity: 1;
 }
 
-.liveScoreNote,
-.manualScoreNote {
-  min-height: 13px;
-  color: var(--field-text-muted);
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1.2;
-  text-align: center;
-}
-
-.liveScoreNote {
-  color: var(--field-hit-text);
+.scoreEditorLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: -4px 0 10px;
+  color: var(--field-text-secondary);
+  font-size: 12px;
+  font-weight: 750;
 }
 
 @media (max-width: 374px) {
@@ -4041,16 +4035,17 @@ html, body {
   }
 
   .shooterScoreCard {
-    padding: 10px;
+    padding: 8px;
   }
 
   .shooterScoreCardHeader {
-    grid-template-columns: 1fr;
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
   }
 
   .shooterScoreTotal {
-    justify-items: start;
+    justify-items: end;
   }
 
   .shooterPostGrid {
@@ -4079,10 +4074,6 @@ html, body {
     font-size: 16px;
   }
 
-  .manualScoreNote,
-  .liveScoreNote {
-    font-size: 9px;
-  }
 }
 
 
@@ -4195,6 +4186,11 @@ html, body {
   border-radius: 14px;
 }
 
+.mobileResultsList,
+.mobileLiveScoreList {
+  display: none;
+}
+
 @media (max-width: 720px) {
   .resultsSummaryActions {
     justify-content: flex-start;
@@ -4204,17 +4200,143 @@ html, body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .resultsSummaryTable {
-    min-width: 480px;
+  .desktopResultsTable {
+    display: none;
   }
 
-  .breakdownTable {
-    min-width: 620px;
+  .mobileResultsList,
+  .mobileLiveScoreList {
+    display: grid;
+    gap: 8px;
   }
 
-  .resultsSummaryTable th,
-  .resultsSummaryTable td {
-    padding: 7px 8px;
+  .mobileRankingRow,
+  .mobileBreakdownCard,
+  .mobileLiveScoreCard {
+    min-width: 0;
+    border: 1px solid var(--field-border-subtle);
+    border-radius: 14px;
+    background: var(--field-surface-inset);
+    padding: 9px;
+  }
+
+  .mobileRankingRow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .mobileRankingIdentity {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .mobileRankingIdentity strong,
+  .mobileResultHeader strong {
+    min-width: 0;
+    color: var(--field-text-primary);
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+
+  .mobileRank {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border: 1px solid var(--field-border-strong);
+    border-radius: 999px;
+    background: var(--field-active-bg);
+    color: var(--field-active-text);
+    font-weight: 950;
+  }
+
+  .mobileRankingScore {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 1px 8px;
+    justify-items: end;
+    color: var(--field-text-primary);
+    white-space: nowrap;
+  }
+
+  .mobileRankingScore strong {
+    color: var(--field-active-text);
+  }
+
+  .mobileRankingScore small {
+    grid-column: 1 / -1;
+    color: var(--field-text-secondary);
+    font-weight: 800;
+  }
+
+  .mobileResultHeader {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: start;
+    margin-bottom: 8px;
+  }
+
+  .mobileResultHeader > span {
+    color: var(--field-active-text);
+    font-size: 16px;
+    font-weight: 950;
+    white-space: nowrap;
+  }
+
+  .mobilePostGrid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .mobilePostCell {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    min-height: 44px;
+    place-content: center;
+    border: 1px solid var(--field-border-subtle);
+    border-radius: 10px;
+    background: var(--field-surface-secondary);
+    color: var(--field-text-primary);
+    padding: 4px 2px;
+    text-align: center;
+  }
+
+  .mobilePostCell span {
+    color: var(--field-text-secondary);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+  }
+
+  .mobilePostCell strong {
+    color: var(--field-text-primary);
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  .mobileCorrectionCell {
+    width: 100%;
+    min-height: 48px;
+    padding: 4px 2px !important;
+  }
+
+  .mobileCorrectionCell.scored {
+    border-color: var(--field-hit-border) !important;
+    background: var(--field-hit-bg) !important;
+  }
+
+  .mobileCorrectionCell.scored strong,
+  .mobileCorrectionCell.scored span {
+    color: var(--field-hit-text);
   }
 }
 
@@ -4897,6 +5019,10 @@ html, body {
     padding: 8px 4px;
   }
 
+  .desktopLiveScoreTable {
+    display: none;
+  }
+
   .liveScoreOverview th,
   .liveScoreOverview td {
     padding: 2px;
@@ -4917,6 +5043,16 @@ html, body {
     min-height: 28px;
     border-radius: 7px;
     font-size: 11px;
+  }
+
+  .liveScoreOverview .mobileCorrectionCell {
+    min-height: 48px;
+    border-radius: 10px;
+    padding: 4px 2px !important;
+  }
+
+  .liveScoreOverview .mobileCorrectionCell strong {
+    font-size: 16px;
   }
 
   .compactOrder ol {

@@ -680,7 +680,8 @@ export default function TrainingScoreSheetPage() {
   const setupSectionsOpen =
     !liveMode || showSetupDuringLive || (isCompak && showCompakSettingsDuringLive);
   const shooterSetupOpen = !liveMode || showShootersDuringLive;
-  const fullScoreTableOpen = !liveMode || showFullScoreTableDuringLive;
+  const fullScoreTableVisible = !liveMode || showFullScoreTableDuringLive;
+  const fullScoreTableOpen = liveMode ? showFullScoreTableDuringLive : undefined;
   const resultsSummaryOpen = !liveMode || showResultsSummaryDuringLive;
 
   useEffect(() => {
@@ -2395,7 +2396,7 @@ export default function TrainingScoreSheetPage() {
           <div className="resultsTablesGrid">
             <div className="resultsTableBlock">
               <h4>Ranking</h4>
-              <div className="scoreSheetScroller compactScoreScroller" role="region" aria-label="Ranked training results">
+              <div className="scoreSheetScroller compactScoreScroller desktopResultsTable" role="region" aria-label="Ranked training results">
                 <table className="resultsSummaryTable rankingTable">
                   <thead>
                     <tr>
@@ -2427,11 +2428,30 @@ export default function TrainingScoreSheetPage() {
                   </tbody>
                 </table>
               </div>
+              <div className="mobileResultsList mobileRankingList" role="list" aria-label="Ranked training results">
+                {rankedShooters.length === 0 ? (
+                  <p className="emptyScoreGridCell" role="status">Add at least one shooter.</p>
+                ) : (
+                  rankedShooters.map((shooter, index) => (
+                    <article className="mobileRankingRow" role="listitem" key={shooter.localId}>
+                      <div className="mobileRankingIdentity">
+                        <span className="mobileRank" aria-label={`Rank ${index + 1}`}>{index + 1}</span>
+                        <strong>{shooter.displayName}</strong>
+                      </div>
+                      <div className="mobileRankingScore">
+                        <strong>{shooter.totalScore}/{sheetTotalTargets}</strong>
+                        <span>{shooter.percentage.toFixed(0)}%</span>
+                        {hasMissCounts && <small>{shooter.misses} misses</small>}
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
             </div>
 
             <div className="resultsTableBlock resultsBreakdownBlock">
               <h4>{isCompak ? "Plate breakdown" : "Post breakdown"}</h4>
-              <div className="scoreSheetScroller compactScoreScroller" role="region" aria-label={`Compact ${resultPostLabel} breakdown`}>
+              <div className="scoreSheetScroller compactScoreScroller desktopResultsTable" role="region" aria-label={`Compact ${resultPostLabel} breakdown`}>
                 <table className="resultsSummaryTable breakdownTable">
                   <thead>
                     <tr>
@@ -2462,6 +2482,30 @@ export default function TrainingScoreSheetPage() {
                     )}
                   </tbody>
                 </table>
+              </div>
+              <div className="mobileResultsList mobileBreakdownList" role="list" aria-label={`${resultPostLabel} breakdown`}>
+                {rankedShooters.length === 0 ? (
+                  <p className="emptyScoreGridCell" role="status">No results yet.</p>
+                ) : (
+                  rankedShooters.map((shooter) => (
+                    <article className="mobileBreakdownCard" role="listitem" key={shooter.localId}>
+                      <div className="mobileResultHeader">
+                        <strong>{shooter.displayName}</strong>
+                        <span aria-label={`Total score ${shooter.totalScore} of ${sheetTotalTargets}`}>
+                          {shooter.totalScore}/{sheetTotalTargets}
+                        </span>
+                      </div>
+                      <div className="mobilePostGrid">
+                        {postNumbers.map((post, index) => (
+                          <div className="mobilePostCell" key={post} aria-label={`${resultPostLabels[index]} score ${displayedPostScore(shooter, index, targetResults)}`}>
+                            <span>{resultPostLabels[index]}</span>
+                            <strong>{displayedPostScore(shooter, index, targetResults)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -2523,7 +2567,7 @@ export default function TrainingScoreSheetPage() {
                 className="secondary smallButton"
                 onClick={() => setShowFullScoreTableDuringLive((value) => !value)}
               >
-                {showFullScoreTableDuringLive ? "Hide score overview" : "Full score overview"}
+                {showFullScoreTableDuringLive ? "Hide score editor" : "Edit scores"}
               </button>
               <button
                 type="button"
@@ -3151,7 +3195,8 @@ export default function TrainingScoreSheetPage() {
                     })}
                   </div>
                 ) : (
-                  <table>
+                  <>
+                  <table className="desktopLiveScoreTable">
                     <thead>
                       <tr>
                         <th>Shooter</th>
@@ -3185,6 +3230,37 @@ export default function TrainingScoreSheetPage() {
                       ))}
                     </tbody>
                   </table>
+                  <div className="mobileLiveScoreList" role="list" aria-label="Compact score overview">
+                    {validShooters.map((shooter) => (
+                      <article className="mobileLiveScoreCard" role="listitem" key={shooter.localId}>
+                        <div className="mobileResultHeader">
+                          <strong>{shooter.displayName}</strong>
+                          <span aria-label={`${shooter.displayName} total score ${totalFor(shooter, targetResults)} of ${sheetTotalTargets}`}>
+                            {totalFor(shooter, targetResults)}/{sheetTotalTargets}
+                          </span>
+                        </div>
+                        <div className="mobilePostGrid">
+                          {postNumbers.map((post, index) => {
+                            const score = displayedPostScore(shooter, index, targetResults);
+                            const isScored = hasTargetResults(targetResults, shooter.localId, post);
+                            return (
+                              <button
+                                type="button"
+                                className={`mobilePostCell mobileCorrectionCell${isScored ? " scored" : ""}`}
+                                key={post}
+                                onClick={() => correctTarget(shooter.localId, post, 1)}
+                                aria-label={`Correct ${shooter.displayName} post ${post}, score ${score || 0}`}
+                              >
+                                <span>P{post}</span>
+                                <strong>{score || "-"}</strong>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                  </>
                 )}
               </div>
 
@@ -3441,9 +3517,9 @@ export default function TrainingScoreSheetPage() {
           <details
             id="compak-score-overview"
             className={`subcard collapsibleSubcard ${
-              fullScoreTableOpen || isCompakRoundComplete ? "" : "setupSectionHidden"
+              fullScoreTableVisible ? "" : "setupSectionHidden"
             }`}
-            open={fullScoreTableOpen || isCompakRoundComplete}
+            open={fullScoreTableOpen}
           >
             <summary>
               <span>Compak hit/miss overview</span>
@@ -3491,24 +3567,26 @@ export default function TrainingScoreSheetPage() {
 
         <details
           className={`subcard collapsibleSubcard ${
-            fullScoreTableOpen ? "" : "setupSectionHidden"
+            fullScoreTableVisible ? "" : "setupSectionHidden"
           }`}
           open={fullScoreTableOpen}
         >
           <summary>
-            <span>{isCompak ? "Scores by stand" : "Scores by post"}</span>
-            <span className="small muted">{isCompak ? "Stand-total overview" : "Post-total overview"}</span>
+            <span>{isCompak ? "Edit scores by stand" : "Edit scores by post"}</span>
+            <span className="small muted">Open for corrections</span>
           </summary>
           <div className="sectionHeader compactSectionHeader">
             <div>
-              <h3>{isCompak ? "Scores by stand" : "Scores by post"}</h3>
+              <h3>{isCompak ? "Edit scores by stand" : "Edit scores by post"}</h3>
               <p className="small muted">
-                Existing {isCompak ? "stand-total" : "post-total"} score entry remains available. When a {isCompak ? "stand" : "post"}
-                has live target results, its target hits calculate the {isCompak ? "stand" : "post"}
-                total.
+                Enter manual totals or correct live target results in Field Mode.
               </p>
             </div>
           </div>
+          <p className="scoreEditorLegend">
+            <span className="liveScoreBadge">LIVE</span>
+            values are calculated from target results; other values are editable totals.
+          </p>
           <div className="scoreCardGrid" aria-label="Training score entry cards">
             {validShooters.length === 0 ? (
               <div className="emptyScoreCard" role="status">
@@ -3541,7 +3619,7 @@ export default function TrainingScoreSheetPage() {
                           shooter.localId,
                           post,
                         );
-                        const inputLabel = `${shooter.displayName} ${isCompak ? "stand" : "post"} ${post}`;
+                        const inputLabel = `${shooter.displayName} ${isCompak ? "stand" : "post"} ${post}${isLiveScore ? ", calculated from live target results" : ""}`;
                         return (
                           <div
                             className={`shooterPostCell${isLiveScore ? " liveCalculated" : ""}`}
@@ -3557,7 +3635,6 @@ export default function TrainingScoreSheetPage() {
                             </div>
                             <input
                               aria-label={inputLabel}
-                              aria-describedby={isLiveScore ? `score-${scoreIndex}-live-score-note` : undefined}
                               data-score-index={scoreIndex}
                               value={
                                 displayedPostScore(
@@ -3592,16 +3669,6 @@ export default function TrainingScoreSheetPage() {
                               enterKeyHint="next"
                               pattern="[0-9]*"
                             />
-                            {isLiveScore ? (
-                              <span
-                                className="liveScoreNote"
-                                id={`score-${scoreIndex}-live-score-note`}
-                              >
-                                Target results
-                              </span>
-                            ) : (
-                              <span className="manualScoreNote">Manual total</span>
-                            )}
                           </div>
                         );
                       })}
