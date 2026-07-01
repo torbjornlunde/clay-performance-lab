@@ -198,8 +198,8 @@ export default function ResultsPage() {
           <p>Open, review, and delete your saved quick results, detailed competition logs, manual entries, and Leirdue.net imports.</p>
         </div>
         <div className="btns heroActions">
-          <Link href="/log-competition" className="button secondary">Log competition</Link>
-          <Link href="/results/quick" className="button">Quick competition score</Link>
+          <Link href="/results/new" className="button">Register competition</Link>
+          <Link href="/import/leirdue" className="button secondary">Import from Leirdue.net</Link>
         </div>
       </div>
 
@@ -234,11 +234,11 @@ export default function ResultsPage() {
           <div className="emptyState compactEmptyState">
             <p>
               {sessions.length === 0
-                ? "No competition results yet. Add a quick result, create a detailed competition log, or import from Leirdue.net."
+                ? "No competition results yet. Register a competition first, or import from Leirdue.net if the result is already published."
                 : "No results match this filter."}
             </p>
             <div className="btns compactEmptyActions">
-              <Link href="/log-competition" className="button smallButton">Log competition</Link>
+              <Link href="/results/new" className="button smallButton">Register competition</Link>
               {sessions.length === 0 && <Link href="/import/leirdue" className="button secondary smallButton">Import from Leirdue.net</Link>}
             </div>
           </div>
@@ -261,8 +261,9 @@ export default function ResultsPage() {
                     <div className="small muted">
                       Score {score === null ? "-" : score} / {session.total_targets ?? "-"}
                       {isUsableNumber(session.winning_score) ? ` · Winning score ${session.winning_score}` : ""}
-                      {` · Source: ${source}`}
+                      {badges.length ? ` · ${badges.join(", ")}` : " · Complete"}
                     </div>
+                    <div className="small muted">Source: {source}</div>
                     {parseQuickScoreMetadata(session.notes) && (
                       <div className="small muted">
                         Order {parseQuickScoreMetadata(session.notes)?.courseOrder.join(" → ")} · Misses {parseQuickScoreMetadata(session.notes)?.totalMisses}

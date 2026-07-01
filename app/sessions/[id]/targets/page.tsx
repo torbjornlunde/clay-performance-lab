@@ -300,7 +300,7 @@ export default function TargetDefinitionsPage() {
   return (
     <main>
       <div className="card">
-        <h2>Target definitions</h2>
+        <h2>Target definitions</h2><p className="small muted">Choose a post, then photograph the sign or enter the presentation order manually.</p>
         <p className="small muted">{session.name}</p>
         <label>Course</label>
         <select

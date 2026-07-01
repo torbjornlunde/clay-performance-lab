@@ -650,7 +650,7 @@ export default function EditSessionPage() {
           </details>
         ) : null}
         {(!isResultOnlyImport || advancedSetupEnabled) && discipline === "Sporttrap" && (
-          <div className="subcard">
+          <div className="subcard" id="sporttrap-setup">
             <h3>Sporttrap setup</h3>
             <p className="small muted">
               Each 25-target series uses the fixed Sporttrap program. Total
@@ -683,7 +683,9 @@ export default function EditSessionPage() {
           </div>
         )}
         {(!isResultOnlyImport || advancedSetupEnabled) && isCompactDiscipline(discipline) && (
-          <>
+          <section id="course-setup" className="courseSetupSection">
+            <h3>Courses and schemes</h3>
+            <p className="small muted">Select schemes from the built-in FITASC programmes. Shooter and start plate fields appear for squad rotation.</p>
             <label>Number of courses/layouts</label>
             <select
               value={count}
@@ -695,7 +697,6 @@ export default function EditSessionPage() {
                 </option>
               ))}
             </select>
-            <h3>Courses</h3>
             {courses.map((course, i) => (
               <div className="subcard" key={course.courseNumber}>
                 <h3>Course {course.courseNumber}</h3>
@@ -815,7 +816,7 @@ export default function EditSessionPage() {
                 )}
               </div>
             ))}
-          </>
+          </section>
         )}
         {(!isResultOnlyImport || advancedSetupEnabled) && isOrdinaryLeirduesti(discipline) && (
           <div className="subcard">
