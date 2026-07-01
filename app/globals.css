@@ -80,9 +80,15 @@ main {
   justify-content: center;
   border-radius: 999px;
   background:
-    radial-gradient(circle at 52% 48%, rgba(255, 104, 19, 0.18), transparent 62%),
+    radial-gradient(
+      circle at 52% 48%,
+      rgba(255, 104, 19, 0.18),
+      transparent 62%
+    ),
     rgba(255, 255, 255, 0.035);
-  box-shadow: 0 0 0 4px rgba(255, 104, 19, 0.09), 0 10px 24px rgba(255, 82, 12, 0.24);
+  box-shadow:
+    0 0 0 4px rgba(255, 104, 19, 0.09),
+    0 10px 24px rgba(255, 82, 12, 0.24);
 }
 
 .mark svg {
@@ -163,7 +169,6 @@ p {
   background: var(--hero-bg);
 }
 
-
 .dashboardHero {
   display: flex;
   flex-direction: column;
@@ -205,7 +210,10 @@ p {
 .compactAction {
   border: 1px solid var(--line);
   border-radius: 17px;
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .dashboardActionCard:hover,
@@ -236,7 +244,11 @@ p {
 
 .primaryAction {
   background:
-    linear-gradient(135deg, rgba(245, 207, 106, 0.22), rgba(216, 165, 58, 0.08)),
+    linear-gradient(
+      135deg,
+      rgba(245, 207, 106, 0.22),
+      rgba(216, 165, 58, 0.08)
+    ),
     rgba(26, 36, 49, 0.9);
   border-color: var(--lineStrong);
 }
@@ -390,7 +402,10 @@ button,
   color: #17130a;
   cursor: pointer;
   min-height: 46px;
-  transition: transform 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
 }
 
 button:hover,
@@ -712,7 +727,9 @@ button:disabled,
 }
 
 .statListItem {
-  transition: border-color 0.15s ease, transform 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
 }
 
 .statListItem:hover {
@@ -812,7 +829,8 @@ button:disabled,
   }
 }
 
-html, body {
+html,
+body {
   max-width: 100%;
   overflow-x: hidden;
 }
@@ -1393,7 +1411,11 @@ html, body {
 }
 
 .quickButton.selected {
-  background: linear-gradient(135deg, rgba(245, 207, 106, 0.98), rgba(216, 165, 58, 0.98));
+  background: linear-gradient(
+    135deg,
+    rgba(245, 207, 106, 0.98),
+    rgba(216, 165, 58, 0.98)
+  );
   border-color: rgba(245, 207, 106, 0.8);
   color: #17130a;
   box-shadow: 0 8px 24px rgba(216, 165, 58, 0.18);
@@ -1717,7 +1739,6 @@ html, body {
   margin-top: 0;
 }
 
-
 .productNavPage {
   display: grid;
   gap: 18px;
@@ -1751,7 +1772,11 @@ html, body {
   overflow: hidden;
   padding-bottom: 14px;
   background:
-    radial-gradient(circle at 20% 0%, rgba(216, 165, 58, 0.16), transparent 34%),
+    radial-gradient(
+      circle at 20% 0%,
+      rgba(216, 165, 58, 0.16),
+      transparent 34%
+    ),
     linear-gradient(180deg, rgba(20, 30, 43, 0.98), rgba(10, 16, 24, 0.98));
 }
 
@@ -2054,7 +2079,11 @@ html, body {
   height: 100dvh;
   overflow: hidden;
   background:
-    radial-gradient(circle at 16% 0%, rgba(216, 165, 58, 0.14), transparent 30%),
+    radial-gradient(
+      circle at 16% 0%,
+      rgba(216, 165, 58, 0.14),
+      transparent 30%
+    ),
     rgba(5, 7, 11, 0.98);
   padding: clamp(6px, 1.2vw, 14px);
 }
@@ -2070,7 +2099,11 @@ html, body {
   overflow: hidden;
   border: 1px solid var(--lineStrong);
   border-radius: clamp(12px, 2vw, 20px);
-  background: linear-gradient(180deg, rgba(18, 25, 35, 0.98), rgba(7, 10, 15, 0.98));
+  background: linear-gradient(
+    180deg,
+    rgba(18, 25, 35, 0.98),
+    rgba(7, 10, 15, 0.98)
+  );
   box-shadow: 0 22px 80px rgba(0, 0, 0, 0.62);
 }
 
@@ -2246,7 +2279,6 @@ html, body {
   .fitascFullscreenHeader {
     gap: 6px;
   }
-
 }
 
 @media (max-width: 720px) and (orientation: landscape) {
@@ -2667,7 +2699,9 @@ html, body {
   color: #17130a;
   background: linear-gradient(135deg, var(--gold2), var(--gold));
   border-color: rgba(245, 207, 106, 0.72);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 0 18px rgba(216, 165, 58, 0.18);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    0 0 18px rgba(216, 165, 58, 0.18);
   font-size: clamp(48px, 22vw, 92px);
   font-weight: 1000;
   letter-spacing: -0.06em;
@@ -2806,7 +2840,11 @@ html, body {
 
 .schemeOverviewFullscreen .schemeMachineCell {
   color: var(--text);
-  background: linear-gradient(180deg, rgba(245, 207, 106, 0.18), rgba(7, 11, 17, 0.78));
+  background: linear-gradient(
+    180deg,
+    rgba(245, 207, 106, 0.18),
+    rgba(7, 11, 17, 0.78)
+  );
   border-color: rgba(245, 207, 106, 0.34);
   font-size: clamp(19px, 3vw, 34px);
   font-weight: 1000;
@@ -2854,12 +2892,15 @@ html, body {
 /* Final FITASC fullscreen polish: field-use density and readability. */
 .fitascFullscreenPanelStand .standPresentationList {
   opacity: var(--stand-swipe-opacity, 1);
-  transform: translateX(var(--stand-swipe-offset, 0)) scale(var(--stand-swipe-scale, 1));
+  transform: translateX(var(--stand-swipe-offset, 0))
+    scale(var(--stand-swipe-scale, 1));
   transform-origin: center;
 }
 
 .fitascFullscreenPanelStand .standPresentationListSettling {
-  transition: transform 230ms cubic-bezier(0.16, 1, 0.3, 1), opacity 230ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    transform 230ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 230ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .fitascFullscreenPanelStand .standSwipeNext {
@@ -2922,7 +2963,8 @@ html, body {
   padding: 4px 8px;
 }
 
-.fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .fitascFullscreenHeader {
+.fitascFullscreenPanel:not(.fitascFullscreenPanelStand)
+  .fitascFullscreenHeader {
   min-height: 32px;
   padding: 3px 5px;
 }
@@ -3135,12 +3177,15 @@ html, body {
   }
 }
 
-.fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .fitascFullscreenHeader {
+.fitascFullscreenPanel:not(.fitascFullscreenPanelStand)
+  .fitascFullscreenHeader {
   min-height: 30px;
   padding: 2px 4px;
 }
 
-.fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .fitascFullscreenHeader h2 {
+.fitascFullscreenPanel:not(.fitascFullscreenPanelStand)
+  .fitascFullscreenHeader
+  h2 {
   font-size: clamp(12px, 3vh, 16px);
 }
 
@@ -3211,7 +3256,9 @@ html, body {
 
 /* FITASC fullscreen v1 stabilization: keep the working layout, fix footer fit, and align visual language. */
 .fitascFullscreenOverlay {
-  padding: max(4px, env(safe-area-inset-top)) max(4px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left));
+  padding: max(4px, env(safe-area-inset-top))
+    max(4px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom))
+    max(4px, env(safe-area-inset-left));
 }
 
 .fitascFullscreenHeader {
@@ -3312,7 +3359,9 @@ html, body {
   color: #17130a;
   background: linear-gradient(135deg, var(--gold2), var(--gold));
   border-color: rgba(245, 207, 106, 0.72);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 0 18px rgba(216, 165, 58, 0.18);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    0 0 18px rgba(216, 165, 58, 0.18);
   font-weight: 1000;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.24);
 }
@@ -3409,19 +3458,25 @@ html, body {
 }
 
 @media (orientation: portrait) {
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .fitascFullscreenBody {
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand)
+    .fitascFullscreenBody {
     overflow: hidden;
   }
 
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen {
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand)
+    .schemeOverviewFullscreen {
     min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
   }
 
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeGridHeader,
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeRowCard {
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand)
+    .schemeOverviewFullscreen
+    .schemeGridHeader,
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand)
+    .schemeOverviewFullscreen
+    .schemeRowCard {
     width: max(640px, 132vw);
     grid-template-columns: minmax(82px, 0.65fr) repeat(5, minmax(96px, 1fr));
   }
@@ -3449,12 +3504,14 @@ html, body {
     font-size: clamp(18px, 7vh, 32px);
   }
 
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .fitascFullscreenBody {
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand)
+    .fitascFullscreenBody {
     overflow: hidden;
     padding: 3px;
   }
 
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen {
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand)
+    .schemeOverviewFullscreen {
     min-width: 0;
     height: 100%;
     overflow: hidden;
@@ -3462,8 +3519,12 @@ html, body {
     gap: 3px;
   }
 
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeGridHeader,
-  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand) .schemeOverviewFullscreen .schemeRowCard {
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand)
+    .schemeOverviewFullscreen
+    .schemeGridHeader,
+  .fitascFullscreenPanel:not(.fitascFullscreenPanelStand)
+    .schemeOverviewFullscreen
+    .schemeRowCard {
     min-width: 0;
     grid-template-columns: minmax(76px, 0.62fr) repeat(5, minmax(54px, 1fr));
     gap: 3px;
@@ -3582,7 +3643,11 @@ html, body {
 }
 
 .detailAccordion {
-  background: linear-gradient(180deg, rgba(21, 30, 42, 0.96), rgba(13, 20, 29, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(21, 30, 42, 0.96),
+    rgba(13, 20, 29, 0.96)
+  );
   border: 1px solid var(--line);
   border-radius: 18px;
   box-shadow: var(--shadow);
@@ -3801,7 +3866,11 @@ html, body {
   overflow: hidden;
   border: 1px solid var(--lineStrong);
   border-radius: 22px;
-  background: linear-gradient(180deg, rgba(21, 30, 42, 0.99), rgba(11, 17, 25, 0.99));
+  background: linear-gradient(
+    180deg,
+    rgba(21, 30, 42, 0.99),
+    rgba(11, 17, 25, 0.99)
+  );
   box-shadow: var(--shadow);
 }
 
@@ -3975,7 +4044,11 @@ html, body {
 
 .shooterPostCell.liveCalculated {
   border-color: var(--field-hit-border);
-  background: color-mix(in srgb, var(--field-surface-inset) 84%, var(--field-hit-bg));
+  background: color-mix(
+    in srgb,
+    var(--field-surface-inset) 84%,
+    var(--field-hit-bg)
+  );
 }
 
 .shooterPostCellHeader {
@@ -4083,9 +4156,7 @@ html, body {
     min-height: 48px;
     font-size: 16px;
   }
-
 }
-
 
 .resultsSummaryCard {
   display: grid;
@@ -4369,7 +4440,6 @@ html, body {
   .scoreSheetScroller {
     margin-inline: -4px;
   }
-
 }
 
 .emptyScoreGridCell {
@@ -4428,13 +4498,21 @@ html, body {
 }
 
 .hitButton {
-  background: linear-gradient(180deg, rgba(107, 208, 140, 0.95), rgba(48, 148, 82, 0.95)) !important;
+  background: linear-gradient(
+    180deg,
+    rgba(107, 208, 140, 0.95),
+    rgba(48, 148, 82, 0.95)
+  ) !important;
   border-color: rgba(186, 255, 204, 0.45) !important;
   color: #06130a !important;
 }
 
 .missButton {
-  background: linear-gradient(180deg, rgba(239, 118, 95, 0.96), rgba(170, 62, 45, 0.96)) !important;
+  background: linear-gradient(
+    180deg,
+    rgba(239, 118, 95, 0.96),
+    rgba(170, 62, 45, 0.96)
+  ) !important;
   border-color: rgba(255, 207, 198, 0.45) !important;
   color: #fff7f4 !important;
 }
@@ -5285,7 +5363,11 @@ html, body {
   gap: 6px;
   border: 1px solid rgba(216, 165, 58, 0.45);
   border-radius: 16px;
-  background: linear-gradient(135deg, rgba(216, 165, 58, 0.2), rgba(10, 16, 24, 0.92));
+  background: linear-gradient(
+    135deg,
+    rgba(216, 165, 58, 0.2),
+    rgba(10, 16, 24, 0.92)
+  );
   box-shadow: 0 16px 32px rgba(0, 0, 0, 0.22);
   padding: 12px;
 }
@@ -5584,7 +5666,11 @@ html, body {
   display: grid;
   gap: 14px;
   background:
-    linear-gradient(135deg, rgba(245, 207, 106, 0.18), rgba(216, 165, 58, 0.05)),
+    linear-gradient(
+      135deg,
+      rgba(245, 207, 106, 0.18),
+      rgba(216, 165, 58, 0.05)
+    ),
     rgba(12, 18, 27, 0.9);
 }
 
@@ -5770,7 +5856,10 @@ html, body {
 
 .selectableResultCard {
   border: 1px solid var(--line);
-  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.15s ease;
 }
 
 .selectedResultCard {
@@ -6151,7 +6240,10 @@ html, body {
 
 .quickScoreRow {
   display: grid;
-  grid-template-columns: minmax(120px, 1.2fr) minmax(86px, 0.8fr) minmax(86px, 0.8fr) minmax(120px, 1fr);
+  grid-template-columns: minmax(120px, 1.2fr) minmax(86px, 0.8fr) minmax(
+      86px,
+      0.8fr
+    ) minmax(120px, 1fr);
   gap: 10px;
   align-items: end;
   padding: 12px;
@@ -6428,7 +6520,10 @@ details.equipmentDetails[open] summary::after {
 
 .ammoCompactRow {
   display: grid;
-  grid-template-columns: minmax(150px, 1.4fr) minmax(90px, 0.7fr) minmax(90px, 0.7fr);
+  grid-template-columns: minmax(150px, 1.4fr) minmax(90px, 0.7fr) minmax(
+      90px,
+      0.7fr
+    );
   gap: 12px;
 }
 
@@ -6614,7 +6709,8 @@ details.equipmentDetails[open] summary::after {
   width: min(620px, 100%);
   max-height: min(760px, calc(100dvh - 32px));
   overflow: hidden;
-  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  padding: max(16px, env(safe-area-inset-top)) 16px
+    max(16px, env(safe-area-inset-bottom));
   border: 1px solid var(--line);
   border-radius: 22px;
   background: var(--panel2);
@@ -6678,7 +6774,6 @@ details.equipmentDetails[open] summary::after {
   }
 }
 
-
 /* Semantic theme system. Dark defaults preserve the original premium look. */
 :root {
   --text-primary: #f7fafc;
@@ -6687,15 +6782,32 @@ details.equipmentDetails[open] summary::after {
   --text-on-dark: #f7fafc;
   --text-on-gold: #17130a;
 
-  --page-bg: radial-gradient(circle at 18% -10%, rgba(216, 165, 58, 0.16), transparent 34%), radial-gradient(circle at 86% 8%, rgba(117, 184, 255, 0.12), transparent 28%), linear-gradient(180deg, #05070b, var(--bg2) 48%, var(--bg));
+  --page-bg:
+    radial-gradient(
+      circle at 18% -10%,
+      rgba(216, 165, 58, 0.16),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 86% 8%,
+      rgba(117, 184, 255, 0.12),
+      transparent 28%
+    ),
+    linear-gradient(180deg, #05070b, var(--bg2) 48%, var(--bg));
   --header-bg: rgba(7, 10, 15, 0.88);
   --header-text: var(--text-on-dark);
-  --surface-primary: linear-gradient(180deg, rgba(21, 30, 42, 0.96), rgba(13, 20, 29, 0.96));
+  --surface-primary: linear-gradient(
+    180deg,
+    rgba(21, 30, 42, 0.96),
+    rgba(13, 20, 29, 0.96)
+  );
   --surface-secondary: rgba(12, 18, 27, 0.88);
   --surface-raised: rgba(26, 36, 49, 0.92);
   --surface-inset: rgba(10, 16, 24, 0.8);
   --surface-cell: rgba(7, 11, 17, 0.72);
-  --surface-hero: linear-gradient(135deg, rgba(216, 165, 58, 0.11), transparent 42%), linear-gradient(180deg, rgba(21, 30, 42, 0.98), rgba(11, 17, 25, 0.98));
+  --surface-hero:
+    linear-gradient(135deg, rgba(216, 165, 58, 0.11), transparent 42%),
+    linear-gradient(180deg, rgba(21, 30, 42, 0.98), rgba(11, 17, 25, 0.98));
   --surface-overlay: rgba(5, 7, 11, 0.72);
 
   --border-subtle: rgba(132, 153, 178, 0.22);
@@ -6713,7 +6825,11 @@ details.equipmentDetails[open] summary::after {
   --action-secondary-bg: rgba(26, 36, 49, 0.92);
   --action-secondary-text: var(--text-primary);
   --action-secondary-border: var(--border-subtle);
-  --action-selected-bg: linear-gradient(135deg, rgba(245, 207, 106, 0.98), rgba(216, 165, 58, 0.98));
+  --action-selected-bg: linear-gradient(
+    135deg,
+    rgba(245, 207, 106, 0.98),
+    rgba(216, 165, 58, 0.98)
+  );
   --action-selected-text: var(--text-on-gold);
   --action-selected-border: rgba(245, 207, 106, 0.86);
   --action-disabled-bg: rgba(132, 153, 178, 0.12);
@@ -6768,15 +6884,40 @@ html[data-theme="light"] {
   --text-on-dark: #fff8e8;
   --text-on-gold: #17130a;
 
-  --page-bg: radial-gradient(circle at 18% -8%, rgba(194, 133, 29, 0.22), transparent 31%), radial-gradient(circle at 86% 4%, rgba(38, 55, 68, 0.16), transparent 32%), linear-gradient(180deg, #d9cfbc 0%, #cfc3ad 45%, #beb199 100%);
-  --header-bg: linear-gradient(180deg, rgba(26, 31, 35, 0.96), rgba(18, 23, 27, 0.94));
+  --page-bg:
+    radial-gradient(
+      circle at 18% -8%,
+      rgba(194, 133, 29, 0.22),
+      transparent 31%
+    ),
+    radial-gradient(circle at 86% 4%, rgba(38, 55, 68, 0.16), transparent 32%),
+    linear-gradient(180deg, #d9cfbc 0%, #cfc3ad 45%, #beb199 100%);
+  --header-bg: linear-gradient(
+    180deg,
+    rgba(26, 31, 35, 0.96),
+    rgba(18, 23, 27, 0.94)
+  );
   --header-text: var(--text-on-dark);
-  --surface-primary: linear-gradient(180deg, rgba(244, 237, 224, 0.98), rgba(232, 222, 203, 0.97));
+  --surface-primary: linear-gradient(
+    180deg,
+    rgba(244, 237, 224, 0.98),
+    rgba(232, 222, 203, 0.97)
+  );
   --surface-secondary: rgba(224, 213, 193, 0.92);
-  --surface-raised: linear-gradient(180deg, rgba(251, 245, 232, 0.98), rgba(232, 222, 203, 0.98));
+  --surface-raised: linear-gradient(
+    180deg,
+    rgba(251, 245, 232, 0.98),
+    rgba(232, 222, 203, 0.98)
+  );
   --surface-inset: rgba(210, 198, 176, 0.72);
   --surface-cell: rgba(238, 229, 211, 0.92);
-  --surface-hero: linear-gradient(135deg, rgba(179, 115, 12, 0.18), transparent 45%), linear-gradient(180deg, rgba(242, 234, 218, 0.98), rgba(222, 210, 188, 0.98));
+  --surface-hero:
+    linear-gradient(135deg, rgba(179, 115, 12, 0.18), transparent 45%),
+    linear-gradient(
+      180deg,
+      rgba(242, 234, 218, 0.98),
+      rgba(222, 210, 188, 0.98)
+    );
   --surface-overlay: rgba(20, 23, 25, 0.42);
 
   --border-subtle: rgba(56, 62, 67, 0.26);
@@ -6814,16 +6955,23 @@ html[data-theme="light"] {
   --error-text: #741f15;
   --success-bg: rgba(29, 107, 58, 0.12);
   --success-text: #18572f;
-  --chart-preview-bg: linear-gradient(180deg, rgba(255, 249, 236, 0.98), rgba(236, 226, 207, 0.98));
+  --chart-preview-bg: linear-gradient(
+    180deg,
+    rgba(255, 249, 236, 0.98),
+    rgba(236, 226, 207, 0.98)
+  );
   --chart-preview-border: rgba(130, 79, 4, 0.62);
   --chart-preview-text: var(--text-primary);
   --chart-preview-strong: #171d22;
   --chart-preview-value: #25303a;
   --chart-preview-helper: #6f4303;
-  --chart-preview-shadow: 0 16px 34px rgba(39, 33, 24, 0.24), inset 0 1px 0 rgba(255, 252, 243, 0.8);
+  --chart-preview-shadow:
+    0 16px 34px rgba(39, 33, 24, 0.24), inset 0 1px 0 rgba(255, 252, 243, 0.8);
 
-  --shadow-card: 0 18px 46px rgba(39, 33, 24, 0.22), inset 0 1px 0 rgba(255, 252, 243, 0.72);
-  --shadow-raised: 0 12px 30px rgba(39, 33, 24, 0.18), inset 0 1px 0 rgba(255, 252, 243, 0.68);
+  --shadow-card:
+    0 18px 46px rgba(39, 33, 24, 0.22), inset 0 1px 0 rgba(255, 252, 243, 0.72);
+  --shadow-raised:
+    0 12px 30px rgba(39, 33, 24, 0.18), inset 0 1px 0 rgba(255, 252, 243, 0.68);
   --focus-ring: 0 0 0 4px rgba(154, 95, 5, 0.28);
 
   --bg: #cfc3ad;
@@ -6842,56 +6990,279 @@ html[data-theme="light"] {
   --shadow: var(--shadow-card);
 }
 
-html, body { background: var(--page-bg); color: var(--text-primary); }
-.header { background: var(--header-bg); color: var(--header-text); padding-top: max(12px, env(safe-area-inset-top)); box-shadow: 0 10px 32px rgba(0, 0, 0, 0.18); }
-.header .topNav { background: rgba(255, 255, 255, 0.055); border-color: rgba(255, 255, 255, 0.12); }
-.header .topNav a { color: rgba(255, 248, 232, 0.78); }
-.header .topNav a:hover { background: rgba(216, 165, 58, 0.16); color: var(--text-on-dark); }
-.card, .heroCard { background: var(--surface-primary); border-color: var(--border-subtle); box-shadow: var(--shadow-card); }
-.heroCard { background: var(--surface-hero); border-color: var(--border-accent); }
-.subcard, .sessionItem, .statListItem, .schemeRowCard, .analysisBox, .resultsSummaryMeta > div, .liveScoringStatus > div { background: var(--surface-secondary); border-color: var(--border-subtle); }
-.dashboardActionCard, .primaryAction, .secondaryAction, .compactAction, .summaryStat, .equipmentDetails, .trainingScoreSheetArchiveItem, .selectorButton, .sheetOption { border-color: var(--border-subtle); box-shadow: var(--shadow-raised); }
-.secondaryAction, .compactAction, .summaryStat, .selectorButton, .sheetOption, .resultsSummaryTable { background: var(--surface-inset); }
-.primaryAction { background: linear-gradient(135deg, rgba(245, 207, 106, 0.2), rgba(216, 165, 58, 0.08)), var(--surface-raised); border-color: var(--border-accent); }
-.pill, .badge, .countPill, .metricChip, .chartLegend span { background: var(--pill-bg); color: var(--pill-text); border-color: var(--pill-border); }
-.pill strong, .metricChip strong, .countPill { color: var(--text-primary); }
-.schemePlateGrid span, .schemeGridHeader strong, .schemePresentationLabel, .schemeMachineCell { background: var(--surface-cell); border-color: var(--border-subtle); }
-.notice, .emptyState { background: var(--notice-bg); color: var(--notice-text); }
-.error { background: var(--error-bg); color: var(--error-text); }
-.success, .successMessage { background: var(--success-bg); color: var(--success-text); }
+html,
+body {
+  background: var(--page-bg);
+  color: var(--text-primary);
+}
+.header {
+  background: var(--header-bg);
+  color: var(--header-text);
+  padding-top: max(12px, env(safe-area-inset-top));
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.18);
+}
+.header .topNav {
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.header .topNav a {
+  color: rgba(255, 248, 232, 0.78);
+}
+.header .topNav a:hover {
+  background: rgba(216, 165, 58, 0.16);
+  color: var(--text-on-dark);
+}
+.card,
+.heroCard {
+  background: var(--surface-primary);
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-card);
+}
+.heroCard {
+  background: var(--surface-hero);
+  border-color: var(--border-accent);
+}
+.subcard,
+.sessionItem,
+.statListItem,
+.schemeRowCard,
+.analysisBox,
+.resultsSummaryMeta > div,
+.liveScoringStatus > div {
+  background: var(--surface-secondary);
+  border-color: var(--border-subtle);
+}
+.dashboardActionCard,
+.primaryAction,
+.secondaryAction,
+.compactAction,
+.summaryStat,
+.equipmentDetails,
+.trainingScoreSheetArchiveItem,
+.selectorButton,
+.sheetOption {
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-raised);
+}
+.secondaryAction,
+.compactAction,
+.summaryStat,
+.selectorButton,
+.sheetOption,
+.resultsSummaryTable {
+  background: var(--surface-inset);
+}
+.primaryAction {
+  background:
+    linear-gradient(135deg, rgba(245, 207, 106, 0.2), rgba(216, 165, 58, 0.08)),
+    var(--surface-raised);
+  border-color: var(--border-accent);
+}
+.pill,
+.badge,
+.countPill,
+.metricChip,
+.chartLegend span {
+  background: var(--pill-bg);
+  color: var(--pill-text);
+  border-color: var(--pill-border);
+}
+.pill strong,
+.metricChip strong,
+.countPill {
+  color: var(--text-primary);
+}
+.schemePlateGrid span,
+.schemeGridHeader strong,
+.schemePresentationLabel,
+.schemeMachineCell {
+  background: var(--surface-cell);
+  border-color: var(--border-subtle);
+}
+.notice,
+.emptyState {
+  background: var(--notice-bg);
+  color: var(--notice-text);
+}
+.error {
+  background: var(--error-bg);
+  color: var(--error-text);
+}
+.success,
+.successMessage {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
 
-input, select, textarea { background: var(--field); color: var(--text-primary); border-color: var(--border-subtle); }
-input:focus, select:focus, textarea:focus { border-color: var(--border-accent); box-shadow: var(--focus-ring); }
-button, .button { background: var(--action-primary-bg); color: var(--action-primary-text); border: 1px solid var(--action-primary-border); box-shadow: 0 8px 18px rgba(216, 165, 58, 0.16); }
-button:hover, .button:hover { border-color: var(--border-accent); filter: saturate(1.04); }
-button:active, .button:active { transform: translateY(0); filter: saturate(0.96); }
-button:focus-visible, .button:focus-visible, a:focus-visible, .chartPointLink:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
-button:disabled, .button[aria-disabled="true"] { background: var(--action-disabled-bg); color: var(--action-disabled-text); border-color: var(--action-disabled-border); box-shadow: none; opacity: 1; }
-.secondary, button.secondary, .button.secondary, .smallButton.secondary { background: var(--action-secondary-bg); color: var(--action-secondary-text); border-color: var(--action-secondary-border); box-shadow: var(--shadow-raised); }
-.secondary:hover, button.secondary:hover, .button.secondary:hover { border-color: var(--border-accent); }
-.danger, button.danger { background: var(--danger-bg); color: var(--danger-text); border-color: var(--danger-border); box-shadow: none; }
-.danger:hover, button.danger:hover { border-color: var(--red); }
+input,
+select,
+textarea {
+  background: var(--field);
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--border-accent);
+  box-shadow: var(--focus-ring);
+}
+button,
+.button {
+  background: var(--action-primary-bg);
+  color: var(--action-primary-text);
+  border: 1px solid var(--action-primary-border);
+  box-shadow: 0 8px 18px rgba(216, 165, 58, 0.16);
+}
+button:hover,
+.button:hover {
+  border-color: var(--border-accent);
+  filter: saturate(1.04);
+}
+button:active,
+.button:active {
+  transform: translateY(0);
+  filter: saturate(0.96);
+}
+button:focus-visible,
+.button:focus-visible,
+a:focus-visible,
+.chartPointLink:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-ring);
+}
+button:disabled,
+.button[aria-disabled="true"] {
+  background: var(--action-disabled-bg);
+  color: var(--action-disabled-text);
+  border-color: var(--action-disabled-border);
+  box-shadow: none;
+  opacity: 1;
+}
+.secondary,
+button.secondary,
+.button.secondary,
+.smallButton.secondary {
+  background: var(--action-secondary-bg);
+  color: var(--action-secondary-text);
+  border-color: var(--action-secondary-border);
+  box-shadow: var(--shadow-raised);
+}
+.secondary:hover,
+button.secondary:hover,
+.button.secondary:hover {
+  border-color: var(--border-accent);
+}
+.danger,
+button.danger {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border-color: var(--danger-border);
+  box-shadow: none;
+}
+.danger:hover,
+button.danger:hover {
+  border-color: var(--red);
+}
 
-.periodControls, .segmentedControl, .filterBar { align-items: center; }
-.periodButton, .segmentedControl button, .filterButton, .appearanceOption { background: var(--pill-bg); color: var(--pill-text); border: 1px solid var(--pill-border); box-shadow: none; }
-.periodButton:hover, .segmentedControl button:hover, .filterButton:hover, .appearanceOption:hover { color: var(--text-primary); border-color: var(--border-strong); background: var(--surface-raised); }
-.periodButton.activePeriod, .segmentedControl button.activeSegment, .activeFilter, .appearanceOption.active { background: var(--action-selected-bg); color: var(--action-selected-text); border-color: var(--action-selected-border); box-shadow: 0 0 0 2px rgba(216, 165, 58, 0.22); }
-.periodButton:disabled, .segmentedControl button:disabled, .filterButton:disabled { background: var(--action-disabled-bg); color: var(--action-disabled-text); border-color: var(--action-disabled-border); }
-.appearanceOptions { background: var(--surface-inset); border-color: var(--border-subtle); }
+.periodControls,
+.segmentedControl,
+.filterBar {
+  align-items: center;
+}
+.periodButton,
+.segmentedControl button,
+.filterButton,
+.appearanceOption {
+  background: var(--pill-bg);
+  color: var(--pill-text);
+  border: 1px solid var(--pill-border);
+  box-shadow: none;
+}
+.periodButton:hover,
+.segmentedControl button:hover,
+.filterButton:hover,
+.appearanceOption:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--surface-raised);
+}
+.periodButton.activePeriod,
+.segmentedControl button.activeSegment,
+.activeFilter,
+.appearanceOption.active {
+  background: var(--action-selected-bg);
+  color: var(--action-selected-text);
+  border-color: var(--action-selected-border);
+  box-shadow: 0 0 0 2px rgba(216, 165, 58, 0.22);
+}
+.periodButton:disabled,
+.segmentedControl button:disabled,
+.filterButton:disabled {
+  background: var(--action-disabled-bg);
+  color: var(--action-disabled-text);
+  border-color: var(--action-disabled-border);
+}
+.appearanceOptions {
+  background: var(--surface-inset);
+  border-color: var(--border-subtle);
+}
 
-.performanceChart { background: linear-gradient(180deg, rgba(117, 184, 255, 0.08), transparent), var(--surface-inset); border-color: var(--border-subtle); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05); }
-.chartAxis { stroke: color-mix(in srgb, var(--text-muted) 36%, transparent); }
-.chartReference { stroke: color-mix(in srgb, var(--gold-strong) 70%, transparent); }
-.chartLine { stroke: var(--gold2); filter: drop-shadow(0 4px 12px rgba(216, 165, 58, 0.24)); }
-.chartRollingLine { stroke: var(--blue-strong); filter: drop-shadow(0 4px 12px rgba(28, 103, 151, 0.2)); }
-.chartPoint { fill: var(--surface-primary); stroke: var(--gold2); }
-.chartPointLink:focus .chartPoint, .chartPointLink:hover .chartPoint { fill: color-mix(in srgb, var(--gold2) 24%, var(--surface-primary)); stroke: var(--gold2); }
-.chartText, .chartPointLabel { fill: var(--text-secondary); }
-.statPercent, .badgeGold, .rankCell, .eyebrow { color: var(--gold-strong); }
-.badgeGold { background: color-mix(in srgb, var(--gold2) 18%, var(--surface-inset)); border-color: var(--border-accent); }
+.performanceChart {
+  background:
+    linear-gradient(180deg, rgba(117, 184, 255, 0.08), transparent),
+    var(--surface-inset);
+  border-color: var(--border-subtle);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.chartAxis {
+  stroke: color-mix(in srgb, var(--text-muted) 36%, transparent);
+}
+.chartReference {
+  stroke: color-mix(in srgb, var(--gold-strong) 70%, transparent);
+}
+.chartLine {
+  stroke: var(--gold2);
+  filter: drop-shadow(0 4px 12px rgba(216, 165, 58, 0.24));
+}
+.chartRollingLine {
+  stroke: var(--blue-strong);
+  filter: drop-shadow(0 4px 12px rgba(28, 103, 151, 0.2));
+}
+.chartPoint {
+  fill: var(--surface-primary);
+  stroke: var(--gold2);
+}
+.chartPointLink:focus .chartPoint,
+.chartPointLink:hover .chartPoint {
+  fill: color-mix(in srgb, var(--gold2) 24%, var(--surface-primary));
+  stroke: var(--gold2);
+}
+.chartText,
+.chartPointLabel {
+  fill: var(--text-secondary);
+}
+.statPercent,
+.badgeGold,
+.rankCell,
+.eyebrow {
+  color: var(--gold-strong);
+}
+.badgeGold {
+  background: color-mix(in srgb, var(--gold2) 18%, var(--surface-inset));
+  border-color: var(--border-accent);
+}
 
-.mobileSheet { background: var(--surface-raised); border-color: var(--border-strong); box-shadow: 0 22px 80px rgba(0, 0, 0, 0.32); }
-[class*="Backdrop"], [class*="backdrop"], .modalOverlay { background: var(--surface-overlay); }
+.mobileSheet {
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.32);
+}
+[class*="Backdrop"],
+[class*="backdrop"],
+.modalOverlay {
+  background: var(--surface-overlay);
+}
 
 .trainingScoreSheetCard .collapsibleSubcard,
 .trainingScoreSheetCard .advancedSetupPanel,
@@ -6990,28 +7361,52 @@ button.secondary:disabled:hover,
 
 button.danger:disabled,
 button.danger:disabled:hover {
-  background: color-mix(in srgb, var(--danger-bg) 45%, var(--action-disabled-bg)) !important;
-  border-color: color-mix(in srgb, var(--danger-border) 45%, var(--action-disabled-border)) !important;
-  color: color-mix(in srgb, var(--danger-text) 70%, var(--action-disabled-text)) !important;
+  background: color-mix(
+    in srgb,
+    var(--danger-bg) 45%,
+    var(--action-disabled-bg)
+  ) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--danger-border) 45%,
+    var(--action-disabled-border)
+  ) !important;
+  color: color-mix(
+    in srgb,
+    var(--danger-text) 70%,
+    var(--action-disabled-text)
+  ) !important;
 }
 
 .hitButton:disabled,
 .hitButton:disabled:hover {
-  background: linear-gradient(180deg, rgba(107, 208, 140, 0.42), rgba(48, 148, 82, 0.36)) !important;
+  background: linear-gradient(
+    180deg,
+    rgba(107, 208, 140, 0.42),
+    rgba(48, 148, 82, 0.36)
+  ) !important;
   border-color: rgba(186, 255, 204, 0.26) !important;
   color: rgba(6, 19, 10, 0.76) !important;
 }
 
 .missButton:disabled,
 .missButton:disabled:hover {
-  background: linear-gradient(180deg, rgba(239, 118, 95, 0.42), rgba(170, 62, 45, 0.36)) !important;
+  background: linear-gradient(
+    180deg,
+    rgba(239, 118, 95, 0.42),
+    rgba(170, 62, 45, 0.36)
+  ) !important;
   border-color: rgba(255, 207, 198, 0.26) !important;
   color: rgba(255, 247, 244, 0.78) !important;
 }
 
 /* Field Mode keeps operational scoring panels dark in every appearance mode. */
 :root {
-  --field-surface: linear-gradient(180deg, rgba(20, 30, 43, 0.98), rgba(10, 16, 24, 0.98));
+  --field-surface: linear-gradient(
+    180deg,
+    rgba(20, 30, 43, 0.98),
+    rgba(10, 16, 24, 0.98)
+  );
   --field-surface-secondary: rgba(12, 18, 27, 0.9);
   --field-surface-inset: rgba(7, 11, 17, 0.78);
   --field-text-primary: #f7fafc;
@@ -7031,7 +7426,11 @@ button.danger:disabled:hover {
 }
 
 html[data-theme="light"] {
-  --field-surface: linear-gradient(180deg, rgba(31, 38, 44, 0.98), rgba(17, 22, 27, 0.98));
+  --field-surface: linear-gradient(
+    180deg,
+    rgba(31, 38, 44, 0.98),
+    rgba(17, 22, 27, 0.98)
+  );
   --field-surface-secondary: rgba(25, 31, 37, 0.94);
   --field-surface-inset: rgba(12, 17, 22, 0.9);
   --field-text-primary: #fff8e8;
@@ -7174,7 +7573,6 @@ html[data-theme="light"] {
   box-shadow: var(--field-focus-ring);
 }
 
-
 .liveScoreOverview thead th {
   color: var(--field-text-muted);
 }
@@ -7227,8 +7625,12 @@ html[data-theme="light"] body .liveScoreOverview button.missed {
   color: var(--field-text-secondary);
 }
 
-.compakCurrentStatusCard .compakCurrentStatusMeta:first-of-type span:not(.small),
-.compakCurrentStatusCard .compakCurrentStatusMeta:nth-of-type(3) span:nth-child(2) {
+.compakCurrentStatusCard
+  .compakCurrentStatusMeta:first-of-type
+  span:not(.small),
+.compakCurrentStatusCard
+  .compakCurrentStatusMeta:nth-of-type(3)
+  span:nth-child(2) {
   color: var(--field-text-primary);
 }
 
@@ -7260,8 +7662,16 @@ html[data-theme="light"] body .liveScoreOverview button.missed {
 .targetCorrectionButton:disabled:hover,
 .compakDotTarget:disabled,
 .compakDotTarget:disabled:hover {
-  background: color-mix(in srgb, var(--field-surface-inset) 58%, var(--action-disabled-bg)) !important;
-  border-color: color-mix(in srgb, var(--field-border-subtle) 60%, var(--action-disabled-border)) !important;
+  background: color-mix(
+    in srgb,
+    var(--field-surface-inset) 58%,
+    var(--action-disabled-bg)
+  ) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--field-border-subtle) 60%,
+    var(--action-disabled-border)
+  ) !important;
   color: var(--field-text-muted) !important;
   cursor: not-allowed;
   filter: grayscale(0.28) saturate(0.72);
@@ -7291,28 +7701,49 @@ html[data-theme="light"] .trainingScoreSheetCard .compactMoreActions > summary {
   color: var(--field-text-primary) !important;
 }
 
-html[data-theme="light"] .trainingScoreSheetCard .compactMoreActions > summary::after {
+html[data-theme="light"]
+  .trainingScoreSheetCard
+  .compactMoreActions
+  > summary::after {
   color: var(--field-active-text) !important;
 }
 
 html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview thead th,
-html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview thead th:first-child,
-html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview thead th:last-child {
+html[data-theme="light"]
+  .trainingScoreSheetCard
+  .liveScoreOverview
+  thead
+  th:first-child,
+html[data-theme="light"]
+  .trainingScoreSheetCard
+  .liveScoreOverview
+  thead
+  th:last-child {
   color: var(--field-text-muted) !important;
 }
 
-html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview tbody th[scope="row"] {
+html[data-theme="light"]
+  .trainingScoreSheetCard
+  .liveScoreOverview
+  tbody
+  th[scope="row"] {
   color: var(--field-text-primary) !important;
 }
 
-html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview .scoreTotalCell {
+html[data-theme="light"]
+  .trainingScoreSheetCard
+  .liveScoreOverview
+  .scoreTotalCell {
   color: var(--field-text-secondary) !important;
 }
 
-html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview .compactPanelHeader .muted {
+html[data-theme="light"]
+  .trainingScoreSheetCard
+  .liveScoreOverview
+  .compactPanelHeader
+  .muted {
   color: var(--field-text-muted) !important;
 }
-
 
 .trainingScoreSheetCard .setupApplyPanel button:disabled,
 .trainingScoreSheetCard .setupApplyPanel button:disabled:hover {
@@ -7379,7 +7810,9 @@ html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview .compactPane
   background: color-mix(in srgb, var(--surface-raised) 86%, transparent);
   color: var(--text-primary);
 }
-.detailAccordion > summary span:first-child { color: var(--text-primary); }
+.detailAccordion > summary span:first-child {
+  color: var(--text-primary);
+}
 .detailAccordionBody {
   background: var(--surface-secondary);
   color: var(--text-primary);
@@ -7432,7 +7865,7 @@ html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview .compactPane
   color: currentColor;
   font-size: 12px;
   font-weight: 800;
-  opacity: .9;
+  opacity: 0.9;
 }
 button.secondary:disabled,
 .button.secondary[aria-disabled="true"],
@@ -7440,13 +7873,20 @@ button:disabled {
   -webkit-text-fill-color: var(--action-disabled-text);
   opacity: 1;
 }
-input, select, textarea {
+input,
+select,
+textarea {
   color: var(--text-primary);
   min-height: 44px;
   font-size: 16px;
 }
-select { -webkit-appearance: menulist; appearance: auto; }
-.postSetupQuickActions button { min-height: 48px; }
+select {
+  -webkit-appearance: menulist;
+  appearance: auto;
+}
+.postSetupQuickActions button {
+  min-height: 48px;
+}
 .courseSetupSection {
   scroll-margin-top: 84px;
   border: 1px solid var(--border-subtle);
@@ -7454,7 +7894,9 @@ select { -webkit-appearance: menulist; appearance: auto; }
   padding: 14px;
   background: var(--surface-secondary);
 }
-#sporttrap-setup { scroll-margin-top: 84px; }
+#sporttrap-setup {
+  scroll-margin-top: 84px;
+}
 .fieldMode .detailAccordion,
 .fieldMode .detailAccordionBody,
 .fieldMode .subcard,
@@ -7468,18 +7910,30 @@ select { -webkit-appearance: menulist; appearance: auto; }
   border-color: var(--field-border-subtle);
 }
 .fieldMode .muted,
-.livePage .muted { color: var(--field-text-secondary) !important; }
+.livePage .muted {
+  color: var(--field-text-secondary) !important;
+}
 @media (max-width: 700px) {
   .heroCard,
   .heroTopline,
   .sessionSummaryHeader,
-  .scoreSummaryLine { grid-template-columns: 1fr; }
+  .scoreSummaryLine {
+    grid-template-columns: 1fr;
+  }
   .primaryActionGrid,
-  .productActionGrid { grid-template-columns: 1fr; }
-  .row { grid-template-columns: 1fr; }
-  .btns { align-items: stretch; }
+  .productActionGrid {
+    grid-template-columns: 1fr;
+  }
+  .row {
+    grid-template-columns: 1fr;
+  }
+  .btns {
+    align-items: stretch;
+  }
   .btns .button,
-  .btns button { width: 100%; }
+  .btns button {
+    width: 100%;
+  }
 }
 
 /* Log miss contrast: keep the outer card theme-native, only operational panels use Field Mode dark colors. */
@@ -7625,7 +8079,7 @@ select { -webkit-appearance: menulist; appearance: auto; }
 }
 .postSelectButton.selected {
   border-color: var(--gold);
-  box-shadow: 0 0 0 3px rgba(216, 164, 58, .22);
+  box-shadow: 0 0 0 3px rgba(216, 164, 58, 0.22);
 }
 .postPhotoActions {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -7644,17 +8098,20 @@ select { -webkit-appearance: menulist; appearance: auto; }
   border: 1px solid var(--border-subtle);
   border-radius: 18px 18px 0 0;
   bottom: 0;
-  box-shadow: 0 -10px 30px rgba(0,0,0,.18);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.18);
   color: var(--text-primary);
   display: grid;
   gap: 8px;
   left: max(12px, env(safe-area-inset-left));
-  padding: 12px max(12px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom));
+  padding: 12px max(12px, env(safe-area-inset-right))
+    calc(12px + env(safe-area-inset-bottom));
   position: sticky;
   right: max(12px, env(safe-area-inset-right));
   z-index: 20;
 }
-.stickySaveBar p { margin: 0; }
+.stickySaveBar p {
+  margin: 0;
+}
 .fieldMode .postTargetEditor .subcard,
 .fieldMode .postTargetEditor .presentationCard,
 .fieldMode .postTargetEditor .targetCard,
@@ -7670,10 +8127,79 @@ select { -webkit-appearance: menulist; appearance: auto; }
   color: var(--field-text-secondary) !important;
 }
 @media (max-width: 430px) {
-  .postPhotoActions { grid-template-columns: 1fr; }
-  .postSelectorGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .postPhotoActions {
+    grid-template-columns: 1fr;
+  }
+  .postSelectorGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 @media (max-width: 340px) {
-  .postSelectorGrid { grid-template-columns: 1fr; }
+  .postSelectorGrid {
+    grid-template-columns: 1fr;
+  }
 }
-.scorecardGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:.5rem}.scorecardCell{min-height:52px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--foreground);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.15rem;font-size:1rem}.scorecardCell.hit{outline:2px solid #2f855a}.scorecardCell.miss{outline:2px solid #c53030}.scorecardCell.unknown{outline:2px dashed #b7791f}.stickyApplyBar{position:sticky;bottom:0;padding:.75rem 0 calc(.75rem + env(safe-area-inset-bottom));background:var(--background)}.checkboxRow{display:flex;gap:.5rem;align-items:flex-start;min-height:44px}.checkboxRow input{margin-top:.25rem}
+.scorecardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: 0.5rem;
+}
+.scorecardCell {
+  min-height: 52px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--surface-primary);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  font-size: 1rem;
+}
+.scorecardCell.hit {
+  outline: 2px solid #2f855a;
+}
+.scorecardCell.miss {
+  outline: 2px solid #c53030;
+}
+.scorecardCell.unknown {
+  outline: 2px dashed #b7791f;
+}
+.stickyApplyBar {
+  position: sticky;
+  bottom: 0;
+  padding: 0.75rem 0 calc(0.75rem + env(safe-area-inset-bottom));
+  background: var(--surface-primary);
+  color: var(--text-primary);
+}
+.checkboxRow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  min-height: 44px;
+}
+.checkboxRow input {
+  margin-top: 0.25rem;
+}
+.fieldMode .scorecardCell {
+  background: var(--field-surface-secondary);
+  border-color: var(--field-border-subtle);
+  color: var(--field-text-primary);
+}
+.fieldMode .stickyApplyBar {
+  background: var(--field-surface-primary);
+  color: var(--field-text-primary);
+}
+.scorecardCell span {
+  text-transform: capitalize;
+}
+.scorecardCell.hit::after {
+  content: "✓";
+}
+.scorecardCell.miss::after {
+  content: "×";
+}
+.scorecardCell.unknown::after {
+  content: "?";
+}

@@ -44,6 +44,7 @@ create or replace function public.apply_scorecard_import_v1(
   p_targets_per_post integer,
   p_reviewed_hits integer,
   p_reviewed_misses integer,
+  p_pre_skipped_duplicates integer,
   p_use_scorecard_score boolean,
   p_expected_own_score integer,
   p_misses jsonb
@@ -62,6 +63,12 @@ declare
   v_skipped integer := 0;
   v_item jsonb;
   v_own_updated boolean := false;
+  v_seen text[] := array[]::text[];
+  v_key text;
+  v_course integer;
+  v_position integer;
+  v_target_number integer;
+  v_miss_count integer := 0;
 begin
   if v_user_id is null then raise exception 'login_required'; end if;
   select * into v_session from public.sessions where id = p_session_id for update;
@@ -69,28 +76,48 @@ begin
   if lower(coalesce(v_session.discipline,'')) not in ('leirduesti','sporting','english sporting','engelsk sporting') then raise exception 'unsupported_discipline'; end if;
   if coalesce(v_session.post_count, v_session.course_count) <> p_post_count or v_session.targets_per_post <> p_targets_per_post or v_total > 500 or v_total < 1 then raise exception 'dimension_mismatch'; end if;
   if v_session.total_targets is not null and v_session.total_targets <> v_total then raise exception 'total_targets_conflict'; end if;
-  if p_reviewed_hits < 0 or p_reviewed_misses < 0 or p_reviewed_hits + p_reviewed_misses <> v_total then raise exception 'invalid_counts'; end if;
-  if v_session.own_score is distinct from p_expected_own_score then raise exception 'stale_score'; end if;
+  if p_reviewed_hits < 0 or p_reviewed_misses < 0 or p_pre_skipped_duplicates < 0 or p_reviewed_hits + p_reviewed_misses <> v_total then raise exception 'invalid_counts'; end if;
   select * into v_existing from public.scorecard_imports where session_id = p_session_id and (client_import_id = p_client_import_id or image_fingerprint = p_image_fingerprint) order by created_at limit 1;
   if found then
     return jsonb_build_object('importId', v_existing.id, 'insertedMisses', v_existing.inserted_misses, 'skippedDuplicates', v_existing.skipped_duplicates, 'score', v_existing.reviewed_hits, 'totalTargets', v_existing.reviewed_total_targets, 'ownScoreUpdated', false, 'alreadyImported', true);
   end if;
+  if v_session.own_score is distinct from p_expected_own_score then raise exception 'stale_score'; end if;
+  if jsonb_typeof(coalesce(p_misses,'null'::jsonb)) <> 'array' then raise exception 'invalid_misses_payload'; end if;
+  v_miss_count := jsonb_array_length(p_misses);
+  if v_miss_count + p_pre_skipped_duplicates <> p_reviewed_misses then raise exception 'miss_count_mismatch'; end if;
   insert into public.scorecard_imports(session_id,user_id,client_import_id,image_fingerprint,reviewed_total_targets,reviewed_hits,reviewed_misses)
   values(p_session_id,v_user_id,p_client_import_id,p_image_fingerprint,v_total,p_reviewed_hits,p_reviewed_misses) returning id into v_import_id;
-  for v_item in select * from jsonb_array_elements(coalesce(p_misses,'[]'::jsonb)) loop
+  for v_item in select * from jsonb_array_elements(p_misses) loop
+    if jsonb_typeof(v_item) <> 'object' then raise exception 'invalid_miss_row'; end if;
+    begin
+      v_course := (v_item->>'course_number')::integer;
+      v_position := (v_item->>'target_position')::integer;
+      v_target_number := (v_item->>'target_number')::integer;
+    exception when others then
+      raise exception 'invalid_miss_coordinate';
+    end;
+    if v_course < 1 or v_course > p_post_count or v_position < 1 or v_position > p_targets_per_post or v_target_number < 1 then raise exception 'miss_coordinate_out_of_range'; end if;
+    v_key := v_course::text || ':' || v_position::text;
+    if v_key = any(v_seen) then raise exception 'duplicate_miss_coordinate'; end if;
+    v_seen := array_append(v_seen, v_key);
+    if coalesce(v_item->>'base_presentation','') not in ('single','report_pair','simultaneous_pair','other_pair','unknown','Unknown') then raise exception 'invalid_presentation'; end if;
+    if coalesce(v_item->>'actual_presentation','') not in ('single','report_pair','simultaneous_pair','other_pair','unknown','Unknown') then raise exception 'invalid_presentation'; end if;
+    if coalesce(v_item->>'missed_target','') not in ('Single target','First target in pair','Second target in pair','Unknown') then raise exception 'invalid_missed_target'; end if;
+    if coalesce(v_item->>'where_miss','Not sure') <> 'Not sure' or coalesce(v_item->>'main_reason','Unknown') <> 'Unknown' or coalesce(v_item->>'target_read','Unknown') <> 'Unknown' then raise exception 'invalid_import_details'; end if;
     begin
       insert into public.misses(session_id,course_number,target_position,target_number,target_label,target_type,base_presentation,actual_presentation,missed_target,where_miss,main_reason,target_read,comment,source_type,scorecard_import_id)
-      values(p_session_id,(v_item->>'course_number')::integer,(v_item->>'target_position')::integer,(v_item->>'target_number')::integer,v_item->>'target_label',v_item->>'target_type',v_item->>'base_presentation',v_item->>'actual_presentation',v_item->>'missed_target',coalesce(v_item->>'where_miss','Not sure'),coalesce(v_item->>'main_reason','Unknown'),coalesce(v_item->>'target_read','Unknown'),null,'scorecard_import',v_import_id);
+      values(p_session_id,v_course,v_position,v_target_number,left(coalesce(v_item->>'target_label',''),160),left(coalesce(v_item->>'target_type','Unknown'),80),coalesce(v_item->>'base_presentation','Unknown'),coalesce(v_item->>'actual_presentation','Unknown'),v_item->>'missed_target','Not sure','Unknown','Unknown',null,'scorecard_import',v_import_id);
       v_inserted := v_inserted + 1;
     exception when unique_violation then
       v_skipped := v_skipped + 1;
     end;
   end loop;
+  v_skipped := v_skipped + p_pre_skipped_duplicates;
   if v_session.total_targets is null then update public.sessions set total_targets = v_total where id = p_session_id; end if;
   if p_use_scorecard_score then update public.sessions set own_score = p_reviewed_hits where id = p_session_id; v_own_updated := true; end if;
   update public.scorecard_imports set inserted_misses = v_inserted, skipped_duplicates = v_skipped where id = v_import_id;
   return jsonb_build_object('importId', v_import_id, 'insertedMisses', v_inserted, 'skippedDuplicates', v_skipped, 'score', p_reviewed_hits, 'totalTargets', v_total, 'ownScoreUpdated', v_own_updated, 'alreadyImported', false);
 end;
 $$;
-revoke all on function public.apply_scorecard_import_v1(uuid,uuid,text,integer,integer,integer,integer,boolean,integer,jsonb) from public, anon;
-grant execute on function public.apply_scorecard_import_v1(uuid,uuid,text,integer,integer,integer,integer,boolean,integer,jsonb) to authenticated;
+revoke all on function public.apply_scorecard_import_v1(uuid,uuid,text,integer,integer,integer,integer,integer,boolean,integer,jsonb) from public, anon;
+grant execute on function public.apply_scorecard_import_v1(uuid,uuid,text,integer,integer,integer,integer,integer,boolean,integer,jsonb) to authenticated;
