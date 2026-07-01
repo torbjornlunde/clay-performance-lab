@@ -68,11 +68,11 @@ function compactDateTime(valueToFormat: string) {
   return new Date(valueToFormat).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-function entryType(session: any, _resultOnly: boolean) {
+function entryType(session: any, _resultOnly: boolean, missCount = 0) {
   if (isLeirdueImported(session)) return "Imported";
-  if (typeof session.own_score === "number" || isQuickScoreNotes(session.notes)) return "Result recorded";
-  if (session.session_type === "Competition" && (session.total_targets === null || session.total_targets === undefined)) return "Needs result";
-  return session.session_type === "Competition" ? "Competition" : "Training";
+  if (typeof session.own_score === "number" || isQuickScoreNotes(session.notes) || missCount > 0) return "Result recorded";
+  if (session.session_type === "Competition") return "Needs result";
+  return "Training";
 }
 
 function isLeirdueImported(session: any) {
@@ -226,7 +226,7 @@ export default function Page() {
     : isLeirduesti && leirduestiPostCount && leirduestiTargetsPerPost
       ? leirduestiPostCount * leirduestiTargetsPerPost
       : session.total_targets);
-  const calculatedScore = quickScore?.totalHits ?? (typeof totalTargets === "number" ? scoreFromMisses(totalTargets, count) : null);
+  const calculatedScore = quickScore?.totalHits ?? (typeof totalTargets === "number" && count > 0 ? scoreFromMisses(totalTargets, count) : null);
   const scoreUsed = typeof session.own_score === "number" ? session.own_score : calculatedScore;
   const percentage = typeof scoreUsed === "number" && typeof session.winning_score === "number" && session.winning_score > 0 ? (scoreUsed / session.winning_score) * 100 : null;
   const resultOnly = session.session_type === "Competition" && session.own_score !== null && courses.length === 0 && count === 0;
@@ -238,7 +238,7 @@ export default function Page() {
     formatDate(session.competition_date || session.created_at),
     session.discipline,
     session.shooting_ground,
-    entryType(session, resultOnly),
+    entryType(session, resultOnly, count),
     session.shooting_format && !isSporttrap ? session.shooting_format : null,
   ].filter(Boolean);
   const showSourceDetails = isLeirdueImported(session);
@@ -275,7 +275,7 @@ export default function Page() {
             <p className="eyebrow">Session overview</p>
             <h2>{session.name}</h2>
           </div>
-          <span className="badge badgeBlue">{entryType(session, resultOnly)}</span>
+          <span className="badge badgeBlue">{entryType(session, resultOnly, count)}</span>
           {setupAction && setupAction.progress.startsWith("0 of") && <span className="badge">Setup incomplete</span>}
           {showSourceDetails && <span className="badge badgeGreen">Imported</span>}
         </div>
@@ -395,7 +395,7 @@ export default function Page() {
             <ResultRow label="Manual/official score">{value(session.own_score)}</ResultRow>
             <ResultRow label="Winning score">{value(session.winning_score)}</ResultRow>
             <ResultRow label="Performance vs winning score">{performanceLine || "-"}</ResultRow>
-            <ResultRow label="Status">{entryType(session, resultOnly)}</ResultRow>
+            <ResultRow label="Status">{entryType(session, resultOnly, count)}</ResultRow>
             {quickScore && <ResultRow label="Start course/post">{quickScore.startCourse}</ResultRow>}
             {quickScore && <ResultRow label="Generated order">{quickScore.courseOrder.join(" → ")}</ResultRow>}
             <ResultRow label="Discipline">{session.discipline}</ResultRow>

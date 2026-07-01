@@ -66,6 +66,16 @@ export default function NewResultPage() {
       setErr((error as Error).message);
       return;
     }
+    const hasTotalTargets = totalTargetsValue !== null;
+    const hasOwnScore = ownScoreValue !== null;
+    if (hasTotalTargets !== hasOwnScore) {
+      setErr("Total targets and own score must be filled out together when you add a result.");
+      return;
+    }
+    if (winningScoreValue !== null && (!hasTotalTargets || !hasOwnScore)) {
+      setErr("Add total targets and own score before adding a winning score.");
+      return;
+    }
     if (totalTargetsValue !== null) {
       if (ownScoreValue !== null && ownScoreValue > totalTargetsValue) { setErr("Own score cannot exceed total targets."); return; }
       if (winningScoreValue !== null && winningScoreValue > totalTargetsValue) { setErr("Winning score cannot exceed total targets."); return; }

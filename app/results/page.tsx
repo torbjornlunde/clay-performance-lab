@@ -70,12 +70,14 @@ function importedAt(session: SessionRow) {
 }
 
 function hasScore(session: SessionRow) {
-  return isUsableNumber(session.own_score) || isUsableNumber(session.total_targets);
+  return isUsableNumber(session.own_score) || Boolean(parseQuickScoreMetadata(session.notes));
 }
 
 function scoreUsed(session: SessionRow, missCounts: Record<string, number>) {
+  const quickScore = parseQuickScoreMetadata(session.notes);
   if (isUsableNumber(session.own_score)) return session.own_score;
-  if (isUsableNumber(session.total_targets)) return scoreFromMisses(session.total_targets, missCounts[session.id] || 0);
+  if (quickScore) return quickScore.totalHits;
+  if (isUsableNumber(session.total_targets) && (missCounts[session.id] || 0) > 0) return scoreFromMisses(session.total_targets, missCounts[session.id] || 0);
   return null;
 }
 
@@ -103,7 +105,7 @@ function isCompetitionResult(session: SessionRow) {
 
 function productStatus(session: SessionRow, missCounts: Record<string, number>, courseCounts: Record<string, number>) {
   if (isImported(session)) return "Imported";
-  if (hasScore(session)) return "Result recorded";
+  if (hasScore(session) || (isUsableNumber(session.total_targets) && (missCounts[session.id] || 0) > 0)) return "Result recorded";
   if (isDetailedLog(session, missCounts, courseCounts)) return "Setup incomplete";
   return "Needs result";
 }
@@ -112,7 +114,7 @@ function statusBadges(session: SessionRow, missCounts: Record<string, number>, c
   const badges: string[] = [];
   if (isImported(session)) badges.push("Imported");
   if (isDraftOrIncomplete(session, missCounts, courseCounts)) badges.push("Draft", "Incomplete");
-  if (!hasScore(session)) badges.push("No score");
+  if (!hasScore(session) && !(isUsableNumber(session.total_targets) && (missCounts[session.id] || 0) > 0)) badges.push("No score");
   if (!isImported(session) && resultSource(session, missCounts, courseCounts) === "Manual") badges.push("Test/manual");
   return Array.from(new Set(badges));
 }
