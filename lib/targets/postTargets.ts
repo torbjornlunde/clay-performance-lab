@@ -2,8 +2,10 @@ export type PresentationType = "single" | "report_pair" | "simultaneous_pair" | 
 export type TargetDescription = { target_label: string; target_type: string; direction: string; speed: string; distance: string; difficulty: string; notes: string };
 export type PostTarget = TargetDescription & { target_position: number; position_in_presentation: number };
 export type Presentation = { presentation_number: number; presentation_type: PresentationType; targets: PostTarget[] };
-export type PostTargets = { post_number: number; presentations: Presentation[] };
-export type Draft = { schemaVersion: 1; sessionId: string; postCount: number; posts: PostTargets[]; lastLocalUpdateAt: string; lastServerSyncAt?: string; hasUnsyncedChanges: boolean };
+export type PostTargets = { post_number: number; instructions: string; source_text: string; presentations: Presentation[] };
+export type Draft = { schemaVersion: 2; sessionId: string; postCount: number; posts: PostTargets[]; lastLocalUpdateAt: string; lastServerSyncAt?: string; hasUnsyncedChanges: boolean };
+export type PostDetailRow = { session_id: string; post_number: number; instructions: string | null; source_text: string | null; updated_at?: string; created_at?: string; id?: string };
+export const DRAFT_SCHEMA_VERSION = 2;
 export const presentationLabels: Record<PresentationType, string> = { single: "Single", report_pair: "Report pair", simultaneous_pair: "Simultaneous pair", other_pair: "Other pair", unknown: "Unknown single or pair" };
 export const targetTypes = ["Unknown","Crossing","Incoming","Going away","Rising","Dropping","Rabbit","Looper","Teal","Battue","Overhead","Other"];
 export const directions = ["Unknown","Left to right","Right to left","Incoming","Going away","Quartering left","Quartering right","Overhead","Other"];
@@ -14,7 +16,8 @@ export function targetCountFor(type: PresentationType) { return type === "single
 export function defaultTargetLabel() { return ""; }
 export function blankTarget(target_position: number, position_in_presentation: number): PostTarget { return { target_position, position_in_presentation, target_label: defaultTargetLabel(), target_type: "Unknown", direction: "Unknown", speed: "Unknown", distance: "Unknown", difficulty: "Unknown", notes: "" }; }
 export function isDescribed(t: TargetDescription) { return [t.target_type,t.direction,t.speed,t.distance,t.difficulty].some((v)=>v && v !== "Unknown") || Boolean(t.notes?.trim()); }
-export function normalizePost(post_number: number, presentations: Presentation[]): PostTargets {
+export function postHasMeaningfulData(post: PostTargets) { return Boolean(post.instructions?.trim() || post.source_text?.trim() || post.presentations.length || post.presentations.some((p) => p.targets.some(isDescribed))); }
+export function normalizePost(post_number: number, presentations: Presentation[], instructions = "", source_text = ""): PostTargets {
   let position = 1;
   const normalizedPresentations = presentations.map((p, i) => {
     const targets = Array.from({ length: targetCountFor(p.presentation_type) }, (_, idx) => {
@@ -25,9 +28,17 @@ export function normalizePost(post_number: number, presentations: Presentation[]
     position += targets.length;
     return { presentation_number: i + 1, presentation_type: p.presentation_type, targets };
   });
-  return { post_number, presentations: normalizedPresentations };
+  return { post_number, instructions: instructions || "", source_text: source_text || "", presentations: normalizedPresentations };
 }
-export function emptyPosts(count: number): PostTargets[] { return Array.from({ length: count }, (_, i) => ({ post_number: i + 1, presentations: [] })); }
-export function ensurePostCount(posts: PostTargets[], count: number) { return Array.from({ length: count }, (_, i) => normalizePost(i + 1, posts[i]?.presentations || [])); }
+export function emptyPosts(count: number): PostTargets[] { return Array.from({ length: count }, (_, i) => normalizePost(i + 1, [])); }
+export function ensurePostCount(posts: PostTargets[], count: number) { return Array.from({ length: count }, (_, i) => normalizePost(i + 1, posts[i]?.presentations || [], posts[i]?.instructions || "", posts[i]?.source_text || "")); }
 export function template(type: "report"|"simultaneous"|"singles"): Presentation[] { const ptype: PresentationType = type === "report" ? "report_pair" : type === "simultaneous" ? "simultaneous_pair" : "single"; return normalizePost(1, Array.from({ length: type === "singles" ? 10 : 5 }, (_, i) => ({ presentation_number: i+1, presentation_type: ptype, targets: [] }))).presentations; }
 export function rowsFromPosts(sessionId: string, posts: PostTargets[]) { return posts.flatMap((post) => post.presentations.flatMap((p) => p.targets.map((t) => ({ session_id: sessionId, post_number: post.post_number, target_position: t.target_position, presentation_number: p.presentation_number, presentation_type: p.presentation_type, position_in_presentation: t.position_in_presentation, target_label: (t.target_label || "").trim() || null, target_type: t.target_type, direction: t.direction, speed: t.speed, distance: t.distance, difficulty: t.difficulty, notes: t.notes.trim() || null, updated_at: new Date().toISOString() })))); }
+export function detailRowsFromPosts(sessionId: string, posts: PostTargets[]) { return posts.filter((post) => post.instructions.trim() || post.source_text.trim()).map((post) => ({ session_id: sessionId, post_number: post.post_number, instructions: post.instructions.trim() || null, source_text: post.source_text.trim() || null, updated_at: new Date().toISOString() })); }
+export function migrateDraft(value: any, sessionId: string): Draft | null {
+  if (!value || typeof value !== "object" || value.sessionId !== sessionId || !Array.isArray(value.posts)) return null;
+  if (value.schemaVersion !== 1 && value.schemaVersion !== 2) return null;
+  const postCount = Math.max(1, Number(value.postCount || value.posts.length || 1));
+  const posts = ensurePostCount(value.posts.map((post: any, i: number) => normalizePost(Number(post.post_number || i + 1), Array.isArray(post.presentations) ? post.presentations : [], post.instructions || "", post.source_text || "")), postCount);
+  return { schemaVersion: DRAFT_SCHEMA_VERSION, sessionId, postCount, posts, lastLocalUpdateAt: value.lastLocalUpdateAt || new Date().toISOString(), lastServerSyncAt: value.lastServerSyncAt, hasUnsyncedChanges: Boolean(value.hasUnsyncedChanges) };
+}
