@@ -1,146 +1,90 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
-import { postTargetUnitLabel } from "@/lib/disciplines";
-import { directions, distances, difficulties, Draft, emptyPosts, ensurePostCount, isDescribed, normalizePost, PostTargets, PresentationType, presentationLabels, rowsFromPosts, speeds, targetTypes, template } from "@/lib/targets/postTargets";
+import { LEIRDUESTI, postTargetUnitLabel } from "@/lib/disciplines";
+import { deletePendingPostSignPhoto, getPendingPostSignPhoto, savePendingPostSignPhoto, updatePendingPostSignPhoto, type PendingPostSignPhoto } from "@/lib/targets/postSignPhotos";
+import { type PostSignAnalysisResult, type PostSignPresentation } from "@/lib/targets/postSignAnalysis";
+import { detailRowsFromPosts, directions, distances, difficulties, Draft, emptyPosts, ensurePostCount, isDescribed, migrateDraft, normalizePost, postHasMeaningfulData, PostTargets, PresentationType, presentationLabels, rowsFromPosts, speeds, targetTypes, template } from "@/lib/targets/postTargets";
 
 const MAX_POSTS = 50;
-const draftKey = (sessionId: string) => `cpl:post-target-draft:v1:${sessionId}`;
+const MAX_SOURCE_IMAGE_BYTES = 12 * 1024 * 1024;
+const MAX_UPLOAD_IMAGE_BYTES = 4 * 1024 * 1024;
+const draftKey = (sessionId: string) => `cpl:post-target-draft:v2:${sessionId}`;
+const legacyDraftKey = (sessionId: string) => `cpl:post-target-draft:v1:${sessionId}`;
 const now = () => new Date().toISOString();
-
 type Props = { session: any; courseRows: Array<{ course_number: number }> };
-
 type Status = "Saved on device" | "Unsynced changes" | "Syncing" | "Synced" | "Sync failed" | "Offline — saved on device" | "Waiting for connection";
 
 export function PostTargetEditor({ session, courseRows }: Props) {
   const unit = postTargetUnitLabel(session.discipline);
+  const instructionLabel = session.discipline === LEIRDUESTI ? "Post instructions" : "Stand instructions";
   const [postCount, setPostCountState] = useState(initialPostCount(session, courseRows));
   const [posts, setPosts] = useState<PostTargets[]>(() => emptyPosts(initialPostCount(session, courseRows)));
   const [current, setCurrent] = useState(1);
   const [status, setStatus] = useState<Status>(typeof navigator !== "undefined" && !navigator.onLine ? "Offline — saved on device" : "Saved on device");
   const [error, setError] = useState("");
   const [serverRows, setServerRows] = useState<any[]>([]);
+  const [serverDetails, setServerDetails] = useState<any[]>([]);
   const [lastSync, setLastSync] = useState<string | undefined>();
   const [recovery, setRecovery] = useState<{ draft: Draft; serverDraft: Draft } | null>(null);
+  const [pendingPhoto, setPendingPhoto] = useState<PendingPostSignPhoto | null>(null);
+  const [review, setReview] = useState<PostSignAnalysisResult | null>(null);
+  const [photoUrl, setPhotoUrl] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    loadServerAndDraft();
-    const updateOnline = () => setStatus((old) => navigator.onLine ? (old === "Offline — saved on device" || old === "Waiting for connection" ? "Unsynced changes" : old) : "Offline — saved on device");
-    window.addEventListener("online", updateOnline); window.addEventListener("offline", updateOnline);
-    return () => { window.removeEventListener("online", updateOnline); window.removeEventListener("offline", updateOnline); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.id]);
+  useEffect(() => { loadServerAndDraft(); const updateOnline = () => { setStatus((old) => navigator.onLine ? (old === "Offline — saved on device" || old === "Waiting for connection" ? "Unsynced changes" : old) : "Offline — saved on device"); if (navigator.onLine) void retryWaitingOnce(); }; window.addEventListener("online", updateOnline); window.addEventListener("offline", updateOnline); return () => { window.removeEventListener("online", updateOnline); window.removeEventListener("offline", updateOnline); }; }, [session.id]);
+  useEffect(() => { void restorePending(); }, [session.id, current]);
+  useEffect(() => { if (!pendingPhoto?.image) { setPhotoUrl(""); return; } const url = URL.createObjectURL(pendingPhoto.image); setPhotoUrl(url); return () => URL.revokeObjectURL(url); }, [pendingPhoto?.queueId, pendingPhoto?.updatedAt]);
 
-  function saveLocal(nextPosts: PostTargets[], nextCount = postCount, unsynced = true, syncedAt = lastSync) {
-    const draft: Draft = { schemaVersion: 1, sessionId: session.id, postCount: nextCount, posts: nextPosts, lastLocalUpdateAt: now(), lastServerSyncAt: syncedAt, hasUnsyncedChanges: unsynced };
-    localStorage.setItem(draftKey(session.id), JSON.stringify(draft));
-    setStatus(navigator.onLine ? (unsynced ? "Unsynced changes" : "Synced") : "Offline — saved on device");
-  }
-
+  async function restorePending() { const item = await getPendingPostSignPhoto(session.id, current); setPendingPhoto(item); setReview(item?.analysis || null); }
+  async function retryWaitingOnce() { const item = await getPendingPostSignPhoto(session.id, current); if (item?.status === "waiting_for_connection") void analyze(item); }
+  function saveLocal(nextPosts: PostTargets[], nextCount = postCount, unsynced = true, syncedAt = lastSync) { const draft: Draft = { schemaVersion: 2, sessionId: session.id, postCount: nextCount, posts: nextPosts, lastLocalUpdateAt: now(), lastServerSyncAt: syncedAt, hasUnsyncedChanges: unsynced }; localStorage.setItem(draftKey(session.id), JSON.stringify(draft)); localStorage.removeItem(legacyDraftKey(session.id)); setStatus(navigator.onLine ? (unsynced ? "Unsynced changes" : "Synced") : "Offline — saved on device"); }
+  function safeDraft(raw: string) { try { return migrateDraft(JSON.parse(raw), session.id); } catch { return null; } }
   async function loadServerAndDraft() {
-    const raw = localStorage.getItem(draftKey(session.id));
-    const local = raw ? safeDraft(raw, session.id) : null;
-
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      if (local) applyDraft(local, local.hasUnsyncedChanges);
-      setStatus("Offline — saved on device");
-      return;
-    }
-
-    const { data, error: loadError } = await supabase
-      .from("session_post_targets")
-      .select("*")
-      .eq("session_id", session.id)
-      .order("post_number")
-      .order("target_position");
-
-    if (loadError) {
-      if (local) applyDraft(local, local.hasUnsyncedChanges);
-      setError(loadError.message);
-      setStatus("Sync failed");
-      return;
-    }
-
-    const rows = data || [];
-    setServerRows(rows);
-    const serverDraft = draftFromRows(rows, session.id, initialPostCount(session, courseRows), false);
-
+    const local = safeDraft(localStorage.getItem(draftKey(session.id)) || "null") || safeDraft(localStorage.getItem(legacyDraftKey(session.id)) || "null");
+    if (typeof navigator !== "undefined" && !navigator.onLine) { if (local) applyDraft(local, local.hasUnsyncedChanges); setStatus("Offline — saved on device"); return; }
+    const [{ data, error: loadError }, { data: details, error: detailError }] = await Promise.all([supabase.from("session_post_targets").select("*").eq("session_id", session.id).order("post_number").order("target_position"), supabase.from("session_post_details").select("*").eq("session_id", session.id).order("post_number")]);
+    if (loadError || detailError) { if (local) applyDraft(local, local.hasUnsyncedChanges); setError(loadError?.message || detailError?.message || "Could not load target details."); setStatus("Sync failed"); return; }
+    setServerRows(data || []); setServerDetails(details || []);
+    const serverDraft = draftFromRows(data || [], details || [], session.id, initialPostCount(session, courseRows), false);
     if (local?.hasUnsyncedChanges) { setRecovery({ draft: local, serverDraft }); return; }
-
-    const localSyncedAt = local?.lastServerSyncAt || local?.lastLocalUpdateAt;
-    const serverUpdatedAt = serverDraft.lastServerSyncAt || serverDraft.lastLocalUpdateAt;
-    const serverIsNewer = !localSyncedAt || new Date(serverUpdatedAt).getTime() > new Date(localSyncedAt).getTime();
-
-    applyDraft(serverIsNewer || !local ? serverDraft : local, false);
+    const localSyncedAt = local?.lastServerSyncAt || local?.lastLocalUpdateAt; const serverUpdatedAt = serverDraft.lastServerSyncAt || serverDraft.lastLocalUpdateAt; const serverIsNewer = !localSyncedAt || new Date(serverUpdatedAt).getTime() > new Date(localSyncedAt).getTime(); applyDraft(serverIsNewer || !local ? serverDraft : local, false);
   }
-
-  function applyDraft(draft: Draft, unsynced: boolean) {
-    setPostCountState(draft.postCount); setPosts(ensurePostCount(draft.posts, draft.postCount)); setCurrent(1); setLastSync(draft.lastServerSyncAt); saveLocal(ensurePostCount(draft.posts, draft.postCount), draft.postCount, unsynced, draft.lastServerSyncAt);
-  }
-
+  function applyDraft(draft: Draft, unsynced: boolean) { setPostCountState(draft.postCount); setPosts(ensurePostCount(draft.posts, draft.postCount)); setCurrent(1); setLastSync(draft.lastServerSyncAt); saveLocal(ensurePostCount(draft.posts, draft.postCount), draft.postCount, unsynced, draft.lastServerSyncAt); }
   function mutate(nextPosts: PostTargets[], nextCount = postCount) { setPosts(nextPosts); setPostCountState(nextCount); saveLocal(nextPosts, nextCount, true); }
-
-  function setPostCount(nextCount: number) {
-    nextCount = Math.min(MAX_POSTS, Math.max(1, nextCount));
-    if (nextCount < postCount) {
-      const removed = posts.slice(nextCount);
-      if (removed.some((post) => post.presentations.length > 0 || post.presentations.some((p) => p.targets.some(isDescribed)))) {
-        if (!window.confirm(`${unit}s above ${nextCount} contain target definitions. They will be removed only when Save and sync succeeds. Continue?`)) return;
-      }
-    }
-    mutate(ensurePostCount(posts, nextCount), nextCount); setCurrent((old) => Math.min(old, nextCount));
-  }
-
-  function replaceCurrent(nextPresentations: PostTargets["presentations"], action: string) {
-    const post = posts[current - 1];
-    const hasData = post.presentations.length > 0 && post.presentations.some((p) => p.targets.some(isDescribed));
-    const sameBlank = JSON.stringify(post.presentations.map((p) => p.presentation_type)) === JSON.stringify(nextPresentations.map((p) => p.presentation_type)) && !hasData;
-    if (post.presentations.length > 0 && !sameBlank && !window.confirm(`${action} will replace the existing presentation structure and target descriptions for this ${unit.toLowerCase()}. Continue?`)) return;
-    mutate(posts.map((p, i) => i === current - 1 ? { post_number: current, presentations: nextPresentations } : p));
-  }
-
+  function setPostCount(nextCount: number) { nextCount = Math.min(MAX_POSTS, Math.max(1, nextCount)); if (nextCount < postCount && posts.slice(nextCount).some(postHasMeaningfulData) && !window.confirm(`${unit}s above ${nextCount} contain target definitions or instructions. They will be removed only when Save and sync succeeds. Continue?`)) return; mutate(ensurePostCount(posts, nextCount), nextCount); setCurrent((old) => Math.min(old, nextCount)); }
+  function replaceCurrent(nextPresentations: PostTargets["presentations"], action: string) { const post = posts[current - 1]; const sameBlank = JSON.stringify(post.presentations.map((p) => p.presentation_type)) === JSON.stringify(nextPresentations.map((p) => p.presentation_type)) && !postHasMeaningfulData(post); if (postHasMeaningfulData(post) && !sameBlank && !window.confirm(`${action} will replace the existing presentation structure, target descriptions and instructions for this ${unit.toLowerCase()}. Continue?`)) return; mutate(posts.map((p, i) => i === current - 1 ? normalizePost(current, nextPresentations, p.instructions, p.source_text) : p)); }
   function addPresentation(type: PresentationType) { const post = posts[current - 1]; replacePost({ ...post, presentations: [...post.presentations, { presentation_number: post.presentations.length + 1, presentation_type: type, targets: [] }] }); }
   function removePresentation(index: number) { const p = posts[current - 1].presentations[index]; if (p.targets.some(isDescribed) && !window.confirm("This presentation contains target descriptions. Remove the full presentation and renumber later target positions?")) return; replacePost({ ...posts[current - 1], presentations: posts[current - 1].presentations.filter((_, i) => i !== index) }); }
   function changePresentation(index: number, type: PresentationType) { const p = posts[current - 1].presentations[index]; if (p.targets.some(isDescribed) && !window.confirm("Changing this structure may move descriptions to a different clay. Continue?")) return; replacePost({ ...posts[current - 1], presentations: posts[current - 1].presentations.map((x, i) => i === index ? { ...x, presentation_type: type } : x) }); }
-  function replacePost(post: PostTargets) { mutate(posts.map((p, i) => i === current - 1 ? normalizeEditedPost(post, current) : p)); }
+  function replacePost(post: PostTargets) { mutate(posts.map((p, i) => i === current - 1 ? normalizePost(current, post.presentations, post.instructions, post.source_text) : p)); }
   function updateTarget(presentationIndex: number, targetIndex: number, field: string, value: string) { const post = posts[current - 1]; replacePost({ ...post, presentations: post.presentations.map((p, pi) => pi !== presentationIndex ? p : { ...p, targets: p.targets.map((t, ti) => ti === targetIndex ? { ...t, [field]: value } : t) }) }); }
+  function updateInstructions(value: string) { const post = posts[current - 1]; replacePost({ ...post, instructions: value }); }
 
-  async function sync() {
-    if (!navigator.onLine) { setStatus("Waiting for connection"); return; }
-    const rows = rowsFromPosts(session.id, posts);
-    if (rows.length === 0 && serverRows.length > 0 && !window.confirm("This will delete all server target definitions for this session. Continue?")) return;
-    setStatus("Syncing"); setError("");
-    const syncedAt = now();
-    const { error: countError } = await supabase.from("sessions").update({ post_count: postCount }).eq("id", session.id);
-    if (countError) return fail(countError.message);
-    if (rows.length) { const { error: upsertError } = await supabase.from("session_post_targets").upsert(rows, { onConflict: "session_id,post_number,target_position" }); if (upsertError) return fail(upsertError.message); }
-    const keep = new Set(rows.map((r) => `${r.post_number}:${r.target_position}`));
-    const stale = serverRows.filter((r) => !keep.has(`${r.post_number}:${r.target_position}`) || r.post_number > postCount);
-    for (const row of stale) { const { error: deleteError } = await supabase.from("session_post_targets").delete().eq("id", row.id); if (deleteError) return fail(deleteError.message); }
-    setLastSync(syncedAt); saveLocal(posts, postCount, false, syncedAt); setStatus("Synced"); await loadServerAndDraft();
-  }
+  async function sync() { if (!navigator.onLine) { setStatus("Waiting for connection"); return; } const rows = rowsFromPosts(session.id, posts); const detailRows = detailRowsFromPosts(session.id, posts); if ((rows.length === 0 && serverRows.length > 0) || (detailRows.length === 0 && serverDetails.length > 0)) { if (!window.confirm("This will delete server target definitions or post instructions for this session. Continue?")) return; } setStatus("Syncing"); setError(""); const syncedAt = now(); const { error: countError } = await supabase.from("sessions").update({ post_count: postCount }).eq("id", session.id); if (countError) return fail(countError.message); if (rows.length) { const { error: upsertError } = await supabase.from("session_post_targets").upsert(rows, { onConflict: "session_id,post_number,target_position" }); if (upsertError) return fail(upsertError.message); } if (detailRows.length) { const { error: detailUpsertError } = await supabase.from("session_post_details").upsert(detailRows, { onConflict: "session_id,post_number" }); if (detailUpsertError) return fail(detailUpsertError.message); } const keep = new Set(rows.map((r) => `${r.post_number}:${r.target_position}`)); const stale = serverRows.filter((r) => !keep.has(`${r.post_number}:${r.target_position}`) || r.post_number > postCount); for (const row of stale) { const { error: deleteError } = await supabase.from("session_post_targets").delete().eq("id", row.id); if (deleteError) return fail(deleteError.message); } const keepDetails = new Set(detailRows.map((r) => String(r.post_number))); const staleDetails = serverDetails.filter((r) => !keepDetails.has(String(r.post_number)) || r.post_number > postCount); for (const row of staleDetails) { const { error: deleteError } = await supabase.from("session_post_details").delete().eq("id", row.id); if (deleteError) return fail(deleteError.message); } setLastSync(syncedAt); saveLocal(posts, postCount, false, syncedAt); setStatus("Synced"); await loadServerAndDraft(); }
   function fail(message: string) { setError(message); setStatus("Sync failed"); saveLocal(posts, postCount, true); }
 
-  const post = posts[current - 1] || { post_number: current, presentations: [] };
-  const currentTargets = post.presentations.flatMap((p) => p.targets);
-  const describedCurrent = currentTargets.filter(isDescribed).length;
-  const allTargets = posts.flatMap((p) => p.presentations.flatMap((x) => x.targets));
-  const describedAll = allTargets.filter(isDescribed).length;
+  async function capture(event: ChangeEvent<HTMLInputElement>) { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; if (pendingPhoto && !window.confirm("Replace the existing pending sign photo for this post?")) return; try { const blob = await resizeImage(file); const saved = await savePendingPostSignPhoto({ sessionId: session.id, postNumber: current, image: blob, mimeType: blob.type, status: navigator.onLine ? "saved_on_device" : "waiting_for_connection" }); setPendingPhoto(saved); setReview(null); if (navigator.onLine) void analyze(saved); } catch (e) { setError((e as Error).message); } }
+  async function analyze(item = pendingPhoto) { if (!item) return; if (!navigator.onLine) { const updated = await updatePendingPostSignPhoto(session.id, current, { status: "waiting_for_connection", lastError: "Waiting for connection" }); setPendingPhoto(updated); return; } setError(""); setPendingPhoto(await updatePendingPostSignPhoto(session.id, current, { status: "analyzing", lastError: undefined })); const form = new FormData(); form.append("postNumber", String(current)); form.append("image", item.image, "post-sign.jpg"); const { data: auth } = await supabase.auth.getSession(); const response = await fetch(`/api/sessions/${session.id}/post-sign/analyze`, { method: "POST", headers: auth.session?.access_token ? { Authorization: `Bearer ${auth.session.access_token}` } : undefined, body: form }); const json = await response.json().catch(() => ({})); if (!response.ok) { const updated = await updatePendingPostSignPhoto(session.id, current, { status: "analysis_failed", lastError: json.error || "Analysis failed" }); setPendingPhoto(updated); setError(json.error || "Analysis failed"); return; } const updated = await updatePendingPostSignPhoto(session.id, current, { status: "ready_for_review", analysis: json.result }); setPendingPhoto(updated); setReview(json.result); }
+  async function discardPhoto() { if (!window.confirm("Discard this pending sign photo?")) return; await deletePendingPostSignPhoto(session.id, current); setPendingPhoto(null); setReview(null); }
+  function setReviewPresentation(index: number, patch: Partial<PostSignPresentation>) { if (!review) return; const presentations = review.presentations.map((p, i) => i === index ? normalizeReviewPresentation({ ...p, ...patch }, i) : normalizeReviewPresentation(p, i)); setReview({ ...review, presentations }); }
+  function moveReview(index: number, delta: number) { if (!review) return; const next = [...review.presentations]; const to = index + delta; if (to < 0 || to >= next.length) return; [next[index], next[to]] = [next[to], next[index]]; setReview({ ...review, presentations: next.map(normalizeReviewPresentation) }); }
+  function applyReview() { if (!review) return; const post = posts[current - 1]; if (postHasMeaningfulData(post) && !window.confirm(`Apply to ${unit} ${current} will replace the current post structure, descriptions and instructions. Continue?`)) return; const presentations = review.presentations.map((p, i) => ({ presentation_number: i + 1, presentation_type: p.presentationType, targets: p.targetLabels.map((label, ti) => ({ target_position: 0, position_in_presentation: ti + 1, target_label: label, target_type: "Unknown", direction: "Unknown", speed: "Unknown", distance: "Unknown", difficulty: "Unknown", notes: "" })) })); const next = posts.map((p, i) => i === current - 1 ? normalizePost(current, presentations, review.instructions, review.rawText) : p); mutate(next); void deletePendingPostSignPhoto(session.id, current); setPendingPhoto(null); setReview(null); }
 
-  return <div className="card postTargetEditor"><h2>Describe {unit.toLowerCase()}s and targets</h2><p className="small muted">{session.name}. Stable mapping: session → {unit.toLowerCase()} number → target position.</p>
-    {recovery && <div className="subcard warning"><h3>Recover local draft?</h3><p className="small">A newer unsynced local draft ({new Date(recovery.draft.lastLocalUpdateAt).toLocaleString()}) exists. Server version: {new Date(recovery.serverDraft.lastLocalUpdateAt).toLocaleString()}.</p><div className="btns"><button onClick={() => { applyDraft(recovery.draft, true); setRecovery(null); }}>Restore local draft</button><button className="secondary" onClick={() => { applyDraft(recovery.serverDraft, false); setRecovery(null); }}>Use server version</button></div></div>}
+  const post = posts[current - 1] || normalizePost(current, []); const currentTargets = post.presentations.flatMap((p) => p.targets); const describedCurrent = currentTargets.filter(isDescribed).length; const allTargets = posts.flatMap((p) => p.presentations.flatMap((x) => x.targets)); const describedAll = allTargets.filter(isDescribed).length;
+  return <div className="card postTargetEditor"><h2>Describe {unit.toLowerCase()}s and targets</h2><p className="small muted">{session.name}. Stable mapping: session → {unit.toLowerCase()} number → target position.</p>{recovery && <div className="subcard warning"><h3>Recover local draft?</h3><p className="small">A newer unsynced local draft ({new Date(recovery.draft.lastLocalUpdateAt).toLocaleString()}) exists. Server version: {new Date(recovery.serverDraft.lastLocalUpdateAt).toLocaleString()}.</p><div className="btns"><button onClick={() => { applyDraft(recovery.draft, true); setRecovery(null); }}>Restore local draft</button><button className="secondary" onClick={() => { applyDraft(recovery.serverDraft, false); setRecovery(null); }}>Use server version</button></div></div>}
     <div className="subcard"><div className="row"><div><label>Number of {unit.toLowerCase()}s</label><input type="number" min={1} max={MAX_POSTS} value={postCount} onChange={(e)=>setPostCount(Number(e.target.value)||1)} /></div><div><label>{unit}</label><select value={current} onChange={(e)=>setCurrent(Number(e.target.value))}>{Array.from({length:postCount},(_,i)=><option key={i+1} value={i+1}>{unit} {i+1}</option>)}</select></div></div><div className="btns"><button className="secondary" disabled={current<=1} onClick={()=>setCurrent(current-1)}>Previous</button><button className="secondary" disabled={current>=postCount} onClick={()=>setCurrent(current+1)}>Next</button></div><p className="small muted">{unit} {current}: {currentTargets.length} target positions, {describedCurrent} described. Overall: {describedAll} / {allTargets.length} described.</p><p className="small"><strong>{status}</strong>{lastSync ? ` · Last synced ${new Date(lastSync).toLocaleString()}` : ""}</p>{error && <div className="error">{error}</div>}<div className="btns"><button onClick={sync}>{status === "Sync failed" ? "Retry sync" : "Save and sync"}</button><Link href={`/sessions/${session.id}`} className="button secondary">Session</Link></div></div>
+    <div className="subcard"><h3>{unit} {current}</h3><label>{instructionLabel}</label><textarea value={post.instructions} onChange={(e)=>updateInstructions(e.target.value)} placeholder="Post-wide instructions, for example LIMIT PÅ A!" /><button type="button" onClick={()=>fileRef.current?.click()}>Take photo of sign</button><input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={capture} hidden /><p className="small muted">Include the whole sign. Keep the phone as straight as practical. Avoid glare and strong shadows. Make sure column headings and handwritten letters are visible.</p>{pendingPhoto && <PhotoPanel item={pendingPhoto} photoUrl={photoUrl} unit={unit} current={current} review={review} setReview={setReview} analyze={()=>analyze()} discard={discardPhoto} apply={applyReview} updatePresentation={setReviewPresentation} move={moveReview} add={() => review && setReview({ ...review, presentations: [...review.presentations, normalizeReviewPresentation({ presentationNumber: 0, presentationType: "single", targetLabels: [""], sourceText: "", confidence: "low", warnings: [] }, review.presentations.length)] })} remove={(i: number) => review && setReview({ ...review, presentations: review.presentations.filter((_: PostSignPresentation, index: number) => index !== i).map(normalizeReviewPresentation) })} />}</div>
     <div className="subcard"><h3>Fast setup for {unit} {current}</h3><div className="btns"><button className="secondary" onClick={()=>replaceCurrent(template("report"), "5 report pairs")}>5 report pairs</button><button className="secondary" onClick={()=>replaceCurrent(template("simultaneous"), "5 simultaneous pairs")}>5 simultaneous pairs</button><button className="secondary" onClick={()=>replaceCurrent(template("singles"), "10 singles")}>10 singles</button><button className="secondary" onClick={()=>replaceCurrent([], "Clear post")}>Clear {unit.toLowerCase()}</button></div><div className="btns"><button onClick={()=>addPresentation("single")}>Add single</button><button onClick={()=>addPresentation("report_pair")}>Add report pair</button><button onClick={()=>addPresentation("simultaneous_pair")}>Add simultaneous pair</button><button onClick={()=>addPresentation("other_pair")}>Add other pair</button></div></div>
-    {post.presentations.map((p, pi)=><div className="subcard presentationCard" key={pi}><div className="row"><div><h3>Presentation {p.presentation_number} · {presentationLabels[p.presentation_type]}</h3></div><div><label>Structure</label><select value={p.presentation_type} onChange={(e)=>changePresentation(pi, e.target.value as PresentationType)}>{Object.entries(presentationLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div></div><button className="secondary" onClick={()=>removePresentation(pi)}>Remove presentation</button>{p.targets.map((t, ti)=><div className="subcard targetCard" key={t.target_position}><h4>Target position {t.target_position}{p.targets.length>1 ? ` · Pair target ${t.position_in_presentation}` : ""}</h4><div className="row"><div><label>Target label / machine</label><input value={t.target_label} onChange={(e)=>updateTarget(pi,ti,"target_label",e.target.value)} placeholder="A, B, C, A+B, B+A or AB SIM" /></div><div><label>Target type</label><select value={t.target_type} onChange={(e)=>updateTarget(pi,ti,"target_type",e.target.value)}>{targetTypes.map((x)=><option key={x}>{x}</option>)}</select></div><div><label>Direction</label><select value={t.direction} onChange={(e)=>updateTarget(pi,ti,"direction",e.target.value)}>{directions.map((x)=><option key={x}>{x}</option>)}</select></div></div><details><summary>More target details</summary><label>Speed</label><select value={t.speed} onChange={(e)=>updateTarget(pi,ti,"speed",e.target.value)}>{speeds.map((x)=><option key={x}>{x}</option>)}</select><label>Distance</label><select value={t.distance} onChange={(e)=>updateTarget(pi,ti,"distance",e.target.value)}>{distances.map((x)=><option key={x}>{x}</option>)}</select><label>Difficulty</label><select value={t.difficulty} onChange={(e)=>updateTarget(pi,ti,"difficulty",e.target.value)}>{difficulties.map((x)=><option key={x}>{x}</option>)}</select><label>Notes</label><textarea value={t.notes} onChange={(e)=>updateTarget(pi,ti,"notes",e.target.value)} placeholder="Optional lead, hold point or visual note" /></details></div>)}</div>)}
+    {post.presentations.map((p, pi)=><div className="subcard presentationCard" key={pi}><div className="row"><div><h3>Presentation {p.presentation_number} · {presentationLabels[p.presentation_type]}</h3></div><div><label>Structure</label><select value={p.presentation_type} onChange={(e)=>changePresentation(pi, e.target.value as PresentationType)}>{Object.entries(presentationLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div></div><button className="secondary" onClick={()=>removePresentation(pi)}>Remove presentation</button>{p.targets.map((t, ti)=><div className="subcard targetCard" key={t.target_position}><h4>Target position {t.target_position}{p.targets.length>1 ? ` · Pair target ${t.position_in_presentation}` : ""}</h4><div className="row"><div><label>Target label / machine</label><input value={t.target_label} onChange={(e)=>updateTarget(pi,ti,"target_label",e.target.value)} placeholder="A, B or C" /></div><div><label>Target type</label><select value={t.target_type} onChange={(e)=>updateTarget(pi,ti,"target_type",e.target.value)}>{targetTypes.map((x)=><option key={x}>{x}</option>)}</select></div><div><label>Direction</label><select value={t.direction} onChange={(e)=>updateTarget(pi,ti,"direction",e.target.value)}>{directions.map((x)=><option key={x}>{x}</option>)}</select></div></div><details><summary>More target details</summary><label>Speed</label><select value={t.speed} onChange={(e)=>updateTarget(pi,ti,"speed",e.target.value)}>{speeds.map((x)=><option key={x}>{x}</option>)}</select><label>Distance</label><select value={t.distance} onChange={(e)=>updateTarget(pi,ti,"distance",e.target.value)}>{distances.map((x)=><option key={x}>{x}</option>)}</select><label>Difficulty</label><select value={t.difficulty} onChange={(e)=>updateTarget(pi,ti,"difficulty",e.target.value)}>{difficulties.map((x)=><option key={x}>{x}</option>)}</select><label>Notes</label><textarea value={t.notes} onChange={(e)=>updateTarget(pi,ti,"notes",e.target.value)} placeholder="Optional lead, hold point or visual note" /></details></div>)}</div>)}
   </div>;
 }
+function PhotoPanel(props: any) { const { item, photoUrl, unit, current, review } = props; const count = review?.presentations.reduce((sum: number, p: PostSignPresentation) => sum + p.targetLabels.length, 0) || 0; const detected = review?.detectedPostNumbers || []; const mismatch = review && detected.length && !detected.includes(current); return <div className="subcard"><p className="small"><strong>{statusText(item.status)}</strong>{item.lastError ? ` · ${item.lastError}` : ""}</p>{photoUrl && <img src={photoUrl} alt="Pending post sign" style={{ maxWidth: "100%", borderRadius: 12 }} />}{item.status === "waiting_for_connection" && <button onClick={props.analyze}>Analyze now</button>}{item.status === "analysis_failed" && <button onClick={props.analyze}>Retry analysis</button>}<button className="secondary" onClick={props.discard}>Discard photo</button>{review && <div><h3>Review sign import</h3><p className={mismatch ? "error" : "small"}>Destination: {unit} {current}. Detected: {detected.length ? detected.join(", ") : "No readable number"}.</p><p className="small">Confidence: {review.confidence}. Total target positions: {count}.</p>{review.warnings.map((w: string) => <div key={w} className="warning small">{w}</div>)}<label>{unit} instructions</label><textarea value={review.instructions} onChange={(e)=>props.setReview({ ...review, instructions: e.target.value })} /><details><summary>Raw extracted text</summary><pre className="small">{review.rawText}</pre></details>{review.presentations.map((p: PostSignPresentation, i: number) => <div className="subcard" key={i}><div className="row"><div><label>Presentation type</label><select value={p.presentationType} onChange={(e)=>props.updatePresentation(i,{ presentationType: e.target.value as PresentationType, targetLabels: adjustLabels(p.targetLabels, e.target.value as PresentationType) })}>{Object.entries(presentationLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div><div><label>First label</label><input value={p.targetLabels[0] || ""} onChange={(e)=>props.updatePresentation(i,{ targetLabels: [e.target.value.toUpperCase(), p.targetLabels[1] || ""] })} /></div>{p.targetLabels.length > 1 && <div><label>Second label</label><input value={p.targetLabels[1] || ""} onChange={(e)=>props.updatePresentation(i,{ targetLabels: [p.targetLabels[0] || "", e.target.value.toUpperCase()] })} /></div>}</div><p className="small">{presentationLabels[p.presentationType]} — {p.targetLabels.join(p.presentationType === "simultaneous_pair" ? " + " : " → ")}</p><div className="btns"><button className="secondary" onClick={()=>props.move(i,-1)}>Up</button><button className="secondary" onClick={()=>props.move(i,1)}>Down</button><button className="secondary" onClick={()=>props.remove(i)}>Remove</button></div></div>)}<button className="secondary" onClick={props.add}>Add presentation</button><button onClick={props.apply}>Apply to {unit} {current}</button></div>}</div>; }
+function statusText(status: string) { return ({ saved_on_device: "Photo saved on device", waiting_for_connection: "Waiting for connection", analyzing: "Analyzing sign", ready_for_review: "Ready for review", analysis_failed: "Analysis failed" } as Record<string,string>)[status] || status; }
+function adjustLabels(labels: string[], type: PresentationType) { const count = type === "single" || type === "unknown" ? 1 : 2; return Array.from({ length: count }, (_, i) => labels[i] || ""); }
+function normalizeReviewPresentation(p: PostSignPresentation, i: number): PostSignPresentation { return { ...p, presentationNumber: i + 1, targetLabels: adjustLabels(p.targetLabels.map((x) => x.trim().toUpperCase()), p.presentationType) }; }
+async function resizeImage(file: File) { if (!file.type.startsWith("image/")) throw new Error("Unsupported image type."); if (file.size > MAX_SOURCE_IMAGE_BYTES) throw new Error("Image is too large. Choose a smaller or clearer photo."); const bitmap = await createImageBitmap(file); const max = 1800; const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height)); const canvas = document.createElement("canvas"); canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale)); const ctx = canvas.getContext("2d"); if (!ctx) throw new Error("Could not read sign image."); ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height); const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86)); if (!blob) throw new Error("Could not prepare image for analysis."); if (blob.size > MAX_UPLOAD_IMAGE_BYTES) throw new Error("Prepared image is too large. Move closer and retake the sign photo."); return blob; }
 function initialPostCount(session: any, courseRows: Array<{ course_number: number }>) { return Math.max(1, Math.min(MAX_POSTS, Number(session.post_count || session.course_count || courseRows.length || 1))); }
-function safeDraft(raw: string, sessionId: string): Draft | null { try { const d = JSON.parse(raw); return d?.schemaVersion === 1 && d?.sessionId === sessionId ? d : null; } catch { return null; } }
-function draftFromRows(rows: any[], sessionId: string, count: number, unsynced: boolean): Draft { const posts = emptyPosts(count); for (const row of rows) { const p = posts[row.post_number - 1] ||= { post_number: row.post_number, presentations: [] }; let pres = p.presentations.find((x) => x.presentation_number === row.presentation_number); if (!pres) { pres = { presentation_number: row.presentation_number, presentation_type: row.presentation_type, targets: [] }; p.presentations.push(pres); } pres.targets.push({ target_position: row.target_position, position_in_presentation: row.position_in_presentation, target_label: row.target_label || "", target_type: row.target_type || "Unknown", direction: row.direction || "Unknown", speed: row.speed || "Unknown", distance: row.distance || "Unknown", difficulty: row.difficulty || "Unknown", notes: row.notes || "" }); }
-  const normalized = ensurePostCount(posts, Math.max(count, posts.length)); const newest = rows.length ? rows.map((r)=>r.updated_at || r.created_at).sort().at(-1) : "1970-01-01T00:00:00.000Z"; return { schemaVersion: 1, sessionId, postCount: normalized.length, posts: normalized, lastLocalUpdateAt: newest, lastServerSyncAt: newest, hasUnsyncedChanges: unsynced }; }
-
-function normalizeEditedPost(post: PostTargets, postNumber: number) {
-  return normalizePost(postNumber, post.presentations);
-}
+function draftFromRows(rows: any[], details: any[], sessionId: string, count: number, unsynced: boolean): Draft { const posts = emptyPosts(count); for (const detail of details) { if (detail.post_number > 0) { const idx = detail.post_number - 1; posts[idx] ||= normalizePost(detail.post_number, []); posts[idx].instructions = detail.instructions || ""; posts[idx].source_text = detail.source_text || ""; } } for (const row of rows) { const p = posts[row.post_number - 1] ||= normalizePost(row.post_number, []); let pres = p.presentations.find((x) => x.presentation_number === row.presentation_number); if (!pres) { pres = { presentation_number: row.presentation_number, presentation_type: row.presentation_type, targets: [] }; p.presentations.push(pres); } pres.targets.push({ target_position: row.target_position, position_in_presentation: row.position_in_presentation, target_label: row.target_label || "", target_type: row.target_type || "Unknown", direction: row.direction || "Unknown", speed: row.speed || "Unknown", distance: row.distance || "Unknown", difficulty: row.difficulty || "Unknown", notes: row.notes || "" }); } const normalized = ensurePostCount(posts, Math.max(count, posts.length)); const newest = [...rows, ...details].length ? [...rows, ...details].map((r)=>r.updated_at || r.created_at).sort().at(-1) : "1970-01-01T00:00:00.000Z"; return { schemaVersion: 2, sessionId, postCount: normalized.length, posts: normalized, lastLocalUpdateAt: newest, lastServerSyncAt: newest, hasUnsyncedChanges: unsynced }; }
