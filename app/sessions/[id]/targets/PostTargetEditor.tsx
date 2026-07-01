@@ -114,8 +114,11 @@ export function PostTargetEditor({ session, courseRows }: Props) {
       post_count: postCount,
       course_count: postCount,
     };
-    if (session.total_targets === null || session.total_targets === undefined) {
-      metadata.total_targets = rows.length || null;
+    const configuredPostNumbers = new Set(rows.map((row) => Number(row.post_number)));
+    const allPostsHaveTargets = Array.from({ length: postCount }, (_, index) => index + 1)
+      .every((postNumber) => configuredPostNumbers.has(postNumber));
+    if ((session.total_targets === null || session.total_targets === undefined) && allPostsHaveTargets) {
+      metadata.total_targets = rows.length;
     }
 
     const { error: metadataError } = await supabase
