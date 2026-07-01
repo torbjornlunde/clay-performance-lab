@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { analysisPresentation } from "@/lib/analysis/sessionAnalysis";
-import { isCompactDiscipline, isOrdinaryLeirduesti, isPostBasedSportingDiscipline } from "@/lib/disciplines";
+import { isCompactDiscipline, isOrdinaryLeirduesti, isPostBasedSportingDiscipline, postTargetUnitLabel } from "@/lib/disciplines";
 import { getSchemeType, plateRotation } from "@/lib/fitasc/schemes";
 import { normalizeLeirduestiLabel, shortMissedTarget } from "@/lib/misses/labels";
 import { scoreFromMisses, totalMisses } from "@/lib/misses/scoring";
@@ -68,11 +68,11 @@ function compactDateTime(valueToFormat: string) {
   return new Date(valueToFormat).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-function entryType(session: any, resultOnly: boolean) {
-  if (isLeirdueImported(session)) return "Leirdue.net import";
-  if (isQuickScoreNotes(session.notes)) return "Quick score";
-  if (resultOnly) return "Quick result";
-  return session.session_type === "Competition" ? "Detailed log" : "Training";
+function entryType(session: any, _resultOnly: boolean) {
+  if (isLeirdueImported(session)) return "Imported";
+  if (typeof session.own_score === "number" || isQuickScoreNotes(session.notes)) return "Result recorded";
+  if (session.session_type === "Competition" && (session.total_targets === null || session.total_targets === undefined)) return "Needs result";
+  return session.session_type === "Competition" ? "Competition" : "Training";
 }
 
 function isLeirdueImported(session: any) {
@@ -153,6 +153,7 @@ export default function Page() {
   const [count, setCount] = useState(0);
   const [err, setErr] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [postSetupCount, setPostSetupCount] = useState<number | null>(null);
 
   useEffect(() => { load(); }, []);
 
@@ -174,8 +175,21 @@ export default function Page() {
       .order("course_number")
       .order("machine")
       .returns<TargetDefinition[]>();
+    let configuredPosts: number | null = null;
+    if (sessionData && isPostBasedSportingDiscipline(sessionData.discipline)) {
+      const [targetRows, detailRows] = await Promise.all([
+        supabase.from("session_post_targets").select("post_number").eq("session_id", params.id),
+        supabase.from("session_post_details").select("post_number").eq("session_id", params.id),
+      ]);
+      if (!targetRows.error || !detailRows.error) {
+        const configured = new Set<number>();
+        if (!targetRows.error) (targetRows.data || []).forEach((row: any) => configured.add(row.post_number));
+        if (!detailRows.error) (detailRows.data || []).forEach((row: any) => configured.add(row.post_number));
+        configuredPosts = configured.size;
+      }
+    }
     const weightedMissCount = totalMisses(missData || []);
-    setSession(sessionData); setCourses(courseData || []); setMisses(missData || []); setTargetDefinitions(definitionData || []); setCount(weightedMissCount);
+    setSession(sessionData); setCourses(courseData || []); setMisses(missData || []); setTargetDefinitions(definitionData || []); setCount(weightedMissCount); setPostSetupCount(configuredPosts);
   }
 
   async function deleteSession() {
@@ -243,6 +257,15 @@ export default function Page() {
   ].filter((metric) => metric.show);
   const hasAdvancedDetails = isSporttrap || isLeirduesti || (isCompact && courses.length > 0);
   const equipmentLines = equipmentSnapshotLines(session.equipment_snapshot);
+  const postUnit = postTargetUnitLabel(session.discipline).toLowerCase();
+  const setupAction = isPostBasedSportingDiscipline(session.discipline)
+    ? { href: `/sessions/${session.id}/targets`, label: "Set up posts and targets", progress: `${postSetupCount ?? 0} of ${leirduestiPostCount || session.post_count || session.course_count || courses.length || 1} ${postUnit}s set up` }
+    : isCompact
+      ? { href: `/sessions/${session.id}/edit#course-setup`, label: "Set up courses and schemes", progress: `${courses.filter((course) => course.fitasc_scheme !== null && course.fitasc_scheme !== undefined).length} of ${session.course_count || courses.length || 1} courses have schemes` }
+      : isSporttrap
+        ? { href: `/sessions/${session.id}/edit#sporttrap-setup`, label: "Set up series and stand", progress: `${sporttrapSeriesCount || 1} series · Stand ${sporttrapStand ?? "not set"}` }
+        : null;
+  const loggingLabel = resultOnly ? "Add detailed logging" : count > 0 ? "Continue logging" : "Start logging";
 
   return (
     <main>
@@ -252,8 +275,9 @@ export default function Page() {
             <p className="eyebrow">Session overview</p>
             <h2>{session.name}</h2>
           </div>
-          {resultOnly && <span className="badge badgeBlue">Result only</span>}
-          {showSourceDetails && <span className="badge badgeGreen">Leirdue.net import</span>}
+          <span className="badge badgeBlue">{entryType(session, resultOnly)}</span>
+          {setupAction && setupAction.progress.startsWith("0 of") && <span className="badge">Setup incomplete</span>}
+          {showSourceDetails && <span className="badge badgeGreen">Imported</span>}
         </div>
         <div className="metadataLine" aria-label="Session metadata">
           {metadataChips.map((chip) => <span key={chip} className="pill">{chip}</span>)}
@@ -302,11 +326,9 @@ export default function Page() {
         </div>
         {err && <div className="error">{err}</div>}
         <div className="primaryActionGrid">
-          {resultOnly ? <Link href={`/sessions/${session.id}/edit`} className="button">Edit result details</Link> : null}
-          <Link href={`/sessions/${session.id}/log`} className={resultOnly ? "button secondary" : "button"}>{resultOnly ? "Add detailed misses" : "Log miss"}</Link>
-          <Link href={`/sessions/${session.id}/misses`} className="button secondary">Review misses</Link>
-          <Link href={`/sessions/${session.id}/analysis`} className="button secondary">Analysis</Link>
-          <Link href="/results" className="button secondary">Back to results</Link>
+          <Link href={`/sessions/${session.id}/log`} className="button">{loggingLabel}</Link>
+          {setupAction && <Link href={setupAction.href} className="button secondary setupActionButton"><span>{setupAction.label}</span><small>{setupAction.progress}</small></Link>}
+          {count > 0 && <Link href={`/sessions/${session.id}/misses`} className="button secondary">Review misses</Link>}
         </div>
         <details className="detailAccordion">
           <summary>
@@ -315,7 +337,8 @@ export default function Page() {
           <div className="detailAccordionBody">
             <p className="muted small">Manage this saved result. Delete only removes the local app entry and cannot affect any external Leirdue.net source data.</p>
             <div className="btns compactActions">
-              {!resultOnly ? <Link href={`/sessions/${session.id}/edit`} className="button secondary smallButton">Edit setup</Link> : null}
+              <Link href={`/sessions/${session.id}/analysis`} className="button secondary smallButton">Analysis</Link>
+              <Link href={`/sessions/${session.id}/edit`} className="button secondary smallButton">Edit competition/setup</Link>
               <Link href="/results" className="button secondary smallButton">Results history</Link>
               <button className="button danger smallButton" type="button" disabled={deleting} onClick={deleteSession}>
                 {deleting ? "Deleting..." : "Delete result"}
@@ -372,7 +395,7 @@ export default function Page() {
             <ResultRow label="Manual/official score">{value(session.own_score)}</ResultRow>
             <ResultRow label="Winning score">{value(session.winning_score)}</ResultRow>
             <ResultRow label="Performance vs winning score">{performanceLine || "-"}</ResultRow>
-            <ResultRow label="Entry type">{entryType(session, resultOnly)}</ResultRow>
+            <ResultRow label="Status">{entryType(session, resultOnly)}</ResultRow>
             {quickScore && <ResultRow label="Start course/post">{quickScore.startCourse}</ResultRow>}
             {quickScore && <ResultRow label="Generated order">{quickScore.courseOrder.join(" → ")}</ResultRow>}
             <ResultRow label="Discipline">{session.discipline}</ResultRow>
@@ -384,7 +407,7 @@ export default function Page() {
 
 
         {quickScore && (
-          <DetailSection title="Quick score breakdown" badge="Result only" defaultOpen>
+          <DetailSection title="Quick score breakdown" badge="Result recorded" defaultOpen>
             <div className="quickScoreList">
               {quickScore.breakdown.map((row) => (
                 <div className="quickScoreRow" key={row.course}>

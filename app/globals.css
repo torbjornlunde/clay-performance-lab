@@ -7369,3 +7369,174 @@ html[data-theme="light"] .trainingScoreSheetCard .liveScoreOverview .compactPane
     grid-template-columns: 1fr;
   }
 }
+
+/* Competition-flow and mobile contrast hardening. */
+.detailAccordion {
+  background: var(--surface-primary);
+  color: var(--text-primary);
+}
+.detailAccordion > summary {
+  background: color-mix(in srgb, var(--surface-raised) 86%, transparent);
+  color: var(--text-primary);
+}
+.detailAccordion > summary span:first-child { color: var(--text-primary); }
+.detailAccordionBody {
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+}
+.detailAccordionBody .muted,
+.detailAccordionBody p,
+.actionsCard .muted,
+.subcard .muted,
+.presentationCard .muted,
+.targetCard .muted,
+.row .muted,
+.dashboardActionCard small,
+.productActionCard small,
+.secondaryAction small {
+  color: var(--text-secondary);
+}
+.actionsCard,
+.productActionCard,
+.dashboardActionCard,
+.subcard,
+.presentationCard,
+.targetCard,
+.compactMissCard,
+.compactMetricTile,
+.detailRow {
+  color: var(--text-primary);
+}
+.productActionCard span,
+.dashboardActionCard span,
+.subcard strong,
+.presentationCard strong,
+.targetCard strong,
+.compactMetricTile strong,
+.detailRow strong {
+  color: var(--text-primary);
+}
+.primaryActionGrid .button,
+.setupActionButton {
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  white-space: normal;
+}
+.setupActionButton {
+  display: grid;
+  gap: 3px;
+  text-align: center;
+}
+.setupActionButton small {
+  color: currentColor;
+  font-size: 12px;
+  font-weight: 800;
+  opacity: .9;
+}
+button.secondary:disabled,
+.button.secondary[aria-disabled="true"],
+button:disabled {
+  -webkit-text-fill-color: var(--action-disabled-text);
+  opacity: 1;
+}
+input, select, textarea {
+  color: var(--text-primary);
+  min-height: 44px;
+  font-size: 16px;
+}
+select { -webkit-appearance: menulist; appearance: auto; }
+.postSetupQuickActions button { min-height: 48px; }
+.courseSetupSection {
+  scroll-margin-top: 84px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  padding: 14px;
+  background: var(--surface-secondary);
+}
+#sporttrap-setup { scroll-margin-top: 84px; }
+.fieldMode .detailAccordion,
+.fieldMode .detailAccordionBody,
+.fieldMode .subcard,
+.fieldMode .presentationCard,
+.fieldMode .targetCard,
+.livePage .subcard,
+.livePage .presentationCard,
+.livePage .targetCard {
+  background: var(--field-surface-secondary);
+  color: var(--field-text-primary);
+  border-color: var(--field-border-subtle);
+}
+.fieldMode .muted,
+.livePage .muted { color: var(--field-text-secondary) !important; }
+@media (max-width: 700px) {
+  .heroCard,
+  .heroTopline,
+  .sessionSummaryHeader,
+  .scoreSummaryLine { grid-template-columns: 1fr; }
+  .primaryActionGrid,
+  .productActionGrid { grid-template-columns: 1fr; }
+  .row { grid-template-columns: 1fr; }
+  .btns { align-items: stretch; }
+  .btns .button,
+  .btns button { width: 100%; }
+}
+
+/* Log miss contrast: keep the outer card theme-native, only operational panels use Field Mode dark colors. */
+.logMissCard {
+  background: var(--surface-primary);
+  color: var(--text-primary);
+}
+.logMissCard > .sectionHeader h2,
+.logMissCard > .sectionHeader .small,
+.logMissCard > .sectionHeader .muted {
+  color: var(--text-primary);
+}
+.logMissCard > .sectionHeader .muted {
+  color: var(--text-secondary);
+}
+.logMissCard .logSection,
+.logMissCard .optionalDetails,
+.logMissCard .saveSection {
+  background: var(--field-surface-secondary);
+  border-color: var(--field-border-subtle);
+  color: var(--field-text-primary);
+}
+.logMissCard .logSection h3,
+.logMissCard .optionalDetails summary,
+.logMissCard .saveSection h3,
+.logMissCard .logSection label,
+.logMissCard .optionalDetails label,
+.logMissCard .saveSection label {
+  color: var(--field-text-primary);
+}
+.logMissCard .logSection .muted,
+.logMissCard .optionalDetails .muted,
+.logMissCard .saveSection .muted,
+.logMissCard .logSection p,
+.logMissCard .optionalDetails p,
+.logMissCard .saveSection p {
+  color: var(--field-text-secondary) !important;
+}
+.logMissCard .logSection input,
+.logMissCard .logSection select,
+.logMissCard .logSection textarea,
+.logMissCard .optionalDetails input,
+.logMissCard .optionalDetails select,
+.logMissCard .optionalDetails textarea,
+.logMissCard .saveSection input,
+.logMissCard .saveSection select,
+.logMissCard .saveSection textarea {
+  background: var(--field-surface-inset);
+  border-color: var(--field-border-subtle);
+  color: var(--field-text-primary);
+}
+.logMissCard .quickButton:not(.selected) {
+  background: var(--field-surface-inset);
+  border-color: var(--field-border-subtle);
+  color: var(--field-text-primary);
+}
+.logMissCard .quickButton:disabled {
+  color: var(--field-text-muted);
+  -webkit-text-fill-color: var(--field-text-muted);
+}
