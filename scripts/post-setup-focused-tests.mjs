@@ -42,6 +42,19 @@ const legacy = postTargets.migrateDraft({ schemaVersion: 1, sessionId: 's1', pos
 assert.equal(legacy.targetsPerPost, 10, 'older drafts get safe targets-per-post default');
 assert.equal(legacy.defaultPostFormat, '5 pairs', 'older drafts get safe format default');
 
+assert.equal(setup.normalizeDefaultPostFormat('2 singles + 2 report pairs + 1 simo pair'), '2 singles + 2 report pairs + 1 simo pair', 'mixed default format round-trips');
+assert.equal(setup.normalizeDefaultPostFormat('Custom / unknown'), 'Custom / unknown', 'custom default format round-trips');
+assert.equal(JSON.stringify(setup.postFormatOptions('Legacy mixed format').slice(0, 2)), JSON.stringify(['Legacy mixed format', '5 pairs']), 'legacy non-empty format remains selectable instead of being coerced');
+const mixedDraft = postTargets.migrateDraft({ schemaVersion: 2, sessionId: 's1', posts: [], postCount: 1, targetsPerPost: 10, defaultPostFormat: '2 singles + 2 report pairs + 1 simo pair' }, 's1');
+const customDraft = postTargets.migrateDraft({ schemaVersion: 2, sessionId: 's1', posts: [], postCount: 1, targetsPerPost: 10, defaultPostFormat: 'Custom / unknown' }, 's1');
+assert.equal(mixedDraft.defaultPostFormat, '2 singles + 2 report pairs + 1 simo pair', 'mixed format survives local draft migration');
+assert.equal(customDraft.defaultPostFormat, 'Custom / unknown', 'custom format survives local draft migration');
+assert.equal(setup.planSetupSave({ postCount: 1, targetsPerPost: 10, defaultPostFormat: mixedDraft.defaultPostFormat, existingTotal: null, confirmConflict: () => true }).metadata.default_post_format, '2 singles + 2 report pairs + 1 simo pair', 'mixed format survives save planning');
+assert.equal(setup.planSetupSave({ postCount: 1, targetsPerPost: 10, defaultPostFormat: customDraft.defaultPostFormat, existingTotal: null, confirmConflict: () => true }).metadata.default_post_format, 'Custom / unknown', 'custom format survives save planning');
+assert.equal(setup.shouldApplyPendingPhotoLoad('old-session', 'new-session', true), false, 'old session pending-photo load is ignored after navigation');
+assert.equal(setup.shouldApplyPendingPhotoLoad('same-session', 'same-session', false), false, 'inactive pending-photo load is ignored');
+assert.equal(setup.shouldApplyPendingPhotoLoad('same-session', 'same-session', true), true, 'current active pending-photo load is accepted');
+
 const metadataOnly = setup.planSetupSave({ postCount: 12, targetsPerPost: 7, defaultPostFormat: '5 report pairs', existingTotal: null, confirmConflict: () => true });
 assert.equal(metadataOnly.shouldContinue, true, 'metadata-only save can proceed');
 assert.equal(JSON.stringify(metadataOnly.metadata), JSON.stringify({ post_count: 12, course_count: 12, targets_per_post: 7, default_post_format: '5 report pairs', total_targets: 84 }), 'metadata-only save writes setup metadata and new setup total');

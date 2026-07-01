@@ -10,6 +10,7 @@ import { EquipmentUsedSelector } from "@/app/components/EquipmentUsedSelector";
 import { supabase } from "@/lib/supabase/client";
 import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { userFacingSaveError } from "@/lib/userFacingErrors";
+import { postFormatOptions } from "@/lib/targets/postSetupState";
 
 type CourseSetup = {
   courseNumber: number;
@@ -278,9 +279,9 @@ export default function NewSessionPage() {
             </div>
             <label>Default post format</label>
             <select value={defaultPostFormat} onChange={(e) => setDefaultPostFormat(e.target.value)}>
-              <option>5 pairs</option>
-              <option>2 singles + 2 report pairs + 1 simo pair</option>
-              <option>Custom / unknown</option>
+              {postFormatOptions(defaultPostFormat).map((format) => (
+                <option key={format} value={format}>{format}</option>
+              ))}
             </select>
           </div>
         )}

@@ -1,7 +1,7 @@
 import { postHasMeaningfulData, type PostTargets } from "./postTargets";
 import type { PendingPostSignPhoto } from "./postSignPhotos";
 
-export const DEFAULT_POST_FORMATS = ["5 pairs", "5 report pairs", "5 simultaneous pairs", "10 singles"] as const;
+export const DEFAULT_POST_FORMATS = ["5 pairs", "2 singles + 2 report pairs + 1 simo pair", "Custom / unknown", "5 report pairs", "5 simultaneous pairs", "10 singles"] as const;
 
 export function normalizeSyncTimestamp(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -15,6 +15,20 @@ export function normalizeSyncTimestamp(value: unknown): string | undefined {
 
 export function setupTotal(postCount: number, targetsPerPost: number) {
   return Math.max(1, Math.round(postCount || 1)) * Math.max(1, Math.round(targetsPerPost || 1));
+}
+
+export function normalizeDefaultPostFormat(value: string | null | undefined) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed || "5 pairs";
+}
+
+export function postFormatOptions(current?: string | null) {
+  const normalized = normalizeDefaultPostFormat(current);
+  return DEFAULT_POST_FORMATS.includes(normalized as any) ? [...DEFAULT_POST_FORMATS] : [normalized, ...DEFAULT_POST_FORMATS];
+}
+
+export function shouldApplyPendingPhotoLoad(capturedSessionId: string, activeSessionId: string, stillActive: boolean) {
+  return stillActive && capturedSessionId === activeSessionId;
 }
 
 export function setupMetadata(postCount: number, targetsPerPost: number, defaultPostFormat: string) {
