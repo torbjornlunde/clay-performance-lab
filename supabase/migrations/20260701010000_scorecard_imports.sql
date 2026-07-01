@@ -71,6 +71,7 @@ declare
   v_miss_count integer := 0;
 begin
   if v_user_id is null then raise exception 'login_required'; end if;
+  if not public.has_approved_access(v_user_id) then raise exception 'access_not_approved'; end if;
   select * into v_session from public.sessions where id = p_session_id for update;
   if not found or v_session.user_id <> v_user_id then raise exception 'forbidden'; end if;
   if lower(coalesce(v_session.discipline,'')) not in ('leirduesti','sporting','english sporting','engelsk sporting') then raise exception 'unsupported_discipline'; end if;
