@@ -5437,19 +5437,6 @@ html, body {
   pointer-events: none;
 }
 
-.betaTestNote {
-  display: inline-flex;
-  width: fit-content;
-  max-width: 100%;
-  margin: 10px 0;
-  border: 1px solid rgba(216, 165, 58, 0.34);
-  border-radius: 999px;
-  background: rgba(216, 165, 58, 0.1);
-  color: #f6e4b7;
-  padding: 7px 10px;
-  font-weight: 800;
-}
-
 .quickStartCard {
   margin: 12px 0;
   padding: 0;
@@ -7188,17 +7175,6 @@ html[data-theme="light"] body .liveScoreOverview button.missed {
 
 .trainingScoreSheetCard .debugBuildInfo > summary.small.muted {
   color: var(--field-text-primary);
-}
-
-html[data-theme="light"] .trainingScoreSheetCard .betaTestNote {
-  background: #f4e2b8;
-  border-color: #9b6a18;
-  color: #3f2a0a;
-}
-
-html[data-theme="light"] .trainingScoreSheetCard .betaTestNote strong,
-html[data-theme="light"] .trainingScoreSheetCard .betaTestNote b {
-  color: inherit;
 }
 
 .trainingScoreSheetCard .compactMoreActions > summary {

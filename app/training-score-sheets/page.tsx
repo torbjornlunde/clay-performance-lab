@@ -5,11 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { appBuildLabel } from "@/lib/appBuildInfo";
 import { supabase } from "@/lib/supabase/client";
-import {
-  buildTrainingScoreSheetFeedback,
-  TRAINING_SCORE_SHEET_BETA_NOTE,
-  TRAINING_SCORE_SHEET_QUICK_START_STEPS,
-} from "@/lib/trainingScoreSheets/feedback";
+import { TRAINING_SCORE_SHEET_QUICK_START_STEPS } from "@/lib/trainingScoreSheets/feedback";
 import { userFacingDeleteError, userFacingLoadError } from "@/lib/userFacingErrors";
 
 type ScoreSheetRow = {
@@ -205,7 +201,6 @@ export default function TrainingScoreSheetsPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [feedbackMessage, setFeedbackMessage] = useState("");
 
   useEffect(() => {
     void load();
@@ -341,40 +336,6 @@ export default function TrainingScoreSheetsPage() {
     router.push("/training-score-sheets/new");
   }
 
-  async function copyTextToClipboard(text: string) {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-    const textArea = document.createElement("textarea");
-    textArea.value = text;
-    textArea.style.position = "fixed";
-    textArea.style.left = "-9999px";
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    document.execCommand("copy");
-    document.body.removeChild(textArea);
-  }
-
-  async function copyFeedbackTemplate(item?: SheetListItem) {
-    setFeedbackMessage("");
-    const feedbackText = buildTrainingScoreSheetFeedback({
-      title: item?.title || "Training score sheet archive",
-      discipline: item?.discipline,
-      sessionDate: item?.sessionDate,
-      location: item?.location || "",
-      url: typeof window === "undefined" ? "" : window.location.href,
-      userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
-    });
-    try {
-      await copyTextToClipboard(feedbackText);
-      setFeedbackMessage("Feedback template copied. Paste it into a message with any screenshot.");
-    } catch {
-      setFeedbackMessage("Could not copy feedback template automatically. Try copying results manually and include the score sheet title.");
-    }
-  }
-
   async function deleteItem(item: SheetListItem) {
     if (item.isLocalOnly) {
       const confirmed = window.confirm(
@@ -445,19 +406,14 @@ export default function TrainingScoreSheetsPage() {
             <p className="eyebrow">Training Score Sheets</p>
             <h1>Score sheet archive</h1>
             <p className="muted">
-              Review, reopen, and safely delete training score sheets without manual SQL cleanup.
+              Review, reopen, and manage your training score sheets.
             </p>
           </div>
           <div className="btns heroActions">
-            <button type="button" className="button secondary smallButton" onClick={() => void copyFeedbackTemplate()}>
-              Report issue
-            </button>
             <Link href="/dashboard" className="button secondary smallButton">Dashboard</Link>
             <Link href="/training-score-sheets/new" className="button smallButton">New training score sheet</Link>
           </div>
         </div>
-
-        <p className="small betaTestNote">{TRAINING_SCORE_SHEET_BETA_NOTE}</p>
 
         <section className="subcard scoreSheetStructurePanel" aria-label="Training score sheet actions">
           <div>
@@ -474,8 +430,8 @@ export default function TrainingScoreSheetsPage() {
 
         <details className="subcard quickStartCard">
           <summary>
-            <span>Testing guide</span>
-            <span className="small muted">Score sheet checks</span>
+            <span>Quick start</span>
+            <span className="small muted">Workflow</span>
           </summary>
           <ol className="quickStartList">
             {TRAINING_SCORE_SHEET_QUICK_START_STEPS.map((step) => (
@@ -486,7 +442,6 @@ export default function TrainingScoreSheetsPage() {
 
         {err && <p className="error">{err}</p>}
         {message && <p className="success">{message}</p>}
-        {feedbackMessage && <p className="success">{feedbackMessage}</p>}
 
         <div id="existing-score-sheets" className="filterBar" aria-label="Training score sheet filters">
           {([
@@ -558,13 +513,6 @@ export default function TrainingScoreSheetsPage() {
                   <div className="sessionActions archiveActions">
                     <button type="button" className="button secondary smallButton" onClick={() => openItem(item)}>
                       Open / edit
-                    </button>
-                    <button
-                      type="button"
-                      className="button secondary smallButton"
-                      onClick={() => void copyFeedbackTemplate(item)}
-                    >
-                      Report issue
                     </button>
                     {canDelete && (
                       <details className="compactMoreActions">
