@@ -45,3 +45,32 @@ export function statusForPost(args: { post: PostTargets; expectedTargets: number
 export function scopedPhotoKey(sessionId: string, postNumber: number) {
   return `${sessionId}:${postNumber}`;
 }
+
+
+export function configuredPostCount(posts: PostTargets[], expectedTargets: number) {
+  return posts.filter((post) => post.presentations.reduce((sum, presentation) => sum + presentation.targets.length, 0) >= expectedTargets).length;
+}
+
+export function postNumbersMeetingExpected(rows: Array<{ post_number: number | null }>, expectedTargets: number) {
+  const counts = new Map<number, number>();
+  rows.forEach((row) => {
+    const postNumber = Number(row.post_number);
+    if (Number.isFinite(postNumber) && postNumber > 0) counts.set(postNumber, (counts.get(postNumber) || 0) + 1);
+  });
+  return Array.from(counts.values()).filter((count) => count >= expectedTargets).length;
+}
+
+export function scoreDisplay(score: number | null | undefined, totalTargets: number | null | undefined) {
+  if (typeof score !== "number" || !Number.isFinite(score)) return "No result yet";
+  return typeof totalTargets === "number" && Number.isFinite(totalTargets) && totalTargets > 0 ? `${score} / ${totalTargets}` : String(score);
+}
+
+export type PlannedSetupSave = { shouldContinue: boolean; metadata: Record<string, number | string | null>; conflict: boolean };
+export function planSetupSave(args: { postCount: number; targetsPerPost: number; defaultPostFormat: string; existingTotal: unknown; confirmConflict: () => boolean }): PlannedSetupSave {
+  const metadata: Record<string, number | string | null> = setupMetadata(args.postCount, args.targetsPerPost, args.defaultPostFormat);
+  const nextTotal = setupTotal(args.postCount, args.targetsPerPost);
+  const conflict = shouldConfirmTotalTargetChange(args.existingTotal, nextTotal);
+  if (conflict && !args.confirmConflict()) return { shouldContinue: false, metadata, conflict };
+  if (args.existingTotal === null || args.existingTotal === undefined) metadata.total_targets = nextTotal;
+  return { shouldContinue: true, metadata, conflict };
+}

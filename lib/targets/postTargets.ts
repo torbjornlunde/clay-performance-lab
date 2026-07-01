@@ -3,7 +3,7 @@ export type TargetDescription = { target_label: string; target_type: string; dir
 export type PostTarget = TargetDescription & { target_position: number; position_in_presentation: number };
 export type Presentation = { presentation_number: number; presentation_type: PresentationType; targets: PostTarget[] };
 export type PostTargets = { post_number: number; instructions: string; source_text: string; presentations: Presentation[] };
-export type Draft = { schemaVersion: 2; sessionId: string; postCount: number; posts: PostTargets[]; lastLocalUpdateAt: string; lastServerSyncAt?: string; hasUnsyncedChanges: boolean };
+export type Draft = { schemaVersion: 2; sessionId: string; postCount: number; targetsPerPost: number; defaultPostFormat: string; posts: PostTargets[]; lastLocalUpdateAt: string; lastServerSyncAt?: string; hasUnsyncedChanges: boolean };
 function normalizeDraftTimestamp(value: unknown) {
   if (typeof value !== "string" || !value.trim()) return undefined;
   const time = Date.parse(value);
@@ -47,5 +47,7 @@ export function migrateDraft(value: any, sessionId: string): Draft | null {
   const postCount = Math.max(1, Number(value.postCount || value.posts.length || 1));
   const posts = ensurePostCount(value.posts.map((post: any, i: number) => normalizePost(Number(post.post_number || i + 1), Array.isArray(post.presentations) ? post.presentations : [], post.instructions || "", post.source_text || "")), postCount);
   const localUpdateAt = normalizeDraftTimestamp(value.lastLocalUpdateAt) || new Date().toISOString();
-  return { schemaVersion: DRAFT_SCHEMA_VERSION, sessionId, postCount, posts, lastLocalUpdateAt: localUpdateAt, lastServerSyncAt: normalizeDraftTimestamp(value.lastServerSyncAt), hasUnsyncedChanges: Boolean(value.hasUnsyncedChanges) };
+  const targetsPerPost = Math.max(1, Math.round(Number(value.targetsPerPost || value.targets_per_post || 10)));
+  const defaultPostFormat = typeof value.defaultPostFormat === "string" && value.defaultPostFormat.trim() ? value.defaultPostFormat : typeof value.default_post_format === "string" && value.default_post_format.trim() ? value.default_post_format : "5 pairs";
+  return { schemaVersion: DRAFT_SCHEMA_VERSION, sessionId, postCount, targetsPerPost, defaultPostFormat, posts, lastLocalUpdateAt: localUpdateAt, lastServerSyncAt: normalizeDraftTimestamp(value.lastServerSyncAt), hasUnsyncedChanges: Boolean(value.hasUnsyncedChanges) };
 }

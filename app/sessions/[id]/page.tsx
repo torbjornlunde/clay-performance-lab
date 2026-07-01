@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { analysisPresentation } from "@/lib/analysis/sessionAnalysis";
 import { isCompactDiscipline, isOrdinaryLeirduesti, isPostBasedSportingDiscipline, postTargetUnitLabel } from "@/lib/disciplines";
+import { postNumbersMeetingExpected, scoreDisplay } from "@/lib/targets/postSetupState";
 import { getSchemeType, plateRotation } from "@/lib/fitasc/schemes";
 import { normalizeLeirduestiLabel, shortMissedTarget } from "@/lib/misses/labels";
 import { scoreFromMisses, totalMisses } from "@/lib/misses/scoring";
@@ -177,15 +178,10 @@ export default function Page() {
       .returns<TargetDefinition[]>();
     let configuredPosts: number | null = null;
     if (sessionData && isPostBasedSportingDiscipline(sessionData.discipline)) {
-      const [targetRows, detailRows] = await Promise.all([
-        supabase.from("session_post_targets").select("post_number").eq("session_id", params.id),
-        supabase.from("session_post_details").select("post_number").eq("session_id", params.id),
-      ]);
-      if (!targetRows.error || !detailRows.error) {
-        const configured = new Set<number>();
-        if (!targetRows.error) (targetRows.data || []).forEach((row: any) => configured.add(row.post_number));
-        if (!detailRows.error) (detailRows.data || []).forEach((row: any) => configured.add(row.post_number));
-        configuredPosts = configured.size;
+      const targetRows = await supabase.from("session_post_targets").select("post_number").eq("session_id", params.id);
+      if (!targetRows.error) {
+        const expectedTargets = sessionData.targets_per_post || (sessionData.total_targets && (sessionData.post_count || sessionData.course_count) ? Math.max(Math.round(sessionData.total_targets / (sessionData.post_count || sessionData.course_count)), 1) : 10);
+        configuredPosts = postNumbersMeetingExpected(targetRows.data || [], expectedTargets);
       }
     }
     const weightedMissCount = totalMisses(missData || []);
@@ -231,7 +227,7 @@ export default function Page() {
   const percentage = typeof scoreUsed === "number" && typeof session.winning_score === "number" && session.winning_score > 0 ? (scoreUsed / session.winning_score) * 100 : null;
   const resultOnly = session.session_type === "Competition" && session.own_score !== null && courses.length === 0 && count === 0;
   const sporttrapStand = courses[0]?.shooter_number;
-  const scoreLine = typeof scoreUsed === "number" && typeof totalTargets === "number" ? `${scoreUsed} / ${totalTargets}` : "No result yet";
+  const scoreLine = scoreDisplay(scoreUsed, totalTargets);
   const performanceLine = percentage === null ? null : `${percentage.toFixed(1)}%`;
   const hasScoreMismatch = !quickScore && typeof session.own_score === "number" && typeof calculatedScore === "number" && session.own_score !== calculatedScore;
   const metadataChips = [
