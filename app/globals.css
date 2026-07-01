@@ -1847,22 +1847,32 @@ html, body {
   display: grid;
   gap: 3px;
   max-width: min(260px, calc(100% - 24px));
+  min-width: 0;
   padding: 10px 12px;
-  border: 1px solid rgba(216, 165, 58, 0.42);
+  border: 1px solid var(--chart-preview-border, var(--border-accent));
   border-radius: 14px;
-  background: rgba(7, 11, 17, 0.92);
-  box-shadow: var(--shadow);
-  color: var(--muted);
+  background: var(--chart-preview-bg, var(--surface-raised));
+  box-shadow: var(--chart-preview-shadow, var(--shadow));
+  color: var(--chart-preview-text, var(--text-primary));
   font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .chartPreview strong {
-  color: var(--text);
+  color: var(--chart-preview-strong, var(--text-primary));
   font-size: 13px;
+  line-height: 1.3;
+}
+
+.chartPreview span {
+  min-width: 0;
+  color: var(--chart-preview-value, var(--text-secondary));
+  overflow-wrap: anywhere;
 }
 
 .chartPreview small {
-  color: #ffe2a0;
+  color: var(--chart-preview-helper, var(--gold2));
   font-weight: 800;
 }
 
@@ -6639,6 +6649,13 @@ details.equipmentDetails[open] summary::after {
   --error-text: #ffcfc7;
   --success-bg: rgba(107, 208, 140, 0.13);
   --success-text: #caffd9;
+  --chart-preview-bg: rgba(7, 11, 17, 0.96);
+  --chart-preview-border: rgba(245, 207, 106, 0.62);
+  --chart-preview-text: var(--text-primary);
+  --chart-preview-strong: #ffffff;
+  --chart-preview-value: #d8e1eb;
+  --chart-preview-helper: #ffe2a0;
+  --chart-preview-shadow: 0 16px 42px rgba(0, 0, 0, 0.46);
 
   --shadow-card: 0 18px 55px rgba(0, 0, 0, 0.36);
   --shadow-raised: 0 12px 34px rgba(0, 0, 0, 0.28);
@@ -6713,6 +6730,13 @@ html[data-theme="light"] {
   --error-text: #741f15;
   --success-bg: rgba(29, 107, 58, 0.12);
   --success-text: #18572f;
+  --chart-preview-bg: linear-gradient(180deg, rgba(255, 249, 236, 0.98), rgba(236, 226, 207, 0.98));
+  --chart-preview-border: rgba(130, 79, 4, 0.62);
+  --chart-preview-text: var(--text-primary);
+  --chart-preview-strong: #171d22;
+  --chart-preview-value: #25303a;
+  --chart-preview-helper: #6f4303;
+  --chart-preview-shadow: 0 16px 34px rgba(39, 33, 24, 0.24), inset 0 1px 0 rgba(255, 252, 243, 0.8);
 
   --shadow-card: 0 18px 46px rgba(39, 33, 24, 0.22), inset 0 1px 0 rgba(255, 252, 243, 0.72);
   --shadow-raised: 0 12px 30px rgba(39, 33, 24, 0.18), inset 0 1px 0 rgba(255, 252, 243, 0.68);
