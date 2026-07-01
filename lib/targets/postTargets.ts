@@ -4,6 +4,12 @@ export type PostTarget = TargetDescription & { target_position: number; position
 export type Presentation = { presentation_number: number; presentation_type: PresentationType; targets: PostTarget[] };
 export type PostTargets = { post_number: number; instructions: string; source_text: string; presentations: Presentation[] };
 export type Draft = { schemaVersion: 2; sessionId: string; postCount: number; posts: PostTargets[]; lastLocalUpdateAt: string; lastServerSyncAt?: string; hasUnsyncedChanges: boolean };
+function normalizeDraftTimestamp(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const time = Date.parse(value);
+  if (!Number.isFinite(time) || time <= Date.UTC(1971, 0, 1)) return undefined;
+  return new Date(time).toISOString();
+}
 export type PostDetailRow = { session_id: string; post_number: number; instructions: string | null; source_text: string | null; updated_at?: string; created_at?: string; id?: string };
 export const DRAFT_SCHEMA_VERSION = 2;
 export const presentationLabels: Record<PresentationType, string> = { single: "Single", report_pair: "Report pair", simultaneous_pair: "Simultaneous pair", other_pair: "Other pair", unknown: "Unknown single or pair" };
@@ -40,5 +46,6 @@ export function migrateDraft(value: any, sessionId: string): Draft | null {
   if (value.schemaVersion !== 1 && value.schemaVersion !== 2) return null;
   const postCount = Math.max(1, Number(value.postCount || value.posts.length || 1));
   const posts = ensurePostCount(value.posts.map((post: any, i: number) => normalizePost(Number(post.post_number || i + 1), Array.isArray(post.presentations) ? post.presentations : [], post.instructions || "", post.source_text || "")), postCount);
-  return { schemaVersion: DRAFT_SCHEMA_VERSION, sessionId, postCount, posts, lastLocalUpdateAt: value.lastLocalUpdateAt || new Date().toISOString(), lastServerSyncAt: value.lastServerSyncAt, hasUnsyncedChanges: Boolean(value.hasUnsyncedChanges) };
+  const localUpdateAt = normalizeDraftTimestamp(value.lastLocalUpdateAt) || new Date().toISOString();
+  return { schemaVersion: DRAFT_SCHEMA_VERSION, sessionId, postCount, posts, lastLocalUpdateAt: localUpdateAt, lastServerSyncAt: normalizeDraftTimestamp(value.lastServerSyncAt), hasUnsyncedChanges: Boolean(value.hasUnsyncedChanges) };
 }

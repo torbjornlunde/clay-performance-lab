@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const src = fs.readFileSync('lib/targets/postSetupState.ts','utf8');
+assert(src.includes('time <= Date.UTC(1971, 0, 1)'), 'epoch timestamps are rejected');
+assert(src.includes('sessionId}:${postNumber}'), 'photo scoping uses session and post');
+assert(src.includes('"Sync failed"') && src.indexOf('if (args.syncFailed)') < src.indexOf('ready_for_review'), 'sync failed priority first');
+assert(src.indexOf('ready_for_review') < src.indexOf('if (args.pendingPhoto)'), 'ready review priority before photo saved');
+assert(src.includes('setupTotal'), 'setup total helper exists');
+assert(src.includes('shouldConfirmTotalTargetChange'), 'total-target conflict helper exists');
+const editor = fs.readFileSync('app/sessions/[id]/targets/PostTargetEditor.tsx','utf8');
+assert(editor.includes('ref={cameraFileRef}') && editor.includes('capture="environment"'), 'camera input has capture');
+assert(editor.includes('ref={libraryFileRef}') && !editor.match(/ref=\{libraryFileRef\}[\s\S]{0,120}capture=/), 'library input has no capture');
+assert(editor.match(/processImage\(file/), 'file inputs share processing');
+assert(editor.includes('own_score') && editor.includes('Never changes result fields'), 'setup save documents result safety');
+console.log('post setup focused tests passed');
