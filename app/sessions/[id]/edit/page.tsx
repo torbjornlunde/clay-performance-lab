@@ -21,6 +21,7 @@ import { presentationOverrideOptions } from "@/lib/misses/presentation";
 import { EquipmentUsedSelector } from "@/app/components/EquipmentUsedSelector";
 import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { supabase } from "@/lib/supabase/client";
+import { normalizeDefaultPostFormat, postFormatOptions } from "@/lib/targets/postSetupState";
 
 type Session = {
   id: string;
@@ -234,11 +235,7 @@ export default function EditSessionPage() {
     setCount(nextCount);
     setLeirduestiPostCount(isLeirduesti ? leirduestiPosts : nextCount);
     setTargetsPerPost(String(leirduestiTargetsPerPost));
-    setDefaultPostFormat(
-      (session.default_post_format || "5 pairs")
-        .replace(/equal pairs/gi, "report pairs")
-        .replace(/repeated pairs/gi, "pairs"),
-    );
+    setDefaultPostFormat(normalizeDefaultPostFormat(session.default_post_format));
     setCourses(makeCourses(nextCount, mappedCourses));
     setCourseOverrides(overrideRows || []);
     setSporttrapSeriesCount(sporttrapSeries);
@@ -856,9 +853,9 @@ export default function EditSessionPage() {
               value={defaultPostFormat}
               onChange={(e) => setDefaultPostFormat(e.target.value)}
             >
-              <option>5 pairs</option>
-              <option>2 singles + 2 report pairs + 1 simo pair</option>
-              <option>Custom / unknown</option>
+              {postFormatOptions(defaultPostFormat).map((format) => (
+                <option key={format} value={format}>{format}</option>
+              ))}
             </select>
           </div>
         )}

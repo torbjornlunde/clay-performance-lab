@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { analysisPresentation } from "@/lib/analysis/sessionAnalysis";
 import { isCompactDiscipline, isOrdinaryLeirduesti, isPostBasedSportingDiscipline, postTargetUnitLabel } from "@/lib/disciplines";
+import { postNumbersMeetingExpected, scoreDisplay } from "@/lib/targets/postSetupState";
 import { getSchemeType, plateRotation } from "@/lib/fitasc/schemes";
 import { normalizeLeirduestiLabel, shortMissedTarget } from "@/lib/misses/labels";
 import { scoreFromMisses, totalMisses } from "@/lib/misses/scoring";
@@ -177,15 +178,10 @@ export default function Page() {
       .returns<TargetDefinition[]>();
     let configuredPosts: number | null = null;
     if (sessionData && isPostBasedSportingDiscipline(sessionData.discipline)) {
-      const [targetRows, detailRows] = await Promise.all([
-        supabase.from("session_post_targets").select("post_number").eq("session_id", params.id),
-        supabase.from("session_post_details").select("post_number").eq("session_id", params.id),
-      ]);
-      if (!targetRows.error || !detailRows.error) {
-        const configured = new Set<number>();
-        if (!targetRows.error) (targetRows.data || []).forEach((row: any) => configured.add(row.post_number));
-        if (!detailRows.error) (detailRows.data || []).forEach((row: any) => configured.add(row.post_number));
-        configuredPosts = configured.size;
+      const targetRows = await supabase.from("session_post_targets").select("post_number").eq("session_id", params.id);
+      if (!targetRows.error) {
+        const expectedTargets = sessionData.targets_per_post || (sessionData.total_targets && (sessionData.post_count || sessionData.course_count) ? Math.max(Math.round(sessionData.total_targets / (sessionData.post_count || sessionData.course_count)), 1) : 10);
+        configuredPosts = postNumbersMeetingExpected(targetRows.data || [], expectedTargets);
       }
     }
     const weightedMissCount = totalMisses(missData || []);
@@ -231,15 +227,13 @@ export default function Page() {
   const percentage = typeof scoreUsed === "number" && typeof session.winning_score === "number" && session.winning_score > 0 ? (scoreUsed / session.winning_score) * 100 : null;
   const resultOnly = session.session_type === "Competition" && session.own_score !== null && courses.length === 0 && count === 0;
   const sporttrapStand = courses[0]?.shooter_number;
-  const scoreLine = typeof scoreUsed === "number" && typeof totalTargets === "number" ? `${scoreUsed} / ${totalTargets}` : value(scoreUsed);
+  const scoreLine = scoreDisplay(scoreUsed, totalTargets);
   const performanceLine = percentage === null ? null : `${percentage.toFixed(1)}%`;
   const hasScoreMismatch = !quickScore && typeof session.own_score === "number" && typeof calculatedScore === "number" && session.own_score !== calculatedScore;
   const metadataChips = [
     formatDate(session.competition_date || session.created_at),
     session.discipline,
     session.shooting_ground,
-    entryType(session, resultOnly, count),
-    session.shooting_format && !isSporttrap ? session.shooting_format : null,
   ].filter(Boolean);
   const showSourceDetails = isLeirdueImported(session);
   const sourceUrl = importDetail(session, "source_url") || session.leirdue_result_url;
@@ -258,8 +252,11 @@ export default function Page() {
   const hasAdvancedDetails = isSporttrap || isLeirduesti || (isCompact && courses.length > 0);
   const equipmentLines = equipmentSnapshotLines(session.equipment_snapshot);
   const postUnit = postTargetUnitLabel(session.discipline).toLowerCase();
+  const expectedPostCount = leirduestiPostCount || session.post_count || session.course_count || courses.length || 1;
+  const setupComplete = (postSetupCount ?? 0) >= expectedPostCount && expectedPostCount > 0;
+  const setupPartial = (postSetupCount ?? 0) > 0 && !setupComplete;
   const setupAction = isPostBasedSportingDiscipline(session.discipline)
-    ? { href: `/sessions/${session.id}/targets`, label: "Set up posts and targets", progress: `${postSetupCount ?? 0} of ${leirduestiPostCount || session.post_count || session.course_count || courses.length || 1} ${postUnit}s set up` }
+    ? { href: `/sessions/${session.id}/targets`, label: setupComplete ? "Review post setup" : setupPartial ? "Continue post setup" : "Set up posts and targets", progress: `${postSetupCount ?? 0} of ${expectedPostCount} ${postUnit}s set up` }
     : isCompact
       ? { href: `/sessions/${session.id}/edit#course-setup`, label: "Set up courses and schemes", progress: `${courses.filter((course) => course.fitasc_scheme !== null && course.fitasc_scheme !== undefined).length} of ${session.course_count || courses.length || 1} courses have schemes` }
       : isSporttrap
@@ -276,8 +273,7 @@ export default function Page() {
             <h2>{session.name}</h2>
           </div>
           <span className="badge badgeBlue">{entryType(session, resultOnly, count)}</span>
-          {setupAction && setupAction.progress.startsWith("0 of") && <span className="badge">Setup incomplete</span>}
-          {showSourceDetails && <span className="badge badgeGreen">Imported</span>}
+
         </div>
         <div className="metadataLine" aria-label="Session metadata">
           {metadataChips.map((chip) => <span key={chip} className="pill">{chip}</span>)}
@@ -326,8 +322,9 @@ export default function Page() {
         </div>
         {err && <div className="error">{err}</div>}
         <div className="primaryActionGrid">
+          {setupAction && !setupComplete && <Link href={setupAction.href} className="button setupActionButton"><span>{setupAction.label}</span><small>{setupAction.progress}</small></Link>}
           <Link href={`/sessions/${session.id}/log`} className="button">{loggingLabel}</Link>
-          {setupAction && <Link href={setupAction.href} className="button secondary setupActionButton"><span>{setupAction.label}</span><small>{setupAction.progress}</small></Link>}
+          {setupAction && setupComplete && <Link href={setupAction.href} className="button secondary setupActionButton"><span>{setupAction.label}</span><small>{setupAction.progress}</small></Link>}
           {count > 0 && <Link href={`/sessions/${session.id}/misses`} className="button secondary">Review misses</Link>}
         </div>
         <details className="detailAccordion">

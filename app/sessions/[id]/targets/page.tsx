@@ -94,7 +94,7 @@ export default function TargetDefinitionsPage() {
     }
     const { data: sessionData } = await supabase
       .from("sessions")
-      .select("id,name,discipline,course_count,post_count,total_targets")
+      .select("id,name,discipline,course_count,post_count,total_targets,targets_per_post,default_post_format,own_score,winning_score")
       .eq("id", params.id)
       .single();
     const { data: courseRows } = await supabase
