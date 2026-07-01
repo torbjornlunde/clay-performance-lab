@@ -35,6 +35,7 @@ export function PostTargetEditor({ session, courseRows }: Props) {
   const [review, setReview] = useState<PostSignAnalysisResult | null>(null);
   const [photoUrl, setPhotoUrl] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const manualRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { currentPostRef.current = current; sessionIdRef.current = session.id; }, [current, session.id]);
   useEffect(() => { loadServerAndDraft(); const updateOnline = () => { setStatus((old) => navigator.onLine ? (old === "Offline — saved on device" || old === "Waiting for connection" ? "Unsynced changes" : old) : "Offline — saved on device"); if (navigator.onLine) void retryWaitingOnce(); }; window.addEventListener("online", updateOnline); window.addEventListener("offline", updateOnline); return () => { window.removeEventListener("online", updateOnline); window.removeEventListener("offline", updateOnline); }; }, [session.id]);
@@ -65,7 +66,72 @@ export function PostTargetEditor({ session, courseRows }: Props) {
   function updateTarget(presentationIndex: number, targetIndex: number, field: string, value: string) { const post = posts[current - 1]; replacePost({ ...post, presentations: post.presentations.map((p, pi) => pi !== presentationIndex ? p : { ...p, targets: p.targets.map((t, ti) => ti === targetIndex ? { ...t, [field]: value } : t) }) }); }
   function updateInstructions(value: string) { const post = posts[current - 1]; replacePost({ ...post, instructions: value }); }
 
-  async function sync() { if (!navigator.onLine) { setStatus("Waiting for connection"); return; } const rows = rowsFromPosts(session.id, posts); const detailRows = detailRowsFromPosts(session.id, posts); if ((rows.length === 0 && serverRows.length > 0) || (detailRows.length === 0 && serverDetails.length > 0)) { if (!window.confirm("This will delete server target definitions or post instructions for this session. Continue?")) return; } setStatus("Syncing"); setError(""); const syncedAt = now(); const { error: countError } = await supabase.from("sessions").update({ post_count: postCount }).eq("id", session.id); if (countError) return fail(countError.message); if (rows.length) { const { error: upsertError } = await supabase.from("session_post_targets").upsert(rows, { onConflict: "session_id,post_number,target_position" }); if (upsertError) return fail(upsertError.message); } if (detailRows.length) { const { error: detailUpsertError } = await supabase.from("session_post_details").upsert(detailRows, { onConflict: "session_id,post_number" }); if (detailUpsertError) return fail(detailUpsertError.message); } const keep = new Set(rows.map((r) => `${r.post_number}:${r.target_position}`)); const stale = serverRows.filter((r) => !keep.has(`${r.post_number}:${r.target_position}`) || r.post_number > postCount); for (const row of stale) { const { error: deleteError } = await supabase.from("session_post_targets").delete().eq("id", row.id); if (deleteError) return fail(deleteError.message); } const keepDetails = new Set(detailRows.map((r) => String(r.post_number))); const staleDetails = serverDetails.filter((r) => !keepDetails.has(String(r.post_number)) || r.post_number > postCount); for (const row of staleDetails) { const { error: deleteError } = await supabase.from("session_post_details").delete().eq("id", row.id); if (deleteError) return fail(deleteError.message); } setLastSync(syncedAt); saveLocal(posts, postCount, false, syncedAt); setStatus("Synced"); await loadServerAndDraft(); }
+  async function sync() {
+    if (!navigator.onLine) {
+      setStatus("Waiting for connection");
+      return;
+    }
+
+    const rows = rowsFromPosts(session.id, posts);
+    const detailRows = detailRowsFromPosts(session.id, posts);
+    if ((rows.length === 0 && serverRows.length > 0) || (detailRows.length === 0 && serverDetails.length > 0)) {
+      if (!window.confirm("This will delete server target definitions or post instructions for this session. Continue?")) return;
+    }
+
+    setStatus("Syncing");
+    setError("");
+    const syncedAt = now();
+
+    if (rows.length) {
+      const { error: upsertError } = await supabase
+        .from("session_post_targets")
+        .upsert(rows, { onConflict: "session_id,post_number,target_position" });
+      if (upsertError) return fail(upsertError.message);
+    }
+
+    if (detailRows.length) {
+      const { error: detailUpsertError } = await supabase
+        .from("session_post_details")
+        .upsert(detailRows, { onConflict: "session_id,post_number" });
+      if (detailUpsertError) return fail(detailUpsertError.message);
+    }
+
+    const keep = new Set(rows.map((r) => `${r.post_number}:${r.target_position}`));
+    const stale = serverRows.filter((r) => !keep.has(`${r.post_number}:${r.target_position}`) || r.post_number > postCount);
+    for (const row of stale) {
+      const { error: deleteError } = await supabase.from("session_post_targets").delete().eq("id", row.id);
+      if (deleteError) return fail(deleteError.message);
+    }
+
+    const keepDetails = new Set(detailRows.map((r) => String(r.post_number)));
+    const staleDetails = serverDetails.filter((r) => !keepDetails.has(String(r.post_number)) || r.post_number > postCount);
+    for (const row of staleDetails) {
+      const { error: deleteError } = await supabase.from("session_post_details").delete().eq("id", row.id);
+      if (deleteError) return fail(deleteError.message);
+    }
+
+    const metadata: Record<string, number | null> = {
+      post_count: postCount,
+      course_count: postCount,
+    };
+    const configuredPostNumbers = new Set(rows.map((row) => Number(row.post_number)));
+    const allPostsHaveTargets = Array.from({ length: postCount }, (_, index) => index + 1)
+      .every((postNumber) => configuredPostNumbers.has(postNumber));
+    if ((session.total_targets === null || session.total_targets === undefined) && allPostsHaveTargets) {
+      metadata.total_targets = rows.length;
+    }
+
+    const { error: metadataError } = await supabase
+      .from("sessions")
+      .update(metadata)
+      .eq("id", session.id);
+    if (metadataError) return fail(metadataError.message);
+
+    setLastSync(syncedAt);
+    saveLocal(posts, postCount, false, syncedAt);
+    setStatus("Synced");
+    await loadServerAndDraft();
+  }
   function fail(message: string) { setError(message); setStatus("Sync failed"); saveLocal(posts, postCount, true); }
 
   async function capture(event: ChangeEvent<HTMLInputElement>) { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; if (pendingPhoto && !window.confirm("Replace the existing pending sign photo for this post?")) return; try { const blob = await resizeImage(file); const saved = await savePendingPostSignPhoto({ sessionId: session.id, postNumber: current, image: blob, mimeType: blob.type, status: navigator.onLine ? "saved_on_device" : "waiting_for_connection" }); setPendingPhoto(saved); setReview(null); if (navigator.onLine) void analyze(saved); } catch (e) { setError((e as Error).message); } }
@@ -76,10 +142,10 @@ export function PostTargetEditor({ session, courseRows }: Props) {
   function applyReview() { if (!review || pendingPhoto?.postNumber !== current || pendingPhoto.sessionId !== session.id) { setError("This analysis belongs to another post. Select the original post and retry."); return; } const invalid = review.presentations.flatMap((p) => p.targetLabels).find((label) => !isSimpleTargetLabel(label)); if (invalid) { setError(`Target label "${invalid}" is not a simple individual label. Use labels such as A, B or C before applying.`); return; } const post = posts[current - 1]; if (postHasMeaningfulData(post) && !window.confirm(`Apply to ${unit} ${current} will replace the current post structure, descriptions and instructions. Continue?`)) return; const presentations = review.presentations.map((p, i) => ({ presentation_number: i + 1, presentation_type: p.presentationType, targets: p.targetLabels.map((label, ti) => ({ target_position: 0, position_in_presentation: ti + 1, target_label: label.trim().toUpperCase(), target_type: "Unknown", direction: "Unknown", speed: "Unknown", distance: "Unknown", difficulty: "Unknown", notes: "" })) })); const next = posts.map((p, i) => i === current - 1 ? normalizePost(current, presentations, review.instructions, review.rawText) : p); mutate(next); void deletePendingPostSignPhoto(session.id, current); setPendingPhoto(null); setReview(null); }
 
   const post = posts[current - 1] || normalizePost(current, []); const currentTargets = post.presentations.flatMap((p) => p.targets); const describedCurrent = currentTargets.filter(isDescribed).length; const allTargets = posts.flatMap((p) => p.presentations.flatMap((x) => x.targets)); const describedAll = allTargets.filter(isDescribed).length;
-  return <div className="card postTargetEditor"><h2>Describe {unit.toLowerCase()}s and targets</h2><p className="small muted">{session.name}. Stable mapping: session → {unit.toLowerCase()} number → target position.</p>{recovery && <div className="subcard warning"><h3>Recover local draft?</h3><p className="small">A newer unsynced local draft ({new Date(recovery.draft.lastLocalUpdateAt).toLocaleString()}) exists. Server version: {new Date(recovery.serverDraft.lastLocalUpdateAt).toLocaleString()}.</p><div className="btns"><button onClick={() => { applyDraft(recovery.draft, true); setRecovery(null); }}>Restore local draft</button><button className="secondary" onClick={() => { applyDraft(recovery.serverDraft, false); setRecovery(null); }}>Use server version</button></div></div>}
+  return <div className="card postTargetEditor"><h2>Describe {unit.toLowerCase()}s and targets</h2><p className="small muted">Choose a post, then photograph the sign or enter the presentation order manually.</p><p className="small muted">{session.name}. Stable mapping: session → {unit.toLowerCase()} number → target position.</p>{recovery && <div className="subcard warning"><h3>Recover local draft?</h3><p className="small">A newer unsynced local draft ({new Date(recovery.draft.lastLocalUpdateAt).toLocaleString()}) exists. Server version: {new Date(recovery.serverDraft.lastLocalUpdateAt).toLocaleString()}.</p><div className="btns"><button onClick={() => { applyDraft(recovery.draft, true); setRecovery(null); }}>Restore local draft</button><button className="secondary" onClick={() => { applyDraft(recovery.serverDraft, false); setRecovery(null); }}>Use server version</button></div></div>}
     <div className="subcard"><div className="row"><div><label>Number of {unit.toLowerCase()}s</label><input type="number" min={1} max={MAX_POSTS} value={postCount} onChange={(e)=>setPostCount(Number(e.target.value)||1)} /></div><div><label>{unit}</label><select value={current} onChange={(e)=>setCurrent(Number(e.target.value))}>{Array.from({length:postCount},(_,i)=><option key={i+1} value={i+1}>{unit} {i+1}</option>)}</select></div></div><div className="btns"><button className="secondary" disabled={current<=1} onClick={()=>setCurrent(current-1)}>Previous</button><button className="secondary" disabled={current>=postCount} onClick={()=>setCurrent(current+1)}>Next</button></div><p className="small muted">{unit} {current}: {currentTargets.length} target positions, {describedCurrent} described. Overall: {describedAll} / {allTargets.length} described.</p><p className="small"><strong>{status}</strong>{lastSync ? ` · Last synced ${new Date(lastSync).toLocaleString()}` : ""}</p>{error && <div className="error">{error}</div>}<div className="btns"><button onClick={sync}>{status === "Sync failed" ? "Retry sync" : "Save and sync"}</button><Link href={`/sessions/${session.id}`} className="button secondary">Session</Link></div></div>
-    <div className="subcard"><h3>{unit} {current}</h3><label>{instructionLabel}</label><textarea value={post.instructions} onChange={(e)=>updateInstructions(e.target.value)} placeholder="Post-wide instructions, for example LIMIT PÅ A!" /><button type="button" onClick={()=>fileRef.current?.click()}>Take photo of sign</button><input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={capture} hidden /><p className="small muted">Include the whole sign. Keep the phone as straight as practical. Avoid glare and strong shadows. Make sure column headings and handwritten letters are visible.</p>{pendingPhoto && <PhotoPanel item={pendingPhoto} photoUrl={photoUrl} unit={unit} current={current} review={review} setReview={setReview} analyze={()=>analyze()} discard={discardPhoto} apply={applyReview} updatePresentation={setReviewPresentation} move={moveReview} add={() => review && setReview({ ...review, presentations: [...review.presentations, normalizeReviewPresentation({ presentationNumber: 0, presentationType: "single", targetLabels: [""], sourceText: "", confidence: "low", warnings: [] }, review.presentations.length)] })} remove={(i: number) => review && setReview({ ...review, presentations: review.presentations.filter((_: PostSignPresentation, index: number) => index !== i).map(normalizeReviewPresentation) })} />}</div>
-    <div className="subcard"><h3>Fast setup for {unit} {current}</h3><div className="btns"><button className="secondary" onClick={()=>replaceCurrent(template("report"), "5 report pairs")}>5 report pairs</button><button className="secondary" onClick={()=>replaceCurrent(template("simultaneous"), "5 simultaneous pairs")}>5 simultaneous pairs</button><button className="secondary" onClick={()=>replaceCurrent(template("singles"), "10 singles")}>10 singles</button><button className="secondary" onClick={clearCurrentPost}>Clear {unit.toLowerCase()}</button></div><div className="btns"><button onClick={()=>addPresentation("single")}>Add single</button><button onClick={()=>addPresentation("report_pair")}>Add report pair</button><button onClick={()=>addPresentation("simultaneous_pair")}>Add simultaneous pair</button><button onClick={()=>addPresentation("other_pair")}>Add other pair</button></div></div>
+    <div className="subcard"><h3>{unit} {current}</h3><label>{instructionLabel}</label><textarea value={post.instructions} onChange={(e)=>updateInstructions(e.target.value)} placeholder="Post-wide instructions, for example LIMIT PÅ A!" /><div className="btns postSetupQuickActions"><button type="button" onClick={()=>fileRef.current?.click()}>Take photo of sign</button><button type="button" className="secondary" onClick={()=>manualRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>Add manually</button></div><input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={capture} hidden /><p className="small muted">Include the whole sign. Keep the phone as straight as practical. Avoid glare and strong shadows. Make sure column headings and handwritten letters are visible.</p>{pendingPhoto && <PhotoPanel item={pendingPhoto} photoUrl={photoUrl} unit={unit} current={current} review={review} setReview={setReview} analyze={()=>analyze()} discard={discardPhoto} apply={applyReview} updatePresentation={setReviewPresentation} move={moveReview} add={() => review && setReview({ ...review, presentations: [...review.presentations, normalizeReviewPresentation({ presentationNumber: 0, presentationType: "single", targetLabels: [""], sourceText: "", confidence: "low", warnings: [] }, review.presentations.length)] })} remove={(i: number) => review && setReview({ ...review, presentations: review.presentations.filter((_: PostSignPresentation, index: number) => index !== i).map(normalizeReviewPresentation) })} />}</div>
+    <div className="subcard" ref={manualRef}><h3>Add manually for {unit} {current}</h3><div className="btns"><button className="secondary" onClick={()=>replaceCurrent(template("report"), "5 report pairs")}>5 report pairs</button><button className="secondary" onClick={()=>replaceCurrent(template("simultaneous"), "5 simultaneous pairs")}>5 simultaneous pairs</button><button className="secondary" onClick={()=>replaceCurrent(template("singles"), "10 singles")}>10 singles</button><button className="secondary" onClick={clearCurrentPost}>Clear {unit.toLowerCase()}</button></div><div className="btns"><button onClick={()=>addPresentation("single")}>Add single</button><button onClick={()=>addPresentation("report_pair")}>Add report pair</button><button onClick={()=>addPresentation("simultaneous_pair")}>Add simultaneous pair</button><button onClick={()=>addPresentation("other_pair")}>Add other pair</button></div></div>
     {post.presentations.map((p, pi)=><div className="subcard presentationCard" key={pi}><div className="row"><div><h3>Presentation {p.presentation_number} · {presentationLabels[p.presentation_type]}</h3></div><div><label>Structure</label><select value={p.presentation_type} onChange={(e)=>changePresentation(pi, e.target.value as PresentationType)}>{Object.entries(presentationLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div></div><button className="secondary" onClick={()=>removePresentation(pi)}>Remove presentation</button>{p.targets.map((t, ti)=><div className="subcard targetCard" key={t.target_position}><h4>Target position {t.target_position}{p.targets.length>1 ? ` · Pair target ${t.position_in_presentation}` : ""}</h4><div className="row"><div><label>Target label / machine</label><input value={t.target_label} onChange={(e)=>updateTarget(pi,ti,"target_label",e.target.value)} placeholder="A, B or C" /></div><div><label>Target type</label><select value={t.target_type} onChange={(e)=>updateTarget(pi,ti,"target_type",e.target.value)}>{targetTypes.map((x)=><option key={x}>{x}</option>)}</select></div><div><label>Direction</label><select value={t.direction} onChange={(e)=>updateTarget(pi,ti,"direction",e.target.value)}>{directions.map((x)=><option key={x}>{x}</option>)}</select></div></div><details><summary>More target details</summary><label>Speed</label><select value={t.speed} onChange={(e)=>updateTarget(pi,ti,"speed",e.target.value)}>{speeds.map((x)=><option key={x}>{x}</option>)}</select><label>Distance</label><select value={t.distance} onChange={(e)=>updateTarget(pi,ti,"distance",e.target.value)}>{distances.map((x)=><option key={x}>{x}</option>)}</select><label>Difficulty</label><select value={t.difficulty} onChange={(e)=>updateTarget(pi,ti,"difficulty",e.target.value)}>{difficulties.map((x)=><option key={x}>{x}</option>)}</select><label>Notes</label><textarea value={t.notes} onChange={(e)=>updateTarget(pi,ti,"notes",e.target.value)} placeholder="Optional lead, hold point or visual note" /></details></div>)}</div>)}
   </div>;
 }

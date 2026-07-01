@@ -70,12 +70,14 @@ function importedAt(session: SessionRow) {
 }
 
 function hasScore(session: SessionRow) {
-  return isUsableNumber(session.own_score) || isUsableNumber(session.total_targets);
+  return isUsableNumber(session.own_score) || Boolean(parseQuickScoreMetadata(session.notes));
 }
 
 function scoreUsed(session: SessionRow, missCounts: Record<string, number>) {
+  const quickScore = parseQuickScoreMetadata(session.notes);
   if (isUsableNumber(session.own_score)) return session.own_score;
-  if (isUsableNumber(session.total_targets)) return scoreFromMisses(session.total_targets, missCounts[session.id] || 0);
+  if (quickScore) return quickScore.totalHits;
+  if (isUsableNumber(session.total_targets) && (missCounts[session.id] || 0) > 0) return scoreFromMisses(session.total_targets, missCounts[session.id] || 0);
   return null;
 }
 
@@ -100,11 +102,19 @@ function isCompetitionResult(session: SessionRow) {
   return session.session_type === "Competition" || hasScore(session) || isImported(session);
 }
 
+
+function productStatus(session: SessionRow, missCounts: Record<string, number>, courseCounts: Record<string, number>) {
+  if (isImported(session)) return "Imported";
+  if (hasScore(session) || (isUsableNumber(session.total_targets) && (missCounts[session.id] || 0) > 0)) return "Result recorded";
+  if (isDetailedLog(session, missCounts, courseCounts)) return "Setup incomplete";
+  return "Needs result";
+}
+
 function statusBadges(session: SessionRow, missCounts: Record<string, number>, courseCounts: Record<string, number>) {
   const badges: string[] = [];
   if (isImported(session)) badges.push("Imported");
   if (isDraftOrIncomplete(session, missCounts, courseCounts)) badges.push("Draft", "Incomplete");
-  if (!hasScore(session)) badges.push("No score");
+  if (!hasScore(session) && !(isUsableNumber(session.total_targets) && (missCounts[session.id] || 0) > 0)) badges.push("No score");
   if (!isImported(session) && resultSource(session, missCounts, courseCounts) === "Manual") badges.push("Test/manual");
   return Array.from(new Set(badges));
 }
@@ -198,8 +208,8 @@ export default function ResultsPage() {
           <p>Open, review, and delete your saved quick results, detailed competition logs, manual entries, and Leirdue.net imports.</p>
         </div>
         <div className="btns heroActions">
-          <Link href="/log-competition" className="button secondary">Log competition</Link>
-          <Link href="/results/quick" className="button">Quick competition score</Link>
+          <Link href="/results/new" className="button">Register competition</Link>
+          <Link href="/import/leirdue" className="button secondary">Import from Leirdue.net</Link>
         </div>
       </div>
 
@@ -234,11 +244,11 @@ export default function ResultsPage() {
           <div className="emptyState compactEmptyState">
             <p>
               {sessions.length === 0
-                ? "No competition results yet. Add a quick result, create a detailed competition log, or import from Leirdue.net."
+                ? "No competition results yet. Register a competition first, or import from Leirdue.net if the result is already published."
                 : "No results match this filter."}
             </p>
             <div className="btns compactEmptyActions">
-              <Link href="/log-competition" className="button smallButton">Log competition</Link>
+              <Link href="/results/new" className="button smallButton">Register competition</Link>
               {sessions.length === 0 && <Link href="/import/leirdue" className="button secondary smallButton">Import from Leirdue.net</Link>}
             </div>
           </div>
@@ -261,8 +271,9 @@ export default function ResultsPage() {
                     <div className="small muted">
                       Score {score === null ? "-" : score} / {session.total_targets ?? "-"}
                       {isUsableNumber(session.winning_score) ? ` · Winning score ${session.winning_score}` : ""}
-                      {` · Source: ${source}`}
+                      {badges.length ? ` · ${badges.join(", ")}` : " · Complete"}
                     </div>
+                    <div className="small muted">Source: {source}</div>
                     {parseQuickScoreMetadata(session.notes) && (
                       <div className="small muted">
                         Order {parseQuickScoreMetadata(session.notes)?.courseOrder.join(" → ")} · Misses {parseQuickScoreMetadata(session.notes)?.totalMisses}
@@ -277,7 +288,7 @@ export default function ResultsPage() {
                       </div>
                     )}
                     <div className="sheetStatusBadges">
-                      <span className="badge badgeBlue">{source}</span>
+                      <span className="badge badgeBlue">{productStatus(session, missCounts, courseCounts)}</span>
                       {badges.map((badge) => <span className="badge" key={badge}>{badge}</span>)}
                     </div>
                     <div className="btns archiveActions">

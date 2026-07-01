@@ -94,7 +94,7 @@ export default function TargetDefinitionsPage() {
     }
     const { data: sessionData } = await supabase
       .from("sessions")
-      .select("id,name,discipline,course_count,post_count")
+      .select("id,name,discipline,course_count,post_count,total_targets")
       .eq("id", params.id)
       .single();
     const { data: courseRows } = await supabase
@@ -300,7 +300,7 @@ export default function TargetDefinitionsPage() {
   return (
     <main>
       <div className="card">
-        <h2>Target definitions</h2>
+        <h2>Target definitions</h2><p className="small muted">Set target details for each course using machines A–F. FITASC schemes are configured on the session setup page.</p>
         <p className="small muted">{session.name}</p>
         <label>Course</label>
         <select
