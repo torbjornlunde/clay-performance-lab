@@ -40,14 +40,40 @@ export function PostTargetEditor({ session, courseRows }: Props) {
   }
 
   async function loadServerAndDraft() {
-    const { data } = await supabase.from("session_post_targets").select("*").eq("session_id", session.id).order("post_number").order("target_position");
+    const raw = localStorage.getItem(draftKey(session.id));
+    const local = raw ? safeDraft(raw, session.id) : null;
+
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (local) applyDraft(local, local.hasUnsyncedChanges);
+      setStatus("Offline — saved on device");
+      return;
+    }
+
+    const { data, error: loadError } = await supabase
+      .from("session_post_targets")
+      .select("*")
+      .eq("session_id", session.id)
+      .order("post_number")
+      .order("target_position");
+
+    if (loadError) {
+      if (local) applyDraft(local, local.hasUnsyncedChanges);
+      setError(loadError.message);
+      setStatus("Sync failed");
+      return;
+    }
+
     const rows = data || [];
     setServerRows(rows);
     const serverDraft = draftFromRows(rows, session.id, initialPostCount(session, courseRows), false);
-    const raw = localStorage.getItem(draftKey(session.id));
-    const local = raw ? safeDraft(raw, session.id) : null;
+
     if (local?.hasUnsyncedChanges) { setRecovery({ draft: local, serverDraft }); return; }
-    applyDraft(local && !local.hasUnsyncedChanges ? local : serverDraft, false);
+
+    const localSyncedAt = local?.lastServerSyncAt || local?.lastLocalUpdateAt;
+    const serverUpdatedAt = serverDraft.lastServerSyncAt || serverDraft.lastLocalUpdateAt;
+    const serverIsNewer = !localSyncedAt || new Date(serverUpdatedAt).getTime() > new Date(localSyncedAt).getTime();
+
+    applyDraft(serverIsNewer || !local ? serverDraft : local, false);
   }
 
   function applyDraft(draft: Draft, unsynced: boolean) {
