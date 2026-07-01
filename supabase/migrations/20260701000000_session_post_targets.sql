@@ -6,6 +6,7 @@ create table if not exists public.session_post_targets (
   presentation_number integer not null check (presentation_number > 0),
   presentation_type text not null check (presentation_type in ('single', 'report_pair', 'simultaneous_pair', 'other_pair', 'unknown')),
   position_in_presentation integer not null check (position_in_presentation > 0),
+  target_label text,
   target_type text,
   direction text,
   speed text,
