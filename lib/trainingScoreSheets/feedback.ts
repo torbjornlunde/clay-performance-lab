@@ -15,12 +15,11 @@ export const TRAINING_SCORE_SHEET_BETA_NOTE =
 export const TRAINING_SCORE_SHEET_QUICK_START_STEPS = [
   "Create training",
   "Add shooters",
-  "Choose discipline",
+  "Choose discipline and setup",
   "Start Field Mode",
   "Log Hit/Miss",
-  "Review results",
+  "Review and correct results",
   "Copy/share results",
-  "Send feedback if something breaks",
 ];
 
 export function buildTrainingScoreSheetFeedback(context: TrainingFeedbackContext) {
