@@ -7676,3 +7676,4 @@ select { -webkit-appearance: menulist; appearance: auto; }
 @media (max-width: 340px) {
   .postSelectorGrid { grid-template-columns: 1fr; }
 }
+.scorecardGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:.5rem}.scorecardCell{min-height:52px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--foreground);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.15rem;font-size:1rem}.scorecardCell.hit{outline:2px solid #2f855a}.scorecardCell.miss{outline:2px solid #c53030}.scorecardCell.unknown{outline:2px dashed #b7791f}.stickyApplyBar{position:sticky;bottom:0;padding:.75rem 0 calc(.75rem + env(safe-area-inset-bottom));background:var(--background)}.checkboxRow{display:flex;gap:.5rem;align-items:flex-start;min-height:44px}.checkboxRow input{margin-top:.25rem}

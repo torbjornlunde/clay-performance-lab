@@ -38,6 +38,8 @@ type Miss = {
   second_main_reason: string | null;
   second_target_read: string | null;
   second_comment: string | null;
+  source_type?: string | null;
+  target_position?: number | null;
   created_at: string;
 };
 
@@ -323,6 +325,8 @@ export default function Page() {
         {err && <div className="error">{err}</div>}
         <div className="primaryActionGrid">
           {setupAction && !setupComplete && <Link href={setupAction.href} className="button setupActionButton"><span>{setupAction.label}</span><small>{setupAction.progress}</small></Link>}
+          {isPostBasedSportingDiscipline(session.discipline) && setupComplete && count === 0 && <Link href={`/sessions/${session.id}/scorecard-import`} className="button">Import scorecard</Link>}
+          {isPostBasedSportingDiscipline(session.discipline) && (!setupComplete || count > 0) && <Link href={`/sessions/${session.id}/scorecard-import`} className="button secondary">Import scorecard</Link>}
           <Link href={`/sessions/${session.id}/log`} className="button">{loggingLabel}</Link>
           {setupAction && setupComplete && <Link href={setupAction.href} className="button secondary setupActionButton"><span>{setupAction.label}</span><small>{setupAction.progress}</small></Link>}
           {count > 0 && <Link href={`/sessions/${session.id}/misses`} className="button secondary">Review misses</Link>}
@@ -356,13 +360,13 @@ export default function Page() {
                   <div className="missReviewHeader">
                     <div>
                       <strong>{missLocation(session, miss)}</strong>
-                      <div className="small muted">{compactDateTime(miss.created_at)}</div>
+                      <div className="small muted">{compactDateTime(miss.created_at)}{miss.source_type === "scorecard_import" ? " · Scorecard import" : ""}</div>
                     </div>
                     <Link className="button secondary smallButton" href={`/sessions/${session.id}/misses/${miss.id}/edit`}>Edit / correct</Link>
                   </div>
                   <div className="missCompactMeta">
                     <span>Missed: <strong>{shortMissedTarget(miss.missed_target)}</strong></span>
-                    <span>Reason: <strong>{value(firstValue(miss.main_reason, miss.first_main_reason, miss.second_main_reason))}</strong></span>
+                    <span>Reason: <strong>{miss.source_type === "scorecard_import" && firstValue(miss.main_reason, miss.first_main_reason, miss.second_main_reason) === "Unknown" ? "Details not added" : value(firstValue(miss.main_reason, miss.first_main_reason, miss.second_main_reason))}</strong></span>
                     <span>Where: <strong>{value(firstValue(miss.where_miss, miss.first_where_miss, miss.second_where_miss))}</strong></span>
                     <span>Read: <strong>{value(firstValue(miss.target_read, miss.first_target_read, miss.second_target_read))}</strong></span>
                     {miss.shooting_order_label && <span>Order: <strong>{miss.shooting_order_label}{miss.is_reversed_order ? " · Reversed" : ""}</strong></span>}
