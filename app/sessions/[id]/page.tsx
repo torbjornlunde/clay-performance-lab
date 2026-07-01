@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { analysisPresentation } from "@/lib/analysis/sessionAnalysis";
-import { isCompactDiscipline, isOrdinaryLeirduesti } from "@/lib/disciplines";
+import { isCompactDiscipline, isOrdinaryLeirduesti, isPostBasedSportingDiscipline } from "@/lib/disciplines";
 import { getSchemeType, plateRotation } from "@/lib/fitasc/schemes";
 import { normalizeLeirduestiLabel, shortMissedTarget } from "@/lib/misses/labels";
 import { scoreFromMisses, totalMisses } from "@/lib/misses/scoring";
@@ -416,7 +416,7 @@ export default function Page() {
                 </div>
               ))}
             </div>
-            <Link href={`/sessions/${session.id}/targets`} className="button secondary smallButton">Edit target definitions</Link>
+            <Link href={`/sessions/${session.id}/targets`} className="button secondary smallButton">{isPostBasedSportingDiscipline(session.discipline) ? "Describe posts and targets" : "Edit target definitions"}</Link>
           </DetailSection>
         )}
 
