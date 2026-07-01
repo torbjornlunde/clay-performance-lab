@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { isPostBasedSportingDiscipline } from "@/lib/disciplines";
-import { AiConfigError, AiRateLimitError, AiTimeoutError, analyzePostSignImage } from "@/lib/ai/openaiPostSign";
+import { AiConfigError, AiMalformedOutputError, AiRateLimitError, AiTimeoutError, analyzePostSignImage } from "@/lib/ai/openaiPostSign";
 export const dynamic = "force-dynamic";
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_POST = 50;
@@ -29,7 +29,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (error instanceof AiConfigError) return NextResponse.json({ error: "AI analysis is not configured." }, { status: 422 });
     if (error instanceof AiRateLimitError) return NextResponse.json({ error: "AI analysis is temporarily rate limited." }, { status: 429 });
     if (error instanceof AiTimeoutError) return NextResponse.json({ error: "AI analysis timed out." }, { status: 504 });
-    if ((error as Error).message?.includes("Malformed")) return NextResponse.json({ error: "Could not read sign." }, { status: 422 });
+    if (error instanceof AiMalformedOutputError || error instanceof SyntaxError) return NextResponse.json({ error: "Could not read sign." }, { status: 422 });
     return NextResponse.json({ error: "Analysis failed." }, { status: 500 });
   }
 }
