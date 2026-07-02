@@ -3,7 +3,11 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import { scorecardDisciplineProfile, resolveDisciplineScorecardSetup } from "@/lib/scorecards/scorecardProfiles";
+import {
+  formatScorecardSetupSummary,
+  scorecardDisciplineProfile,
+  resolveDisciplineScorecardSetup,
+} from "@/lib/scorecards/scorecardProfiles";
 import {
   applyUserCorrection,
   bulkResolveUnknowns,
@@ -18,8 +22,24 @@ import {
   savePendingScorecardPhoto,
   type PendingScorecardPhoto,
 } from "@/lib/scorecards/scorecardPhotos";
-import { cropToPercent, fingerprintCrop, fullImageCrop, moveCrop, renderCropBlob, resizeCrop, clampCrop, isFullImageCrop, type NormalizedCrop } from "@/lib/scorecards/scorecardCrop";
-import { canApplyReview, canReconnectRetry, shouldIgnoreScorecardResponse, timeoutMessage, type ActiveScorecardOperation } from "@/lib/scorecards/scorecardImportState";
+import {
+  cropToPercent,
+  fingerprintCrop,
+  fullImageCrop,
+  moveCrop,
+  renderCropBlob,
+  resizeCrop,
+  clampCrop,
+  isFullImageCrop,
+  type NormalizedCrop,
+} from "@/lib/scorecards/scorecardCrop";
+import {
+  canApplyReview,
+  canReconnectRetry,
+  shouldIgnoreScorecardResponse,
+  timeoutMessage,
+  type ActiveScorecardOperation,
+} from "@/lib/scorecards/scorecardImportState";
 const MAX_SOURCE = 15 * 1024 * 1024,
   MAX_UPLOAD = 4 * 1024 * 1024;
 async function resizeImage(file: File) {
@@ -54,6 +74,10 @@ export default function Page() {
   const abortRef = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   const [session, setSession] = useState<any>(null);
+  const [targetDefinitions, setTargetDefinitions] = useState<
+    Array<{ post_number: number | null; target_position: number | null }>
+  >([]);
+  const [targetDefinitionsError, setTargetDefinitionsError] = useState("");
   const [pending, setPending] = useState<PendingScorecardPhoto | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [grid, setGrid] = useState<ScorecardCell[]>([]);
@@ -94,10 +118,16 @@ export default function Page() {
       return;
     }
     const url = URL.createObjectURL(pending.image);
-    const original = pending.originalImage && pending.originalImage !== pending.image ? URL.createObjectURL(pending.originalImage) : url;
+    const original =
+      pending.originalImage && pending.originalImage !== pending.image
+        ? URL.createObjectURL(pending.originalImage)
+        : url;
     setPreviewUrl(url);
     setOriginalUrl(original);
-    return () => { URL.revokeObjectURL(url); if (original !== url) URL.revokeObjectURL(original); };
+    return () => {
+      URL.revokeObjectURL(url);
+      if (original !== url) URL.revokeObjectURL(original);
+    };
   }, [pending?.image]);
   async function load() {
     const { data: u } = await supabase.auth.getUser();
@@ -111,6 +141,24 @@ export default function Page() {
       .eq("id", id)
       .single();
     setSession(s);
+    const loadedProfile = scorecardDisciplineProfile(s?.discipline);
+    setTargetDefinitions([]);
+    setTargetDefinitionsError("");
+    if (loadedProfile?.key === "post_based") {
+      const { data: defs, error: defsError } = await supabase
+        .from("session_post_targets")
+        .select("post_number,target_position")
+        .eq("session_id", id)
+        .order("post_number")
+        .order("target_position");
+      if (defsError) {
+        setTargetDefinitionsError(
+          "Could not load post setup safely before importing. Reopen this page and try again.",
+        );
+      } else {
+        setTargetDefinitions(defs || []);
+      }
+    }
     const p = await getPendingScorecardPhoto(id);
     if (p) {
       rememberPending(p);
@@ -126,8 +174,7 @@ export default function Page() {
       setScoreChoice(p.scoreChoice || "use_scorecard");
       const row = p.analysis?.shooterRows.find((r) => r.candidateId === sid);
       setGrid(p.reviewedGrid || row?.grid || []);
-      if (navigator.onLine && canReconnectRetry(p))
-        void analyze(p);
+      if (navigator.onLine && canReconnectRetry(p)) void analyze(p);
     }
   }
   const profile = scorecardDisciplineProfile(session?.discipline);
@@ -139,14 +186,33 @@ export default function Page() {
         sporttrapSeriesCount: session.sporttrap_series_count,
         targetsPerPost: session.targets_per_post,
         totalTargets: session.total_targets,
-        targetDefinitions: [],
+        targetDefinitions,
       })
     : null;
-  const postCount = setupResult?.ok ? setupResult.setup.postCount : Number(session?.post_count || session?.course_count);
-  const tpp = setupResult?.ok ? setupResult.setup.targetsPerPost : Number(session?.targets_per_post || profile?.defaultTargetsPerSeries);
-  const setupOk = Boolean(setupResult?.ok);
+  const safeSetupResult =
+    targetDefinitionsError && profile?.key === "post_based"
+      ? null
+      : setupResult;
+  const setupSummary = safeSetupResult?.ok
+    ? formatScorecardSetupSummary(
+        safeSetupResult.setup,
+        profile?.reviewLabel || "Post",
+      )
+    : null;
+  const postCount = safeSetupResult?.ok
+    ? safeSetupResult.setup.postCount
+    : Number(session?.post_count || session?.course_count);
+  const tpp = safeSetupResult?.ok
+    ? safeSetupResult.setup.targetsPerPost
+    : Number(session?.targets_per_post || profile?.defaultTargetsPerSeries);
+  const setupOk = Boolean(safeSetupResult?.ok);
   const unsupported = session && !profile;
-  const conflict = Boolean(session && setupResult && !setupResult.ok && profile);
+  const conflict = Boolean(
+    session &&
+    ((setupResult && !setupResult.ok && profile) || targetDefinitionsError),
+  );
+  const setupErrorMessage =
+    setupResult && !setupResult.ok ? setupResult.message : "";
   const summary = summarizeGrid(grid);
   async function choose(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -210,16 +276,35 @@ export default function Page() {
     try {
       const c = clampCrop(nextCrop);
       const source = rec.originalImage || rec.image;
-      const analyzedImage = isFullImageCrop(c) ? source : await renderCropBlob(source, c);
+      const analyzedImage = isFullImageCrop(c)
+        ? source
+        : await renderCropBlob(source, c);
       const cropFingerprint = await fingerprintCrop(analyzedImage);
-      const next: PendingScorecardPhoto = { ...rec, image: analyzedImage, analyzedImage, crop: c, cropFingerprint, imageFingerprint: cropFingerprint, analysis: undefined, reviewedGrid: undefined, reviewedGridFingerprint: null, selectedShooterCandidateId: null, acknowledgeAmbiguousExisting: false, preparationState: "ready", status: navigator.onLine ? "saved_on_device" : "waiting_for_connection", lastError: null };
+      const next: PendingScorecardPhoto = {
+        ...rec,
+        image: analyzedImage,
+        analyzedImage,
+        crop: c,
+        cropFingerprint,
+        imageFingerprint: cropFingerprint,
+        analysis: undefined,
+        reviewedGrid: undefined,
+        reviewedGridFingerprint: null,
+        selectedShooterCandidateId: null,
+        acknowledgeAmbiguousExisting: false,
+        preparationState: "ready",
+        status: navigator.onLine ? "saved_on_device" : "waiting_for_connection",
+        lastError: null,
+      };
       await savePendingScorecardPhoto(next);
       rememberPending(next);
       setCrop(c);
       await analyze(next);
     } catch (e: any) {
       setStage("");
-      setError(e?.message || "Could not prepare the crop. Try another crop or photo.");
+      setError(
+        e?.message || "Could not prepare the crop. Try another crop or photo.",
+      );
     }
   }
   async function analyze(rec = pending) {
@@ -257,7 +342,10 @@ export default function Page() {
       abortRef.current?.abort();
       abortRef.current = new AbortController();
       if (timerRef.current) window.clearInterval(timerRef.current);
-      timerRef.current = window.setInterval(() => setElapsed((v) => v + 1), 1000);
+      timerRef.current = window.setInterval(
+        () => setElapsed((v) => v + 1),
+        1000,
+      );
       setElapsed(0);
       setStage("Sending image");
       const {
@@ -278,10 +366,11 @@ export default function Page() {
       const json = await r.json();
       if (
         !mounted.current ||
-shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
+        shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
       )
         return;
-      if (!r.ok) throw new Error(timeoutMessage(json.error?.category, rec.crop));
+      if (!r.ok)
+        throw new Error(timeoutMessage(json.error?.category, rec.crop));
       setStage("Checking detected results");
       const analysis = json.result as NormalizedScorecardAnalysis;
       const auto =
@@ -295,7 +384,9 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
         analysis,
         selectedShooterCandidateId: auto,
         reviewedGrid: auto ? analysis.shooterRows[0].grid : undefined,
-        reviewedGridFingerprint: auto ? (rec.cropFingerprint || rec.imageFingerprint) : null,
+        reviewedGridFingerprint: auto
+          ? rec.cropFingerprint || rec.imageFingerprint
+          : null,
         preparationState: "review" as const,
         acknowledgeAmbiguousExisting: false,
         updatedAt: new Date().toISOString(),
@@ -306,20 +397,31 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
       setGrid(auto ? analysis.shooterRows[0].grid : []);
       setAck(false);
       setStage("Preparing review");
-      if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null; }
+      if (timerRef.current) {
+        window.clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     } catch (e: any) {
-      if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null; }
-      if (e?.name === "AbortError" || active.current?.cancelled) { setStage(""); return; }
+      if (timerRef.current) {
+        window.clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (e?.name === "AbortError" || active.current?.cancelled) {
+        setStage("");
+        return;
+      }
       const failed = {
         ...rec,
         status: "analysis_failed" as const,
-        lastError: e.message || "Analysis could not be completed. Your image is still saved on this device.",
+        lastError:
+          e.message ||
+          "Analysis could not be completed. Your image is still saved on this device.",
         lastSafeErrorCategory: e.message || "analysis_failed",
         updatedAt: new Date().toISOString(),
       };
       if (
         !mounted.current ||
-shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
+        shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
       )
         return;
       await savePendingScorecardPhoto(failed);
@@ -333,7 +435,12 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
       (r) => r.candidateId === cid,
     );
     if (!row || !pending) return;
-    const next = { ...pending, selectedShooterCandidateId: cid, reviewedGridFingerprint: pending.cropFingerprint || pending.imageFingerprint };
+    const next = {
+      ...pending,
+      selectedShooterCandidateId: cid,
+      reviewedGridFingerprint:
+        pending.cropFingerprint || pending.imageFingerprint,
+    };
     void savePendingScorecardPhoto({ ...next, reviewedGrid: row.grid });
     rememberPending({ ...next, reviewedGrid: row.grid });
     setSelected(cid);
@@ -352,7 +459,10 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
         selectedShooterCandidateId: selected,
         scoreChoice,
         acknowledgeAmbiguousExisting: ack,
-        reviewedGridFingerprint: pendingRef.current ? (pendingRef.current.cropFingerprint || pendingRef.current.imageFingerprint) : null,
+        reviewedGridFingerprint: pendingRef.current
+          ? pendingRef.current.cropFingerprint ||
+            pendingRef.current.imageFingerprint
+          : null,
       };
       rememberPending(next);
       void savePendingScorecardPhoto(next);
@@ -364,7 +474,13 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
     );
   }
   async function apply() {
-    if (!pending || !selected || summary.unknowns > 0 || !canApplyReview(pending, pending.reviewedGridFingerprint)) return;
+    if (
+      !pending ||
+      !selected ||
+      summary.unknowns > 0 ||
+      !canApplyReview(pending, pending.reviewedGridFingerprint)
+    )
+      return;
     const {
       data: { session: auth },
     } = await supabase.auth.getSession();
@@ -374,7 +490,10 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
       reviewedGrid: grid,
       scoreChoice,
       acknowledgeAmbiguousExisting: ack,
-        reviewedGridFingerprint: pendingRef.current ? (pendingRef.current.cropFingerprint || pendingRef.current.imageFingerprint) : null,
+      reviewedGridFingerprint: pendingRef.current
+        ? pendingRef.current.cropFingerprint ||
+          pendingRef.current.imageFingerprint
+        : null,
     };
     rememberPending(applying);
     await savePendingScorecardPhoto(applying);
@@ -392,7 +511,10 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
           imageFingerprint: pending.imageFingerprint,
           grid,
           acknowledgeAmbiguousExisting: ack,
-        reviewedGridFingerprint: pendingRef.current ? (pendingRef.current.cropFingerprint || pendingRef.current.imageFingerprint) : null,
+          reviewedGridFingerprint: pendingRef.current
+            ? pendingRef.current.cropFingerprint ||
+              pendingRef.current.imageFingerprint
+            : null,
           scoreChoice,
         }),
       });
@@ -422,7 +544,34 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
       setError(retryable.lastError || "Apply failed");
     }
   }
-  function cancelAnalysis() { if (active.current) active.current = { ...active.current, cancelled: true, operationId: crypto.randomUUID() }; abortRef.current?.abort(); abortRef.current = null; if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null; } setStage(""); setElapsed(0); if (pendingRef.current?.status === "analyzing") { const next = { ...pendingRef.current, status: "saved_on_device" as const, analysis: undefined, reviewedGrid: undefined, reviewedGridFingerprint: null, selectedShooterCandidateId: null }; rememberPending(next); void savePendingScorecardPhoto(next); } }
+  function cancelAnalysis() {
+    if (active.current)
+      active.current = {
+        ...active.current,
+        cancelled: true,
+        operationId: crypto.randomUUID(),
+      };
+    abortRef.current?.abort();
+    abortRef.current = null;
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setStage("");
+    setElapsed(0);
+    if (pendingRef.current?.status === "analyzing") {
+      const next = {
+        ...pendingRef.current,
+        status: "saved_on_device" as const,
+        analysis: undefined,
+        reviewedGrid: undefined,
+        reviewedGridFingerprint: null,
+        selectedShooterCandidateId: null,
+      };
+      rememberPending(next);
+      void savePendingScorecardPhoto(next);
+    }
+  }
   async function discard() {
     if (confirm("Discard this local scorecard photo and review?")) {
       await deletePendingScorecardPhoto(id);
@@ -446,8 +595,20 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
         <h2>Import scorecard</h2>
         <p>{session.name}</p>
         <p className="muted">
-          {setupOk ? `${postCount} ${profile?.reviewLabel.toLowerCase() || "series"} × ${tpp} targets` : "Scorecard setup required"}
+          {setupOk && setupSummary?.compact
+            ? setupSummary.compact
+            : setupOk
+              ? `Total: ${setupSummary?.total}`
+              : "Scorecard setup required"}
         </p>
+        {setupOk && setupSummary && !setupSummary.compact && (
+          <div className="small muted">
+            {setupSummary.lines.map((line) => (
+              <div key={line}>{line}</div>
+            ))}
+            <strong>Total: {setupSummary.total}</strong>
+          </div>
+        )}
         <Link className="button secondary smallButton" href={`/sessions/${id}`}>
           Back to competition
         </Link>
@@ -470,7 +631,9 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
       )}
       {conflict && (
         <div className="card error">
-          Saved total targets conflicts with the scorecard setup. Review setup before applying.{" "}
+          {targetDefinitionsError ||
+            setupErrorMessage ||
+            "Saved total targets conflicts with the scorecard setup. Review setup before applying."}{" "}
           <Link href={`/sessions/${id}/targets`}>Open setup</Link>
         </div>
       )}
@@ -513,9 +676,7 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
               onChange={choose}
             />
             {pending && (
-              <p className="small muted">
-                {statusCopy(pending.status)}
-              </p>
+              <p className="small muted">{statusCopy(pending.status)}</p>
             )}
             <div className="btns">
               {pending && (
@@ -543,10 +704,61 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
           {previewUrl && (
             <div className="card">
               <h3>Prepare scorecard image</h3>
-              <p className="small muted">Crop around one shooter’s name and complete score grid. Include all series/lanes and target columns.</p>
-              <div className="btns"><button className="button" onClick={() => prepareAndAnalyze(fullImageCrop)}>Use full image</button><button className="button secondary" onClick={() => setCrop({ x: .05, y: .05, width: .9, height: .9, mode: "crop" })}>Crop to my scorecard</button><button className="button secondary" onClick={() => prepareAndAnalyze(crop)}>Use this crop</button></div>
-              <CropOverlay imageUrl={previewUrl} crop={crop} onChange={setCrop} />
-              {pending?.status === "analyzing" && <div className="analysisProgress"><strong>{stage || "Analyzing"}{elapsed > 0 ? ` · ${elapsed} seconds` : ""}</strong><div className="indeterminateBar"/><p className="small muted">Large or detailed images can take up to about a minute.</p><button className="secondary smallButton" onClick={cancelAnalysis}>Cancel analysis</button></div>}
+              <p className="small muted">
+                Crop around one shooter’s name and complete score grid. Include
+                all series/lanes and target columns.
+              </p>
+              <div className="btns">
+                <button
+                  className="button"
+                  onClick={() => prepareAndAnalyze(fullImageCrop)}
+                >
+                  Use full image
+                </button>
+                <button
+                  className="button secondary"
+                  onClick={() =>
+                    setCrop({
+                      x: 0.05,
+                      y: 0.05,
+                      width: 0.9,
+                      height: 0.9,
+                      mode: "crop",
+                    })
+                  }
+                >
+                  Crop to my scorecard
+                </button>
+                <button
+                  className="button secondary"
+                  onClick={() => prepareAndAnalyze(crop)}
+                >
+                  Use this crop
+                </button>
+              </div>
+              <CropOverlay
+                imageUrl={previewUrl}
+                crop={crop}
+                onChange={setCrop}
+              />
+              {pending?.status === "analyzing" && (
+                <div className="analysisProgress">
+                  <strong>
+                    {stage || "Analyzing"}
+                    {elapsed > 0 ? ` · ${elapsed} seconds` : ""}
+                  </strong>
+                  <div className="indeterminateBar" />
+                  <p className="small muted">
+                    Large or detailed images can take up to about a minute.
+                  </p>
+                  <button
+                    className="secondary smallButton"
+                    onClick={cancelAnalysis}
+                  >
+                    Cancel analysis
+                  </button>
+                </div>
+              )}
               <img
                 alt="Selected scorecard"
                 style={{ maxWidth: "100%", borderRadius: 12 }}
@@ -571,7 +783,53 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
           )}
           {grid.length > 0 && (
             <div className="card">
-              <div className="reviewReferenceBar"><button className="thumbnailButton" onClick={() => setViewer("analyzed")}><img src={previewUrl || ""} alt="Analyzed scorecard crop thumbnail" /></button><span>AI analyzed {isFullImageCrop(pending?.crop) ? "the full image" : "this crop"}</span><button className="secondary smallButton" onClick={() => setViewer("analyzed")}>View photo</button>{!isFullImageCrop(pending?.crop) && <button className="secondary smallButton" onClick={() => setViewer("original")}>View original photo</button>}</div>{viewer && previewUrl && <div className="imageLightbox" role="dialog" aria-modal="true"><button className="button" onClick={() => setViewer(null)}>Close</button><img src={viewer === "original" ? (originalUrl || previewUrl) : previewUrl} alt="Scorecard reference" /></div>}<h3>Review grid</h3>
+              <div className="reviewReferenceBar">
+                <button
+                  className="thumbnailButton"
+                  onClick={() => setViewer("analyzed")}
+                >
+                  <img
+                    src={previewUrl || ""}
+                    alt="Analyzed scorecard crop thumbnail"
+                  />
+                </button>
+                <span>
+                  AI analyzed{" "}
+                  {isFullImageCrop(pending?.crop)
+                    ? "the full image"
+                    : "this crop"}
+                </span>
+                <button
+                  className="secondary smallButton"
+                  onClick={() => setViewer("analyzed")}
+                >
+                  View photo
+                </button>
+                {!isFullImageCrop(pending?.crop) && (
+                  <button
+                    className="secondary smallButton"
+                    onClick={() => setViewer("original")}
+                  >
+                    View original photo
+                  </button>
+                )}
+              </div>
+              {viewer && previewUrl && (
+                <div className="imageLightbox" role="dialog" aria-modal="true">
+                  <button className="button" onClick={() => setViewer(null)}>
+                    Close
+                  </button>
+                  <img
+                    src={
+                      viewer === "original"
+                        ? originalUrl || previewUrl
+                        : previewUrl
+                    }
+                    alt="Scorecard reference"
+                  />
+                </div>
+              )}
+              <h3>Review grid</h3>
               <p>
                 Score {summary.score}/{summary.totalTargets} · Hits{" "}
                 {summary.hits} · Misses {summary.misses} · Unknown{" "}
@@ -712,7 +970,10 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
                     !selected ||
                     summary.unknowns > 0 ||
                     pending?.status === "applying" ||
-                    !canApplyReview(pending, pending?.reviewedGridFingerprint) ||
+                    !canApplyReview(
+                      pending,
+                      pending?.reviewedGridFingerprint,
+                    ) ||
                     conflict
                   }
                   onClick={apply}
@@ -730,14 +991,32 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
   );
 }
 
-function CropOverlay({ imageUrl, crop, onChange }: { imageUrl: string; crop: NormalizedCrop; onChange: (crop: NormalizedCrop) => void }) {
+function CropOverlay({
+  imageUrl,
+  crop,
+  onChange,
+}: {
+  imageUrl: string;
+  crop: NormalizedCrop;
+  onChange: (crop: NormalizedCrop) => void;
+}) {
   const boxRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ startX: number; startY: number; crop: NormalizedCrop; mode: "move" | "nw" | "ne" | "sw" | "se" } | null>(null);
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    crop: NormalizedCrop;
+    mode: "move" | "nw" | "ne" | "sw" | "se";
+  } | null>(null);
   function point(event: React.PointerEvent) {
     const rect = boxRef.current?.getBoundingClientRect();
-    return rect ? { x: event.clientX / rect.width, y: event.clientY / rect.height } : { x: 0, y: 0 };
+    return rect
+      ? { x: event.clientX / rect.width, y: event.clientY / rect.height }
+      : { x: 0, y: 0 };
   }
-  function start(event: React.PointerEvent, mode: "move" | "nw" | "ne" | "sw" | "se") {
+  function start(
+    event: React.PointerEvent,
+    mode: "move" | "nw" | "ne" | "sw" | "se",
+  ) {
     event.preventDefault();
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     const p = point(event);
@@ -745,21 +1024,68 @@ function CropOverlay({ imageUrl, crop, onChange }: { imageUrl: string; crop: Nor
   }
   function move(event: React.PointerEvent) {
     if (!dragRef.current) return;
-    const p = point(event), d = dragRef.current;
-    const dx = p.x - d.startX, dy = p.y - d.startY;
-    onChange(d.mode === "move" ? moveCrop(d.crop, dx, dy) : resizeCrop(d.crop, d.mode, dx, dy));
+    const p = point(event),
+      d = dragRef.current;
+    const dx = p.x - d.startX,
+      dy = p.y - d.startY;
+    onChange(
+      d.mode === "move"
+        ? moveCrop(d.crop, dx, dy)
+        : resizeCrop(d.crop, d.mode, dx, dy),
+    );
   }
   function stop(event: React.PointerEvent) {
     dragRef.current = null;
-    try { (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId); } catch {}
+    try {
+      (event.currentTarget as HTMLElement).releasePointerCapture(
+        event.pointerId,
+      );
+    } catch {}
   }
-  return <div className="cropSurface" ref={boxRef}>
-    <img src={imageUrl} alt="Scorecard crop preview" draggable={false} />
-    <div className="cropShade" />
-    <div className="cropFrame" style={cropToPercent(crop)} onPointerDown={(e) => start(e, "move")} onPointerMove={move} onPointerUp={stop} onPointerCancel={stop} role="group" aria-label="Selected scorecard crop">
-      {(["nw", "ne", "sw", "se"] as const).map((handle) => <button key={handle} type="button" className={`cropHandle ${handle}`} aria-label={`Resize crop ${handle}`} onPointerDown={(e) => start(e, handle)} onPointerMove={move} onPointerUp={stop} onPointerCancel={stop} />)}
+  return (
+    <div className="cropSurface" ref={boxRef}>
+      <img src={imageUrl} alt="Scorecard crop preview" draggable={false} />
+      <div className="cropShade" />
+      <div
+        className="cropFrame"
+        style={cropToPercent(crop)}
+        onPointerDown={(e) => start(e, "move")}
+        onPointerMove={move}
+        onPointerUp={stop}
+        onPointerCancel={stop}
+        role="group"
+        aria-label="Selected scorecard crop"
+      >
+        {(["nw", "ne", "sw", "se"] as const).map((handle) => (
+          <button
+            key={handle}
+            type="button"
+            className={`cropHandle ${handle}`}
+            aria-label={`Resize crop ${handle}`}
+            onPointerDown={(e) => start(e, handle)}
+            onPointerMove={move}
+            onPointerUp={stop}
+            onPointerCancel={stop}
+          />
+        ))}
+      </div>
     </div>
-  </div>;
+  );
 }
 
-function statusCopy(status: string) { return ({ saved_on_device: "Saved on this device — ready to analyze", waiting_for_connection: "Saved on this device — analysis will start when you are online.", analyzing: "Analyzing", ready_for_review: "Ready to review", analysis_failed: "Analysis could not be completed. Your image is still saved on this device.", applying: "Applying import" } as Record<string,string>)[status] || "Saved on this device"; }
+function statusCopy(status: string) {
+  return (
+    (
+      {
+        saved_on_device: "Saved on this device — ready to analyze",
+        waiting_for_connection:
+          "Saved on this device — analysis will start when you are online.",
+        analyzing: "Analyzing",
+        ready_for_review: "Ready to review",
+        analysis_failed:
+          "Analysis could not be completed. Your image is still saved on this device.",
+        applying: "Applying import",
+      } as Record<string, string>
+    )[status] || "Saved on this device"
+  );
+}
