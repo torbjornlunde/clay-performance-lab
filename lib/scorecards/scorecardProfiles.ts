@@ -5,7 +5,9 @@ import {
   isPostBasedSportingDiscipline,
 } from "../disciplines";
 import {
+  normalizeScorecardSetupForFingerprint,
   resolveScorecardSetup,
+  scorecardSetupFingerprint,
   type ScorecardSetupResolution,
 } from "./scorecardSetup";
 
@@ -143,4 +145,21 @@ export function resolveDisciplineScorecardSetup(options: {
     totalTargets,
     targetDefinitions: [],
   });
+}
+
+
+export async function resolvedDisciplineScorecardSetupFingerprint(options: {
+  discipline?: string | null;
+  setup: { postCount: number; targetsPerPost: number; targetsPerPostByPost?: number[]; totalTargets: number };
+}) {
+  const profile = scorecardDisciplineProfile(options.discipline);
+  if (!profile) return null;
+  const resolvedSetup = normalizeScorecardSetupForFingerprint(
+    profile.key,
+    options.setup,
+  );
+  return {
+    setupFingerprint: await scorecardSetupFingerprint(resolvedSetup),
+    resolvedSetup,
+  };
 }
