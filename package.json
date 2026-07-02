@@ -15,7 +15,8 @@
     "test:disciplines": "node scripts/run-discipline-tests.mjs",
     "test:target-details": "node scripts/run-target-detail-tests.mjs",
     "test:competition-templates": "node scripts/run-competition-template-tests.mjs",
-    "test:competition-template-candidates": "node scripts/run-competition-template-candidate-tests.mjs"
+    "test:competition-template-candidates": "node scripts/run-competition-template-candidate-tests.mjs",
+    "test:competition-template-apply-flows": "node scripts/run-competition-template-apply-flow-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { CompetitionTemplateSuggestions, type CompetitionTemplateCandidate } from "@/app/components/CompetitionTemplateSuggestions";
+import { useCompetitionTemplateCandidates } from "@/lib/competitionTemplates/useCompetitionTemplateCandidates";
 import {
   formatScorecardSetupSummary,
   scorecardDisciplineProfile,
@@ -43,28 +44,6 @@ import {
   type ActiveScorecardOperation,
 } from "@/lib/scorecards/scorecardImportState";
 
-function useCompetitionTemplateCandidates(metadata: { name: string; competitionDate: string; shootingGround: string; discipline: string; targetCount: number | null }) {
-  const [candidates, setCandidates] = useState<CompetitionTemplateCandidate[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const canFind = Boolean(metadata.discipline && metadata.competitionDate);
-  async function findCandidates() {
-    if (!canFind || loading) return;
-    setLoading(true); setError("");
-    const { data, error } = await supabase.rpc("find_competition_template_candidates", {
-      p_name: metadata.name.trim() || null,
-      p_competition_date: metadata.competitionDate,
-      p_shooting_ground: metadata.shootingGround.trim() || null,
-      p_discipline: metadata.discipline,
-      p_target_count: metadata.targetCount,
-      p_limit: 5,
-    });
-    setLoading(false);
-    if (error) { setError("Could not check for shared setups. You can continue without one."); setCandidates([]); return; }
-    setCandidates((data || []) as CompetitionTemplateCandidate[]);
-  }
-  return { candidates, loading, error, canFind, findCandidates };
-}
 const MAX_SOURCE = 15 * 1024 * 1024,
   MAX_UPLOAD = 4 * 1024 * 1024;
 async function resizeImage(file: File) {
@@ -89,6 +68,7 @@ async function sha256(blob: Blob) {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
 export default function Page() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -118,6 +98,8 @@ export default function Page() {
   const [elapsed, setElapsed] = useState(0);
   const [crop, setCrop] = useState<NormalizedCrop>(fullImageCrop);
   const [viewer, setViewer] = useState<"analyzed" | "original" | null>(null);
+  const [applyingTemplateId, setApplyingTemplateId] = useState("");
+  const [templateMessage, setTemplateMessage] = useState("");
   const pendingRef = useRef<PendingScorecardPhoto | null>(null);
   function rememberPending(next: PendingScorecardPhoto | null) {
     pendingRef.current = next;
@@ -240,6 +222,28 @@ export default function Page() {
     discipline: session?.discipline || "",
     targetCount: suggestionTargetCount,
   });
+
+  async function applyTemplateToCurrentSession(candidate: CompetitionTemplateCandidate) {
+    setTemplateMessage("");
+    if (!session?.id) return;
+    if (candidate.discipline !== session.discipline) {
+      setTemplateMessage("The selected setup no longer matches this discipline.");
+      return;
+    }
+    if (!navigator.onLine) {
+      setTemplateMessage("Using a shared setup requires a network connection. You can continue without it.");
+      return;
+    }
+    setApplyingTemplateId(candidate.id);
+    const { error } = await supabase.rpc("apply_competition_template_to_empty_session", { p_template_id: candidate.id, p_session_id: session.id });
+    setApplyingTemplateId("");
+    if (error) {
+      setTemplateMessage(error.message?.includes("empty competition") ? "This setup can only be applied to a new, empty competition." : "Could not apply this shared setup. You can continue without it.");
+      return;
+    }
+    setTemplateMessage(`Selected setup: ${candidate.name}`);
+    await load();
+  }
   useEffect(() => {
     let cancelled = false;
     async function compute() {
@@ -674,8 +678,12 @@ export default function Page() {
             error={suggestions.error}
             onFind={suggestions.findCandidates}
             canFind={suggestions.canFind}
+            onUse={applyTemplateToCurrentSession}
+            applyingCandidateId={applyingTemplateId}
+            isApplying={Boolean(applyingTemplateId)}
           />
         )}
+        {templateMessage && <p className="small warning">{templateMessage}</p>}
         <p>{session.name}</p>
         <p className="muted">
           {setupOk && setupSummary?.compact

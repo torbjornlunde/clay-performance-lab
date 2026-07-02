@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase/client";
 import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { userFacingSaveError } from "@/lib/userFacingErrors";
 import { CompetitionTemplateSuggestions, type CompetitionTemplateCandidate } from "@/app/components/CompetitionTemplateSuggestions";
+import { useCompetitionTemplateCandidates } from "@/lib/competitionTemplates/useCompetitionTemplateCandidates";
 import { postFormatOptions } from "@/lib/targets/postSetupState";
 
 type CourseSetup = {
@@ -37,35 +38,6 @@ function makeCourses(count: number, old: CourseSetup[]) {
 }
 
 
-function useCompetitionTemplateCandidates(metadata: { name: string; competitionDate: string; shootingGround: string; discipline: string; targetCount: number | null }) {
-  const [candidates, setCandidates] = useState<CompetitionTemplateCandidate[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const canFind = Boolean(metadata.discipline && metadata.competitionDate);
-
-  async function findCandidates() {
-    if (!canFind || loading) return;
-    setLoading(true);
-    setError("");
-    const { data, error } = await supabase.rpc("find_competition_template_candidates", {
-      p_name: metadata.name.trim() || null,
-      p_competition_date: metadata.competitionDate,
-      p_shooting_ground: metadata.shootingGround.trim() || null,
-      p_discipline: metadata.discipline,
-      p_target_count: metadata.targetCount,
-      p_limit: 5,
-    });
-    setLoading(false);
-    if (error) {
-      setError("Could not check for shared setups. You can continue without one.");
-      setCandidates([]);
-      return;
-    }
-    setCandidates((data || []) as CompetitionTemplateCandidate[]);
-  }
-
-  return { candidates, loading, error, canFind, findCandidates };
-}
 export default function NewSessionPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -89,6 +61,9 @@ export default function NewSessionPage() {
   const [winningScore, setWinningScore] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const [selectedTemplateCandidate, setSelectedTemplateCandidate] = useState<CompetitionTemplateCandidate | null>(null);
+  const [applyingTemplate, setApplyingTemplate] = useState(false);
+  const [applyMessage, setApplyMessage] = useState("");
   const [myDisciplines, setMyDisciplines] = useState<string[]>([]);
   const [equipmentSelection, setEquipmentSelection] = useState<EquipmentSelection>({ weaponId: "", ammunitionId: "", includeChokes: true });
   const [equipmentSnapshot, setEquipmentSnapshot] = useState<any>(null);
@@ -104,6 +79,28 @@ export default function NewSessionPage() {
         ? leirduestiPostCount * (Number(targetsPerPost) || 0)
         : null;
   const suggestions = useCompetitionTemplateCandidates({ name, competitionDate, shootingGround, discipline, targetCount: suggestionTargetCount });
+
+  useEffect(() => { setSelectedTemplateCandidate(null); }, [discipline, competitionDate, name, shootingGround, suggestionTargetCount]);
+
+  async function applySelectedTemplate(sessionId: string) {
+    if (!selectedTemplateCandidate) return true;
+    if (selectedTemplateCandidate.discipline !== discipline) {
+      setApplyMessage("The selected setup no longer matches this discipline. The competition was saved without it.");
+      return false;
+    }
+    if (!navigator.onLine) {
+      setApplyMessage("Using a shared setup requires a network connection. You can continue without it.");
+      return false;
+    }
+    setApplyingTemplate(true);
+    const { error } = await supabase.rpc("apply_competition_template_to_empty_session", { p_template_id: selectedTemplateCandidate.id, p_session_id: sessionId });
+    setApplyingTemplate(false);
+    if (error) {
+      setApplyMessage(error.message?.includes("empty competition") ? "This setup can only be applied to a new, empty competition." : "The competition was saved, but the shared setup could not be applied. You can continue without it.");
+      return false;
+    }
+    return true;
+  }
 
   useEffect(() => {
     let active = true;
@@ -185,6 +182,12 @@ export default function NewSessionPage() {
     if (error || !session) {
       setErr(userFacingSaveError(error, "Could not save this shooting log right now. Try again when online."));
       setSaving(false);
+      return;
+    }
+
+    if (selectedTemplateCandidate) {
+      await applySelectedTemplate(session.id);
+      router.push(`/sessions/${session.id}`);
       return;
     }
 
@@ -402,12 +405,23 @@ export default function NewSessionPage() {
             error={suggestions.error}
             onFind={suggestions.findCandidates}
             canFind={suggestions.canFind}
+            onUse={(candidate) => setSelectedTemplateCandidate(candidate)}
+            selectedCandidateId={selectedTemplateCandidate?.id}
+            applyingCandidateId={applyingTemplate ? selectedTemplateCandidate?.id : undefined}
+            isApplying={applyingTemplate}
           />
         )}
+        {selectedTemplateCandidate && (
+          <div className="subcard selectedTemplateNotice">
+            <p><strong>Selected setup:</strong> {selectedTemplateCandidate.name}</p>
+            <button type="button" className="secondary" onClick={() => setSelectedTemplateCandidate(null)} disabled={saving || applyingTemplate}>Remove selected setup</button>
+          </div>
+        )}
+        {applyMessage && <div className="warning">{applyMessage}</div>}
         {err && <div className="error">{err}</div>}
         <div className="btns">
-          <button onClick={save} disabled={saving}>
-            {saving ? "Saving..." : "Save shooting log"}
+          <button onClick={save} disabled={saving || applyingTemplate}>
+            {saving || applyingTemplate ? "Saving..." : "Save shooting log"}
           </button>
           <button className="secondary" onClick={() => router.push("/dashboard")}>
             Cancel
