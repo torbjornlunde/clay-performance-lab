@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { CompetitionTemplateSuggestions, type CompetitionTemplateCandidate } from "@/app/components/CompetitionTemplateSuggestions";
 import {
   formatScorecardSetupSummary,
   scorecardDisciplineProfile,
@@ -41,6 +42,29 @@ import {
   timeoutMessage,
   type ActiveScorecardOperation,
 } from "@/lib/scorecards/scorecardImportState";
+
+function useCompetitionTemplateCandidates(metadata: { name: string; competitionDate: string; shootingGround: string; discipline: string; targetCount: number | null }) {
+  const [candidates, setCandidates] = useState<CompetitionTemplateCandidate[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const canFind = Boolean(metadata.discipline && metadata.competitionDate);
+  async function findCandidates() {
+    if (!canFind || loading) return;
+    setLoading(true); setError("");
+    const { data, error } = await supabase.rpc("find_competition_template_candidates", {
+      p_name: metadata.name.trim() || null,
+      p_competition_date: metadata.competitionDate,
+      p_shooting_ground: metadata.shootingGround.trim() || null,
+      p_discipline: metadata.discipline,
+      p_target_count: metadata.targetCount,
+      p_limit: 5,
+    });
+    setLoading(false);
+    if (error) { setError("Could not check for shared setups. You can continue without one."); setCandidates([]); return; }
+    setCandidates((data || []) as CompetitionTemplateCandidate[]);
+  }
+  return { candidates, loading, error, canFind, findCandidates };
+}
 const MAX_SOURCE = 15 * 1024 * 1024,
   MAX_UPLOAD = 4 * 1024 * 1024;
 async function resizeImage(file: File) {
@@ -208,6 +232,14 @@ export default function Page() {
     ? safeSetupResult.setup.targetsPerPost
     : Number(session?.targets_per_post || profile?.defaultTargetsPerSeries);
   const setupOk = Boolean(safeSetupResult?.ok);
+  const suggestionTargetCount = Number(session?.total_targets) || (safeSetupResult?.ok ? safeSetupResult.setup.totalTargets : null);
+  const suggestions = useCompetitionTemplateCandidates({
+    name: session?.name || "",
+    competitionDate: session?.competition_date || "",
+    shootingGround: session?.shooting_ground || "",
+    discipline: session?.discipline || "",
+    targetCount: suggestionTargetCount,
+  });
   useEffect(() => {
     let cancelled = false;
     async function compute() {
@@ -634,6 +666,16 @@ export default function Page() {
       <div className="card">
         <p className="eyebrow">Import scorecard</p>
         <h2>Import scorecard</h2>
+        {session?.competition_date && session?.discipline && (
+          <CompetitionTemplateSuggestions
+            metadata={{ name: session?.name || "", competitionDate: session?.competition_date || "", shootingGround: session?.shooting_ground || "", discipline: session?.discipline || "", targetCount: suggestionTargetCount }}
+            candidates={suggestions.candidates}
+            loading={suggestions.loading}
+            error={suggestions.error}
+            onFind={suggestions.findCandidates}
+            canFind={suggestions.canFind}
+          />
+        )}
         <p>{session.name}</p>
         <p className="muted">
           {setupOk && setupSummary?.compact

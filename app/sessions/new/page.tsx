@@ -10,6 +10,7 @@ import { EquipmentUsedSelector } from "@/app/components/EquipmentUsedSelector";
 import { supabase } from "@/lib/supabase/client";
 import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { userFacingSaveError } from "@/lib/userFacingErrors";
+import { CompetitionTemplateSuggestions, type CompetitionTemplateCandidate } from "@/app/components/CompetitionTemplateSuggestions";
 import { postFormatOptions } from "@/lib/targets/postSetupState";
 
 type CourseSetup = {
@@ -35,6 +36,36 @@ function makeCourses(count: number, old: CourseSetup[]) {
   );
 }
 
+
+function useCompetitionTemplateCandidates(metadata: { name: string; competitionDate: string; shootingGround: string; discipline: string; targetCount: number | null }) {
+  const [candidates, setCandidates] = useState<CompetitionTemplateCandidate[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const canFind = Boolean(metadata.discipline && metadata.competitionDate);
+
+  async function findCandidates() {
+    if (!canFind || loading) return;
+    setLoading(true);
+    setError("");
+    const { data, error } = await supabase.rpc("find_competition_template_candidates", {
+      p_name: metadata.name.trim() || null,
+      p_competition_date: metadata.competitionDate,
+      p_shooting_ground: metadata.shootingGround.trim() || null,
+      p_discipline: metadata.discipline,
+      p_target_count: metadata.targetCount,
+      p_limit: 5,
+    });
+    setLoading(false);
+    if (error) {
+      setError("Could not check for shared setups. You can continue without one.");
+      setCandidates([]);
+      return;
+    }
+    setCandidates((data || []) as CompetitionTemplateCandidate[]);
+  }
+
+  return { candidates, loading, error, canFind, findCandidates };
+}
 export default function NewSessionPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,6 +96,14 @@ export default function NewSessionPage() {
     () => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, myDisciplines),
     [myDisciplines],
   );
+  const suggestionTargetCount = isCompactDiscipline(discipline)
+    ? count * 25
+    : discipline === "Sporttrap"
+      ? sporttrapSeriesCount * 25
+      : isOrdinaryLeirduesti(discipline)
+        ? leirduestiPostCount * (Number(targetsPerPost) || 0)
+        : null;
+  const suggestions = useCompetitionTemplateCandidates({ name, competitionDate, shootingGround, discipline, targetCount: suggestionTargetCount });
 
   useEffect(() => {
     let active = true;
@@ -354,6 +393,16 @@ export default function NewSessionPage() {
               </div>
             ))}
           </>
+        )}
+        {sessionType === "Competition" && (
+          <CompetitionTemplateSuggestions
+            metadata={{ name, competitionDate, shootingGround, discipline, targetCount: suggestionTargetCount }}
+            candidates={suggestions.candidates}
+            loading={suggestions.loading}
+            error={suggestions.error}
+            onFind={suggestions.findCandidates}
+            canFind={suggestions.canFind}
+          />
         )}
         {err && <div className="error">{err}</div>}
         <div className="btns">

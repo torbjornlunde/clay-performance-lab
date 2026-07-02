@@ -9,7 +9,38 @@ import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase/client";
 import { userFacingSaveError } from "@/lib/userFacingErrors";
+import { CompetitionTemplateSuggestions, type CompetitionTemplateCandidate } from "@/app/components/CompetitionTemplateSuggestions";
 
+
+function useCompetitionTemplateCandidates(metadata: { name: string; competitionDate: string; shootingGround: string; discipline: string; targetCount: number | null }) {
+  const [candidates, setCandidates] = useState<CompetitionTemplateCandidate[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const canFind = Boolean(metadata.discipline && metadata.competitionDate);
+
+  async function findCandidates() {
+    if (!canFind || loading) return;
+    setLoading(true);
+    setError("");
+    const { data, error } = await supabase.rpc("find_competition_template_candidates", {
+      p_name: metadata.name.trim() || null,
+      p_competition_date: metadata.competitionDate,
+      p_shooting_ground: metadata.shootingGround.trim() || null,
+      p_discipline: metadata.discipline,
+      p_target_count: metadata.targetCount,
+      p_limit: 5,
+    });
+    setLoading(false);
+    if (error) {
+      setError("Could not check for shared setups. You can continue without one.");
+      setCandidates([]);
+      return;
+    }
+    setCandidates((data || []) as CompetitionTemplateCandidate[]);
+  }
+
+  return { candidates, loading, error, canFind, findCandidates };
+}
 export default function NewResultPage() {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -26,6 +57,8 @@ export default function NewResultPage() {
   const [equipmentSelection, setEquipmentSelection] = useState<EquipmentSelection>({ weaponId: "", ammunitionId: "", includeChokes: true });
   const [equipmentSnapshot, setEquipmentSnapshot] = useState<any>(null);
   const disciplineOptions = useMemo(() => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, myDisciplines), [myDisciplines]);
+  const suggestionTargetCount = totalTargets.trim() ? Number(totalTargets) || null : null;
+  const suggestions = useCompetitionTemplateCandidates({ name, competitionDate, shootingGround, discipline, targetCount: suggestionTargetCount });
 
   useEffect(() => {
     let active = true;
@@ -144,6 +177,14 @@ export default function NewResultPage() {
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
           </div>
         </details>
+        <CompetitionTemplateSuggestions
+          metadata={{ name, competitionDate, shootingGround, discipline, targetCount: suggestionTargetCount }}
+          candidates={suggestions.candidates}
+          loading={suggestions.loading}
+          error={suggestions.error}
+          onFind={suggestions.findCandidates}
+          canFind={suggestions.canFind}
+        />
         {err && <div className="error">{err}</div>}
         <div className="btns">
           <button disabled={saving}>{saving ? "Saving..." : "Save and continue"}</button>
