@@ -1,4 +1,4 @@
-import { COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI, SPORTTRAP, isCompactDiscipline, isPostBasedSportingDiscipline } from "../disciplines";
+import { COMPAK_SPORTING, LEIRDUESTI, SPORTTRAP, isPostBasedSportingDiscipline } from "../disciplines";
 import { resolveScorecardSetup, type ScorecardSetupResolution } from "./scorecardSetup";
 
 export type ScorecardDisciplineProfile = {
@@ -12,7 +12,7 @@ type TargetDefinition = { post_number: number | null; target_position: number | 
 
 export function scorecardDisciplineProfile(discipline?: string | null): ScorecardDisciplineProfile | null {
   const normalized = discipline?.trim().toLowerCase();
-  if (isCompactDiscipline(discipline)) return { key: "compak", unitLabel: "Series", reviewLabel: "Series", defaultTargetsPerSeries: 25 };
+  if (normalized === COMPAK_SPORTING.toLowerCase()) return { key: "compak", unitLabel: "Series", reviewLabel: "Series", defaultTargetsPerSeries: 25 };
   if (normalized === SPORTTRAP.toLowerCase()) return { key: "sporttrap", unitLabel: "Series", reviewLabel: "Series", defaultTargetsPerSeries: 25 };
   if (isPostBasedSportingDiscipline(discipline)) return { key: "post_based", unitLabel: normalized === LEIRDUESTI.toLowerCase() ? "Post" : "Stand", reviewLabel: normalized === LEIRDUESTI.toLowerCase() ? "Post" : "Stand" };
   return null;

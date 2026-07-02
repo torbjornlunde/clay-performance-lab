@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 execSync('rm -rf .scorecard-test-build && npx tsc lib/scorecards/scorecardAnalysis.ts lib/scorecards/scorecardMissMapping.ts lib/scorecards/scorecardPhotos.ts lib/scorecards/scorecardSetup.ts lib/scorecards/scorecardProfiles.ts lib/disciplines.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM --outDir .scorecard-test-build --skipLibCheck', {stdio:'inherit'});
 const a = await import('../.scorecard-test-build/scorecards/scorecardAnalysis.js');
 const m = await import('../.scorecard-test-build/scorecards/scorecardMissMapping.js');
@@ -9,6 +10,7 @@ const profiles = await import('../.scorecard-test-build/scorecards/scorecardProf
 
 assert.equal(profiles.isScorecardImportDiscipline('Compak Sporting'), true, 'Compak Sporting is allowed in scorecard import');
 assert.equal(profiles.isScorecardImportDiscipline('Sporttrap'), true, 'Sporttrap is allowed in scorecard import');
+assert.equal(profiles.isScorecardImportDiscipline('Kompakt leirduesti'), false, 'Kompakt leirduesti is intentionally excluded from this Compak/Sporttrap import scope');
 assert.equal(profiles.isScorecardImportDiscipline('Leirduesti'), true, 'Leirduesti remains allowed in scorecard import');
 assert.equal(profiles.isScorecardImportDiscipline('Sporting'), true, 'Sporting remains allowed in scorecard import');
 let compakOne = profiles.resolveDisciplineScorecardSetup({discipline:'Compak Sporting',courseCount:1,totalTargets:25}); assert.equal(compakOne.ok,true); assert.equal(compakOne.setup.postCount,1); assert.equal(compakOne.setup.targetsPerPost,25); assert.equal(compakOne.setup.totalTargets,25);
@@ -16,6 +18,11 @@ let compakMulti = profiles.resolveDisciplineScorecardSetup({discipline:'Compak S
 let sporttrapMulti = profiles.resolveDisciplineScorecardSetup({discipline:'Sporttrap',sporttrapSeriesCount:2,totalTargets:50}); assert.equal(sporttrapMulti.ok,true); assert.equal(sporttrapMulti.setup.postCount,2);
 let wrongCount = profiles.resolveDisciplineScorecardSetup({discipline:'Sporttrap',sporttrapSeriesCount:2,totalTargets:49}); assert.equal(wrongCount.ok,false); assert.match(wrongCount.message,/conflicts/);
 let noCompakScheme = profiles.resolveDisciplineScorecardSetup({discipline:'Compak Sporting',courseCount:1,totalTargets:25,targetDefinitions:null}); assert.equal(noCompakScheme.ok,true, 'missing Compak scheme does not block simple result import');
+const rpcMigration = readFileSync('supabase/migrations/20260702020000_scorecard_import_compak_sporttrap_rpc.sql','utf8').toLowerCase();
+assert.match(rpcMigration, /create or replace function public\.apply_scorecard_import_v2/, 'migration updates apply_scorecard_import_v2 in place');
+assert.match(rpcMigration, /'compak sporting'/, 'database RPC explicitly allows Compak Sporting');
+assert.match(rpcMigration, /'sporttrap'/, 'database RPC explicitly allows Sporttrap');
+assert.match(rpcMigration, /unsupported_discipline/, 'database RPC still rejects unsupported disciplines');
 
 const base={detectedTitle:'x',detectedDate:null,scorecardConfidence:'high',rawText:'r'.repeat(1300),warnings:['w'],shooterRows:[{candidateId:'bad',displayName:'Alice',rowLabel:'1',confidence:'high',detectedScore:1,posts:[{postNumber:1,detectedPostScore:null,targets:[{targetNumber:1,result:'hit',rawMark:'/',confidence:'high',warning:null},{targetNumber:2,result:'miss',rawMark:'0',confidence:'medium',warning:null},{targetNumber:99,result:'hit',rawMark:null,confidence:'high',warning:null}]},{postNumber:99,detectedPostScore:null,targets:[{targetNumber:1,result:'hit',rawMark:null,confidence:'high',warning:null}]}]}]};
 let n=a.normalizeScorecardAnalysis(base,{postCount:2,targetsPerPost:2}); assert.equal(n.shooterRows.length,1); assert.equal(n.shooterRows[0].grid.length,4); assert.equal(n.shooterRows[0].hits,1); assert.equal(n.shooterRows[0].misses,1); assert.equal(n.shooterRows[0].unknowns,2); assert.match(n.shooterRows[0].warnings.join(' '),/out-of-range/); assert.equal(n.rawText.length,1200);
