@@ -187,7 +187,7 @@ export default function NewSessionPage() {
 
     if (selectedTemplateCandidate) {
       const applied = await applySelectedTemplate(session.id);
-      router.push(`/sessions/${session.id}${applied ? "" : "?templateApplyFailed=1"}`);
+      router.push(`/sessions/${session.id}${applied ? "" : "?templateApplyFailed=session"}`);
       return;
     }
 

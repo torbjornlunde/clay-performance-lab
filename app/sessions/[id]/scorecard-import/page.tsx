@@ -3,8 +3,6 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import { CompetitionTemplateSuggestions, type CompetitionTemplateCandidate } from "@/app/components/CompetitionTemplateSuggestions";
-import { useCompetitionTemplateCandidates } from "@/lib/competitionTemplates/useCompetitionTemplateCandidates";
 import {
   formatScorecardSetupSummary,
   scorecardDisciplineProfile,
@@ -98,8 +96,6 @@ export default function Page() {
   const [elapsed, setElapsed] = useState(0);
   const [crop, setCrop] = useState<NormalizedCrop>(fullImageCrop);
   const [viewer, setViewer] = useState<"analyzed" | "original" | null>(null);
-  const [applyingTemplateId, setApplyingTemplateId] = useState("");
-  const [templateMessage, setTemplateMessage] = useState("");
   const pendingRef = useRef<PendingScorecardPhoto | null>(null);
   function rememberPending(next: PendingScorecardPhoto | null) {
     pendingRef.current = next;
@@ -214,36 +210,6 @@ export default function Page() {
     ? safeSetupResult.setup.targetsPerPost
     : Number(session?.targets_per_post || profile?.defaultTargetsPerSeries);
   const setupOk = Boolean(safeSetupResult?.ok);
-  const suggestionTargetCount = Number(session?.total_targets) || (safeSetupResult?.ok ? safeSetupResult.setup.totalTargets : null);
-  const suggestions = useCompetitionTemplateCandidates({
-    name: session?.name || "",
-    competitionDate: session?.competition_date || "",
-    shootingGround: session?.shooting_ground || "",
-    discipline: session?.discipline || "",
-    targetCount: suggestionTargetCount,
-  });
-
-  async function applyTemplateToCurrentSession(candidate: CompetitionTemplateCandidate) {
-    setTemplateMessage("");
-    if (!session?.id) return;
-    if (candidate.discipline !== session.discipline) {
-      setTemplateMessage("The selected setup no longer matches this discipline.");
-      return;
-    }
-    if (!navigator.onLine) {
-      setTemplateMessage("Using a shared setup requires a network connection. You can continue without it.");
-      return;
-    }
-    setApplyingTemplateId(candidate.id);
-    const { error } = await supabase.rpc("apply_competition_template_to_empty_session", { p_template_id: candidate.id, p_session_id: session.id });
-    setApplyingTemplateId("");
-    if (error) {
-      setTemplateMessage(error.message?.includes("empty competition") ? "This setup can only be applied to a new, empty competition." : "Could not apply this shared setup. You can continue without it.");
-      return;
-    }
-    setTemplateMessage(`Selected setup: ${candidate.name}`);
-    await load();
-  }
   useEffect(() => {
     let cancelled = false;
     async function compute() {
@@ -670,21 +636,6 @@ export default function Page() {
       <div className="card">
         <p className="eyebrow">Import scorecard</p>
         <h2>Import scorecard</h2>
-        {session?.competition_date && session?.discipline && (
-          <CompetitionTemplateSuggestions
-            metadata={{ name: session?.name || "", competitionDate: session?.competition_date || "", shootingGround: session?.shooting_ground || "", discipline: session?.discipline || "", targetCount: suggestionTargetCount }}
-            candidates={suggestions.candidates}
-            loading={suggestions.loading}
-            error={suggestions.error}
-            onFind={suggestions.findCandidates}
-            canFind={suggestions.canFind}
-            searchKey={suggestions.searchKey}
-            onUse={applyTemplateToCurrentSession}
-            applyingCandidateId={applyingTemplateId}
-            isApplying={Boolean(applyingTemplateId)}
-          />
-        )}
-        {templateMessage && <p className="small warning">{templateMessage}</p>}
         <p>{session.name}</p>
         <p className="muted">
           {setupOk && setupSummary?.compact

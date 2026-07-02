@@ -139,7 +139,7 @@ export default function NewResultPage() {
     }
     const applied = await applySelectedTemplate(inserted.id);
     setSaving(false);
-    router.push(`/sessions/${inserted.id}${applied ? "" : "?templateApplyFailed=1"}`);
+    router.push(`/sessions/${inserted.id}${applied ? "" : "?templateApplyFailed=result"}`);
   }
 
   return (

@@ -48,13 +48,6 @@ assert.equal(resultDb.sessions.length,1,'result-only does not create extra sessi
 assert.equal(resultDb.sessions[0].own_score,88); assert.equal(resultDb.sessions[0].winning_score,94); assert.equal(resultDb.sessions[0].notes,'windy'); assert.deepEqual(resultDb.sessions[0].equipment_snapshot,{ammo:'kept'});
 assert.equal(resultDb.targetDefinitions[0].session_id,resultId,'result and template setup share same session');
 
-let importDb = fixture();
-let importId = createSession(importDb,{user_id:'u1',name:'Import',discipline:'Compak Sporting'});
-importDb.courses.push({session_id:importId,course_number:1,fitasc_scheme:null,shooter_number:null,start_plate:null});
-applyTemplate(importDb,importId,'t1');
-assert.equal(importDb.sessions[0].id, importId, 'scorecard import uses existing session id');
-assert.equal(importDb.targetDefinitions[0].session_id, importId, 'scorecard import setup is applied to same empty session');
-assert.equal(importDb.courses.length, 1, 'empty placeholder course row is replaced by template course');
 let blockedDb = fixture(); let blockedId = createSession(blockedDb,{user_id:'u1',discipline:'Compak Sporting'}); blockedDb.postTargets.push({session_id:blockedId}); assert.throws(()=>applyTemplate(blockedDb,blockedId,'t1'),/empty competition/,'existing setup blocks apply');
 let meaningfulCourseDb = fixture(); let meaningfulCourseId = createSession(meaningfulCourseDb,{user_id:'u1',discipline:'Compak Sporting'}); meaningfulCourseDb.courses.push({session_id:meaningfulCourseId,fitasc_scheme:2,shooter_number:null,start_plate:null}); assert.throws(()=>applyTemplate(meaningfulCourseDb,meaningfulCourseId,'t1'),/empty competition/,'meaningful courses block apply');
 assert.throws(()=>{ const d=fixture(); const id=createSession(d,{user_id:'u2',discipline:'Compak Sporting'}); applyTemplate(d,id,'t1'); },/Session not found/,'other user session cannot be changed');

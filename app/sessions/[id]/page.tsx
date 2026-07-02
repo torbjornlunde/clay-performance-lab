@@ -198,6 +198,7 @@ export default function Page() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [session, setSession] = useState<any>(null);
+  const [templateApplyFailedMessage, setTemplateApplyFailedMessage] = useState("");
   const [courses, setCourses] = useState<any[]>([]);
   const [misses, setMisses] = useState<Miss[]>([]);
   const [targetDefinitions, setTargetDefinitions] = useState<
@@ -208,6 +209,20 @@ export default function Page() {
   const [deleting, setDeleting] = useState(false);
   const [postSetupCount, setPostSetupCount] = useState<number | null>(null);
 
+
+  useEffect(() => {
+    const failedKind = searchParams.get("templateApplyFailed");
+    if (failedKind !== "result" && failedKind !== "session") return;
+    setTemplateApplyFailedMessage(
+      failedKind === "result"
+        ? "Resultatet ble lagret, men det delte dueoppsettet kunne ikke legges til. Du kan fortsette uten det."
+        : "Konkurransen ble lagret, men det delte dueoppsettet kunne ikke legges til. Du kan fortsette uten det.",
+    );
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("templateApplyFailed");
+    const suffix = next.toString();
+    router.replace(`/sessions/${params.id}${suffix ? `?${suffix}` : ""}`);
+  }, [params.id, router, searchParams]);
   useEffect(() => {
     load();
   }, []);
@@ -511,10 +526,8 @@ export default function Page() {
               : "Manual score differs from logged misses. This can happen if not all misses were logged."}
           </div>
         )}
-        {searchParams.get("templateApplyFailed") === "1" && (
-          <div className="compactNotice">
-            Result was saved, but the shared target setup could not be added. You can continue without it.
-          </div>
+        {templateApplyFailedMessage && (
+          <div className="compactNotice">{templateApplyFailedMessage}</div>
         )}
         {searchParams.get("scorecardImported") === "1" && (
           <div className="compactNotice">
