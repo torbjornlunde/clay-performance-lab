@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { isPostBasedSportingDiscipline } from "@/lib/disciplines";
+import { isScorecardImportDiscipline, resolveDisciplineScorecardSetup } from "@/lib/scorecards/scorecardProfiles";
 import {
   canonicalizeReviewedGrid,
   summarizeGrid,
   type ScorecardCell,
 } from "@/lib/scorecards/scorecardAnalysis";
-import { resolveScorecardSetup } from "@/lib/scorecards/scorecardSetup";
 import { mapReviewedMisses } from "@/lib/scorecards/scorecardMissMapping";
 
 export const dynamic = "force-dynamic";
@@ -118,15 +117,13 @@ export async function POST(
         403,
       );
     }
-    if (!isPostBasedSportingDiscipline(session.discipline)) {
+    if (!isScorecardImportDiscipline(session.discipline)) {
       return json(
         { error: { category: "unsupported_discipline", message: "Scorecard import is not available for this discipline." } },
         422,
       );
     }
 
-    const postCount = Number(session.post_count || session.course_count);
-    const targetsPerPost = Number(session.targets_per_post);
     const targetResult = await supabase
       .from("session_post_targets")
       .select(
@@ -136,9 +133,12 @@ export async function POST(
     if (targetResult.error) {
       return json({ error: { category: "setup_required", message: "Could not load post setup safely before applying." } }, 500);
     }
-    const setupResult = resolveScorecardSetup({
-      postCount,
-      targetsPerPost,
+    const setupResult = resolveDisciplineScorecardSetup({
+      discipline: session.discipline,
+      postCount: session.post_count,
+      courseCount: session.course_count,
+      sporttrapSeriesCount: session.sporttrap_series_count,
+      targetsPerPost: session.targets_per_post,
       totalTargets: session.total_targets,
       targetDefinitions: targetResult.data || [],
     });
@@ -225,8 +225,8 @@ export async function POST(
         p_session_id: id,
         p_client_import_id: body.clientImportId,
         p_image_fingerprint: body.imageFingerprint,
-        p_post_count: postCount,
-        p_targets_per_post: targetsPerPost,
+        p_post_count: setup.postCount,
+        p_targets_per_post: setup.targetsPerPost,
         p_targets_per_post_by_post: setup.targetsPerPostByPost,
         p_reviewed_hits: summary.hits,
         p_reviewed_misses: summary.misses,
