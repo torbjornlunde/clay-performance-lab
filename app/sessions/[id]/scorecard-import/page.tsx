@@ -22,6 +22,7 @@ import {
   shouldIgnoreStale,
   type PendingScorecardPhoto,
 } from "@/lib/scorecards/scorecardPhotos";
+import { fullImageCrop, renderCropBlob, clampCrop, isFullImageCrop, type NormalizedCrop } from "@/lib/scorecards/scorecardCrop";
 const MAX_SOURCE = 15 * 1024 * 1024,
   MAX_UPLOAD = 4 * 1024 * 1024;
 async function resizeImage(file: File) {
@@ -52,6 +53,7 @@ export default function Page() {
   const camera = useRef<HTMLInputElement>(null),
     library = useRef<HTMLInputElement>(null);
   const active = useRef<any>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   const [session, setSession] = useState<any>(null);
   const [pending, setPending] = useState<PendingScorecardPhoto | null>(null);
@@ -63,6 +65,11 @@ export default function Page() {
     "use_scorecard" | "keep_existing"
   >("use_scorecard");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [originalUrl, setOriginalUrl] = useState<string | null>(null);
+  const [stage, setStage] = useState("");
+  const [elapsed, setElapsed] = useState(0);
+  const [crop, setCrop] = useState<NormalizedCrop>(fullImageCrop);
+  const [viewer, setViewer] = useState<"analyzed" | "original" | null>(null);
   const pendingRef = useRef<PendingScorecardPhoto | null>(null);
   function rememberPending(next: PendingScorecardPhoto | null) {
     pendingRef.current = next;
@@ -84,11 +91,14 @@ export default function Page() {
   useEffect(() => {
     if (!pending?.image) {
       setPreviewUrl(null);
+      setOriginalUrl(null);
       return;
     }
     const url = URL.createObjectURL(pending.image);
+    const original = pending.originalImage && pending.originalImage !== pending.image ? URL.createObjectURL(pending.originalImage) : url;
     setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
+    setOriginalUrl(original);
+    return () => { URL.revokeObjectURL(url); if (original !== url) URL.revokeObjectURL(original); };
   }, [pending?.image]);
   async function load() {
     const { data: u } = await supabase.auth.getUser();
@@ -105,6 +115,7 @@ export default function Page() {
     const p = await getPendingScorecardPhoto(id);
     if (p) {
       rememberPending(p);
+      setCrop(p.crop || fullImageCrop);
       const sid =
         p.selectedShooterCandidateId ||
         (p.analysis?.shooterRows.length === 1 &&
@@ -159,13 +170,19 @@ export default function Page() {
     const clientImportId = crypto.randomUUID();
     const imageFingerprint = await sha256(blob);
     const rec: PendingScorecardPhoto = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       queueId: clientImportId,
       clientImportId,
       sessionId: id,
       image: blob,
+      originalImage: blob,
+      analyzedImage: blob,
       mimeType: blob.type,
       imageFingerprint,
+      originalImageFingerprint: imageFingerprint,
+      crop: fullImageCrop,
+      cropFingerprint: imageFingerprint,
+      preparationState: "prepare",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       status: navigator.onLine ? "saved_on_device" : "waiting_for_connection",
@@ -176,7 +193,19 @@ export default function Page() {
     setGrid([]);
     setAck(false);
     setScoreChoice("use_scorecard");
-    if (navigator.onLine) void analyze(rec);
+    // Wait for the user to confirm full image or crop before analysis.
+  }
+  async function prepareAndAnalyze(nextCrop = crop, rec = pending) {
+    if (!rec) return;
+    setStage("Preparing image");
+    const c = clampCrop(nextCrop);
+    const analyzedImage = isFullImageCrop(c) ? (rec.originalImage || rec.image) : await renderCropBlob(rec.originalImage || rec.image, c);
+    const cropFingerprint = await sha256(analyzedImage);
+    const next = { ...rec, image: analyzedImage, analyzedImage, crop: c, cropFingerprint, imageFingerprint: cropFingerprint, analysis: undefined, reviewedGrid: undefined, selectedShooterCandidateId: null, preparationState: "ready" as const };
+    await savePendingScorecardPhoto(next);
+    rememberPending(next);
+    setCrop(c);
+    await analyze(next);
   }
   async function analyze(rec = pending) {
     if (!rec) return;
@@ -184,6 +213,7 @@ export default function Page() {
       sessionId: id,
       clientImportId: rec.clientImportId,
       imageFingerprint: rec.imageFingerprint,
+      cropFingerprint: rec.cropFingerprint || rec.imageFingerprint,
     };
     if (
       pendingRef.current?.status === "analyzing" &&
@@ -197,11 +227,18 @@ export default function Page() {
         ? "analyzing"
         : "waiting_for_connection") as any,
       lastError: null,
+      preparationState: "ready" as const,
     };
     rememberPending(analyzing);
     await savePendingScorecardPhoto(analyzing);
     if (!navigator.onLine) return;
+    let timer: number | undefined;
     try {
+      abortRef.current?.abort();
+      abortRef.current = new AbortController();
+      timer = window.setInterval(() => setElapsed((v) => v + 1), 1000);
+      setElapsed(0);
+      setStage("Uploading image");
       const {
         data: { session: auth },
       } = await supabase.auth.getSession();
@@ -214,7 +251,9 @@ export default function Page() {
           ? { Authorization: `Bearer ${auth.access_token}` }
           : {},
         body: fd,
+        signal: abortRef.current.signal,
       });
+      setStage("Reading shooter rows and marks");
       const json = await r.json();
       if (
         !mounted.current ||
@@ -223,7 +262,8 @@ export default function Page() {
         pendingRef.current?.imageFingerprint !== rec.imageFingerprint
       )
         return;
-      if (!r.ok) throw new Error(json.error?.message || "Analysis failed.");
+      if (!r.ok) throw new Error(scorecardErrorMessage(json.error?.category, isFullImageCrop(rec.crop)));
+      setStage("Checking detected results");
       const analysis = json.result as NormalizedScorecardAnalysis;
       const auto =
         analysis.shooterRows.length === 1 &&
@@ -241,11 +281,16 @@ export default function Page() {
       rememberPending(ready);
       setSelected(auto);
       setGrid(auto ? analysis.shooterRows[0].grid : []);
+      setStage("Preparing review");
+      if (timer) window.clearInterval(timer);
     } catch (e: any) {
+      if (timer) window.clearInterval(timer);
+      if (e?.name === "AbortError") { setStage(""); return; }
       const failed = {
         ...rec,
         status: "analysis_failed" as const,
-        lastError: e.message || "Analysis failed",
+        lastError: e.message || "Analysis could not be completed. Your image is still saved on this device.",
+        lastSafeErrorCategory: e.message || "analysis_failed",
         updatedAt: new Date().toISOString(),
       };
       if (
@@ -258,6 +303,7 @@ export default function Page() {
       await savePendingScorecardPhoto(failed);
       rememberPending(failed);
       setError(failed.lastError || "");
+      setStage("");
     }
   }
   function selectShooter(cid: string) {
@@ -351,6 +397,7 @@ export default function Page() {
       setError(retryable.lastError || "Apply failed");
     }
   }
+  function cancelAnalysis() { abortRef.current?.abort(); abortRef.current = null; setStage(""); setElapsed(0); if (pendingRef.current?.status === "analyzing") { const next = { ...pendingRef.current, status: "saved_on_device" as const }; rememberPending(next); void savePendingScorecardPhoto(next); } }
   async function discard() {
     if (confirm("Discard this local scorecard photo and review?")) {
       await deletePendingScorecardPhoto(id);
@@ -443,21 +490,19 @@ export default function Page() {
             />
             {pending && (
               <p className="small muted">
-                Status:{" "}
-                {pending.status === "waiting_for_connection"
-                  ? "Saved on this device — analysis needs connection"
-                  : pending.status}
+                {statusCopy(pending.status)}
               </p>
             )}
             <div className="btns">
               {pending && (
                 <button
                   className="button secondary smallButton"
-                  onClick={() => analyze()}
+                  onClick={() => prepareAndAnalyze(crop)}
+                  disabled={pending.status === "analyzing"}
                 >
                   {pending.status === "analysis_failed"
                     ? "Retry analysis"
-                    : "Analyze"}
+                    : "Analyze prepared image"}
                 </button>
               )}
               {pending && (
@@ -473,7 +518,11 @@ export default function Page() {
           </div>
           {previewUrl && (
             <div className="card">
-              <h3>Image preview</h3>
+              <h3>Prepare scorecard image</h3>
+              <p className="small muted">Crop around one shooter’s name and complete score grid. Include all posts and target columns.</p>
+              <div className="btns"><button className="button" onClick={() => prepareAndAnalyze(fullImageCrop)}>Use full image</button><button className="button secondary" onClick={() => setCrop({ x: .05, y: .05, width: .9, height: .9, mode: "crop" })}>Crop to my scorecard</button><button className="button secondary" onClick={() => prepareAndAnalyze(crop)}>Use this crop</button></div>
+              <div className="row"><label>Crop X %<input type="range" min="0" max="90" value={Math.round(crop.x*100)} onChange={(e)=>setCrop(clampCrop({...crop,x:Number(e.target.value)/100}))}/></label><label>Crop Y %<input type="range" min="0" max="90" value={Math.round(crop.y*100)} onChange={(e)=>setCrop(clampCrop({...crop,y:Number(e.target.value)/100}))}/></label><label>Width %<input type="range" min="10" max="100" value={Math.round(crop.width*100)} onChange={(e)=>setCrop(clampCrop({...crop,width:Number(e.target.value)/100}))}/></label><label>Height %<input type="range" min="10" max="100" value={Math.round(crop.height*100)} onChange={(e)=>setCrop(clampCrop({...crop,height:Number(e.target.value)/100}))}/></label></div>
+              {pending?.status === "analyzing" && <div className="analysisProgress"><strong>{stage || "Analyzing"}{elapsed > 0 ? ` · ${elapsed} seconds` : ""}</strong><div className="indeterminateBar"/><p className="small muted">Large or detailed images can take up to about a minute.</p><button className="secondary smallButton" onClick={cancelAnalysis}>Cancel analysis</button></div>}
               <img
                 alt="Selected scorecard"
                 style={{ maxWidth: "100%", borderRadius: 12 }}
@@ -498,7 +547,7 @@ export default function Page() {
           )}
           {grid.length > 0 && (
             <div className="card">
-              <h3>Review grid</h3>
+              <div className="reviewReferenceBar"><button className="thumbnailButton" onClick={() => setViewer("analyzed")}><img src={previewUrl || ""} alt="Analyzed scorecard crop thumbnail" /></button><span>AI analyzed {isFullImageCrop(pending?.crop) ? "the full image" : "this crop"}</span><button className="secondary smallButton" onClick={() => setViewer("analyzed")}>View photo</button>{!isFullImageCrop(pending?.crop) && <button className="secondary smallButton" onClick={() => setViewer("original")}>View original photo</button>}</div>{viewer && previewUrl && <div className="imageLightbox" role="dialog" aria-modal="true"><button className="button" onClick={() => setViewer(null)}>Close</button><img src={viewer === "original" ? (originalUrl || previewUrl) : previewUrl} alt="Scorecard reference" /></div>}<h3>Review grid</h3>
               <p>
                 Score {summary.score}/{summary.totalTargets} · Hits{" "}
                 {summary.hits} · Misses {summary.misses} · Unknown{" "}
@@ -655,3 +704,6 @@ export default function Page() {
     </main>
   );
 }
+
+function statusCopy(status: string) { return ({ saved_on_device: "Saved on this device — ready to analyze", waiting_for_connection: "Saved on this device — analysis will start when you are online.", analyzing: "Analyzing", ready_for_review: "Ready to review", analysis_failed: "Analysis could not be completed. Your image is still saved on this device.", applying: "Applying import" } as Record<string,string>)[status] || "Saved on this device"; }
+function scorecardErrorMessage(category: string, full: boolean) { if (category === "timed_out") return full ? "This overview image was too large to analyze in time. Crop to one shooter’s scorecard and try again." : "The scorecard could not be analyzed in time. Check that the image is sharp and includes the full grid, then retry."; if (category === "unreadable_scorecard") return "The image could not be read safely. Try a sharper photo or crop closer."; return "Analysis could not be completed. Your image is still saved on this device."; }

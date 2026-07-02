@@ -9,7 +9,9 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "check:score-sheet-safety": "node scripts/training-score-sheet-safety-check.mjs",
-    "test:scorecard": "node scripts/run-scorecard-tests.mjs"
+    "test:scorecard": "node scripts/run-scorecard-tests.mjs",
+    "test:post-sign-review": "node scripts/run-post-sign-review-tests.mjs",
+    "test:scorecard-crop": "node scripts/run-scorecard-crop-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",
