@@ -4,6 +4,8 @@ Sist oppdatert: 3. juli 2026
 
 Dette dokumentet er prosjektets hovedkilde for produktstatus, prioriteringer og avgrensninger. Det skal oppdateres når en funksjon endrer status, når en viktig beslutning tas, eller når en PR flytter noe fra plan til produksjon.
 
+Konkrete innspill fra betatestere føres i [TESTER_FEEDBACK.md](./TESTER_FEEDBACK.md).
+
 ## Statusregler
 
 Alle større funksjoner skal ligge i én av disse kategoriene:
@@ -140,7 +142,25 @@ Det skal normalt bare være én større produktfunksjon under aktiv utvikling om
 
 **Ferdig når:** Kjente kritiske feil er rettet, og minst én reell økt eller konkurranse er gjennomført uten datatap eller blokkering.
 
-### Prioritet 2: Deltakerkobling og personlig etterarbeid for Training Score Sheet
+### Prioritet 2: Raske forbedringer fra betatestere
+
+**Problem:** Testere må oppleve at konkrete og nyttige tilbakemeldinger blir registrert, prioritert og synlige i appen. Ellers faller motivasjonen for videre testing raskt.
+
+**Første godkjente innspill fra Simon:**
+
+1. **Konkurranseaktivitet:** Vis totalt antall konkurranser, totalt antall konkurranseduer/skudd, antall konkurranser i inneværende år og mulighet til å velge et annet år.
+2. **Eget navn på våpenoppsett:** La brukeren gi hvert våpen eller løpsoppsett et valgfritt navn, slik at flere like modeller og forskjellige løpssett kan skilles fra hverandre.
+
+**Minste nyttige versjon:**
+
+- konkurranseoversikten skiller tydelig mellom trening og konkurranse
+- importerte og manuelt registrerte resultater skal ikke dobbelttelles
+- våpennavn er valgfritt og ødelegger ikke eksisterende utstyrsdata
+- det egendefinerte navnet vises ved valg av utstyr, i historikk og i senere sammenligninger
+
+**Ferdig når:** Begge forbedringene er testet av minst én betatester og tilbakemeldingen er markert som Released i [TESTER_FEEDBACK.md](./TESTER_FEEDBACK.md).
+
+### Prioritet 3: Deltakerkobling og personlig etterarbeid for Training Score Sheet
 
 **Problem:** Arrangøren kan føre hele treningen, men deltakerne bør senere kunne finne sin egen registrering og berike den med personlige vurderinger.
 
@@ -159,9 +179,9 @@ Det skal normalt bare være én større produktfunksjon under aktiv utvikling om
 - avanserte roller eller coach-tilganger
 - varsling i alle kanaler
 
-**Hvorfor dette er neste produktfunksjon:** Training Score Sheet er allerede brukbart live. Den største mangelen er nå eierskap og verdi for hver enkelt deltaker etter økten.
+**Hvorfor dette er neste større produktfunksjon:** Training Score Sheet er allerede brukbart live. Den største mangelen er nå eierskap og verdi for hver enkelt deltaker etter økten.
 
-### Prioritet 3: Offline-kjerne for logging
+### Prioritet 4: Offline-kjerne for logging
 
 **Problem:** Enkelte skytebaner mangler mobildekning. Kritisk registrering må ikke være avhengig av nett.
 
@@ -175,7 +195,7 @@ Det skal normalt bare være én større produktfunksjon under aktiv utvikling om
 
 **Første avgrensning:** Start med Training Score Sheet og enkel bomregistrering. Ikke forsøk å gjøre alle appfunksjoner offline samtidig.
 
-### Prioritet 4: Coach Report v1
+### Prioritet 5: Coach Report v1
 
 **Problem:** Data finnes, men er ikke samlet i et kort og nyttig grunnlag for trener og skytter.
 
@@ -190,7 +210,7 @@ Det skal normalt bare være én større produktfunksjon under aktiv utvikling om
 
 **Ikke i første versjon:** Egen coach-konto, løpende chat, automatiske treningsprogrammer eller skjult deling.
 
-### Prioritet 5: Våpentesting og enkel sammenligning
+### Prioritet 6: Våpentesting og enkel sammenligning
 
 **Problem:** Skyttere, blant annet Simon, tester nye våpen og ønsker å kunne sammenligne uten misvisende konklusjoner.
 
@@ -227,6 +247,13 @@ Disse punktene er ønskelige, men skal ikke behandles som neste oppgave uten at 
 - Anbefaling av choke og ammunisjon basert på avstand, vinkel, synlig dueflate, hastighet, duetype og forventet skuddrekkefølge.
 - Ved flere duer skal appen beregne beste samlede kompromiss og eventuelt anbefale forskjellige choker i øvre og nedre løp.
 - Detaljert konsept, MVP, beregningsgrunnlag og avgrensninger: [ROADMAP_CHOKE_SELECTOR.md](./ROADMAP_CHOKE_SELECTOR.md).
+
+### Tilgangsnivåer og brukerroller
+
+- Skill mellom produktnivå og rolle.
+- Støtt blant annet skytter, coach, arrangør og skytebaneorganisasjoner med konkrete tillatelser.
+- Dette er nødvendig arkitekturgrunnlag før betaling og større coach- eller skytebanefunksjoner lanseres.
+- Detaljert konsept: [ROADMAP_ACCESS_LEVELS_AND_ROLES.md](./ROADMAP_ACCESS_LEVELS_AND_ROLES.md).
 
 ### Coach og samarbeid
 
@@ -278,6 +305,8 @@ Disse beslutningene skal ikke åpnes på nytt uten en tydelig ny begrunnelse.
 14. **Nye store funksjoner skal kobles til denne roadmapen.** PR-beskrivelsen skal si hvilket roadmap-punkt den gjennomfører eller endrer.
 15. **Skyteglass-anbefalingen skal i første versjon velge blant brukerens egne registrerte glass.** Den skal forklare usikkerhet og være beslutningsstøtte, ikke en sikker fasit eller et skjult kjøpsforslag.
 16. **Choke- og ammunisjonsvelgeren skal i første versjon prioritere brukerens egne registrerte choker og patroner.** Den skal vise usikkerhet, bruke egne mønstringstester når de finnes og aldri fremstille anbefalingen som en garanti for treff.
+17. **Brukerrolle og produktnivå er separate systemer.** Betaling gir aldri automatisk tilgang til andres data.
+18. **Konkrete innspill fra aktive betatestere skal registreres og vurderes før nye spekulative funksjoner.** Små forbedringer med høy nytte og lav risiko kan trekkes foran større roadmap-punkter.
 
 ---
 
@@ -291,10 +320,19 @@ Når en ny idé kommer opp:
 4. Skriv hva som uttrykkelig ikke inngår.
 5. Flytt ikke punktet til Ferdig før produksjonsstatus er bekreftet.
 
+Når tilbakemelding kommer fra en betatester:
+
+1. Registrer innspillet i [TESTER_FEEDBACK.md](./TESTER_FEEDBACK.md).
+2. Gi det en synlig status og kort begrunnelse.
+3. Prioriter feil og friksjon i kjerneflyter først.
+4. Trekk frem små, tydelige forbedringer med stor bruker-verdi.
+5. Gi beskjed til testeren eller betagruppen når innspillet er lansert.
+
 Når en PR merges:
 
 - oppdater relevant status i dette dokumentet
 - legg inn PR-nummer ved større endringer
+- oppdater testerinnspill som er levert
 - fjern utdaterte begrensninger
 - behold viktige beslutninger som fortsatt gjelder
 
