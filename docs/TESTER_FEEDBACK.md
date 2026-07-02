@@ -69,3 +69,31 @@ When a tester suggestion is released, the tester or beta group should be told th
 - existing equipment records must continue to work without a custom name
 
 **Why prioritized:** It removes ambiguity in a core equipment flow and supports the planned gun-comparison feature.
+
+---
+
+## Samuel – beta feedback
+
+### English Skeet training support
+
+**Original need:** Add English Skeet because Samuel and shooters at his shooting ground use the discipline regularly in training.
+
+**Status:** Accepted
+
+**Priority:** High tester priority; larger discipline feature
+
+**Planned minimum version:**
+
+- English Skeet can be selected for training
+- discipline-correct scorecard and terminology
+- live hit/miss entry per target
+- running score, final total and correction flow
+- results stored as training and kept separate from competition totals
+- mobile-friendly flow with few taps
+- existing optional equipment selection remains available
+
+**Important preparation:** Confirm the exact sequence, terminology and scorecard structure with Samuel before implementation. English Skeet must not be guessed from Olympic, American or other skeet variants.
+
+**Why prioritized:** It comes from a verified, repeated real-world training need at an active tester’s shooting ground. It is larger than the two quick wins above, but should be considered before unrelated speculative features.
+
+**Detailed roadmap:** [ROADMAP_ENGLISH_SKEET.md](./ROADMAP_ENGLISH_SKEET.md)
