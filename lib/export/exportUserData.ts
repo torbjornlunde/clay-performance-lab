@@ -60,6 +60,24 @@ export type ExportTargetDefinition = {
   machine: string;
   target_type?: string | null;
   direction?: string | null;
+  angle?: string | null;
+  speed?: string | null;
+  distance?: string | null;
+  difficulty?: string | null;
+  notes?: string | null;
+};
+
+export type ExportPostTarget = {
+  session_id: string;
+  post_number: number;
+  target_position: number;
+  presentation_number: number;
+  presentation_type?: string | null;
+  position_in_presentation: number;
+  target_label?: string | null;
+  target_type?: string | null;
+  direction?: string | null;
+  angle?: string | null;
   speed?: string | null;
   distance?: string | null;
   difficulty?: string | null;
@@ -71,6 +89,7 @@ export type ExportUserDataInput = {
   misses: ExportMiss[];
   courses: ExportCourse[];
   targetDefinitions: ExportTargetDefinition[];
+  postTargets?: ExportPostTarget[];
   exportCreatedAt?: Date;
 };
 
@@ -324,6 +343,7 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
       Machine: definition.machine,
       "Target type": cleanExportLabel(definition.target_type),
       Direction: definition.direction || null,
+      Angle: definition.angle || null,
       Speed: definition.speed || null,
       Distance: definition.distance || null,
       Difficulty: definition.difficulty || null,
@@ -336,6 +356,47 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
       "Machine",
       "Target type",
       "Direction",
+      "Angle",
+      "Speed",
+      "Distance",
+      "Difficulty",
+      "Notes",
+    ],
+  );
+
+  addSheet(
+    workbook,
+    "Post targets",
+    (input.postTargets || []).map((target) => ({
+      "Session name": sessionsById.get(target.session_id)?.name || null,
+      "Shooting ground":
+        sessionsById.get(target.session_id)?.shooting_ground || null,
+      "Post/Stand number": target.post_number,
+      "Target position": target.target_position,
+      "Presentation number": target.presentation_number,
+      "Presentation type": cleanExportLabel(target.presentation_type),
+      "Position in presentation": target.position_in_presentation,
+      "Target label": target.target_label || null,
+      "Target type": cleanExportLabel(target.target_type),
+      Direction: target.direction || null,
+      Angle: target.angle || null,
+      Speed: target.speed || null,
+      Distance: target.distance || null,
+      Difficulty: target.difficulty || null,
+      Notes: target.notes || null,
+    })),
+    [
+      "Session name",
+      "Shooting ground",
+      "Post/Stand number",
+      "Target position",
+      "Presentation number",
+      "Presentation type",
+      "Position in presentation",
+      "Target label",
+      "Target type",
+      "Direction",
+      "Angle",
       "Speed",
       "Distance",
       "Difficulty",

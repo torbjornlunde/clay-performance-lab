@@ -7,6 +7,7 @@ import type {
   ExportCourse,
   ExportMiss,
   ExportTargetDefinition,
+  ExportPostTarget,
 } from "@/lib/export/exportUserData";
 import { isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { calculateRollingAverage, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
@@ -69,6 +70,7 @@ type TrainingHistoryItem =
 type ExportCourseRow = ExportCourse;
 type ExportMissRow = ExportMiss;
 type ExportTargetDefinitionRow = ExportTargetDefinition;
+type ExportPostTargetRow = ExportPostTarget;
 
 type ChartPeriod = "month" | "year" | "all" | "custom";
 
@@ -689,9 +691,10 @@ export default function DashboardPage() {
       let exportCourses: ExportCourseRow[] = [];
       let exportMisses: ExportMissRow[] = [];
       let exportTargetDefinitions: ExportTargetDefinitionRow[] = [];
+      let exportPostTargets: ExportPostTargetRow[] = [];
 
       if (sessionIds.length > 0) {
-        const [coursesResult, missesResult, definitionsResult] =
+        const [coursesResult, missesResult, definitionsResult, postTargetsResult] =
           await Promise.all([
             supabase
               .from("session_courses")
@@ -707,19 +710,28 @@ export default function DashboardPage() {
               .returns<ExportMissRow[]>(),
             supabase
               .from("session_target_definitions")
-              .select("session_id,course_number,machine,target_type,direction,speed,distance,difficulty,notes")
+              .select("session_id,course_number,machine,target_type,direction,angle,speed,distance,difficulty,notes")
               .in("session_id", sessionIds)
               .order("course_number")
               .returns<ExportTargetDefinitionRow[]>(),
+            supabase
+              .from("session_post_targets")
+              .select("session_id,post_number,target_position,presentation_number,presentation_type,position_in_presentation,target_label,target_type,direction,angle,speed,distance,difficulty,notes")
+              .in("session_id", sessionIds)
+              .order("post_number")
+              .order("target_position")
+              .returns<ExportPostTargetRow[]>(),
           ]);
 
         if (coursesResult.error) throw coursesResult.error;
         if (missesResult.error) throw missesResult.error;
         if (definitionsResult.error) throw definitionsResult.error;
+        if (postTargetsResult.error) throw postTargetsResult.error;
 
         exportCourses = coursesResult.data || [];
         exportMisses = missesResult.data || [];
         exportTargetDefinitions = definitionsResult.data || [];
+        exportPostTargets = postTargetsResult.data || [];
       }
 
       const { exportFileName, exportUserDataToExcel } = await import("@/lib/export/exportUserData");
@@ -729,6 +741,7 @@ export default function DashboardPage() {
           courses: exportCourses,
           misses: exportMisses,
           targetDefinitions: exportTargetDefinitions,
+          postTargets: exportPostTargets,
         },
         exportFileName(),
       );

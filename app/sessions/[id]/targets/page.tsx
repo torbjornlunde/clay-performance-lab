@@ -214,6 +214,7 @@ export default function TargetDefinitionsPage() {
           machine: definition.machine,
           target_type: definition.target_type,
           direction: definition.direction,
+          angle: definition.angle,
           speed: definition.speed,
           distance: definition.distance,
           difficulty: definition.difficulty,

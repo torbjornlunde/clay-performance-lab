@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
-execSync('rm -rf .target-detail-test-build && npx tsc lib/targets/targetDetails.ts lib/targets/postTargets.ts lib/sporttrap/program.ts lib/fitasc/compakSchemes.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM --outDir .target-detail-test-build --skipLibCheck', {stdio:'inherit'});
-const details = await import('../.target-detail-test-build/targets/targetDetails.js');
-const postTargets = await import('../.target-detail-test-build/targets/postTargets.js');
-const sporttrap = await import('../.target-detail-test-build/sporttrap/program.js');
-const compak = await import('../.target-detail-test-build/fitasc/compakSchemes.js');
+execSync('rm -rf .target-detail-test-build .target-detail-test-src && mkdir -p .target-detail-test-src/export .target-detail-test-src/misses && cp lib/misses/scoring.ts .target-detail-test-src/misses/scoring.ts && sed \"s#@/lib/misses/scoring#../misses/scoring#\" lib/export/exportUserData.ts > .target-detail-test-src/export/exportUserData.ts && npx tsc lib/targets/targetDetails.ts lib/targets/postTargets.ts lib/sporttrap/program.ts lib/fitasc/compakSchemes.ts .target-detail-test-src/export/exportUserData.ts .target-detail-test-src/misses/scoring.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM --outDir .target-detail-test-build --skipLibCheck', {stdio:'inherit'});
+const details = await import('../.target-detail-test-build/lib/targets/targetDetails.js');
+const postTargets = await import('../.target-detail-test-build/lib/targets/postTargets.js');
+const sporttrap = await import('../.target-detail-test-build/lib/sporttrap/program.js');
+const compak = await import('../.target-detail-test-build/lib/fitasc/compakSchemes.js');
+const exportData = await import('../.target-detail-test-build/.target-detail-test-src/export/exportUserData.js');
 
 const complete = {target_label:'A',target_type:'Standard',direction:'Left to right',angle:'Hard left',speed:'Very fast',distance:'Long',difficulty:'5 - Very hard',notes:'Late pickup'};
 for (const discipline of ['Leirduesti','Sporting','English Sporting']) {
@@ -86,6 +87,31 @@ assert.match(postEditor, /More target details · \{targetDetailsSummary/, 'post\
 assert.match(postEditor, /optionsWithCurrent\(targetTypes, t\.target_type\)/, 'post\/stand type control preserves legacy stored values');
 assert.match(postEditor, /optionsWithCurrent\(difficulties, t\.difficulty\)/, 'post\/stand difficulty control preserves legacy stored values');
 
+
+const targetPageSourceForCopy = readFileSync('app/sessions/[id]/targets/page.tsx','utf8');
+assert.match(targetPageSourceForCopy, /angle: definition\.angle/, 'A-F Copy to all and selected copy angle');
+assert.match(targetPageSourceForCopy, /target_type: definition\.target_type[\s\S]*direction: definition\.direction[\s\S]*angle: definition\.angle[\s\S]*speed: definition\.speed[\s\S]*distance: definition\.distance[\s\S]*difficulty: definition\.difficulty[\s\S]*notes: definition\.notes/, 'A-F copy preserves all target metadata fields');
+assert.doesNotMatch(targetPageSourceForCopy, /fitasc_compak_schemes[\s\S]*copyDefinitions/, 'A-F copy does not change program references');
+
+const workbook = exportData.createUserDataWorkbook({
+  sessions: [{ id:'s1', name:'Session 1', discipline:'Compak Sporting', session_type:'Competition', total_targets:25, created_at:'2026-07-02T00:00:00Z', shooting_ground:'Ground' }],
+  courses: [],
+  misses: [],
+  targetDefinitions: [{ session_id:'s1', course_number:1, machine:'A', target_type:'Battue', direction:'Left to right', angle:'High', speed:'Fast', distance:'Long', difficulty:'4 - Hard', notes:'detail note' }],
+  postTargets: [{ session_id:'s1', post_number:2, target_position:3, presentation_number:2, presentation_type:'report_pair', position_in_presentation:2, target_label:'B', target_type:'Crossing', direction:'Right to left', angle:'Hard right', speed:'Very fast', distance:'Long', difficulty:'Tricky', notes:'post note' }],
+  exportCreatedAt: new Date('2026-07-02T00:00:00Z'),
+});
+const targetDefinitionSheet = workbook.sheets.find(sheet => sheet.name === 'Target definitions');
+assert.ok(targetDefinitionSheet, 'target definitions export sheet exists');
+assert.deepEqual(targetDefinitionSheet.headers, ['Session name','Shooting ground','Course number','Machine','Target type','Direction','Angle','Speed','Distance','Difficulty','Notes'], 'target definition export headers keep order and include Angle');
+assert.equal(targetDefinitionSheet.rows[0].Angle, 'High', 'session_target_definitions angle is present in export result');
+assert.equal(targetDefinitionSheet.rows[0].Machine, 'A', 'target definition export keeps Machine');
+assert.equal(targetDefinitionSheet.rows[0]['Target type'], 'Battue', 'target definition export keeps target type');
+const postTargetSheet = workbook.sheets.find(sheet => sheet.name === 'Post targets');
+assert.ok(postTargetSheet, 'post targets export sheet exists');
+assert.equal(postTargetSheet.rows[0].Angle, 'Hard right', 'session_post_targets angle is present in export result');
+assert.deepEqual(postTargetSheet.headers.slice(7, 12), ['Target label','Target type','Direction','Angle','Speed'], 'post target export keeps existing column order around Angle');
+
 const migration = readFileSync('supabase/migrations/20260702030000_target_details_angle.sql','utf8');
 assert.match(migration, /add column if not exists angle text/, 'migration adds angle additively');
 assert.match(migration, /session_target_definitions/, 'migration covers A-F target definitions');
@@ -95,5 +121,5 @@ assert.match(rls, /session_target_definitions\.session_id and s\.user_id = auth\
 const scorecardPage = readFileSync('app/sessions/[id]/scorecard-import/page.tsx','utf8');
 assert.match(scorecardPage, /from\("session_post_targets"\)/, 'scorecard import and mapping continue to use target positions');
 
-execSync('rm -rf .target-detail-test-build');
+execSync('rm -rf .target-detail-test-build .target-detail-test-src');
 console.log('target detail domain tests passed');
