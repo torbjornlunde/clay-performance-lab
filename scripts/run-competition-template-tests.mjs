@@ -10,6 +10,7 @@ const previewPage = fs.readFileSync('app/competition-templates/[id]/page.tsx', '
 assert.match(sql, /visibility text not null default 'private'/, 'New template is private by default');
 assert.match(sql, /create policy "competition_templates_insert_own"[\s\S]*with check \(false\)/, 'Direct template inserts are blocked');
 assert.match(sql, /create policy "competition_templates_update_own"[\s\S]*using \(false\) with check \(false\)/, 'Direct payload updates are blocked');
+assert.match(sql, /preview_competition_template_source\(p_source_session_id uuid\)/, 'Source preview uses the server snapshot builder');
 assert.match(sql, /publish_competition_template\(p_source_session_id uuid, p_visibility text default 'private', p_show_creator_name boolean default false\)/, 'Publishing happens through an RPC');
 assert.match(sql, /select \* into s from public\.sessions where id = p_source_session_id and user_id = v_user/, 'Source session ownership is enforced server-side');
 assert.match(sql, /insert into public\.competition_templates\(owner_user_id, source_session_id/, 'RPC sets owner/source fields itself');
@@ -18,6 +19,15 @@ assert.match(sharePage, /publish_competition_template/, 'Client uses publish RPC
 assert.match(sharePage, /update_competition_template_snapshot/, 'Client uses atomic update RPC');
 assert.match(sharePage, /withdraw_competition_template/, 'Client uses withdraw RPC');
 assert.doesNotMatch(sharePage, /userData\.user\.email|\.email\?|split\("@"\)|split\('@'\)/, 'Email is never used as creator fallback');
+assert.doesNotMatch(sql, /'instructions', nullif\(s\.notes,''\)/, 'sessions.notes is never published as template metadata');
+assert.doesNotMatch(sql.match(/template_payload := jsonb_build_object[\s\S]*?;\n  return next;/)?.[0] || '', /s\.notes|PRIVATE_SESSION_NOTE_DO_NOT_SHARE_92841/, 'Private session notes cannot enter stored payload or later preview/copy results');
+assert.match(sql, /is_physical_template_discipline\(value text\)[\s\S]*'sporttrap'\) \$\$/, 'Compak/Sporttrap physical template support remains allowed');
+assert.doesNotMatch(sql.match(/is_physical_template_discipline\(value text\)[\s\S]*?\$\$/)?.[0] || '', /fitasc sporting/i, 'FITASC Sporting is not treated as Compak A-F physical setup');
+assert.match(sql, /This discipline is not supported for templates/, 'Unsupported disciplines, including FITASC Sporting, are rejected by publishing snapshot builder');
+assert.match(sharePage, /preview_competition_template_source/, 'Client publish preview uses the authoritative server preview RPC');
+assert.doesNotMatch(sharePage, /buildTemplatePayload/, 'Client no longer computes authoritative completeness locally');
+assert.match(sharePage, /FITASC Sporting setup sharing will come later/, 'UI explains FITASC sharing is coming later');
+
 assert.match(sql, /template_version = ct\.template_version \+ 1/, 'Version increments atomically in SQL');
 assert.match(sql, /for update/, 'Template update locks the row before version increment');
 assert.match(sql, /visibility = 'searchable'/, 'Search only includes searchable templates');
@@ -28,7 +38,7 @@ assert.doesNotMatch(sql.match(/returns table \(id uuid, name text, competition_d
 assert.match(sql, /jsonb_build_object\([\s\S]*'schemaVersion'[\s\S]*'metadata'[\s\S]*'setup'/, 'Server builds payload from explicit JSON whitelist');
 assert.doesNotMatch(sql.match(/template_payload := jsonb_build_object[\s\S]*?;\n  return next;/)?.[0] || '', /own_score|winning_score|equipment|weapon|ammunition|email|owner_user_id|source_session_id|\bid\b/, 'Server payload builder excludes private fields');
 assert.match(sql, /complete_posts = expected_posts and target_rows = expected_total/, 'Post-based completeness checks counts and totals');
-assert.match(sql, /physical_rows >= case when s\.discipline in \('Compak Sporting','Kompakt leirduesti','FITASC Sporting'\) then expected_posts \* 6 else 1 end/, 'Physical-target completeness requires discipline-level target definitions');
+assert.match(sql, /physical_rows >= case when s\.discipline in \('Compak Sporting','Kompakt leirduesti'\) then expected_posts \* 6 else 1 end/, 'Compak physical-target completeness still requires A-F definitions');
 assert.match(sql, /insert into public\.sessions\(user_id,name,discipline,session_type/, 'Copy creates a new owned session');
 assert.match(sql, /insert into public\.session_post_targets/, 'Copy creates new post-target rows');
 assert.match(sql, /insert into public\.competition_template_copies/, 'Copy audit row is recorded');

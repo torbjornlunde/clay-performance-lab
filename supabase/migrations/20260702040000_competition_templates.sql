@@ -47,7 +47,7 @@ create index if not exists competition_template_copies_user_idx on public.compet
 create or replace function public.normalize_competition_template_search_text(value text) returns text language sql immutable as $$ select regexp_replace(lower(btrim(coalesce(value,''))), '\s+', ' ', 'g') $$;
 create or replace function public.competition_template_creator_label(show_name boolean, snapshot text) returns text language sql immutable as $$ select case when show_name and nullif(snapshot,'') is not null then 'Created by ' || snapshot else 'Created by another user' end $$;
 create or replace function public.is_post_based_template_discipline(value text) returns boolean language sql immutable as $$ select lower(btrim(coalesce(value,''))) in ('leirduesti','sporting','english sporting','engelsk sporting') $$;
-create or replace function public.is_physical_template_discipline(value text) returns boolean language sql immutable as $$ select lower(btrim(coalesce(value,''))) in ('compak sporting','kompakt leirduesti','sporttrap','fitasc sporting') $$;
+create or replace function public.is_physical_template_discipline(value text) returns boolean language sql immutable as $$ select lower(btrim(coalesce(value,''))) in ('compak sporting','kompakt leirduesti','sporttrap') $$;
 
 create or replace function public.set_competition_template_search_fields() returns trigger language plpgsql set search_path = public as $$
 begin
@@ -185,7 +185,7 @@ begin
     from public.session_target_definitions d where d.session_id = s.id;
     post_count := expected_posts;
     target_count := expected_total;
-    is_complete := expected_posts > 0 and expected_total > 0 and jsonb_array_length(v_courses) >= expected_posts and physical_rows >= case when s.discipline in ('Compak Sporting','Kompakt leirduesti','FITASC Sporting') then expected_posts * 6 else 1 end;
+    is_complete := expected_posts > 0 and expected_total > 0 and jsonb_array_length(v_courses) >= expected_posts and physical_rows >= case when s.discipline in ('Compak Sporting','Kompakt leirduesti') then expected_posts * 6 else 1 end;
   end if;
 
   name := s.name;
@@ -203,13 +203,19 @@ begin
       'postCount', post_count,
       'targetCount', target_count,
       'targetsPerPost', s.targets_per_post,
-      'defaultPostFormat', s.default_post_format,
-      'instructions', nullif(s.notes,'')
+      'defaultPostFormat', s.default_post_format
     ),
     'setup', jsonb_build_object('posts', v_posts, 'physicalTargets', v_physical, 'program', jsonb_build_object('courses', v_courses, 'sporttrapSeriesCount', s.sporttrap_series_count))
   );
   return next;
 end $$;
+
+create or replace function public.preview_competition_template_source(p_source_session_id uuid)
+returns table (name text, competition_date date, shooting_ground text, discipline text, post_count integer, target_count integer, is_complete boolean)
+language sql security definer set search_path = public as $$
+  select s.name, s.competition_date, s.shooting_ground, s.discipline, s.post_count, s.target_count, s.is_complete
+  from public.build_competition_template_snapshot(p_source_session_id) s;
+$$;
 
 create or replace function public.safe_creator_snapshot(p_show_creator_name boolean)
 returns table(show_creator_name boolean, creator_display_name_snapshot text)
@@ -363,6 +369,7 @@ end $$;
 
 revoke execute on function public.build_competition_template_snapshot(uuid) from public, anon;
 revoke execute on function public.safe_creator_snapshot(boolean) from public, anon;
+revoke execute on function public.preview_competition_template_source(uuid) from public, anon;
 revoke execute on function public.publish_competition_template(uuid,text,boolean) from public, anon;
 revoke execute on function public.update_competition_template_snapshot(uuid,text,boolean) from public, anon;
 revoke execute on function public.set_competition_template_visibility(uuid,text) from public, anon;
@@ -371,6 +378,7 @@ revoke execute on function public.republish_competition_template(uuid,text) from
 revoke execute on function public.search_competition_templates(text,date,text,text) from public, anon;
 revoke execute on function public.get_competition_template_preview(uuid) from public, anon;
 revoke execute on function public.copy_competition_template_to_new_session(uuid,text,date,text) from public, anon;
+grant execute on function public.preview_competition_template_source(uuid) to authenticated;
 grant execute on function public.publish_competition_template(uuid,text,boolean) to authenticated;
 grant execute on function public.update_competition_template_snapshot(uuid,text,boolean) to authenticated;
 grant execute on function public.set_competition_template_visibility(uuid,text) to authenticated;

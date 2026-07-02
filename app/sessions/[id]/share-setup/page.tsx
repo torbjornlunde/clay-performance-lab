@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { buildTemplatePayload, disciplineSupportNote, supportedTemplateDiscipline, TemplateVisibility } from "@/lib/competitionTemplates";
+import { disciplineSupportNote, supportedTemplateDiscipline, TemplateVisibility } from "@/lib/competitionTemplates";
 import { supabase } from "@/lib/supabase/client";
 import { userFacingSaveError } from "@/lib/userFacingErrors";
 
@@ -25,9 +25,9 @@ type PublishedTemplate = {
 };
 
 type PublishSummary = {
-  postCount: number;
-  targetCount: number;
-  isComplete: boolean;
+  post_count: number;
+  target_count: number;
+  is_complete: boolean;
 };
 
 type RpcPublishResult = {
@@ -54,7 +54,7 @@ function TemplateSummaryCard({ session, summary }: { session: SessionRow; summar
       </p>
       <p>{disciplineSupportNote(session.discipline)}</p>
       <p>
-        <strong>{summary?.postCount || 0}</strong> posts/stands/series · <strong>{summary?.targetCount || 0}</strong> targets · {summary?.isComplete ? "Complete setup" : "Incomplete setup"}
+        <strong>{summary?.post_count || 0}</strong> posts/stands/series · <strong>{summary?.target_count || 0}</strong> targets · {summary?.is_complete ? "Complete setup" : "Incomplete setup"}
       </p>
     </div>
   );
@@ -103,12 +103,9 @@ export default function ShareCompetitionSetupPage() {
       return;
     }
 
-    const [sessionResult, coursesResult, postTargetsResult, postDetailsResult, targetDefinitionsResult, profileResult, templatesResult] = await Promise.all([
-      supabase.from("sessions").select("*").eq("id", id).single(),
-      supabase.from("session_courses").select("*").eq("session_id", id).order("course_number"),
-      supabase.from("session_post_targets").select("*").eq("session_id", id).order("post_number").order("target_position"),
-      supabase.from("session_post_details").select("*").eq("session_id", id).order("post_number"),
-      supabase.from("session_target_definitions").select("*").eq("session_id", id).order("course_number").order("machine"),
+    const [sessionResult, sourcePreviewResult, profileResult, templatesResult] = await Promise.all([
+      supabase.from("sessions").select("id,name,competition_date,shooting_ground,discipline").eq("id", id).single(),
+      supabase.rpc("preview_competition_template_source", { p_source_session_id: id }),
       supabase.from("shooter_profiles").select("display_name,full_name").eq("user_id", userData.user.id).maybeSingle(),
       supabase.from("competition_templates").select("id,name,visibility,template_version,withdrawn_at,updated_at").eq("source_session_id", id).order("updated_at", { ascending: false }),
     ]);
@@ -126,18 +123,12 @@ export default function ShareCompetitionSetupPage() {
     setDisplayName(name);
     setShowName(Boolean(name));
 
-    try {
-      const preview = buildTemplatePayload({
-        session: sessionResult.data,
-        courses: coursesResult.data || [],
-        postTargets: postTargetsResult.data || [],
-        postDetails: postDetailsResult.data || [],
-        targetDefinitions: targetDefinitionsResult.data || [],
-      });
-      setSummary({ postCount: preview.postCount, targetCount: preview.targetCount, isComplete: preview.isComplete });
-    } catch {
-      setMessage("This setup cannot be previewed for sharing yet.");
+    if (sourcePreviewResult.error || !sourcePreviewResult.data?.[0]) {
+      setSummary(null);
+      setMessage("This discipline or setup is not ready for sharing yet. FITASC Sporting setup sharing will come later.");
+      return;
     }
+    setSummary(sourcePreviewResult.data[0] as PublishSummary);
   }
 
   async function publishNewTemplate() {

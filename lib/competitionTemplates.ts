@@ -11,6 +11,7 @@ export function disciplineSupportNote(discipline: string | null | undefined) {
   if (!discipline) return "No discipline selected.";
   if (isPostBasedSportingDiscipline(discipline) || isOrdinaryLeirduesti(discipline)) return "Full post/stand presentation structure from session_post_targets can be published and copied.";
   if (isCompactDiscipline(discipline) || discipline === "Sporttrap") return "Physical machine target definitions and course/program metadata can be published and copied.";
+  if (discipline === "FITASC Sporting") return "FITASC Sporting setup sharing is not supported in this PR. Discipline-specific FITASC template support will come later.";
   return "This discipline is not supported for competition templates yet.";
 }
 export function publicFields() { return ["name", "competition_date", "shooting_ground", "discipline", "post_count", "target_count", "is_complete", "template_version", "template_payload", "visibility", "show_creator_name", "creator_display_name_snapshot"] as const; }
