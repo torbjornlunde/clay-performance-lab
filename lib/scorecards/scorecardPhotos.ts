@@ -30,6 +30,7 @@ export type PendingScorecardPhoto = {
   analysis?: NormalizedScorecardAnalysis;
   selectedShooterCandidateId?: string | null;
   reviewedGrid?: ScorecardCell[];
+  reviewedGridFingerprint?: string | null;
   scoreChoice?: "use_scorecard" | "keep_existing";
   acknowledgeAmbiguousExisting?: boolean;
   lastError?: string | null;
@@ -108,6 +109,7 @@ export function migratePendingScorecardPhoto(
     reviewedGrid: Array.isArray(raw.reviewedGrid)
       ? raw.reviewedGrid
       : fallbackGrid,
+    reviewedGridFingerprint: typeof raw.reviewedGridFingerprint === "string" ? raw.reviewedGridFingerprint : (Array.isArray(raw.reviewedGrid) || fallbackGrid ? raw.cropFingerprint || raw.imageFingerprint : null),
     scoreChoice:
       raw.scoreChoice === "keep_existing" ? "keep_existing" : "use_scorecard",
     acknowledgeAmbiguousExisting: Boolean(raw.acknowledgeAmbiguousExisting),

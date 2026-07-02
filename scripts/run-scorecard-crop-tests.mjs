@@ -1,12 +1,26 @@
 import assert from 'node:assert/strict';
-function clampCrop(crop){const x=Math.max(0,Math.min(1,crop.x));const y=Math.max(0,Math.min(1,crop.y));const width=Math.max(0.02,Math.min(1-x,crop.width));const height=Math.max(0.02,Math.min(1-y,crop.height));return{x,y,width,height,mode:crop.mode||((x===0&&y===0&&width===1&&height===1)?'full':'crop')}}
-function stageReducer(state,event){ if(event==='prepare') return 'Preparing image'; if(event==='upload') return 'Uploading image'; if(event==='ai') return 'Reading shooter rows and marks'; if(event==='normalize') return 'Checking detected results'; if(event==='review') return 'Preparing review'; if(event==='cancel') return ''; return state; }
-function timeoutMessage(full){return full?'This overview image was too large to analyze in time. Crop to one shooter’s scorecard and try again.':'The scorecard could not be analyzed in time. Check that the image is sharp and includes the full grid, then retry.'}
-assert.deepEqual(clampCrop({x:-1,y:2,width:9,height:9}),{x:0,y:1,width:1,height:0.02,mode:'crop'});
-assert.deepEqual(clampCrop({x:0,y:0,width:1,height:1}),{x:0,y:0,width:1,height:1,mode:'full'});
-assert.equal(stageReducer('', 'prepare'),'Preparing image');
-assert.equal(stageReducer('', 'upload'),'Uploading image');
-assert.equal(stageReducer('', 'cancel'),'');
-assert.match(timeoutMessage(true),/overview image was too large/);
-assert.match(timeoutMessage(false),/could not be analyzed in time/);
+import { execSync } from 'node:child_process';
+execSync('rm -rf .scorecard-crop-test-build && npx tsc lib/scorecards/scorecardCrop.ts lib/scorecards/scorecardImportState.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM --outDir .scorecard-crop-test-build --skipLibCheck', {stdio:'inherit'});
+const crop = await import('../.scorecard-crop-test-build/scorecardCrop.js');
+const state = await import('../.scorecard-crop-test-build/scorecardImportState.js');
+let c = crop.clampCrop({x:.9,y:.9,width:.5,height:.5});
+assert.equal(c.x + c.width <= 1, true);
+assert.equal(c.y + c.height <= 1, true);
+assert.equal(c.width >= .02, true);
+assert.equal(c.height >= .02, true);
+assert.deepEqual(crop.clampCrop({x:0,y:0,width:1,height:1}), crop.fullImageCrop);
+assert.equal(crop.moveCrop({x:.8,y:.8,width:.3,height:.3}, .3, .3).x + crop.moveCrop({x:.8,y:.8,width:.3,height:.3}, .3, .3).width <= 1, true);
+assert.equal(crop.resizeCrop({x:.1,y:.1,width:.2,height:.2}, 'nw', .5, .5).width >= .02, true);
+assert.equal(crop.sameCrop({x:0,y:0,width:1,height:1}, crop.fullImageCrop), true);
+assert.equal(state.canReconnectRetry({status:'waiting_for_connection',preparationState:'prepare',imageFingerprint:'a'}), false);
+assert.equal(state.canReconnectRetry({status:'waiting_for_connection',preparationState:'ready',imageFingerprint:'a',cropFingerprint:'b'}), true);
+const op={sessionId:'s',clientImportId:'c',imageFingerprint:'i',cropFingerprint:'f',operationId:'o'};
+assert.equal(state.shouldIgnoreScorecardResponse({...op,cancelled:true}, op, {clientImportId:'c',imageFingerprint:'i',cropFingerprint:'f'}), true);
+assert.equal(state.shouldIgnoreScorecardResponse(op, op, {clientImportId:'c',imageFingerprint:'i',cropFingerprint:'old'}), true);
+assert.equal(state.shouldIgnoreScorecardResponse(op, op, {clientImportId:'c',imageFingerprint:'i',cropFingerprint:'f'}), false);
+assert.equal(state.canApplyReview({status:'analyzing',imageFingerprint:'f',cropFingerprint:'f'}, 'f'), false);
+assert.equal(state.canApplyReview({status:'ready_for_review',imageFingerprint:'f',cropFingerprint:'f'}, 'old'), false);
+assert.equal(state.canApplyReview({status:'ready_for_review',imageFingerprint:'f',cropFingerprint:'f'}, 'f'), true);
+assert.match(state.timeoutMessage('timed_out', crop.fullImageCrop), /overview image was too large/);
+assert.match(state.timeoutMessage('timed_out', {x:.1,y:.1,width:.5,height:.5}), /could not be analyzed in time/);
 console.log('scorecard crop/progress behavior tests passed');

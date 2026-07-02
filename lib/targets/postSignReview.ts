@@ -6,11 +6,12 @@ export type PairConventionChoices = Partial<Record<"plus" | "joined" | "arrow" |
 export const unresolvedNotationKinds = ["plus", "joined", "arrow", "other"] as const;
 
 export function unresolvedKinds(review: PostSignAnalysisResult) {
-  return Array.from(new Set(review.presentations.filter((p) => p.structuralKind === "pair" && p.typeEvidence === "user_convention_required" && p.presentationType === "unknown").map((p) => p.notationKind).filter((k): k is "plus"|"joined"|"arrow"|"other" => unresolvedNotationKinds.includes(k as any))));
+  return Array.from(new Set(review.presentations.filter((p) => p.structuralKind === "pair" && p.typeEvidence === "user_convention_required").map((p) => p.notationKind).filter((k): k is "plus"|"joined"|"arrow"|"other" => unresolvedNotationKinds.includes(k as any))));
 }
 export function conventionQuestionNeeded(review: PostSignAnalysisResult) { return unresolvedKinds(review).length > 0; }
 export function applyPairConventions(review: PostSignAnalysisResult, choices: PairConventionChoices): PostSignAnalysisResult {
-  return { ...review, notationConventions: choices, presentations: review.presentations.map((p) => {
+  const merged = { ...(review.notationConventions || {}), ...choices };
+  return { ...review, notationConventions: merged, presentations: review.presentations.map((p) => {
     const choice = choices[p.notationKind as keyof PairConventionChoices];
     if (p.structuralKind !== "pair" || p.typeEvidence !== "user_convention_required" || !choice || choice === "manual") return p;
     return { ...p, presentationType: choice, warnings: p.warnings.filter((w) => !/notation convention/i.test(w)) };
