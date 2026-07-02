@@ -36,6 +36,7 @@ export type NormalizedScorecardAnalysis = {
   warnings: string[];
   postCount: number;
   targetsPerPost: number;
+  targetsPerPostByPost: number[];
   totalTargets: number;
 };
 export const SCORECARD_MAX_TOTAL_TARGETS = 500;
@@ -141,18 +142,22 @@ export function summarizeGrid(grid: ScorecardCell[]) {
 }
 export function normalizeScorecardAnalysis(
   input: any,
-  setup: { postCount: number; targetsPerPost: number },
+  setup: { postCount: number; targetsPerPost: number; targetsPerPostByPost?: number[] },
 ): NormalizedScorecardAnalysis {
   if (!input || typeof input !== "object")
     throw new Error("Malformed scorecard analysis.");
   const postCount = setup.postCount,
-    targetsPerPost = setup.targetsPerPost,
-    totalTargets = postCount * targetsPerPost;
+    targetsPerPost = setup.targetsPerPost;
+  const targetsPerPostByPost = Array.isArray(setup.targetsPerPostByPost) && setup.targetsPerPostByPost.length === postCount
+    ? setup.targetsPerPostByPost.map(Number)
+    : Array.from({ length: postCount }, () => targetsPerPost);
+  const totalTargets = targetsPerPostByPost.reduce((sum, count) => sum + count, 0);
   if (
     !Number.isInteger(postCount) ||
     !Number.isInteger(targetsPerPost) ||
     postCount < 1 ||
     targetsPerPost < 1 ||
+    targetsPerPostByPost.some((count) => !Number.isInteger(count) || count < 1) ||
     totalTargets > SCORECARD_MAX_TOTAL_TARGETS
   )
     throw new Error("Invalid scorecard setup.");
@@ -177,9 +182,9 @@ export function normalizeScorecardAnalysis(
         for (const target of (Array.isArray(post.targets)
           ? post.targets
           : []
-        ).slice(0, targetsPerPost + 20)) {
+        ).slice(0, (targetsPerPostByPost[p - 1] || targetsPerPost) + 20)) {
           const t = Number(target.targetNumber);
-          if (!Number.isInteger(t) || t < 1 || t > targetsPerPost) {
+          if (!Number.isInteger(t) || t < 1 || t > targetsPerPostByPost[p - 1]) {
             warnings.push(
               `Ignored out-of-range target ${target.targetNumber} on post ${p}.`,
             );
@@ -213,7 +218,7 @@ export function normalizeScorecardAnalysis(
       }
       const grid: ScorecardCell[] = [];
       for (let p = 1; p <= postCount; p++)
-        for (let t = 1; t <= targetsPerPost; t++)
+        for (let t = 1; t <= targetsPerPostByPost[p - 1]; t++)
           grid.push(
             by.get(cellKey(p, t)) || {
               postNumber: p,
@@ -254,6 +259,7 @@ export function normalizeScorecardAnalysis(
     warnings: globalWarnings,
     postCount,
     targetsPerPost,
+    targetsPerPostByPost,
     totalTargets,
   };
 }
@@ -287,11 +293,14 @@ export function bulkResolveUnknowns(
 }
 export function canonicalizeReviewedGrid(
   grid: ScorecardCell[],
-  setup: { postCount: number; targetsPerPost: number },
+  setup: { postCount: number; targetsPerPost: number; targetsPerPostByPost?: number[] },
 ) {
   const expected = new Set<string>();
+  const counts = Array.isArray(setup.targetsPerPostByPost) && setup.targetsPerPostByPost.length === setup.postCount
+    ? setup.targetsPerPostByPost
+    : Array.from({ length: setup.postCount }, () => setup.targetsPerPost);
   for (let p = 1; p <= setup.postCount; p++)
-    for (let t = 1; t <= setup.targetsPerPost; t++) expected.add(cellKey(p, t));
+    for (let t = 1; t <= counts[p - 1]; t++) expected.add(cellKey(p, t));
   const seen = new Set<string>();
   const by = new Map<string, ScorecardCell>();
   const errors: string[] = [];
@@ -336,7 +345,7 @@ export function canonicalizeReviewedGrid(
     if (!seen.has(key)) errors.push(`Missing target coordinate ${key}.`);
   const canonical: ScorecardCell[] = [];
   for (let p = 1; p <= setup.postCount; p++)
-    for (let t = 1; t <= setup.targetsPerPost; t++) {
+    for (let t = 1; t <= counts[p - 1]; t++) {
       const c = by.get(cellKey(p, t));
       if (c) canonical.push(c);
     }
