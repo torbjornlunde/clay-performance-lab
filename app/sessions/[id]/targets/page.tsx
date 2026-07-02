@@ -5,41 +5,22 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { isPostBasedSportingDiscipline } from "@/lib/disciplines";
+import { optionsWithCurrent, targetDetailsHaveValue, targetDetailsSummary, TARGET_ANGLES, TARGET_DIFFICULTIES, TARGET_DIRECTIONS, TARGET_DISTANCES, TARGET_SPEEDS, TARGET_TYPES } from "@/lib/targets/targetDetails";
 import { PostTargetEditor } from "./PostTargetEditor";
 
 const machines = ["A", "B", "C", "D", "E", "F"];
-const targetTypes = [
-  "Crossing",
-  "Incoming",
-  "Going away",
-  "Rising",
-  "Dropping",
-  "Rabbit",
-  "Looper",
-  "Teal",
-  "Battue",
-  "Overhead",
-  "Other",
-  "Unknown",
-];
-const directions = [
-  "Left to right",
-  "Right to left",
-  "Incoming",
-  "Going away",
-  "Quartering left",
-  "Quartering right",
-  "Overhead",
-  "Unknown",
-];
-const speeds = ["Slow", "Medium", "Fast", "Unknown"];
-const distances = ["Close", "Medium", "Long", "Unknown"];
-const difficulties = ["Easy", "Medium", "Hard", "Tricky", "Unknown"];
+const targetTypes = [...TARGET_TYPES];
+const directions = [...TARGET_DIRECTIONS];
+const angles = [...TARGET_ANGLES];
+const speeds = [...TARGET_SPEEDS];
+const distances = [...TARGET_DISTANCES];
+const difficulties = [...TARGET_DIFFICULTIES];
 
 type Definition = {
   machine: string;
   target_type: string;
   direction: string;
+  angle: string;
   speed: string;
   distance: string;
   difficulty: string;
@@ -59,6 +40,7 @@ function blank(): Record<string, Definition> {
         machine,
         target_type: "Unknown",
         direction: "Unknown",
+        angle: "Unknown",
         speed: "Unknown",
         distance: "Unknown",
         difficulty: "Unknown",
@@ -116,7 +98,7 @@ export default function TargetDefinitionsPage() {
   async function loadDefinitions(course: number) {
     const { data } = await supabase
       .from("session_target_definitions")
-      .select("machine,target_type,direction,speed,distance,difficulty,notes")
+      .select("machine,target_type,direction,angle,speed,distance,difficulty,notes")
       .eq("session_id", params.id)
       .eq("course_number", course);
     const next = blank();
@@ -153,7 +135,7 @@ export default function TargetDefinitionsPage() {
   async function definitionsFor(course: number): Promise<DefinitionRow[]> {
     const { data, error } = await supabase
       .from("session_target_definitions")
-      .select("machine,target_type,direction,speed,distance,difficulty,notes")
+      .select("machine,target_type,direction,angle,speed,distance,difficulty,notes")
       .eq("session_id", params.id)
       .eq("course_number", course);
     if (error) throw error;
@@ -161,6 +143,7 @@ export default function TargetDefinitionsPage() {
       machine: row.machine,
       target_type: row.target_type || "Unknown",
       direction: row.direction || "Unknown",
+      angle: row.angle || "Unknown",
       speed: row.speed || "Unknown",
       distance: row.distance || "Unknown",
       difficulty: row.difficulty || "Unknown",
@@ -177,6 +160,7 @@ export default function TargetDefinitionsPage() {
       (definition) =>
         definition.target_type !== "Unknown" ||
         definition.direction !== "Unknown" ||
+        definition.angle !== "Unknown" ||
         definition.speed !== "Unknown" ||
         definition.distance !== "Unknown" ||
         definition.difficulty !== "Unknown" ||
@@ -230,6 +214,7 @@ export default function TargetDefinitionsPage() {
           machine: definition.machine,
           target_type: definition.target_type,
           direction: definition.direction,
+          angle: definition.angle,
           speed: definition.speed,
           distance: definition.distance,
           difficulty: definition.difficulty,
@@ -265,7 +250,7 @@ export default function TargetDefinitionsPage() {
   ) {
     return (
       <div className="quickButtonGrid compactQuickGrid">
-        {options.map((option) => (
+        {optionsWithCurrent(options, defs[machine][field]).map((option) => (
           <button
             type="button"
             key={option}
@@ -281,6 +266,32 @@ export default function TargetDefinitionsPage() {
         ))}
       </div>
     );
+  }
+
+  function clearMachineDetails(machine: string) {
+    const current = defs[machine];
+    const hasDetails = targetDetailsHaveValue({
+      targetType: current.target_type,
+      direction: current.direction,
+      angle: current.angle,
+      speed: current.speed,
+      distance: current.distance,
+      difficulty: current.difficulty,
+      notes: current.notes,
+    });
+    if (hasDetails && !window.confirm(`Clear optional details for Machine ${machine}? The A-F target and program references will remain.`)) return;
+    setDefs((old) => ({ ...old, [machine]: { ...blank()[machine] } }));
+  }
+
+  function machineDetailsSummary(machine: string) {
+    const current = defs[machine];
+    return targetDetailsSummary({
+      angle: current.angle,
+      speed: current.speed,
+      distance: current.distance,
+      difficulty: current.difficulty,
+      notes: current.notes,
+    });
   }
 
   if (!session)
@@ -383,7 +394,7 @@ export default function TargetDefinitionsPage() {
                     update(machine, "target_type", e.target.value)
                   }
                 >
-                  {targetTypes.map((v) => (
+                  {optionsWithCurrent(targetTypes, defs[machine].target_type).map((v) => (
                     <option key={v}>{v}</option>
                   ))}
                 </select>
@@ -394,24 +405,30 @@ export default function TargetDefinitionsPage() {
                   value={defs[machine].direction}
                   onChange={(e) => update(machine, "direction", e.target.value)}
                 >
-                  {directions.map((v) => (
+                  {optionsWithCurrent(directions, defs[machine].direction).map((v) => (
                     <option key={v}>{v}</option>
                   ))}
                 </select>
               </div>
             </div>
-            <label>Speed</label>
-            {buttonGroup(machine, "speed", speeds)}
-            <label>Distance</label>
-            {buttonGroup(machine, "distance", distances)}
-            <label>Difficulty</label>
-            {buttonGroup(machine, "difficulty", difficulties)}
-            <label>Notes</label>
-            <textarea
-              value={defs[machine].notes}
-              onChange={(e) => update(machine, "notes", e.target.value)}
-              placeholder="Optional lead, hold point or visual note"
-            />
+            <details>
+              <summary>More target details · {machineDetailsSummary(machine)}</summary>
+              <label>Angle</label>
+              {buttonGroup(machine, "angle", angles)}
+              <label>Speed</label>
+              {buttonGroup(machine, "speed", speeds)}
+              <label>Distance</label>
+              {buttonGroup(machine, "distance", distances)}
+              <label>Difficulty</label>
+              {buttonGroup(machine, "difficulty", difficulties)}
+              <label>Notes</label>
+              <textarea
+                value={defs[machine].notes}
+                onChange={(e) => update(machine, "notes", e.target.value)}
+                placeholder="Optional lead, hold point or visual note"
+              />
+              <button type="button" className="secondary smallButton" onClick={() => clearMachineDetails(machine)}>Clear details</button>
+            </details>
           </div>
         ))}
         {msg && (
