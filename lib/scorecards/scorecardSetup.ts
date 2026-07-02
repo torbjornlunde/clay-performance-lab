@@ -52,7 +52,10 @@ export function resolveScorecardSetup(options: {
         "Set up the number of posts and targets per post before importing a scorecard.",
     };
   }
-  const counts = Array.from({ length: postCount }, () => 0);
+  const positionsByPost = Array.from(
+    { length: postCount },
+    () => new Set<number>(),
+  );
   for (const row of options.targetDefinitions || []) {
     const post = Number(row.post_number);
     const position = Number(row.target_position);
@@ -63,10 +66,39 @@ export function resolveScorecardSetup(options: {
       Number.isInteger(position) &&
       position >= 1
     ) {
-      counts[post - 1] = Math.max(counts[post - 1], position);
+      const positions = positionsByPost[post - 1];
+      if (positions.has(position)) {
+        return {
+          ok: false,
+          message:
+            "Detailed post setup has duplicate target positions. Review post setup before importing.",
+        };
+      }
+      positions.add(position);
     }
   }
+  const counts = positionsByPost.map((positions) => positions.size);
   const hasDetailed = counts.some((count) => count > 0);
+  for (const [index, positions] of positionsByPost.entries()) {
+    if (!positions.size) continue;
+    for (let position = 1; position <= positions.size; position += 1) {
+      if (!positions.has(position)) {
+        return {
+          ok: false,
+          message:
+            "Detailed post setup is incomplete. Target positions must be consecutive from 1 on every post before importing.",
+        };
+      }
+    }
+    if (Math.max(...positions) !== positions.size) {
+      return {
+        ok: false,
+        message:
+          "Detailed post setup is incomplete. Target positions must be consecutive from 1 on every post before importing.",
+      };
+    }
+    counts[index] = positions.size;
+  }
   if (hasDetailed && counts.some((count) => count < 1)) {
     return {
       ok: false,
