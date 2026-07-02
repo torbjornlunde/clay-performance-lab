@@ -217,6 +217,11 @@ Disse punktene er ønskelige, men skal ikke behandles som neste oppgave uten at 
 - Personlige treningsprioriteter.
 - Planlagte treningsøkter basert på tidligere mønstre.
 
+### Skyteglass
+
+- Kamera- og værbasert anbefaling av det beste glasset blant glassene brukeren faktisk eier.
+- Detaljert konsept, MVP, datagrunnlag og avgrensninger: [ROADMAP_SHOOTING_GLASSES.md](./ROADMAP_SHOOTING_GLASSES.md).
+
 ### Coach og samarbeid
 
 - Sende rapport direkte til trener.
@@ -265,6 +270,7 @@ Disse beslutningene skal ikke åpnes på nytt uten en tydelig ny begrunnelse.
 12. **Sammenligning av våpen skal vise usikkerhet.** Små utvalg og forskjell mellom trening og konkurranse skal ikke skjules.
 13. **En funksjon er først ferdig når kode, database og faktisk brukerflyt er kontrollert.**
 14. **Nye store funksjoner skal kobles til denne roadmapen.** PR-beskrivelsen skal si hvilket roadmap-punkt den gjennomfører eller endrer.
+15. **Skyteglass-anbefalingen skal i første versjon velge blant brukerens egne registrerte glass.** Den skal forklare usikkerhet og være beslutningsstøtte, ikke en sikker fasit eller et skjult kjøpsforslag.
 
 ---
 
