@@ -120,12 +120,16 @@ begin
   if exists(select 1 from public.session_post_targets x where x.session_id = p_session_id)
     or exists(select 1 from public.session_post_details x where x.session_id = p_session_id)
     or exists(select 1 from public.session_target_definitions x where x.session_id = p_session_id)
-    or exists(select 1 from public.session_courses x where x.session_id = p_session_id)
     or exists(select 1 from public.session_course_overrides x where x.session_id = p_session_id)
     or exists(select 1 from public.misses x where x.session_id = p_session_id)
     or exists(select 1 from public.scorecard_imports x where x.session_id = p_session_id) then
     raise exception 'This setup can only be applied to a new, empty competition.';
   end if;
+  if exists(select 1 from public.session_courses x where x.session_id = p_session_id and (x.fitasc_scheme is not null or x.shooter_number is not null or x.start_plate is not null)) then
+    raise exception 'This setup can only be applied to a new, empty competition.';
+  end if;
+
+  delete from public.session_courses where session_id = p_session_id;
 
   for course_item in select * from jsonb_array_elements(coalesce(t.template_payload#>'{setup,program,courses}','[]'::jsonb)) loop
     insert into public.session_courses(session_id,course_number,fitasc_scheme,shooter_number,start_plate)

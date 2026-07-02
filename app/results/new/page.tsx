@@ -38,21 +38,23 @@ export default function NewResultPage() {
   useEffect(() => { setSelectedTemplateCandidate(null); }, [discipline, competitionDate, name, shootingGround, suggestionTargetCount]);
 
   async function applySelectedTemplate(sessionId: string) {
-    if (!selectedTemplateCandidate) return;
+    if (!selectedTemplateCandidate) return true;
     if (selectedTemplateCandidate.discipline !== discipline) {
       setApplyMessage("The selected setup no longer matches this discipline. The result was saved without it.");
-      return;
+      return false;
     }
     if (!navigator.onLine) {
       setApplyMessage("Using a shared setup requires a network connection. You can continue without it.");
-      return;
+      return false;
     }
     setApplyingTemplate(true);
     const { error } = await supabase.rpc("apply_competition_template_to_empty_session", { p_template_id: selectedTemplateCandidate.id, p_session_id: sessionId });
     setApplyingTemplate(false);
     if (error) {
       setApplyMessage(error.message?.includes("empty competition") ? "This setup can only be applied to a new, empty competition." : "The result was saved, but the shared setup could not be applied. You can continue without it.");
+      return false;
     }
+    return true;
   }
 
   useEffect(() => {
@@ -135,9 +137,9 @@ export default function NewResultPage() {
       setSaving(false);
       return;
     }
-    await applySelectedTemplate(inserted.id);
+    const applied = await applySelectedTemplate(inserted.id);
     setSaving(false);
-    router.push(`/sessions/${inserted.id}`);
+    router.push(`/sessions/${inserted.id}${applied ? "" : "?templateApplyFailed=1"}`);
   }
 
   return (
@@ -181,6 +183,7 @@ export default function NewResultPage() {
           error={suggestions.error}
           onFind={suggestions.findCandidates}
           canFind={suggestions.canFind}
+            searchKey={suggestions.searchKey}
           onUse={(candidate) => setSelectedTemplateCandidate(candidate)}
           selectedCandidateId={selectedTemplateCandidate?.id}
           applyingCandidateId={applyingTemplate ? selectedTemplateCandidate?.id : undefined}

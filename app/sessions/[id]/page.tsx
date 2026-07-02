@@ -511,6 +511,11 @@ export default function Page() {
               : "Manual score differs from logged misses. This can happen if not all misses were logged."}
           </div>
         )}
+        {searchParams.get("templateApplyFailed") === "1" && (
+          <div className="compactNotice">
+            Result was saved, but the shared target setup could not be added. You can continue without it.
+          </div>
+        )}
         {searchParams.get("scorecardImported") === "1" && (
           <div className="compactNotice">
             Scorecard import complete: score{" "}

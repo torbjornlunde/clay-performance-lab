@@ -65,8 +65,8 @@ export function useCompetitionTemplateCandidates(metadata: CompetitionTemplateSu
       setCandidates([]);
       return;
     }
-    setCandidates(((data || []) as CompetitionTemplateCandidate[]).filter((candidate) => candidate.discipline === key.discipline && candidate.competition_date === key.competitionDate));
+    setCandidates(((data || []) as CompetitionTemplateCandidate[]).filter((candidate) => candidate.discipline === key.discipline));
   }
 
-  return { candidates, loading, error, canFind, findCandidates, searchKey: key };
+  return { candidates, loading, error, canFind, findCandidates, searchKey: keyString };
 }

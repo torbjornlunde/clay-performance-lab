@@ -8,11 +8,13 @@ function applyTemplate(db, sessionId, templateId) {
   if (!template || template.withdrawn_at || (template.visibility === 'private' && template.owner_user_id !== db.user)) throw new Error('Template not available');
   if (template.discipline !== session.discipline) throw new Error('Template discipline does not match this competition');
   if (session.copied_from_competition_template_id || db.copies.some((c)=>c.created_session_id===sessionId)) throw new Error('This competition already uses a shared setup');
-  for (const table of ['courses','postDetails','postTargets','targetDefinitions','misses','scorecardImports','participants']) {
+  for (const table of ['postDetails','postTargets','targetDefinitions','misses','scorecardImports','participants']) {
     if (db[table].some((r)=>r.session_id===sessionId)) throw new Error('This setup can only be applied to a new, empty competition.');
   }
+  if (db.courses.some((r)=>r.session_id===sessionId && (r.fitasc_scheme != null || r.shooter_number != null || r.start_plate != null))) throw new Error('This setup can only be applied to a new, empty competition.');
   const snapshot = JSON.parse(JSON.stringify({sessions:db.sessions,courses:db.courses,postDetails:db.postDetails,postTargets:db.postTargets,targetDefinitions:db.targetDefinitions,copies:db.copies}));
   try {
+    db.courses = db.courses.filter((r)=>r.session_id !== sessionId);
     for (const row of template.courses) db.courses.push({...row, session_id: sessionId});
     if (template.failAfterCourses) throw new Error('insert failed');
     for (const row of template.postDetails) db.postDetails.push({...row, session_id: sessionId});
@@ -48,15 +50,18 @@ assert.equal(resultDb.targetDefinitions[0].session_id,resultId,'result and templ
 
 let importDb = fixture();
 let importId = createSession(importDb,{user_id:'u1',name:'Import',discipline:'Compak Sporting'});
+importDb.courses.push({session_id:importId,course_number:1,fitasc_scheme:null,shooter_number:null,start_plate:null});
 applyTemplate(importDb,importId,'t1');
 assert.equal(importDb.sessions[0].id, importId, 'scorecard import uses existing session id');
 assert.equal(importDb.targetDefinitions[0].session_id, importId, 'scorecard import setup is applied to same empty session');
+assert.equal(importDb.courses.length, 1, 'empty placeholder course row is replaced by template course');
 let blockedDb = fixture(); let blockedId = createSession(blockedDb,{user_id:'u1',discipline:'Compak Sporting'}); blockedDb.postTargets.push({session_id:blockedId}); assert.throws(()=>applyTemplate(blockedDb,blockedId,'t1'),/empty competition/,'existing setup blocks apply');
+let meaningfulCourseDb = fixture(); let meaningfulCourseId = createSession(meaningfulCourseDb,{user_id:'u1',discipline:'Compak Sporting'}); meaningfulCourseDb.courses.push({session_id:meaningfulCourseId,fitasc_scheme:2,shooter_number:null,start_plate:null}); assert.throws(()=>applyTemplate(meaningfulCourseDb,meaningfulCourseId,'t1'),/empty competition/,'meaningful courses block apply');
 assert.throws(()=>{ const d=fixture(); const id=createSession(d,{user_id:'u2',discipline:'Compak Sporting'}); applyTemplate(d,id,'t1'); },/Session not found/,'other user session cannot be changed');
 assert.throws(()=>{ const d=fixture(); const id=createSession(d,{user_id:'u1',discipline:'Compak Sporting'}); applyTemplate(d,id,'t4'); },/discipline/,'other discipline blocks');
 assert.throws(()=>{ const d=fixture(); const id=createSession(d,{user_id:'u1',discipline:'Compak Sporting'}); applyTemplate(d,id,'t3'); },/Template not available/,'withdrawn blocks');
 assert.throws(()=>{ const d=fixture(); const id=createSession(d,{user_id:'u1',discipline:'Compak Sporting'}); applyTemplate(d,id,'t2'); },/Template not available/,'private template blocks for others');
-for (const table of ['postTargets','misses','participants']) { const d=fixture(); const id=createSession(d,{user_id:'u1',discipline:'Compak Sporting'}); d[table].push({session_id:id}); assert.throws(()=>applyTemplate(d,id,'t1'),/empty competition/,`${table} blocks apply`); assert.equal(d[table].length,1,`${table} is not deleted`); }
+for (const table of ['postTargets','misses','scorecardImports','participants']) { const d=fixture(); const id=createSession(d,{user_id:'u1',discipline:'Compak Sporting'}); d[table].push({session_id:id}); assert.throws(()=>applyTemplate(d,id,'t1'),/empty competition/,`${table} blocks apply`); assert.equal(d[table].length,1,`${table} is not deleted`); }
 let rollbackDb = fixture(); rollbackDb.templates[0].failAfterCourses = true; let rollbackId = createSession(rollbackDb,{user_id:'u1',discipline:'Compak Sporting'}); assert.throws(()=>applyTemplate(rollbackDb,rollbackId,'t1'),/insert failed/); assert.equal(rollbackDb.courses.length,0,'partial failure rolls back');
 let doubleDb = fixture(); let doubleId = createSession(doubleDb,{user_id:'u1',discipline:'Compak Sporting'}); applyTemplate(doubleDb,doubleId,'t1'); assert.throws(()=>applyTemplate(doubleDb,doubleId,'t1'),/already uses/,'double apply does not copy twice');
 console.log('competition template apply flow tests passed');

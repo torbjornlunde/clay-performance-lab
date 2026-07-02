@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 export type CompetitionTemplateCandidate = {
@@ -38,6 +38,7 @@ type Props = {
   applyingCandidateId?: string;
   isApplying?: boolean;
   selectedCandidateId?: string;
+  searchKey?: string;
 };
 
 function formatDate(value: string | null | undefined) {
@@ -45,10 +46,15 @@ function formatDate(value: string | null | undefined) {
   return value.slice(0, 10);
 }
 
-export function CompetitionTemplateSuggestions({ metadata, candidates, loading = false, error = "", onFind, canFind, onUse, applyingCandidateId = "", isApplying = false, selectedCandidateId = "" }: Props) {
+export function CompetitionTemplateSuggestions({ metadata, candidates, loading = false, error = "", onFind, canFind, onUse, applyingCandidateId = "", isApplying = false, selectedCandidateId = "", searchKey = "" }: Props) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [hiddenAll, setHiddenAll] = useState(false);
   const visible = hiddenAll ? [] : candidates.filter((candidate) => !dismissed.has(candidate.id));
+
+  useEffect(() => {
+    setDismissed(new Set());
+    setHiddenAll(false);
+  }, [searchKey]);
 
   function confirmUse(candidate: CompetitionTemplateCandidate) {
     if (candidate.discipline !== metadata.discipline) return;

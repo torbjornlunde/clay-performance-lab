@@ -186,8 +186,8 @@ export default function NewSessionPage() {
     }
 
     if (selectedTemplateCandidate) {
-      await applySelectedTemplate(session.id);
-      router.push(`/sessions/${session.id}`);
+      const applied = await applySelectedTemplate(session.id);
+      router.push(`/sessions/${session.id}${applied ? "" : "?templateApplyFailed=1"}`);
       return;
     }
 
@@ -405,6 +405,7 @@ export default function NewSessionPage() {
             error={suggestions.error}
             onFind={suggestions.findCandidates}
             canFind={suggestions.canFind}
+            searchKey={suggestions.searchKey}
             onUse={(candidate) => setSelectedTemplateCandidate(candidate)}
             selectedCandidateId={selectedTemplateCandidate?.id}
             applyingCandidateId={applyingTemplate ? selectedTemplateCandidate?.id : undefined}

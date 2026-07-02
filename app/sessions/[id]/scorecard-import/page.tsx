@@ -678,6 +678,7 @@ export default function Page() {
             error={suggestions.error}
             onFind={suggestions.findCandidates}
             canFind={suggestions.canFind}
+            searchKey={suggestions.searchKey}
             onUse={applyTemplateToCurrentSession}
             applyingCandidateId={applyingTemplateId}
             isApplying={Boolean(applyingTemplateId)}
