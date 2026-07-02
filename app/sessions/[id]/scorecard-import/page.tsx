@@ -3,10 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import {
-  isPostBasedSportingDiscipline,
-  postTargetUnitLabel,
-} from "@/lib/disciplines";
+import { scorecardDisciplineProfile, resolveDisciplineScorecardSetup } from "@/lib/scorecards/scorecardProfiles";
 import {
   applyUserCorrection,
   bulkResolveUnknowns,
@@ -133,21 +130,23 @@ export default function Page() {
         void analyze(p);
     }
   }
-  const postCount = Number(session?.post_count || session?.course_count),
-    tpp = Number(session?.targets_per_post),
-    total = postCount * tpp,
-    setupOk =
-      Number.isInteger(postCount) &&
-      postCount > 0 &&
-      Number.isInteger(tpp) &&
-      tpp > 0 &&
-      total <= 500;
-  const unsupported =
-    session && !isPostBasedSportingDiscipline(session.discipline);
-  const conflict =
-    session?.total_targets != null &&
-    setupOk &&
-    session.total_targets !== total;
+  const profile = scorecardDisciplineProfile(session?.discipline);
+  const setupResult = session
+    ? resolveDisciplineScorecardSetup({
+        discipline: session.discipline,
+        postCount: session.post_count,
+        courseCount: session.course_count,
+        sporttrapSeriesCount: session.sporttrap_series_count,
+        targetsPerPost: session.targets_per_post,
+        totalTargets: session.total_targets,
+        targetDefinitions: [],
+      })
+    : null;
+  const postCount = setupResult?.ok ? setupResult.setup.postCount : Number(session?.post_count || session?.course_count);
+  const tpp = setupResult?.ok ? setupResult.setup.targetsPerPost : Number(session?.targets_per_post || profile?.defaultTargetsPerSeries);
+  const setupOk = Boolean(setupResult?.ok);
+  const unsupported = session && !profile;
+  const conflict = Boolean(session && setupResult && !setupResult.ok && profile);
   const summary = summarizeGrid(grid);
   async function choose(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -447,7 +446,7 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
         <h2>Import scorecard</h2>
         <p>{session.name}</p>
         <p className="muted">
-          {setupOk ? `${postCount} × ${tpp} targets` : "Post setup required"}
+          {setupOk ? `${postCount} ${profile?.reviewLabel.toLowerCase() || "series"} × ${tpp} targets` : "Scorecard setup required"}
         </p>
         <Link className="button secondary smallButton" href={`/sessions/${id}`}>
           Back to competition
@@ -455,14 +454,13 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
       </div>
       {unsupported && (
         <div className="card error">
-          Scorecard photo import is not available for this discipline. Compak,
-          Sporttrap and rotation-based formats are out of scope for v1.
+          Scorecard photo import is not available for this discipline.
         </div>
       )}
       {!unsupported && !setupOk && (
         <div className="card">
           <p>
-            Set up the number of posts and targets per post before importing a
+            Set up the number of series/lanes and targets before importing a
             scorecard.
           </p>
           <Link className="button" href={`/sessions/${id}/targets`}>
@@ -472,8 +470,7 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
       )}
       {conflict && (
         <div className="card error">
-          Saved total targets conflicts with {postCount} × {tpp}. Review post
-          setup before applying.{" "}
+          Saved total targets conflicts with the scorecard setup. Review setup before applying.{" "}
           <Link href={`/sessions/${id}/targets`}>Open setup</Link>
         </div>
       )}
@@ -546,7 +543,7 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
           {previewUrl && (
             <div className="card">
               <h3>Prepare scorecard image</h3>
-              <p className="small muted">Crop around one shooter’s name and complete score grid. Include all posts and target columns.</p>
+              <p className="small muted">Crop around one shooter’s name and complete score grid. Include all series/lanes and target columns.</p>
               <div className="btns"><button className="button" onClick={() => prepareAndAnalyze(fullImageCrop)}>Use full image</button><button className="button secondary" onClick={() => setCrop({ x: .05, y: .05, width: .9, height: .9, mode: "crop" })}>Crop to my scorecard</button><button className="button secondary" onClick={() => prepareAndAnalyze(crop)}>Use this crop</button></div>
               <CropOverlay imageUrl={previewUrl} crop={crop} onChange={setCrop} />
               {pending?.status === "analyzing" && <div className="analysisProgress"><strong>{stage || "Analyzing"}{elapsed > 0 ? ` · ${elapsed} seconds` : ""}</strong><div className="indeterminateBar"/><p className="small muted">Large or detailed images can take up to about a minute.</p><button className="secondary smallButton" onClick={cancelAnalysis}>Cancel analysis</button></div>}
@@ -613,7 +610,7 @@ shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
               {Array.from({ length: postCount }, (_, pi) => (
                 <div className="subcard" key={pi}>
                   <h4>
-                    {postTargetUnitLabel(session.discipline)} {pi + 1}
+                    {profile?.reviewLabel || "Series"} {pi + 1}
                   </h4>
                   <div className="scorecardGrid">
                     {grid
