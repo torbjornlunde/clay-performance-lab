@@ -82,18 +82,22 @@ When a tester suggestion is released, the tester or beta group should be told th
 
 **Priority:** High tester priority; larger discipline feature
 
+**Architecture decision:** Build a shared skeet foundation so English Skeet, Olympic / International Skeet, American Skeet and later verified variants can use the same scorecard engine and data model. English Skeet remains the first released variant because it is the confirmed tester need.
+
 **Planned minimum version:**
 
+- shared configuration-driven skeet scorecard foundation
 - English Skeet can be selected for training
-- discipline-correct scorecard and terminology
+- discipline-correct English Skeet scorecard and terminology
 - live hit/miss entry per target
 - running score, final total and correction flow
 - results stored as training and kept separate from competition totals
+- result stores the exact skeet variant and rule-set version
 - mobile-friendly flow with few taps
 - existing optional equipment selection remains available
 
-**Important preparation:** Confirm the exact sequence, terminology and scorecard structure with Samuel before implementation. English Skeet must not be guessed from Olympic, American or other skeet variants.
+**Important preparation:** Confirm the exact English Skeet sequence, terminology and scorecard structure with Samuel before implementation. The shared foundation should be designed for several variants, but the variants must not be treated as identical or mixed in statistics.
 
-**Why prioritized:** It comes from a verified, repeated real-world training need at an active tester’s shooting ground. It is larger than the two quick wins above, but should be considered before unrelated speculative features.
+**Why prioritized:** It comes from a verified, repeated real-world training need at an active tester’s shooting ground. Building the reusable skeet foundation now avoids duplicating the implementation when another skeet variant is requested.
 
-**Detailed roadmap:** [ROADMAP_ENGLISH_SKEET.md](./ROADMAP_ENGLISH_SKEET.md)
+**Detailed roadmap:** [ROADMAP_SKEET_VARIANTS.md](./ROADMAP_SKEET_VARIANTS.md)
