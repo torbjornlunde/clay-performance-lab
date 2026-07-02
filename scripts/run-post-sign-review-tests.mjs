@@ -17,7 +17,10 @@ assert.equal(out.presentations[3].presentationType, 'report_pair', 'explicit-hea
 assert.equal(out.notationConventions.plus, 'report_pair');
 out = r.applyPairConventions(out, {plus:'simultaneous_pair'});
 assert.equal(out.notationConventions.joined, 'simultaneous_pair', 'partial convention choices are merged');
-assert.equal(out.presentations[1].presentationType, 'simultaneous_pair', 'later convention changes update convention-owned rows');
+assert.equal(out.presentations[1].presentationType, 'report_pair', 'later convention choices do not overwrite a reviewed row');
+const manuallyReviewed = {...review, presentations: [{...rows[1], presentationType:'simultaneous_pair'}]};
+const afterBulkRule = r.applyPairConventions(manuallyReviewed, {plus:'report_pair'});
+assert.equal(afterBulkRule.presentations[0].presentationType, 'simultaneous_pair', 'manual review is preserved when a notation rule is chosen later');
 const manual = {...review, presentations: [{...rows[1], presentationType:'unknown'}]};
 assert.equal(r.hasBlockingUnresolvedPairs(manual), true);
 const moved = r.moveReviewRow(rows, 1, -1);
