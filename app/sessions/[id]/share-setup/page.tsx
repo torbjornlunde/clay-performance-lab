@@ -1,21 +1,250 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
 import { buildTemplatePayload, disciplineSupportNote, supportedTemplateDiscipline, TemplateVisibility } from "@/lib/competitionTemplates";
+import { supabase } from "@/lib/supabase/client";
 import { userFacingSaveError } from "@/lib/userFacingErrors";
 
-export default function ShareCompetitionSetupPage(){
- const {id}=useParams<{id:string}>(); const router=useRouter(); const [session,setSession]=useState<any>(null); const [summary,setSummary]=useState<any>(null); const [visibility,setVisibility]=useState<TemplateVisibility>("private"); const [showName,setShowName]=useState(true); const [displayName,setDisplayName]=useState(""); const [message,setMessage]=useState(""); const [saving,setSaving]=useState(false); const [existing,setExisting]=useState<any[]>([]);
- useEffect(()=>{void load();},[id]);
- async function load(){ const {data:u}=await supabase.auth.getUser(); if(!u.user){router.push('/login');return;} const [{data:s},{data:courses},{data:postTargets},{data:postDetails},{data:defs},{data:profile},{data:templates}]=await Promise.all([
-  supabase.from('sessions').select('*').eq('id',id).single(), supabase.from('session_courses').select('*').eq('session_id',id).order('course_number'), supabase.from('session_post_targets').select('*').eq('session_id',id).order('post_number').order('target_position'), supabase.from('session_post_details').select('*').eq('session_id',id).order('post_number'), supabase.from('session_target_definitions').select('*').eq('session_id',id).order('course_number').order('machine'), supabase.from('shooter_profiles').select('display_name,full_name').eq('user_id',u.user.id).maybeSingle(), supabase.from('competition_templates').select('id,name,visibility,template_version,withdrawn_at,updated_at').eq('source_session_id',id).order('updated_at',{ascending:false})]);
-  setSession(s); setDisplayName((profile as any)?.display_name || (profile as any)?.full_name || u.user.email?.split('@')[0] || 'Another user'); setExisting(templates||[]);
-  if(s){ try{ setSummary(buildTemplatePayload({session:s,courses:courses||[],postTargets:postTargets||[],postDetails:postDetails||[],targetDefinitions:defs||[]})); }catch(e:any){ setMessage(e.message); }} }
- async function publish(updateId?:string){ if(!session||!summary)return; setMessage(''); if(!navigator.onLine){setMessage('Publishing requires a network connection. Your session data is unchanged.');return;} if(!session.name?.trim()||!session.competition_date||!supportedTemplateDiscipline(session.discipline)){setMessage('Add a competition name, date and supported discipline before publishing.');return;} setSaving(true); const row={owner_user_id:(await supabase.auth.getUser()).data.user?.id,source_session_id:session.id,name:session.name,competition_date:session.competition_date,shooting_ground:session.shooting_ground,discipline:session.discipline,visibility,show_creator_name:showName,creator_display_name_snapshot:showName?displayName:null,template_payload:summary.payload,post_count:summary.postCount,target_count:summary.targetCount,is_complete:summary.isComplete,withdrawn_at:null,template_version:updateId?undefined:1};
-  const q=updateId?supabase.from('competition_templates').update({...row,template_version:((existing.find(t=>t.id===updateId)?.template_version)||1)+1}).eq('id',updateId):supabase.from('competition_templates').insert(row).select('id').single(); const {data,error}=await q as any; setSaving(false); if(error){setMessage(userFacingSaveError(error,'Could not publish this setup right now. Try again when online.'));return;} router.push(`/competition-templates/${updateId || data.id}`); }
- async function withdraw(t:any){ if(!confirm('Withdraw this template? New copies will be blocked, but existing copies are unchanged.'))return; await supabase.from('competition_templates').update({withdrawn_at:new Date().toISOString(),visibility:'private'}).eq('id',t.id); await load(); }
- if(!session)return <main><div className="card">Loading…</div></main>;
- return <main><div className="card"><Link href={`/sessions/${id}`}>← Back to competition</Link><h1>Share competition setup</h1><p className="small muted">Publish a snapshot of this target setup. Later session edits do not update published templates unless you choose Update published setup.</p>{message&&<div className="error">{message}</div>}<div className="subcard"><h2>Preview</h2><p><strong>{session.name}</strong> · {session.competition_date} · {session.shooting_ground||'No ground'} · {session.discipline}</p><p>{disciplineSupportNote(session.discipline)}</p><p><strong>{summary?.postCount||0}</strong> posts/stands/series · <strong>{summary?.targetCount||0}</strong> targets · {summary?.isComplete?'Complete setup':'Incomplete setup'}</p></div><div className="subcard"><h2>What will be shared</h2><ul><li>Competition name, date, ground and discipline.</li><li>Target setup, physical targets, presentations, pair structure, order and program metadata when supported.</li><li>A versioned snapshot only.</li></ul><h2>What will not be shared</h2><ul><li>Scores, misses, miss reasons, equipment, personal notes, coaches, participants, emails, owner ID, private source session ID or local row IDs.</li></ul></div><div className="subcard"><label>Visibility</label><select value={visibility} onChange={e=>setVisibility(e.target.value as TemplateVisibility)}><option value="private">Private</option><option value="link">Link</option><option value="searchable">Searchable</option></select><label><input type="checkbox" checked={showName} onChange={e=>setShowName(e.target.checked)} /> {showName?`Show my profile name (${displayName})`:'Show “Another user”'}</label><p className="small muted">Searchable templates can be found by logged-in users. Link templates require a direct link. Private templates stay owner-only.</p></div><div className="btns"><button disabled={saving||!summary} onClick={()=>publish()}>{saving?'Publishing…':'Publish'}</button><Link className="button secondary" href={`/sessions/${id}`}>Cancel</Link></div></div>{existing.length>0&&<div className="card"><h2>Your published snapshots</h2>{existing.map(t=><div className="subcard" key={t.id}><p><strong>Version {t.template_version}</strong> · {t.visibility} · {t.withdrawn_at?'Withdrawn':'Active'}</p><div className="btns"><Link className="button secondary" href={`/competition-templates/${t.id}`}>Preview</Link><button onClick={()=>publish(t.id)}>Update published setup</button><button className="secondary" onClick={()=>withdraw(t)}>Withdraw</button></div></div>)}</div>}</main>;
+type SessionRow = {
+  id: string;
+  name: string;
+  competition_date: string | null;
+  shooting_ground: string | null;
+  discipline: string;
+};
+
+type PublishedTemplate = {
+  id: string;
+  name: string;
+  visibility: TemplateVisibility;
+  template_version: number;
+  withdrawn_at: string | null;
+  updated_at: string;
+};
+
+type PublishSummary = {
+  postCount: number;
+  targetCount: number;
+  isComplete: boolean;
+};
+
+type RpcPublishResult = {
+  template_id: string;
+  template_version: number;
+  visibility: TemplateVisibility;
+  is_complete?: boolean;
+};
+
+function safeMessage(error: unknown, fallback: string) {
+  return userFacingSaveError(error, fallback);
+}
+
+function profileDisplayName(profile: { display_name?: string | null; full_name?: string | null } | null | undefined) {
+  return (profile?.display_name || profile?.full_name || "").trim();
+}
+
+function TemplateSummaryCard({ session, summary }: { session: SessionRow; summary: PublishSummary | null }) {
+  return (
+    <div className="subcard">
+      <h2>Preview</h2>
+      <p>
+        <strong>{session.name}</strong> · {session.competition_date || "No date"} · {session.shooting_ground || "No ground"} · {session.discipline}
+      </p>
+      <p>{disciplineSupportNote(session.discipline)}</p>
+      <p>
+        <strong>{summary?.postCount || 0}</strong> posts/stands/series · <strong>{summary?.targetCount || 0}</strong> targets · {summary?.isComplete ? "Complete setup" : "Incomplete setup"}
+      </p>
+    </div>
+  );
+}
+
+function SharingExplainer() {
+  return (
+    <div className="subcard">
+      <h2>What will be shared</h2>
+      <ul>
+        <li>Competition name, date, ground and discipline.</li>
+        <li>Target setup, physical targets, presentations, pair structure, order and program metadata when supported.</li>
+        <li>A versioned snapshot only. Later session edits need an explicit update.</li>
+      </ul>
+      <h2>What will not be shared</h2>
+      <ul>
+        <li>Scores, misses, miss reasons, equipment, personal notes, coaches, participants, emails, owner ID, private source session ID or local row IDs.</li>
+      </ul>
+    </div>
+  );
+}
+
+export default function ShareCompetitionSetupPage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const [session, setSession] = useState<SessionRow | null>(null);
+  const [summary, setSummary] = useState<PublishSummary | null>(null);
+  const [visibility, setVisibility] = useState<TemplateVisibility>("private");
+  const [showName, setShowName] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [existing, setExisting] = useState<PublishedTemplate[]>([]);
+
+  const canShowProfileName = displayName.length > 0;
+  const profileNameLabel = canShowProfileName ? `Show my profile name (${displayName})` : "Add a profile name before showing your name";
+
+  useEffect(() => {
+    void load();
+  }, [id]);
+
+  async function load() {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      router.push("/login");
+      return;
+    }
+
+    const [sessionResult, coursesResult, postTargetsResult, postDetailsResult, targetDefinitionsResult, profileResult, templatesResult] = await Promise.all([
+      supabase.from("sessions").select("*").eq("id", id).single(),
+      supabase.from("session_courses").select("*").eq("session_id", id).order("course_number"),
+      supabase.from("session_post_targets").select("*").eq("session_id", id).order("post_number").order("target_position"),
+      supabase.from("session_post_details").select("*").eq("session_id", id).order("post_number"),
+      supabase.from("session_target_definitions").select("*").eq("session_id", id).order("course_number").order("machine"),
+      supabase.from("shooter_profiles").select("display_name,full_name").eq("user_id", userData.user.id).maybeSingle(),
+      supabase.from("competition_templates").select("id,name,visibility,template_version,withdrawn_at,updated_at").eq("source_session_id", id).order("updated_at", { ascending: false }),
+    ]);
+
+    if (sessionResult.error || !sessionResult.data) {
+      setMessage("Could not load this competition setup.");
+      return;
+    }
+
+    const loadedSession = sessionResult.data as SessionRow;
+    setSession(loadedSession);
+    setExisting((templatesResult.data || []) as PublishedTemplate[]);
+
+    const name = profileDisplayName(profileResult.data);
+    setDisplayName(name);
+    setShowName(Boolean(name));
+
+    try {
+      const preview = buildTemplatePayload({
+        session: sessionResult.data,
+        courses: coursesResult.data || [],
+        postTargets: postTargetsResult.data || [],
+        postDetails: postDetailsResult.data || [],
+        targetDefinitions: targetDefinitionsResult.data || [],
+      });
+      setSummary({ postCount: preview.postCount, targetCount: preview.targetCount, isComplete: preview.isComplete });
+    } catch {
+      setMessage("This setup cannot be previewed for sharing yet.");
+    }
+  }
+
+  async function publishNewTemplate() {
+    if (!session) return;
+    if (!navigator.onLine) {
+      setMessage("Publishing requires a network connection. Your session data is unchanged.");
+      return;
+    }
+    if (!session.name.trim() || !session.competition_date || !supportedTemplateDiscipline(session.discipline)) {
+      setMessage("Add a competition name, date and supported discipline before publishing.");
+      return;
+    }
+
+    setSaving(true);
+    setMessage("");
+    const { data, error } = await supabase.rpc("publish_competition_template", {
+      p_source_session_id: session.id,
+      p_visibility: visibility,
+      p_show_creator_name: showName && canShowProfileName,
+    });
+    setSaving(false);
+
+    if (error) {
+      setMessage(safeMessage(error, "Could not publish this setup right now. Try again when online."));
+      return;
+    }
+
+    const result = (data?.[0] || data) as RpcPublishResult | undefined;
+    router.push(`/competition-templates/${result?.template_id}`);
+  }
+
+  async function updateTemplate(templateId: string) {
+    if (!navigator.onLine) {
+      setMessage("Updating requires a network connection. Your session data is unchanged.");
+      return;
+    }
+    setSaving(true);
+    setMessage("");
+    const { data, error } = await supabase.rpc("update_competition_template_snapshot", {
+      p_template_id: templateId,
+      p_visibility: visibility,
+      p_show_creator_name: showName && canShowProfileName,
+    });
+    setSaving(false);
+    if (error) {
+      setMessage(safeMessage(error, "Could not update this published setup."));
+      return;
+    }
+    const result = (data?.[0] || data) as RpcPublishResult | undefined;
+    router.push(`/competition-templates/${result?.template_id || templateId}`);
+  }
+
+  async function withdrawTemplate(templateId: string) {
+    if (!window.confirm("Withdraw this template? New copies will be blocked, but existing copies are unchanged.")) return;
+    const { error } = await supabase.rpc("withdraw_competition_template", { p_template_id: templateId });
+    if (error) {
+      setMessage(safeMessage(error, "Could not withdraw this template."));
+      return;
+    }
+    await load();
+  }
+
+  if (!session) return <main><div className="card">Loading…</div></main>;
+
+  return (
+    <main>
+      <div className="card">
+        <Link href={`/sessions/${id}`}>← Back to competition</Link>
+        <h1>Share competition setup</h1>
+        <p className="small muted">Publish a server-built snapshot of this target setup. Later session edits do not update published templates unless you choose Update published setup.</p>
+        {message && <div className="error">{message}</div>}
+        <TemplateSummaryCard session={session} summary={summary} />
+        <SharingExplainer />
+        <div className="subcard">
+          <h2>Privacy and visibility</h2>
+          <label>Visibility</label>
+          <select value={visibility} onChange={(event) => setVisibility(event.target.value as TemplateVisibility)}>
+            <option value="private">Private</option>
+            <option value="link">Link</option>
+            <option value="searchable">Searchable</option>
+          </select>
+          <label>
+            <input type="checkbox" checked={showName && canShowProfileName} disabled={!canShowProfileName} onChange={(event) => setShowName(event.target.checked)} /> {profileNameLabel}
+          </label>
+          <p className="small muted">If no profile name is available, templates are shown as Created by another user. Email addresses are never used as creator names.</p>
+        </div>
+        <div className="btns">
+          <button disabled={saving || !summary} onClick={publishNewTemplate}>{saving ? "Publishing…" : "Publish"}</button>
+          <Link className="button secondary" href={`/sessions/${id}`}>Cancel</Link>
+        </div>
+      </div>
+
+      {existing.length > 0 && (
+        <div className="card">
+          <h2>Your published snapshots</h2>
+          {existing.map((template) => (
+            <div className="subcard" key={template.id}>
+              <p><strong>Version {template.template_version}</strong> · {template.visibility} · {template.withdrawn_at ? "Withdrawn" : "Active"}</p>
+              <div className="btns">
+                <Link className="button secondary" href={`/competition-templates/${template.id}`}>Preview</Link>
+                <button onClick={() => updateTemplate(template.id)}>Update published setup</button>
+                <button className="secondary" onClick={() => withdrawTemplate(template.id)}>Withdraw</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </main>
+  );
 }
