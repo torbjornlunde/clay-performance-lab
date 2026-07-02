@@ -28,6 +28,19 @@ const report = postTargets.normalizePost(1, [{presentation_number:1,presentation
 assert.deepEqual(report.presentations[0].targets.map(t => [t.target_label, t.position_in_presentation]), [['A',1],['B',2]], 'report pair keeps order');
 const simo = postTargets.normalizePost(1, [{presentation_number:1,presentation_type:'simultaneous_pair',targets:[{target_label:'C'},{target_label:'D'}]}]);
 assert.deepEqual(simo.presentations[0].targets.map(t => t.target_label), ['C','D'], 'simultaneous pair keeps both physical targets');
+
+const legacy = {target_label:'L',target_type:'Crossing',direction:'Right to left',angle:'Unknown',speed:'Fast',distance:'Long',difficulty:'Tricky',notes:'legacy note'};
+const legacyPost = postTargets.normalizePost(1, [{presentation_number:1,presentation_type:'single',targets:[legacy]}]);
+const [legacyRow] = postTargets.rowsFromPosts('legacy-session', [legacyPost]);
+assert.equal(legacyRow.target_type, 'Crossing', 'legacy target type loads and saves unchanged');
+assert.equal(legacyRow.difficulty, 'Tricky', 'legacy difficulty loads and saves unchanged');
+assert.ok(postTargets.targetTypes.includes('Crossing'), 'legacy target type remains visible in controls');
+assert.ok(postTargets.difficulties.includes('Tricky'), 'legacy difficulty remains visible in controls');
+const explicitlyChanged = postTargets.normalizePost(1, [{presentation_number:1,presentation_type:'single',targets:[{...legacy, target_type:'Standard', difficulty:'4 - Hard'}]}]);
+const [changedRow] = postTargets.rowsFromPosts('legacy-session', [explicitlyChanged]);
+assert.equal(changedRow.target_type, 'Standard', 'new target type saves only after explicit selection');
+assert.equal(changedRow.difficulty, '4 - Hard', 'new difficulty saves only after explicit selection');
+
 const optional = postTargets.blankTarget(1, 1);
 assert.equal(details.targetDetailsHaveValue({targetType: optional.target_type, direction: optional.direction, angle: optional.angle, speed: optional.speed, distance: optional.distance, difficulty: optional.difficulty, notes: optional.notes}), false, 'optional unknown fields are treated as empty');
 
@@ -58,6 +71,20 @@ assert.equal(fitascTemplate.program.rows.length, 5, 'FITASC/Compak built-in sche
 const exportTemplate = details.normalizePostTargetsForTemplate('Sporting', [report]);
 assert.equal(JSON.stringify(exportTemplate).includes('user_id'), false, 'normalized export excludes personal user ids');
 assert.equal(JSON.stringify(exportTemplate).includes('miss'), false, 'normalized export excludes misses and scores');
+
+
+const targetDetailsSource = readFileSync('lib/targets/targetDetails.ts','utf8');
+assert.match(targetDetailsSource, /optionsWithCurrent/, 'controls can include stored legacy values without converting them');
+assert.match(targetDetailsSource, /targetDetailsSummary/, 'compact target detail summary helper exists');
+const targetPage = readFileSync('app/sessions/[id]/targets/page.tsx','utf8');
+assert.match(targetPage, /<details>\s*<summary>More target details · \{machineDetailsSummary\(machine\)\}/s, 'A-F advanced fields are behind a closed More target details section');
+assert.match(targetPage, /return targetDetailsSummary/, 'A-F summary shows Optional or compact details');
+assert.match(targetPage, /window\.confirm\(`Clear optional details for Machine/, 'A-F Clear details confirms when metadata exists');
+assert.match(targetPage, /program references will remain/, 'A-F Clear details communicates that program references remain');
+const postEditor = readFileSync('app/sessions/[id]/targets/PostTargetEditor.tsx','utf8');
+assert.match(postEditor, /More target details · \{targetDetailsSummary/, 'post\/stand details use the same compact summary pattern');
+assert.match(postEditor, /optionsWithCurrent\(targetTypes, t\.target_type\)/, 'post\/stand type control preserves legacy stored values');
+assert.match(postEditor, /optionsWithCurrent\(difficulties, t\.difficulty\)/, 'post\/stand difficulty control preserves legacy stored values');
 
 const migration = readFileSync('supabase/migrations/20260702030000_target_details_angle.sql','utf8');
 assert.match(migration, /add column if not exists angle text/, 'migration adds angle additively');

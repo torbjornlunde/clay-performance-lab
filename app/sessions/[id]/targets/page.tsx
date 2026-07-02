@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { isPostBasedSportingDiscipline } from "@/lib/disciplines";
-import { TARGET_ANGLES, TARGET_DIFFICULTIES, TARGET_DIRECTIONS, TARGET_DISTANCES, TARGET_SPEEDS, TARGET_TYPES } from "@/lib/targets/targetDetails";
+import { optionsWithCurrent, targetDetailsHaveValue, targetDetailsSummary, TARGET_ANGLES, TARGET_DIFFICULTIES, TARGET_DIRECTIONS, TARGET_DISTANCES, TARGET_SPEEDS, TARGET_TYPES } from "@/lib/targets/targetDetails";
 import { PostTargetEditor } from "./PostTargetEditor";
 
 const machines = ["A", "B", "C", "D", "E", "F"];
@@ -249,7 +249,7 @@ export default function TargetDefinitionsPage() {
   ) {
     return (
       <div className="quickButtonGrid compactQuickGrid">
-        {options.map((option) => (
+        {optionsWithCurrent(options, defs[machine][field]).map((option) => (
           <button
             type="button"
             key={option}
@@ -265,6 +265,32 @@ export default function TargetDefinitionsPage() {
         ))}
       </div>
     );
+  }
+
+  function clearMachineDetails(machine: string) {
+    const current = defs[machine];
+    const hasDetails = targetDetailsHaveValue({
+      targetType: current.target_type,
+      direction: current.direction,
+      angle: current.angle,
+      speed: current.speed,
+      distance: current.distance,
+      difficulty: current.difficulty,
+      notes: current.notes,
+    });
+    if (hasDetails && !window.confirm(`Clear optional details for Machine ${machine}? The A-F target and program references will remain.`)) return;
+    setDefs((old) => ({ ...old, [machine]: { ...blank()[machine] } }));
+  }
+
+  function machineDetailsSummary(machine: string) {
+    const current = defs[machine];
+    return targetDetailsSummary({
+      angle: current.angle,
+      speed: current.speed,
+      distance: current.distance,
+      difficulty: current.difficulty,
+      notes: current.notes,
+    });
   }
 
   if (!session)
@@ -367,7 +393,7 @@ export default function TargetDefinitionsPage() {
                     update(machine, "target_type", e.target.value)
                   }
                 >
-                  {targetTypes.map((v) => (
+                  {optionsWithCurrent(targetTypes, defs[machine].target_type).map((v) => (
                     <option key={v}>{v}</option>
                   ))}
                 </select>
@@ -378,27 +404,30 @@ export default function TargetDefinitionsPage() {
                   value={defs[machine].direction}
                   onChange={(e) => update(machine, "direction", e.target.value)}
                 >
-                  {directions.map((v) => (
+                  {optionsWithCurrent(directions, defs[machine].direction).map((v) => (
                     <option key={v}>{v}</option>
                   ))}
                 </select>
               </div>
             </div>
-            <label>Angle</label>
-            {buttonGroup(machine, "angle", angles)}
-            <label>Speed</label>
-            {buttonGroup(machine, "speed", speeds)}
-            <label>Distance</label>
-            {buttonGroup(machine, "distance", distances)}
-            <label>Difficulty</label>
-            {buttonGroup(machine, "difficulty", difficulties)}
-            <label>Notes</label>
-            <button type="button" className="secondary smallButton" onClick={() => setDefs((old) => ({ ...old, [machine]: { ...blank()[machine] } }))}>Clear details</button>
-            <textarea
-              value={defs[machine].notes}
-              onChange={(e) => update(machine, "notes", e.target.value)}
-              placeholder="Optional lead, hold point or visual note"
-            />
+            <details>
+              <summary>More target details · {machineDetailsSummary(machine)}</summary>
+              <label>Angle</label>
+              {buttonGroup(machine, "angle", angles)}
+              <label>Speed</label>
+              {buttonGroup(machine, "speed", speeds)}
+              <label>Distance</label>
+              {buttonGroup(machine, "distance", distances)}
+              <label>Difficulty</label>
+              {buttonGroup(machine, "difficulty", difficulties)}
+              <label>Notes</label>
+              <textarea
+                value={defs[machine].notes}
+                onChange={(e) => update(machine, "notes", e.target.value)}
+                placeholder="Optional lead, hold point or visual note"
+              />
+              <button type="button" className="secondary smallButton" onClick={() => clearMachineDetails(machine)}>Clear details</button>
+            </details>
           </div>
         ))}
         {msg && (

@@ -9,12 +9,12 @@ export type TargetDetails = {
   notes?: string | null;
 };
 
-export const TARGET_TYPES = ["Unknown", "Standard", "Midi", "Mini", "Battue", "Rabbit", "Rocket", "Chandelle", "Loop", "Teal", "Other"] as const;
+export const TARGET_TYPES = ["Unknown", "Standard", "Midi", "Mini", "Battue", "Rabbit", "Rocket", "Chandelle", "Loop", "Teal", "Other", "Crossing", "Incoming", "Going away", "Rising", "Dropping", "Looper", "Overhead"] as const;
 export const TARGET_DIRECTIONS = ["Unknown", "Left to right", "Right to left", "Incoming", "Going away", "Rising", "Dropping", "Straight up", "Overhead", "Rabbit", "Quartering left", "Quartering right", "Other"] as const;
 export const TARGET_SPEEDS = ["Unknown", "Very slow", "Slow", "Medium", "Fast", "Very fast"] as const;
 export const TARGET_DISTANCES = ["Unknown", "Close", "Medium", "Long"] as const;
 export const TARGET_ANGLES = ["Unknown", "Straight", "Slight left", "Slight right", "Hard left", "Hard right", "High", "Low", "Quartering", "Other"] as const;
-export const TARGET_DIFFICULTIES = ["Unknown", "1 - Easy", "2 - Manageable", "3 - Medium", "4 - Hard", "5 - Very hard"] as const;
+export const TARGET_DIFFICULTIES = ["Unknown", "1 - Easy", "2 - Manageable", "3 - Medium", "4 - Hard", "5 - Very hard", "Easy", "Medium", "Hard", "Tricky"] as const;
 
 function optional(value: unknown) {
   if (value === null || value === undefined) return null;
@@ -38,6 +38,20 @@ export function normalizeTargetDetails(input: TargetDetails = {}): Required<Targ
 export function targetDetailsHaveValue(input: TargetDetails = {}) {
   const normalized = normalizeTargetDetails(input);
   return Object.values(normalized).some((value) => value !== null);
+}
+
+export function optionsWithCurrent(options: readonly string[], current: unknown) {
+  const values = [...options];
+  const text = typeof current === "string" ? current.trim() : "";
+  if (text && !values.includes(text)) values.push(text);
+  return values;
+}
+
+export function targetDetailsSummary(input: TargetDetails = {}) {
+  const normalized = normalizeTargetDetails(input);
+  const parts = [normalized.speed, normalized.distance, normalized.difficulty ? `Difficulty ${String(normalized.difficulty).replace(/^([1-5])\s*-\s*/, "$1 ")}` : null, normalized.angle]
+    .filter((value): value is string => Boolean(value));
+  return parts.length ? parts.slice(0, 3).join(" · ") : "Optional";
 }
 
 export type ShareableCompetitionTemplate = {

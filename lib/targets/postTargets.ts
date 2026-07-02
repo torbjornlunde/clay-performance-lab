@@ -13,12 +13,12 @@ function normalizeDraftTimestamp(value: unknown) {
 export type PostDetailRow = { session_id: string; post_number: number; instructions: string | null; source_text: string | null; updated_at?: string; created_at?: string; id?: string };
 export const DRAFT_SCHEMA_VERSION = 2;
 export const presentationLabels: Record<PresentationType, string> = { single: "Single", report_pair: "Report pair", simultaneous_pair: "Simultaneous pair", other_pair: "Other pair", unknown: "Unknown single or pair" };
-export const targetTypes = ["Unknown","Standard","Midi","Mini","Battue","Rabbit","Rocket","Chandelle","Loop","Teal","Other"];
+export const targetTypes = ["Unknown","Standard","Midi","Mini","Battue","Rabbit","Rocket","Chandelle","Loop","Teal","Other","Crossing","Incoming","Going away","Rising","Dropping","Looper","Overhead"];
 export const directions = ["Unknown","Left to right","Right to left","Incoming","Going away","Rising","Dropping","Straight up","Overhead","Rabbit","Quartering left","Quartering right","Other"];
 export const angles = ["Unknown","Straight","Slight left","Slight right","Hard left","Hard right","High","Low","Quartering","Other"];
 export const speeds = ["Unknown","Very slow","Slow","Medium","Fast","Very fast"];
 export const distances = ["Unknown","Close","Medium","Long"];
-export const difficulties = ["Unknown","1 - Easy","2 - Manageable","3 - Medium","4 - Hard","5 - Very hard"];
+export const difficulties = ["Unknown","1 - Easy","2 - Manageable","3 - Medium","4 - Hard","5 - Very hard","Easy","Medium","Hard","Tricky"];
 export function targetCountFor(type: PresentationType) { return type === "single" || type === "unknown" ? 1 : 2; }
 export function defaultTargetLabel() { return ""; }
 export function blankTarget(target_position: number, position_in_presentation: number): PostTarget { return { target_position, position_in_presentation, target_label: defaultTargetLabel(), target_type: "Unknown", direction: "Unknown", angle: "Unknown", speed: "Unknown", distance: "Unknown", difficulty: "Unknown", notes: "" }; }
