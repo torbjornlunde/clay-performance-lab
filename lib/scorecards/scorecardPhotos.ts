@@ -10,26 +10,34 @@ export type ScorecardPhotoStatus =
   | "analysis_failed"
   | "applying";
 export type PendingScorecardPhoto = {
-  schemaVersion: 3;
+  schemaVersion: 4;
   queueId: string;
   clientImportId: string;
   sessionId: string;
   image: Blob;
+  originalImage?: Blob;
+  analyzedImage?: Blob;
   mimeType: string;
   imageFingerprint: string;
+  originalImageFingerprint?: string;
+  crop?: import("./scorecardCrop").NormalizedCrop;
+  cropFingerprint?: string;
+  preparationState?: "prepare" | "ready" | "review";
+  lastSafeErrorCategory?: string | null;
   createdAt: string;
   updatedAt: string;
   status: ScorecardPhotoStatus;
   analysis?: NormalizedScorecardAnalysis;
   selectedShooterCandidateId?: string | null;
   reviewedGrid?: ScorecardCell[];
+  reviewedGridFingerprint?: string | null;
   scoreChoice?: "use_scorecard" | "keep_existing";
   acknowledgeAmbiguousExisting?: boolean;
   lastError?: string | null;
 };
 const DB = "scorecard-photo-imports-v1",
   STORE = "pending_scorecards",
-  VERSION = 3;
+  VERSION = 4;
 function now() {
   return new Date().toISOString();
 }
@@ -77,28 +85,36 @@ export function migratePendingScorecardPhoto(
           ?.grid
       : undefined;
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     queueId: raw.queueId || raw.clientImportId,
     clientImportId: raw.clientImportId,
     sessionId: raw.sessionId,
-    image: raw.image,
+    image: raw.analyzedImage instanceof Blob ? raw.analyzedImage : raw.image,
+    originalImage: raw.originalImage instanceof Blob ? raw.originalImage : raw.image,
+    analyzedImage: raw.analyzedImage instanceof Blob ? raw.analyzedImage : raw.image,
     mimeType: raw.mimeType || raw.image.type || "image/jpeg",
-    imageFingerprint: raw.imageFingerprint,
+    imageFingerprint: raw.cropFingerprint || raw.imageFingerprint,
+    originalImageFingerprint: raw.originalImageFingerprint || raw.imageFingerprint,
+    crop: raw.crop || { x: 0, y: 0, width: 1, height: 1, mode: "full" },
+    cropFingerprint: raw.cropFingerprint || raw.imageFingerprint,
+    preparationState: raw.preparationState || (raw.analysis ? "review" : "prepare"),
     createdAt: raw.createdAt || now(),
     updatedAt: raw.updatedAt || now(),
     status:
       status === "analyzing" || status === "applying"
-        ? "analysis_failed"
+        ? "saved_on_device"
         : status,
     analysis: raw.analysis,
     selectedShooterCandidateId: selected,
     reviewedGrid: Array.isArray(raw.reviewedGrid)
       ? raw.reviewedGrid
       : fallbackGrid,
+    reviewedGridFingerprint: typeof raw.reviewedGridFingerprint === "string" ? raw.reviewedGridFingerprint : (Array.isArray(raw.reviewedGrid) || fallbackGrid ? raw.cropFingerprint || raw.imageFingerprint : null),
     scoreChoice:
       raw.scoreChoice === "keep_existing" ? "keep_existing" : "use_scorecard",
     acknowledgeAmbiguousExisting: Boolean(raw.acknowledgeAmbiguousExisting),
     lastError: typeof raw.lastError === "string" ? raw.lastError : null,
+    lastSafeErrorCategory: typeof raw.lastSafeErrorCategory === "string" ? raw.lastSafeErrorCategory : null,
   };
 }
 export async function savePendingScorecardPhoto(record: PendingScorecardPhoto) {
@@ -107,7 +123,7 @@ export async function savePendingScorecardPhoto(record: PendingScorecardPhoto) {
     const tx = db.transaction(STORE, "readwrite");
     tx.objectStore(STORE).put({
       ...record,
-      schemaVersion: 3,
+      schemaVersion: 4,
       updatedAt: now(),
     });
     tx.oncomplete = () => res();
@@ -138,16 +154,16 @@ export async function deletePendingScorecardPhoto(sessionId: string) {
 }
 export function shouldIgnoreStale(
   active:
-    | { sessionId: string; clientImportId: string; imageFingerprint: string }
+    | { sessionId: string; clientImportId: string; imageFingerprint: string; cropFingerprint?: string }
     | null
     | undefined,
-  next: { sessionId: string; clientImportId: string; imageFingerprint: string },
+  next: { sessionId: string; clientImportId: string; imageFingerprint: string; cropFingerprint?: string },
 ) {
   return (
     !active ||
     active.sessionId !== next.sessionId ||
     active.clientImportId !== next.clientImportId ||
-    active.imageFingerprint !== next.imageFingerprint
+    active.imageFingerprint !== next.imageFingerprint || (active.cropFingerprint || active.imageFingerprint) !== (next.cropFingerprint || next.imageFingerprint)
   );
 }
 export function validateReplacement(confirmed: boolean, hasPending: boolean) {
