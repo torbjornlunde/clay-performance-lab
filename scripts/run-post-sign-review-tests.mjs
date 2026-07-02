@@ -27,4 +27,5 @@ const moved = r.moveReviewRow(rows, 1, -1);
 assert.equal(moved[0].sourceNotation, 'A+B');
 assert.equal(r.removeReviewRow(rows, 1).at(-1).presentationNumber, 3);
 assert.deepEqual(r.summarizePresentations(rows), {presentations:4, targets:7, singles:1, reportPairs:1, simultaneousPairs:0, needsReview:2});
+execSync('rm -rf .post-sign-test-build');
 console.log('post-sign review behavior tests passed');
