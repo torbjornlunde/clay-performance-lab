@@ -2,6 +2,8 @@ export const COMPAK_SPORTING = "Compak Sporting";
 export const KOMPAKT_LEIRDUESTI = "Kompakt leirduesti";
 export const SPORTTRAP = "Sporttrap";
 export const LEIRDUESTI = "Leirduesti";
+export const SPORTING = "Sporting";
+export const ENGLISH_SPORTING = "English Sporting";
 
 export const DISCIPLINE_OPTIONS = [
   COMPAK_SPORTING,
@@ -9,8 +11,8 @@ export const DISCIPLINE_OPTIONS = [
   SPORTTRAP,
   LEIRDUESTI,
   "FITASC Sporting",
-  "Sporting",
-  "English Sporting",
+  SPORTING,
+  ENGLISH_SPORTING,
   "Jegertrap / Nordisk trap",
   "Trap",
   "Skeet",
@@ -29,13 +31,20 @@ export function isOrdinaryLeirduesti(discipline?: string | null) {
   return discipline === LEIRDUESTI;
 }
 
+export function isEnglishSporting(discipline?: string | null) {
+  const normalized = discipline?.trim().toLowerCase();
+  return (
+    normalized === ENGLISH_SPORTING.toLowerCase() ||
+    normalized === "engelsk sporting"
+  );
+}
+
 export function isPostBasedSportingDiscipline(discipline?: string | null) {
   const normalized = discipline?.trim().toLowerCase();
   return (
     normalized === LEIRDUESTI.toLowerCase() ||
-    normalized === "sporting" ||
-    normalized === "english sporting" ||
-    normalized === "engelsk sporting"
+    normalized === SPORTING.toLowerCase() ||
+    isEnglishSporting(discipline)
   );
 }
 
