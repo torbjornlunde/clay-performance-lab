@@ -56,6 +56,7 @@ create table if not exists public.session_target_definitions(
   machine text not null,
   target_type text,
   direction text,
+  angle text,
   speed text,
   distance text,
   difficulty text,

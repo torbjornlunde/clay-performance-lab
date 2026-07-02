@@ -5,41 +5,22 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { isPostBasedSportingDiscipline } from "@/lib/disciplines";
+import { TARGET_ANGLES, TARGET_DIFFICULTIES, TARGET_DIRECTIONS, TARGET_DISTANCES, TARGET_SPEEDS, TARGET_TYPES } from "@/lib/targets/targetDetails";
 import { PostTargetEditor } from "./PostTargetEditor";
 
 const machines = ["A", "B", "C", "D", "E", "F"];
-const targetTypes = [
-  "Crossing",
-  "Incoming",
-  "Going away",
-  "Rising",
-  "Dropping",
-  "Rabbit",
-  "Looper",
-  "Teal",
-  "Battue",
-  "Overhead",
-  "Other",
-  "Unknown",
-];
-const directions = [
-  "Left to right",
-  "Right to left",
-  "Incoming",
-  "Going away",
-  "Quartering left",
-  "Quartering right",
-  "Overhead",
-  "Unknown",
-];
-const speeds = ["Slow", "Medium", "Fast", "Unknown"];
-const distances = ["Close", "Medium", "Long", "Unknown"];
-const difficulties = ["Easy", "Medium", "Hard", "Tricky", "Unknown"];
+const targetTypes = [...TARGET_TYPES];
+const directions = [...TARGET_DIRECTIONS];
+const angles = [...TARGET_ANGLES];
+const speeds = [...TARGET_SPEEDS];
+const distances = [...TARGET_DISTANCES];
+const difficulties = [...TARGET_DIFFICULTIES];
 
 type Definition = {
   machine: string;
   target_type: string;
   direction: string;
+  angle: string;
   speed: string;
   distance: string;
   difficulty: string;
@@ -59,6 +40,7 @@ function blank(): Record<string, Definition> {
         machine,
         target_type: "Unknown",
         direction: "Unknown",
+        angle: "Unknown",
         speed: "Unknown",
         distance: "Unknown",
         difficulty: "Unknown",
@@ -116,7 +98,7 @@ export default function TargetDefinitionsPage() {
   async function loadDefinitions(course: number) {
     const { data } = await supabase
       .from("session_target_definitions")
-      .select("machine,target_type,direction,speed,distance,difficulty,notes")
+      .select("machine,target_type,direction,angle,speed,distance,difficulty,notes")
       .eq("session_id", params.id)
       .eq("course_number", course);
     const next = blank();
@@ -153,7 +135,7 @@ export default function TargetDefinitionsPage() {
   async function definitionsFor(course: number): Promise<DefinitionRow[]> {
     const { data, error } = await supabase
       .from("session_target_definitions")
-      .select("machine,target_type,direction,speed,distance,difficulty,notes")
+      .select("machine,target_type,direction,angle,speed,distance,difficulty,notes")
       .eq("session_id", params.id)
       .eq("course_number", course);
     if (error) throw error;
@@ -161,6 +143,7 @@ export default function TargetDefinitionsPage() {
       machine: row.machine,
       target_type: row.target_type || "Unknown",
       direction: row.direction || "Unknown",
+      angle: row.angle || "Unknown",
       speed: row.speed || "Unknown",
       distance: row.distance || "Unknown",
       difficulty: row.difficulty || "Unknown",
@@ -177,6 +160,7 @@ export default function TargetDefinitionsPage() {
       (definition) =>
         definition.target_type !== "Unknown" ||
         definition.direction !== "Unknown" ||
+        definition.angle !== "Unknown" ||
         definition.speed !== "Unknown" ||
         definition.distance !== "Unknown" ||
         definition.difficulty !== "Unknown" ||
@@ -400,6 +384,8 @@ export default function TargetDefinitionsPage() {
                 </select>
               </div>
             </div>
+            <label>Angle</label>
+            {buttonGroup(machine, "angle", angles)}
             <label>Speed</label>
             {buttonGroup(machine, "speed", speeds)}
             <label>Distance</label>
@@ -407,6 +393,7 @@ export default function TargetDefinitionsPage() {
             <label>Difficulty</label>
             {buttonGroup(machine, "difficulty", difficulties)}
             <label>Notes</label>
+            <button type="button" className="secondary smallButton" onClick={() => setDefs((old) => ({ ...old, [machine]: { ...blank()[machine] } }))}>Clear details</button>
             <textarea
               value={defs[machine].notes}
               onChange={(e) => update(machine, "notes", e.target.value)}

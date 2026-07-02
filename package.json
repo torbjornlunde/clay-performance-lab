@@ -12,7 +12,8 @@
     "test:scorecard": "node scripts/run-scorecard-tests.mjs",
     "test:post-sign-review": "node scripts/run-post-sign-review-tests.mjs",
     "test:scorecard-crop": "node scripts/run-scorecard-crop-tests.mjs",
-    "test:disciplines": "node scripts/run-discipline-tests.mjs"
+    "test:disciplines": "node scripts/run-discipline-tests.mjs",
+    "test:target-details": "node scripts/run-target-detail-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",
