@@ -619,6 +619,12 @@ export default function Page() {
               >
                 Edit competition/setup
               </Link>
+              <Link
+                href={`/sessions/${session.id}/share-setup`}
+                className="button secondary smallButton"
+              >
+                Share competition setup
+              </Link>
               <Link href="/results" className="button secondary smallButton">
                 Results history
               </Link>

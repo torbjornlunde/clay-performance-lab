@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const lib = fs.readFileSync('lib/competitionTemplates.ts','utf8');
+const sql = fs.readFileSync('supabase/migrations/20260702040000_competition_templates.sql','utf8');
+assert.match(sql,/visibility text not null default 'private'/, 'New template is private by default');
+assert.match(sql,/visibility = 'searchable'/, 'Search only includes searchable templates');
+assert.match(sql,/withdrawn_at is null/, 'Withdrawn templates are excluded');
+assert.match(sql,/owner_user_id uuid not null/, 'Owner is stored for audit/RLS');
+assert.match(sql,/source_session_id uuid/, 'Source session is stored privately');
+assert.match(sql,/security definer/, 'RPCs protect public reads/copying');
+assert.match(sql,/template_copies/, 'Copy audit table exists');
+assert.match(sql,/for update using \(auth.uid\(\) = owner_user_id\)/, 'Only owners can update');
+assert.match(lib,/forbiddenPayloadKeys/, 'Payload deny-list guard exists');
+assert.match(lib,/normalizePostTargetsForTemplate/, 'PR #127 normalizer is reused for post targets');
+assert.match(lib,/normalizePhysicalTargetsForTemplate/, 'Physical target normalizer is reused');
+assert.match(lib,/Created by another user/, 'Anonymous creator label is supported');
+assert.doesNotMatch(lib,/own_score|winning_score|equipment_snapshot/, 'Template serializer does not whitelist scores/equipment');
+console.log('competition template static tests passed');
