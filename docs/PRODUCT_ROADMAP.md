@@ -222,6 +222,12 @@ Disse punktene er ønskelige, men skal ikke behandles som neste oppgave uten at 
 - Kamera- og værbasert anbefaling av det beste glasset blant glassene brukeren faktisk eier.
 - Detaljert konsept, MVP, datagrunnlag og avgrensninger: [ROADMAP_SHOOTING_GLASSES.md](./ROADMAP_SHOOTING_GLASSES.md).
 
+### Choke- og ammunisjonsvelger
+
+- Anbefaling av choke og ammunisjon basert på avstand, vinkel, synlig dueflate, hastighet, duetype og forventet skuddrekkefølge.
+- Ved flere duer skal appen beregne beste samlede kompromiss og eventuelt anbefale forskjellige choker i øvre og nedre løp.
+- Detaljert konsept, MVP, beregningsgrunnlag og avgrensninger: [ROADMAP_CHOKE_SELECTOR.md](./ROADMAP_CHOKE_SELECTOR.md).
+
 ### Coach og samarbeid
 
 - Sende rapport direkte til trener.
@@ -271,6 +277,7 @@ Disse beslutningene skal ikke åpnes på nytt uten en tydelig ny begrunnelse.
 13. **En funksjon er først ferdig når kode, database og faktisk brukerflyt er kontrollert.**
 14. **Nye store funksjoner skal kobles til denne roadmapen.** PR-beskrivelsen skal si hvilket roadmap-punkt den gjennomfører eller endrer.
 15. **Skyteglass-anbefalingen skal i første versjon velge blant brukerens egne registrerte glass.** Den skal forklare usikkerhet og være beslutningsstøtte, ikke en sikker fasit eller et skjult kjøpsforslag.
+16. **Choke- og ammunisjonsvelgeren skal i første versjon prioritere brukerens egne registrerte choker og patroner.** Den skal vise usikkerhet, bruke egne mønstringstester når de finnes og aldri fremstille anbefalingen som en garanti for treff.
 
 ---
 
