@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { isPostBasedSportingDiscipline } from "@/lib/disciplines";
 import {
-  SCORECARD_MAX_TOTAL_TARGETS,
   canonicalizeReviewedGrid,
   summarizeGrid,
   type ScorecardCell,
 } from "@/lib/scorecards/scorecardAnalysis";
+import { resolveScorecardSetup } from "@/lib/scorecards/scorecardSetup";
 import { mapReviewedMisses } from "@/lib/scorecards/scorecardMissMapping";
 
 export const dynamic = "force-dynamic";
@@ -127,40 +127,27 @@ export async function POST(
 
     const postCount = Number(session.post_count || session.course_count);
     const targetsPerPost = Number(session.targets_per_post);
-    const total = postCount * targetsPerPost;
-    if (
-      !Number.isInteger(postCount) ||
-      !Number.isInteger(targetsPerPost) ||
-      postCount < 1 ||
-      targetsPerPost < 1 ||
-      total > SCORECARD_MAX_TOTAL_TARGETS
-    ) {
-      return json(
-        {
-          error: {
-            category: "setup_required",
-            message: "Set up the number of posts and targets per post before importing a scorecard.",
-          },
-        },
-        422,
-      );
+    const targetResult = await supabase
+      .from("session_post_targets")
+      .select(
+        "post_number,target_position,presentation_number,presentation_type,position_in_presentation,target_label,target_type",
+      )
+      .eq("session_id", id);
+    if (targetResult.error) {
+      return json({ error: { category: "setup_required", message: "Could not load post setup safely before applying." } }, 500);
     }
-    if (session.total_targets !== null && session.total_targets !== total) {
-      return json(
-        {
-          error: {
-            category: "setup_required",
-            message: "Saved total targets conflicts with post setup. Review post setup before applying.",
-          },
-        },
-        409,
-      );
-    }
-
-    const canonical = canonicalizeReviewedGrid(body.grid as ScorecardCell[], {
+    const setupResult = resolveScorecardSetup({
       postCount,
       targetsPerPost,
+      totalTargets: session.total_targets,
+      targetDefinitions: targetResult.data || [],
     });
+    if (!setupResult.ok) {
+      return json({ error: { category: "setup_required", message: setupResult.message } }, 409);
+    }
+    const setup = setupResult.setup;
+
+    const canonical = canonicalizeReviewedGrid(body.grid as ScorecardCell[], setup);
     if (!canonical.ok) {
       return json(
         {
@@ -183,21 +170,13 @@ export async function POST(
       );
     }
 
-    const [targetResult, missResult] = await Promise.all([
-      supabase
-        .from("session_post_targets")
-        .select(
-          "post_number,target_position,presentation_number,presentation_type,position_in_presentation,target_label,target_type",
-        )
-        .eq("session_id", id),
-      supabase
-        .from("misses")
-        .select(
-          "course_number,target_position,target_number,missed_target,source_type",
-        )
-        .eq("session_id", id),
-    ]);
-    if (targetResult.error || missResult.error) {
+    const missResult = await supabase
+      .from("misses")
+      .select(
+        "course_number,target_position,target_number,missed_target,source_type",
+      )
+      .eq("session_id", id);
+    if (missResult.error) {
       return json(
         {
           error: {
@@ -241,13 +220,14 @@ export async function POST(
       }));
 
     const { data: rpcResult, error: rpcError } = await supabase.rpc(
-      "apply_scorecard_import_v1",
+      "apply_scorecard_import_v2",
       {
         p_session_id: id,
         p_client_import_id: body.clientImportId,
         p_image_fingerprint: body.imageFingerprint,
         p_post_count: postCount,
         p_targets_per_post: targetsPerPost,
+        p_targets_per_post_by_post: setup.targetsPerPostByPost,
         p_reviewed_hits: summary.hits,
         p_reviewed_misses: summary.misses,
         p_reviewed_miss_positions: reviewedMissPositions,
