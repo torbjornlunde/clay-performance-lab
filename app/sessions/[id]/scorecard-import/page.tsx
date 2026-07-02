@@ -41,6 +41,7 @@ import {
   timeoutMessage,
   type ActiveScorecardOperation,
 } from "@/lib/scorecards/scorecardImportState";
+
 const MAX_SOURCE = 15 * 1024 * 1024,
   MAX_UPLOAD = 4 * 1024 * 1024;
 async function resizeImage(file: File) {
@@ -65,6 +66,7 @@ async function sha256(blob: Blob) {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
 export default function Page() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();

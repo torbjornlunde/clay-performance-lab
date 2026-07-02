@@ -9,6 +9,9 @@ import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase/client";
 import { userFacingSaveError } from "@/lib/userFacingErrors";
+import { CompetitionTemplateSuggestions, type CompetitionTemplateCandidate } from "@/app/components/CompetitionTemplateSuggestions";
+import { useCompetitionTemplateCandidates } from "@/lib/competitionTemplates/useCompetitionTemplateCandidates";
+
 
 export default function NewResultPage() {
   const router = useRouter();
@@ -22,10 +25,37 @@ export default function NewResultPage() {
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const [selectedTemplateCandidate, setSelectedTemplateCandidate] = useState<CompetitionTemplateCandidate | null>(null);
+  const [applyingTemplate, setApplyingTemplate] = useState(false);
+  const [applyMessage, setApplyMessage] = useState("");
   const [myDisciplines, setMyDisciplines] = useState<string[]>([]);
   const [equipmentSelection, setEquipmentSelection] = useState<EquipmentSelection>({ weaponId: "", ammunitionId: "", includeChokes: true });
   const [equipmentSnapshot, setEquipmentSnapshot] = useState<any>(null);
   const disciplineOptions = useMemo(() => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, myDisciplines), [myDisciplines]);
+  const suggestionTargetCount = totalTargets.trim() ? Number(totalTargets) || null : null;
+  const suggestions = useCompetitionTemplateCandidates({ name, competitionDate, shootingGround, discipline, targetCount: suggestionTargetCount });
+
+  useEffect(() => { setSelectedTemplateCandidate(null); }, [discipline, competitionDate, name, shootingGround, suggestionTargetCount]);
+
+  async function applySelectedTemplate(sessionId: string) {
+    if (!selectedTemplateCandidate) return true;
+    if (selectedTemplateCandidate.discipline !== discipline) {
+      setApplyMessage("The selected setup no longer matches this discipline. The result was saved without it.");
+      return false;
+    }
+    if (!navigator.onLine) {
+      setApplyMessage("Using a shared setup requires a network connection. You can continue without it.");
+      return false;
+    }
+    setApplyingTemplate(true);
+    const { error } = await supabase.rpc("apply_competition_template_to_empty_session", { p_template_id: selectedTemplateCandidate.id, p_session_id: sessionId });
+    setApplyingTemplate(false);
+    if (error) {
+      setApplyMessage(error.message?.includes("empty competition") ? "This setup can only be applied to a new, empty competition." : "The result was saved, but the shared setup could not be applied. You can continue without it.");
+      return false;
+    }
+    return true;
+  }
 
   useEffect(() => {
     let active = true;
@@ -102,12 +132,14 @@ export default function NewResultPage() {
       equipment_snapshot: equipmentSnapshot,
       notes: notes.trim() || null,
     }).select("id").single();
-    setSaving(false);
     if (error || !inserted) {
       setErr(userFacingSaveError(error, "Could not save this result right now. Try again when online."));
+      setSaving(false);
       return;
     }
-    router.push(`/sessions/${inserted.id}`);
+    const applied = await applySelectedTemplate(inserted.id);
+    setSaving(false);
+    router.push(`/sessions/${inserted.id}${applied ? "" : "?templateApplyFailed=result"}`);
   }
 
   return (
@@ -144,9 +176,29 @@ export default function NewResultPage() {
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
           </div>
         </details>
+        <CompetitionTemplateSuggestions
+          metadata={{ name, competitionDate, shootingGround, discipline, targetCount: suggestionTargetCount }}
+          candidates={suggestions.candidates}
+          loading={suggestions.loading}
+          error={suggestions.error}
+          onFind={suggestions.findCandidates}
+          canFind={suggestions.canFind}
+            searchKey={suggestions.searchKey}
+          onUse={(candidate) => setSelectedTemplateCandidate(candidate)}
+          selectedCandidateId={selectedTemplateCandidate?.id}
+          applyingCandidateId={applyingTemplate ? selectedTemplateCandidate?.id : undefined}
+          isApplying={applyingTemplate}
+        />
+        {selectedTemplateCandidate && (
+          <div className="subcard selectedTemplateNotice">
+            <p><strong>Selected setup:</strong> {selectedTemplateCandidate.name}</p>
+            <button type="button" className="secondary" onClick={() => setSelectedTemplateCandidate(null)} disabled={saving || applyingTemplate}>Remove selected setup</button>
+          </div>
+        )}
+        {applyMessage && <div className="warning">{applyMessage}</div>}
         {err && <div className="error">{err}</div>}
         <div className="btns">
-          <button disabled={saving}>{saving ? "Saving..." : "Save and continue"}</button>
+          <button disabled={saving || applyingTemplate}>{saving || applyingTemplate ? "Saving..." : "Save and continue"}</button>
           <Link className="button secondary" href="/log-competition">Cancel</Link>
         </div>
       </form>
