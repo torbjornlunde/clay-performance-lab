@@ -1,15 +1,26 @@
 import { SCORECARD_MAX_TOTAL_TARGETS } from "./scorecardAnalysis";
 
+export type ScorecardSetupProfile = "post_based" | "compak" | "sporttrap";
+
 export type ScorecardSetup = {
   postCount: number;
   targetsPerPost: number;
   targetsPerPostByPost?: number[];
 };
 
+export type ResolvedScorecardSetup = Required<ScorecardSetup> & { totalTargets: number };
+
+export type NormalizedScorecardSetupFingerprintInput = {
+  profile: ScorecardSetupProfile;
+  postCount: number;
+  targetsPerPostByPost: number[];
+  totalTargets: number;
+};
+
 export type ScorecardSetupResolution =
   | {
       ok: true;
-      setup: Required<ScorecardSetup> & { totalTargets: number };
+      setup: ResolvedScorecardSetup;
       usedDetailedStructure: boolean;
     }
   | { ok: false; message: string };
@@ -129,4 +140,46 @@ export function resolveScorecardSetup(options: {
     setup: { postCount, targetsPerPost, targetsPerPostByPost, totalTargets },
     usedDetailedStructure: hasDetailed,
   };
+}
+
+
+export function normalizeScorecardSetupForFingerprint(
+  profile: ScorecardSetupProfile,
+  setup: ScorecardSetup & { totalTargets?: number },
+): NormalizedScorecardSetupFingerprintInput {
+  const postCount = Number(setup.postCount);
+  const counts = scorecardTargetCounts(setup).map((count) => Number(count));
+  const totalTargets =
+    setup.totalTargets == null
+      ? counts.reduce((sum, count) => sum + count, 0)
+      : Number(setup.totalTargets);
+  return {
+    profile,
+    postCount,
+    targetsPerPostByPost: counts,
+    totalTargets,
+  };
+}
+
+export function stableScorecardSetupFingerprintSource(
+  input: NormalizedScorecardSetupFingerprintInput,
+) {
+  return JSON.stringify({
+    profile: input.profile,
+    postCount: input.postCount,
+    targetsPerPostByPost: input.targetsPerPostByPost,
+    totalTargets: input.totalTargets,
+  });
+}
+
+export async function scorecardSetupFingerprint(
+  input: NormalizedScorecardSetupFingerprintInput,
+) {
+  const bytes = new TextEncoder().encode(
+    stableScorecardSetupFingerprintSource(input),
+  );
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }

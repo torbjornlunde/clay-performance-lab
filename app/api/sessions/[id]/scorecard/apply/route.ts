@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { isScorecardImportDiscipline, resolveDisciplineScorecardSetup } from "@/lib/scorecards/scorecardProfiles";
+import { isScorecardImportDiscipline, resolveDisciplineScorecardSetup, resolvedDisciplineScorecardSetupFingerprint } from "@/lib/scorecards/scorecardProfiles";
 import {
   canonicalizeReviewedGrid,
   summarizeGrid,
@@ -93,9 +93,9 @@ export async function POST(
     }
 
     const body = await request.json();
-    if (!uuid.test(body.clientImportId) || !fingerprint.test(body.imageFingerprint)) {
+    if (!uuid.test(body.clientImportId) || !fingerprint.test(body.imageFingerprint) || !fingerprint.test(body.setupFingerprint || "")) {
       return json(
-        { error: { category: "analysis_failed", message: "Invalid import identifiers." } },
+        { error: { category: "analysis_failed", message: "Invalid import identifiers or setup fingerprint." } },
         400,
       );
     }
@@ -146,6 +146,18 @@ export async function POST(
       return json({ error: { category: "setup_required", message: setupResult.message } }, 409);
     }
     const setup = setupResult.setup;
+    const fingerprintResult = await resolvedDisciplineScorecardSetupFingerprint({ discipline: session.discipline, setup });
+    if (!fingerprintResult || fingerprintResult.setupFingerprint !== body.setupFingerprint) {
+      return json(
+        {
+          error: {
+            category: "scorecard_setup_changed",
+            message: "Post setup has changed since this scorecard was analyzed. Analyze the saved image again before continuing.",
+          },
+        },
+        409,
+      );
+    }
 
     const canonical = canonicalizeReviewedGrid(body.grid as ScorecardCell[], setup);
     if (!canonical.ok) {

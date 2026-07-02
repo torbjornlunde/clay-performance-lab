@@ -28,6 +28,8 @@ export type PendingScorecardPhoto = {
   updatedAt: string;
   status: ScorecardPhotoStatus;
   analysis?: NormalizedScorecardAnalysis;
+  setupFingerprint?: string | null;
+  resolvedSetup?: { postCount: number; targetsPerPostByPost: number[]; totalTargets: number } | null;
   selectedShooterCandidateId?: string | null;
   reviewedGrid?: ScorecardCell[];
   reviewedGridFingerprint?: string | null;
@@ -105,6 +107,8 @@ export function migratePendingScorecardPhoto(
         ? "saved_on_device"
         : status,
     analysis: raw.analysis,
+    setupFingerprint: typeof raw.setupFingerprint === "string" ? raw.setupFingerprint : null,
+    resolvedSetup: raw.resolvedSetup && typeof raw.resolvedSetup === "object" ? raw.resolvedSetup : null,
     selectedShooterCandidateId: selected,
     reviewedGrid: Array.isArray(raw.reviewedGrid)
       ? raw.reviewedGrid

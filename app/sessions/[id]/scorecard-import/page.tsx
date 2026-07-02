@@ -7,6 +7,7 @@ import {
   formatScorecardSetupSummary,
   scorecardDisciplineProfile,
   resolveDisciplineScorecardSetup,
+  resolvedDisciplineScorecardSetupFingerprint,
 } from "@/lib/scorecards/scorecardProfiles";
 import {
   applyUserCorrection,
@@ -89,6 +90,7 @@ export default function Page() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
   const [stage, setStage] = useState("");
+  const [currentSetupFingerprint, setCurrentSetupFingerprint] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [crop, setCrop] = useState<NormalizedCrop>(fullImageCrop);
   const [viewer, setViewer] = useState<"analyzed" | "original" | null>(null);
@@ -206,6 +208,24 @@ export default function Page() {
     ? safeSetupResult.setup.targetsPerPost
     : Number(session?.targets_per_post || profile?.defaultTargetsPerSeries);
   const setupOk = Boolean(safeSetupResult?.ok);
+  useEffect(() => {
+    let cancelled = false;
+    async function compute() {
+      if (!safeSetupResult?.ok || !session) {
+        setCurrentSetupFingerprint(null);
+        return;
+      }
+      const next = await resolvedDisciplineScorecardSetupFingerprint({
+        discipline: session.discipline,
+        setup: safeSetupResult.setup,
+      });
+      if (!cancelled) setCurrentSetupFingerprint(next?.setupFingerprint || null);
+    }
+    void compute();
+    return () => {
+      cancelled = true;
+    };
+  }, [safeSetupResult?.ok ? stableSetupKey(session?.discipline, safeSetupResult.setup) : "", session?.discipline]);
   const unsupported = session && !profile;
   const conflict = Boolean(
     session &&
@@ -213,6 +233,14 @@ export default function Page() {
   );
   const setupErrorMessage =
     setupResult && !setupResult.ok ? setupResult.message : "";
+  const setupVerificationRequired = Boolean(pending?.analysis && !pending.setupFingerprint);
+  const setupMismatch = Boolean(
+    pending?.analysis &&
+      pending.setupFingerprint &&
+      currentSetupFingerprint &&
+      pending.setupFingerprint !== currentSetupFingerprint,
+  );
+  const setupBlocksReview = setupVerificationRequired || setupMismatch;
   const summary = summarizeGrid(grid);
   async function choose(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -290,6 +318,8 @@ export default function Page() {
         analysis: undefined,
         reviewedGrid: undefined,
         reviewedGridFingerprint: null,
+        setupFingerprint: null,
+        resolvedSetup: null,
         selectedShooterCandidateId: null,
         acknowledgeAmbiguousExisting: false,
         preparationState: "ready",
@@ -331,11 +361,15 @@ export default function Page() {
       analysis: undefined,
       reviewedGrid: undefined,
       reviewedGridFingerprint: null,
+      setupFingerprint: null,
+      resolvedSetup: null,
       selectedShooterCandidateId: null,
       acknowledgeAmbiguousExisting: false,
       preparationState: "ready" as const,
     };
     rememberPending(analyzing);
+    setSelected(null);
+    setGrid([]);
     await savePendingScorecardPhoto(analyzing);
     if (!navigator.onLine) return;
     try {
@@ -373,6 +407,7 @@ export default function Page() {
         throw new Error(timeoutMessage(json.error?.category, rec.crop));
       setStage("Checking detected results");
       const analysis = json.result as NormalizedScorecardAnalysis;
+      const setupFingerprint = typeof json.setupFingerprint === "string" ? json.setupFingerprint : null;
       const auto =
         analysis.shooterRows.length === 1 &&
         analysis.shooterRows[0].confidence !== "low"
@@ -382,6 +417,8 @@ export default function Page() {
         ...rec,
         status: "ready_for_review" as const,
         analysis,
+        setupFingerprint,
+        resolvedSetup: json.resolvedSetup || null,
         selectedShooterCandidateId: auto,
         reviewedGrid: auto ? analysis.shooterRows[0].grid : undefined,
         reviewedGridFingerprint: auto
@@ -478,7 +515,8 @@ export default function Page() {
       !pending ||
       !selected ||
       summary.unknowns > 0 ||
-      !canApplyReview(pending, pending.reviewedGridFingerprint)
+      !canApplyReview(pending, pending.reviewedGridFingerprint) ||
+      setupBlocksReview
     )
       return;
     const {
@@ -515,6 +553,7 @@ export default function Page() {
             ? pendingRef.current.cropFingerprint ||
               pendingRef.current.imageFingerprint
             : null,
+          setupFingerprint: pending.setupFingerprint,
           scoreChoice,
         }),
       });
@@ -566,6 +605,8 @@ export default function Page() {
         analysis: undefined,
         reviewedGrid: undefined,
         reviewedGridFingerprint: null,
+        setupFingerprint: null,
+        resolvedSetup: null,
         selectedShooterCandidateId: null,
       };
       rememberPending(next);
@@ -682,12 +723,14 @@ export default function Page() {
               {pending && (
                 <button
                   className="button secondary smallButton"
-                  onClick={() => prepareAndAnalyze(crop)}
+                  onClick={() => setupBlocksReview ? analyze(pending) : prepareAndAnalyze(crop)}
                   disabled={pending.status === "analyzing"}
                 >
-                  {pending.status === "analysis_failed"
-                    ? "Retry analysis"
-                    : "Analyze prepared image"}
+                  {setupBlocksReview
+                    ? "Analyze saved image again"
+                    : pending.status === "analysis_failed"
+                      ? "Retry analysis"
+                      : "Analyze prepared image"}
                 </button>
               )}
               {pending && (
@@ -766,7 +809,17 @@ export default function Page() {
               />
             </div>
           )}
-          {pending?.analysis && (
+          {setupBlocksReview && pending?.analysis && (
+            <div className="card error">
+              Post setup has changed since this scorecard was analyzed. Analyze the saved image again before continuing. The saved image is still on this device.
+              <div className="btns">
+                <button className="button" onClick={() => analyze(pending)} disabled={pending.status === "analyzing"}>
+                  Analyze saved image again
+                </button>
+              </div>
+            </div>
+          )}
+          {pending?.analysis && !setupBlocksReview && (
             <div className="card">
               <h3>Shooter row</h3>
               {pending.analysis.shooterRows.map((r) => (
@@ -781,7 +834,7 @@ export default function Page() {
               ))}
             </div>
           )}
-          {grid.length > 0 && (
+          {grid.length > 0 && !setupBlocksReview && (
             <div className="card">
               <div className="reviewReferenceBar">
                 <button
@@ -974,7 +1027,8 @@ export default function Page() {
                       pending,
                       pending?.reviewedGridFingerprint,
                     ) ||
-                    conflict
+                    conflict ||
+                    setupBlocksReview
                   }
                   onClick={apply}
                 >
@@ -1088,4 +1142,8 @@ function statusCopy(status: string) {
       } as Record<string, string>
     )[status] || "Saved on this device"
   );
+}
+
+function stableSetupKey(discipline: string | null | undefined, setup: { postCount: number; targetsPerPost: number; targetsPerPostByPost?: number[]; totalTargets?: number }) {
+  return JSON.stringify({ discipline, postCount: setup.postCount, targetsPerPost: setup.targetsPerPost, targetsPerPostByPost: setup.targetsPerPostByPost || [], totalTargets: setup.totalTargets });
 }
