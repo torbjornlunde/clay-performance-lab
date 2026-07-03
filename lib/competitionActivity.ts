@@ -17,15 +17,37 @@ export type CompetitionActivitySummary = {
   hasUnknownSelectedYearTargets: boolean;
 };
 
-function sessionDateValue(session: CompetitionActivitySession) {
-  return session.competition_date || session.created_at;
+function calendarYearFromDateOnly(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  if (year <= 0 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  const utcDate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    utcDate.getUTCFullYear() !== year ||
+    utcDate.getUTCMonth() !== month - 1 ||
+    utcDate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return year;
+}
+
+function utcYearFromTimestamp(value: string) {
+  const date = new Date(value);
+  const year = Number.isFinite(date.getTime()) ? date.getUTCFullYear() : null;
+  return year && year > 0 ? year : null;
 }
 
 function yearForSession(session: CompetitionActivitySession) {
-  const value = sessionDateValue(session);
-  const date = value ? new Date(value) : null;
-  const year = date && Number.isFinite(date.getTime()) ? date.getFullYear() : null;
-  return year && year > 0 ? year : null;
+  if (session.competition_date) return calendarYearFromDateOnly(session.competition_date);
+  return utcYearFromTimestamp(session.created_at);
 }
 
 function targetCountValue(session: CompetitionActivitySession) {
