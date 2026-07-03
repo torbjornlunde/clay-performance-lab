@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import AppearanceControl from "@/app/components/AppearanceControl";
 import ShooterProfileForm from "@/app/components/ShooterProfileForm";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import {
@@ -112,7 +111,6 @@ export default function ShooterProfilePage() {
 
   return (
     <main>
-      <AppearanceControl />
       <ShooterProfileForm
         accountEmail={accountEmail}
         body="Manage your basic shooter name, country, and preferred clay target disciplines."
