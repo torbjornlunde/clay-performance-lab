@@ -6,8 +6,10 @@ import ShooterProfileForm from "@/app/components/ShooterProfileForm";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import {
   emptyShooterProfileForm,
+  composeCanonicalShooterName,
   isValidCountryCode,
   normalizeCountryCode,
+  normalizeProfileWhitespace,
   normalizeDisciplines,
   shooterProfileToForm,
   type ShooterProfile,
@@ -15,10 +17,12 @@ import {
 } from "@/lib/profile";
 import { supabase } from "@/lib/supabase/client";
 
-type ValidationErrors = Partial<Record<"shooterName" | "country" | "myDisciplines", string>>;
+type ValidationErrors = Partial<Record<"firstName" | "lastName" | "country" | "myDisciplines", string>>;
 
 function validate(form: ShooterProfileFormState): ValidationErrors {
   const errors: ValidationErrors = {};
+  if (!normalizeProfileWhitespace(form.firstName)) errors.firstName = "Enter your first name.";
+  if (!normalizeProfileWhitespace(form.lastName)) errors.lastName = "Enter your last name.";
   if (!isValidCountryCode(form.country)) errors.country = "Select your country.";
   return errors;
 }
@@ -57,7 +61,7 @@ export default function ShooterProfilePage() {
 
     const { data, error: profileError } = await supabase
       .from("shooter_profiles")
-      .select("id,user_id,shooter_name,country,my_disciplines,created_at,updated_at")
+      .select("id,user_id,shooter_name,first_name,last_name,country,my_disciplines,created_at,updated_at")
       .eq("user_id", userData.user.id)
       .maybeSingle<ShooterProfile>();
 
@@ -92,7 +96,9 @@ export default function ShooterProfilePage() {
     const { error: saveError } = await supabase.from("shooter_profiles").upsert(
       {
         user_id: userId,
-        shooter_name: form.shooterName.trim() || null,
+        first_name: normalizeProfileWhitespace(form.firstName),
+        last_name: normalizeProfileWhitespace(form.lastName),
+        shooter_name: composeCanonicalShooterName(form.firstName, form.lastName),
         country: normalizeCountryCode(form.country) || null,
         my_disciplines: form.myDisciplines,
       },
@@ -113,7 +119,7 @@ export default function ShooterProfilePage() {
     <main>
       <ShooterProfileForm
         accountEmail={accountEmail}
-        body="Manage your basic shooter name, country, and preferred clay target disciplines."
+        body="Manage your basic identity, country, and preferred clay target disciplines."
         error={error}
         form={form}
         loading={loading}

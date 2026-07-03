@@ -7,8 +7,10 @@ import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import {
   emptyShooterProfileForm,
   isShooterProfileComplete,
+  composeCanonicalShooterName,
   isValidCountryCode,
   normalizeCountryCode,
+  normalizeProfileWhitespace,
   normalizeDisciplines,
   shooterProfileToForm,
   type ShooterProfile,
@@ -16,11 +18,12 @@ import {
 } from "@/lib/profile";
 import { supabase } from "@/lib/supabase/client";
 
-type ValidationErrors = Partial<Record<"shooterName" | "country" | "myDisciplines", string>>;
+type ValidationErrors = Partial<Record<"firstName" | "lastName" | "country" | "myDisciplines", string>>;
 
 function validate(form: ShooterProfileFormState): ValidationErrors {
   const errors: ValidationErrors = {};
-  if (!form.shooterName.trim()) errors.shooterName = "Enter your shooter name.";
+  if (!normalizeProfileWhitespace(form.firstName)) errors.firstName = "Enter your first name.";
+  if (!normalizeProfileWhitespace(form.lastName)) errors.lastName = "Enter your last name.";
   if (!isValidCountryCode(form.country)) errors.country = "Select your country.";
   if (form.myDisciplines.length === 0) errors.myDisciplines = "Select at least one discipline.";
   return errors;
@@ -60,7 +63,7 @@ export default function OnboardingProfilePage() {
 
     const { data, error: profileError } = await supabase
       .from("shooter_profiles")
-      .select("id,user_id,shooter_name,country,my_disciplines,created_at,updated_at")
+      .select("id,user_id,shooter_name,first_name,last_name,country,my_disciplines,created_at,updated_at")
       .eq("user_id", userData.user.id)
       .maybeSingle<ShooterProfile>();
 
@@ -101,7 +104,9 @@ export default function OnboardingProfilePage() {
     const { error: saveError } = await supabase.from("shooter_profiles").upsert(
       {
         user_id: userId,
-        shooter_name: form.shooterName.trim(),
+        first_name: normalizeProfileWhitespace(form.firstName),
+        last_name: normalizeProfileWhitespace(form.lastName),
+        shooter_name: composeCanonicalShooterName(form.firstName, form.lastName),
         country: normalizeCountryCode(form.country),
         my_disciplines: form.myDisciplines,
       },
@@ -142,7 +147,9 @@ export default function OnboardingProfilePage() {
 
 function nextFormToProfile(form: ShooterProfileFormState) {
   return {
-    shooter_name: form.shooterName,
+    first_name: form.firstName,
+    last_name: form.lastName,
+    shooter_name: composeCanonicalShooterName(form.firstName, form.lastName),
     country: form.country,
     my_disciplines: form.myDisciplines,
   };

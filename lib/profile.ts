@@ -2,16 +2,20 @@ export type ShooterProfile = {
   id?: string;
   user_id: string;
   shooter_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
   country: string | null;
   my_disciplines: string[] | null;
   created_at?: string;
   updated_at?: string;
 };
 
-export type ShooterProfileBasics = Pick<ShooterProfile, "shooter_name" | "country" | "my_disciplines"> | null | undefined;
+export type ShooterProfileBasics = Pick<ShooterProfile, "shooter_name" | "first_name" | "last_name" | "country" | "my_disciplines"> | null | undefined;
 
 export type ShooterProfileFormState = {
-  shooterName: string;
+  firstName: string;
+  lastName: string;
+  legacyShooterName: string;
   country: string;
   myDisciplines: string[];
 };
@@ -72,8 +76,20 @@ export function getCountryLabel(value: string | null | undefined) {
   return COUNTRIES.find((country) => country.code === code)?.label ?? "";
 }
 
+export function normalizeProfileWhitespace(value: string | null | undefined) {
+  return (value || "").trim().replace(/\s+/g, " ");
+}
+
+export function composeCanonicalShooterName(firstName: string | null | undefined, lastName: string | null | undefined) {
+  return [normalizeProfileWhitespace(firstName), normalizeProfileWhitespace(lastName)].filter(Boolean).join(" ");
+}
+
+export function shooterProfileDisplayName(profile: Pick<ShooterProfile, "first_name" | "last_name" | "shooter_name"> | null | undefined) {
+  return composeCanonicalShooterName(profile?.first_name, profile?.last_name) || normalizeProfileWhitespace(profile?.shooter_name);
+}
+
 export function emptyShooterProfileForm(): ShooterProfileFormState {
-  return { shooterName: "", country: "", myDisciplines: [] };
+  return { firstName: "", lastName: "", legacyShooterName: "", country: "", myDisciplines: [] };
 }
 
 export function normalizeDisciplines(value: unknown): string[] {
@@ -83,7 +99,9 @@ export function normalizeDisciplines(value: unknown): string[] {
 
 export function shooterProfileToForm(profile: ShooterProfileBasics): ShooterProfileFormState {
   return {
-    shooterName: profile?.shooter_name || "",
+    firstName: normalizeProfileWhitespace(profile?.first_name),
+    lastName: normalizeProfileWhitespace(profile?.last_name),
+    legacyShooterName: normalizeProfileWhitespace(profile?.shooter_name),
     country: normalizeCountryCode(profile?.country),
     myDisciplines: normalizeDisciplines(profile?.my_disciplines),
   };
@@ -91,7 +109,8 @@ export function shooterProfileToForm(profile: ShooterProfileBasics): ShooterProf
 
 export function isShooterProfileComplete(profile: ShooterProfileBasics) {
   return Boolean(
-    profile?.shooter_name?.trim() &&
+    normalizeProfileWhitespace(profile?.first_name) &&
+      normalizeProfileWhitespace(profile?.last_name) &&
       isValidCountryCode(profile?.country) &&
       normalizeDisciplines(profile?.my_disciplines).length > 0,
   );

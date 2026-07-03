@@ -113,9 +113,9 @@ export default function ProfileGate({ children }: { children: React.ReactNode })
 
       const { data, error: profileError } = await supabase
         .from("shooter_profiles")
-        .select("shooter_name,country,my_disciplines")
+        .select("shooter_name,first_name,last_name,country,my_disciplines")
         .eq("user_id", userData.user.id)
-        .maybeSingle<Pick<ShooterProfile, "shooter_name" | "country" | "my_disciplines">>();
+        .maybeSingle<Pick<ShooterProfile, "shooter_name" | "first_name" | "last_name" | "country" | "my_disciplines">>();
 
       if (!active) return;
 

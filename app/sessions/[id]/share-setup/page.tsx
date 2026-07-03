@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { disciplineSupportNote, supportedTemplateDiscipline, TemplateVisibility } from "@/lib/competitionTemplates";
 import { supabase } from "@/lib/supabase/client";
 import { userFacingSaveError } from "@/lib/userFacingErrors";
+import { shooterProfileDisplayName, type ShooterProfile } from "@/lib/profile";
 
 type SessionRow = {
   id: string;
@@ -39,10 +40,6 @@ type RpcPublishResult = {
 
 function safeMessage(error: unknown, fallback: string) {
   return userFacingSaveError(error, fallback);
-}
-
-function profileDisplayName(profile: { display_name?: string | null; full_name?: string | null } | null | undefined) {
-  return (profile?.display_name || profile?.full_name || "").trim();
 }
 
 function TemplateSummaryCard({ session, summary }: { session: SessionRow; summary: PublishSummary | null }) {
@@ -106,7 +103,7 @@ export default function ShareCompetitionSetupPage() {
     const [sessionResult, sourcePreviewResult, profileResult, templatesResult] = await Promise.all([
       supabase.from("sessions").select("id,name,competition_date,shooting_ground,discipline").eq("id", id).single(),
       supabase.rpc("preview_competition_template_source", { p_source_session_id: id }),
-      supabase.from("shooter_profiles").select("display_name,full_name").eq("user_id", userData.user.id).maybeSingle(),
+      supabase.from("shooter_profiles").select("shooter_name,first_name,last_name").eq("user_id", userData.user.id).maybeSingle<Pick<ShooterProfile, "shooter_name" | "first_name" | "last_name">>(),
       supabase.from("competition_templates").select("id,name,visibility,template_version,withdrawn_at,updated_at").eq("source_session_id", id).order("updated_at", { ascending: false }),
     ]);
 
@@ -119,7 +116,7 @@ export default function ShareCompetitionSetupPage() {
     setSession(loadedSession);
     setExisting((templatesResult.data || []) as PublishedTemplate[]);
 
-    const name = profileDisplayName(profileResult.data);
+    const name = shooterProfileDisplayName(profileResult.data);
     setDisplayName(name);
     setShowName(Boolean(name));
 

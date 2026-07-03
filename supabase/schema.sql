@@ -147,6 +147,8 @@ create table if not exists public.shooter_profiles (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   shooter_name text,
+  first_name text,
+  last_name text,
   country text,
   my_disciplines text[] not null default '{}',
   created_at timestamptz not null default now(),
