@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { calculateRollingAverage, calculateRollingStdDev, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
+import { buildCompetitionActivitySummary } from "@/lib/competitionActivity";
 import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
 
@@ -284,6 +285,76 @@ function MetricCard({ label, value, helper }: { label: string; value: string; he
   );
 }
 
+function CompetitionActivityCard({
+  summary,
+  selectedYear,
+  onSelectedYearChange,
+  loading,
+}: {
+  summary: ReturnType<typeof buildCompetitionActivitySummary>;
+  selectedYear: number;
+  onSelectedYearChange: (year: number) => void;
+  loading: boolean;
+}) {
+  const historyYears = summary.years.includes(selectedYear) ? summary.years : [selectedYear, ...summary.years];
+
+  return (
+    <section className="card statsCompetitionActivityCard" aria-labelledby="competition-activity-heading">
+      <div className="sectionHeader listSectionHeader">
+        <div>
+          <p className="eyebrow">Competition only</p>
+          <h2 id="competition-activity-heading">Competition activity</h2>
+        </div>
+        <label className="competitionYearSelector">
+          <span>Year</span>
+          <select
+            value={selectedYear}
+            onChange={(event) => onSelectedYearChange(Number(event.target.value))}
+            disabled={loading || historyYears.length === 0}
+            aria-label="Competition activity year"
+          >
+            {historyYears.map((year) => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {loading ? (
+        <p>Loading...</p>
+      ) : summary.allTimeCompetitionCount === 0 ? (
+        <div className="emptyState compactEmptyState">
+          <p>No saved competitions yet. Log a competition result or import one from Leirdue.net to see your activity here.</p>
+          <div className="btns compactEmptyActions">
+            <Link href="/log-competition" className="button smallButton">Log competition</Link>
+            <Link href="/import/leirdue" className="button secondary smallButton">Import from Leirdue.net</Link>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="competitionActivityGrid">
+            <MetricCard label="All-time competitions" value={formatMetricNumber(summary.allTimeCompetitionCount)} />
+            <MetricCard
+              label="All-time competition targets"
+              value={formatMetricNumber(summary.allTimeCompetitionTargetCount)}
+              helper={summary.hasUnknownAllTimeTargets ? "Known targets only; some competitions have no target count" : undefined}
+            />
+            <MetricCard label={`${selectedYear} competitions`} value={formatMetricNumber(summary.selectedYearCompetitionCount)} />
+            <MetricCard
+              label={`${selectedYear} competition targets`}
+              value={formatMetricNumber(summary.selectedYearCompetitionTargetCount)}
+              helper={summary.hasUnknownSelectedYearTargets ? "Known targets only; some competitions have no target count" : undefined}
+            />
+          </div>
+          {summary.selectedYearCompetitionCount === 0 && (
+            <p className="small muted competitionActivityNote">No saved competitions in {selectedYear}. Choose another year from your competition history to review activity.</p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 function TrainingVolumeInsightsCard({
   insights,
   competitionTargetsThisYear,
@@ -525,6 +596,7 @@ export default function StatsPage() {
   const [volumeLogs, setVolumeLogs] = useState<TrainingVolumeLog[]>([]);
   const [trainingLoadError, setTrainingLoadError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [selectedCompetitionYear, setSelectedCompetitionYear] = useState(() => new Date().getFullYear());
 
   useEffect(() => {
     load();
@@ -696,6 +768,10 @@ export default function StatsPage() {
   ].sort(sortTrainingHistoryItems).slice(0, 5), [trainingLogs, trainingScoreSheets]);
 
   const volumeInsights = useMemo(() => buildTrainingVolumeInsights(volumeLogs), [volumeLogs]);
+  const competitionActivity = useMemo(
+    () => buildCompetitionActivitySummary(sessions, selectedCompetitionYear),
+    [sessions, selectedCompetitionYear],
+  );
   const competitionTargetsThisYear = useMemo(() => {
     const yearStart = `${new Date().getFullYear()}-01-01`;
     return sessions
@@ -727,6 +803,13 @@ export default function StatsPage() {
           </Link>
         </div>
       </div>
+
+      <CompetitionActivityCard
+        summary={competitionActivity}
+        selectedYear={selectedCompetitionYear}
+        onSelectedYearChange={setSelectedCompetitionYear}
+        loading={loading}
+      />
 
       <div className="card statsSummaryCard">
         <div className="sectionHeader">
