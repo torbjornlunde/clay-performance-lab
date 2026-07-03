@@ -96,6 +96,7 @@ export default function AuthHeader() {
           <nav className="topNav" aria-label="Primary navigation">
             <Link href="/dashboard">Dashboard</Link>
             <Link href="/stats">Performance</Link>
+            <Link href="/settings">Settings</Link>
             {feedbackHref && <a href={feedbackHref}>Feedback</a>}
             {showBetaAdmin && <Link href="/beta/admin">Beta approvals</Link>}
           </nav>
