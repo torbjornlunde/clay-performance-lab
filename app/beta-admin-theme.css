@@ -1,0 +1,21 @@
+/* Beta user cards must follow the active theme instead of keeping a fixed dark surface. */
+.accessUserCard {
+  background: var(--surface-secondary);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.accessUserCardHeader h3,
+.accessUserDetails dd {
+  color: var(--text-primary);
+}
+
+.accessUserCardHeader .muted,
+.accessUserCard .muted,
+.accessUserDetails dt {
+  color: var(--text-muted);
+}
+
+.accessUserDetails div {
+  border-top-color: var(--border-subtle);
+}
