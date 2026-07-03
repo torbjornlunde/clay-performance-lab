@@ -108,7 +108,7 @@ main {
   border-radius: 999px;
 }
 
-.topNav a {
+.topNav > a {
   border-radius: 999px;
   color: var(--muted);
   font-size: 13px;
@@ -116,7 +116,7 @@ main {
   padding: 8px 10px;
 }
 
-.topNav a:hover {
+.topNav > a:hover {
   background: rgba(255, 255, 255, 0.06);
   color: var(--text);
 }
@@ -779,7 +779,7 @@ button:disabled,
     display: none;
   }
 
-  .topNav a {
+  .topNav > a {
     flex: 0 0 auto;
     padding: 7px 9px;
     white-space: nowrap;
@@ -6955,10 +6955,10 @@ body {
   background: rgba(255, 255, 255, 0.055);
   border-color: rgba(255, 255, 255, 0.12);
 }
-.header .topNav a {
+.header .topNav > a {
   color: rgba(255, 248, 232, 0.78);
 }
-.header .topNav a:hover {
+.header .topNav > a:hover {
   background: rgba(216, 165, 58, 0.16);
   color: var(--text-on-dark);
 }
