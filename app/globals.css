@@ -8270,8 +8270,19 @@ select {
   display: none;
 }
 
-.settingsHero {
-  margin-bottom: 14px;
+.settingsMain {
+  display: grid;
+  gap: 14px;
+}
+
+.settingsIntro {
+  display: grid;
+  gap: 4px;
+}
+
+.settingsIntro h2,
+.settingsIntro p {
+  margin: 0;
 }
 
 @media (max-width: 720px) {
