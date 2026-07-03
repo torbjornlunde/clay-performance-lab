@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 execSync('rm -rf .profile-name-test-build && npx tsc lib/profile.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM --outDir .profile-name-test-build --skipLibCheck', {stdio:'inherit'});
 const profile = await import('../.profile-name-test-build/profile.js');
+
+const migrationSql = readFileSync('supabase/migrations/20260703090000_add_shooter_profile_names.sql', 'utf8');
+assert.match(migrationSql, /regexp_replace\(btrim\(first_name\), E'\\\\s\+', ' ', 'g'\)/, 'SQL whitespace regex uses escaped string syntax for first_name');
+assert.match(migrationSql, /regexp_replace\(btrim\(last_name\), E'\\\\s\+', ' ', 'g'\)/, 'SQL whitespace regex uses escaped string syntax for last_name');
+assert.match(migrationSql, /regexp_replace\(btrim\(shooter_name\), E'\\\\s\+', ' ', 'g'\)/, 'SQL whitespace regex uses escaped string syntax for shooter_name');
+assert.equal('Ada   Marie'.replace(/\s+/g, ' '), 'Ada Marie', 'Ada   Marie becomes Ada Marie under the intended whitespace collapse');
 
 assert.equal(profile.normalizeProfileWhitespace('  Ada   Lovelace  '), 'Ada Lovelace', 'trims and collapses whitespace');
 assert.equal(profile.composeCanonicalShooterName('  Ada ', '  Lovelace  '), 'Ada Lovelace', 'composes canonical first and last name');

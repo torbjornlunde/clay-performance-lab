@@ -118,7 +118,7 @@ export default function ShareCompetitionSetupPage() {
 
     const name = shooterProfileDisplayName(profileResult.data);
     setDisplayName(name);
-    setShowName(Boolean(name));
+    setShowName(false);
 
     if (sourcePreviewResult.error || !sourcePreviewResult.data?.[0]) {
       setSummary(null);

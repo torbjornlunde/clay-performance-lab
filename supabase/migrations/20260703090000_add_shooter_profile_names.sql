@@ -14,9 +14,9 @@ begin
   if v_user is null or not public.has_approved_access(v_user) then raise exception 'Access required'; end if;
 
   select
-    nullif(regexp_replace(btrim(first_name), '\\s+', ' ', 'g'), ''),
-    nullif(regexp_replace(btrim(last_name), '\\s+', ' ', 'g'), ''),
-    nullif(regexp_replace(btrim(shooter_name), '\\s+', ' ', 'g'), '')
+    nullif(regexp_replace(btrim(first_name), E'\\s+', ' ', 'g'), ''),
+    nullif(regexp_replace(btrim(last_name), E'\\s+', ' ', 'g'), ''),
+    nullif(regexp_replace(btrim(shooter_name), E'\\s+', ' ', 'g'), '')
   into v_first_name, v_last_name, v_name
   from public.shooter_profiles
   where user_id = v_user;

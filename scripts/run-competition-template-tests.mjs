@@ -17,6 +17,8 @@ assert.match(sql, /insert into public\.competition_templates\(owner_user_id, sou
 assert.doesNotMatch(sharePage, /from\("competition_templates"\)\.(insert|update|upsert)/, 'Client no longer writes directly to competition_templates');
 assert.match(sharePage, /publish_competition_template/, 'Client uses publish RPC');
 assert.match(sharePage, /update_competition_template_snapshot/, 'Client uses atomic update RPC');
+assert.doesNotMatch(sharePage, /setShowName\(Boolean\(name\)\)/, 'Loading a profile display name does not automatically opt in to sharing it');
+assert.match(sharePage, /setShowName\(false\)/, 'Competition setup sharing profile names requires explicit opt-in');
 assert.match(sharePage, /withdraw_competition_template/, 'Client uses withdraw RPC');
 assert.doesNotMatch(sharePage, /userData\.user\.email|\.email\?|split\("@"\)|split\('@'\)/, 'Email is never used as creator fallback');
 assert.doesNotMatch(sql, /'instructions', nullif\(s\.notes,''\)/, 'sessions.notes is never published as template metadata');
