@@ -4,6 +4,7 @@ export type FixedTrapProgramId = "jegertrap" | "nordisk-trap";
 
 export type FixedTrapRotationStrategy = {
   type: "cyclic";
+  targetsPerStand: number;
 };
 
 export type FixedTrapProgramDefinition = {
@@ -26,7 +27,7 @@ export const JEGERTRAP_PROGRAM: FixedTrapProgramDefinition = {
   discipline: JEGERTRAP_NORDISK_TRAP,
   standCount: 5,
   targetsPerSeries: 25,
-  rotation: { type: "cyclic" },
+  rotation: { type: "cyclic", targetsPerStand: 5 },
 };
 
 export const NORDISK_TRAP_PROGRAM: FixedTrapProgramDefinition = {
@@ -35,7 +36,7 @@ export const NORDISK_TRAP_PROGRAM: FixedTrapProgramDefinition = {
   discipline: JEGERTRAP_NORDISK_TRAP,
   standCount: 5,
   targetsPerSeries: 25,
-  rotation: { type: "cyclic" },
+  rotation: { type: "cyclic", targetsPerStand: 5 },
 };
 
 export const FIXED_TRAP_PROGRAMS = [JEGERTRAP_PROGRAM, NORDISK_TRAP_PROGRAM] as const;
@@ -62,6 +63,9 @@ export function validateTrapProgram(program: FixedTrapProgramDefinition): void {
   if (!program.rotation || program.rotation.type !== "cyclic") {
     throw new Error("Fixed trap program requires a supported rotation strategy.");
   }
+  if (!Number.isInteger(program.rotation.targetsPerStand) || program.rotation.targetsPerStand < 1) {
+    throw new Error("Fixed trap program rotation.targetsPerStand must be a positive integer.");
+  }
 }
 
 function assertPublicStand(program: FixedTrapProgramDefinition, startStand: number): void {
@@ -86,7 +90,8 @@ export function resolveTrapStand(program: FixedTrapProgramDefinition, startStand
   assertPublicShot(program, shotNumber);
 
   if (program.rotation.type === "cyclic") {
-    return ((startStand - 1 + shotNumber - 1) % program.standCount) + 1;
+    const blockIndex = Math.floor((shotNumber - 1) / program.rotation.targetsPerStand);
+    return ((startStand - 1 + blockIndex) % program.standCount) + 1;
   }
 
   throw new Error("Unsupported fixed trap rotation strategy.");
