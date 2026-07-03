@@ -6444,61 +6444,11 @@ details.equipmentDetails[open] summary::after {
   width: 100%;
 }
 
-.dashboardMenuWrap {
-  position: relative;
-  flex: 0 0 auto;
-}
-
-.dashboardTopMenu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  z-index: 30;
-  display: grid;
-  gap: 6px;
-  min-width: 210px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--panel2);
-  box-shadow: var(--shadow);
-}
-
-.dashboardTopMenu a,
-.dashboardTopMenu button {
-  justify-content: flex-start;
-  width: 100%;
-  min-height: 42px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(10, 16, 24, 0.7);
-  color: var(--text);
-  border: 1px solid var(--line);
-  font-weight: 900;
-  text-align: left;
-}
-
 .equipmentCardHeader {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-}
-
-@media (max-width: 680px) {
-  .dashboardTopRow {
-    display: grid;
-  }
-
-  .dashboardMenuWrap,
-  .dashboardTopMenu {
-    width: 100%;
-  }
-
-  .dashboardTopMenu {
-    position: static;
-    margin-top: 10px;
-  }
 }
 
 .equipmentSectionHeader {
@@ -8239,4 +8189,135 @@ select {
   .templateSuggestionsHeader,
   .templateSuggestionTopline { flex-direction: column; align-items: stretch; }
   .compactBtns { display: grid; }
+}
+
+.globalMenuWrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.globalMenuButton {
+  min-height: 0;
+  border-radius: 999px;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: none;
+}
+
+.globalMenuButton:hover,
+.globalMenuButton[aria-expanded="true"] {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.globalMenu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 40;
+  display: grid;
+  gap: 6px;
+  min-width: min(250px, calc(100vw - 24px));
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel2);
+  box-shadow: var(--shadow);
+}
+
+.globalMenu a,
+.globalMenu button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--pill-bg);
+  color: var(--pill-text);
+  border: 1px solid var(--pill-border);
+  font-weight: 900;
+  text-align: left;
+  box-shadow: none;
+}
+
+.globalMenu a:hover,
+.globalMenu button:hover,
+.globalMenu a:focus-visible,
+.globalMenu button:focus-visible {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--surface-raised);
+}
+
+.globalMenuStatus {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(260px, calc(100vw - 24px));
+  margin-top: 0;
+  padding: 10px;
+  border: 1px solid var(--danger-border);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  z-index: 41;
+}
+
+.mobileMenuItem {
+  display: none;
+}
+
+.settingsHero {
+  margin-bottom: 14px;
+}
+
+@media (max-width: 720px) {
+  .logoRow {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .brandLockup h1 {
+    font-size: 16px;
+  }
+
+  .topNav {
+    overflow: visible;
+    flex: 0 0 auto;
+  }
+
+  .desktopNavItem {
+    display: none;
+  }
+
+  .mobileMenuItem {
+    display: flex;
+  }
+
+  .globalMenu {
+    right: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .header {
+    padding-inline: 10px;
+  }
+
+  .brandLockup {
+    gap: 8px;
+  }
+
+  .mark,
+  .mark svg {
+    width: 34px;
+    height: 34px;
+  }
+
+  .brandLockup h1 {
+    font-size: 14px;
+  }
 }

@@ -3,15 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type {
-  ExportCourse,
-  ExportMiss,
-  ExportTargetDefinition,
-  ExportPostTarget,
-} from "@/lib/export/exportUserData";
 import { isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { calculateRollingAverage, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
-import { betaFeedbackMailto } from "@/lib/betaFeedback";
 import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
 
@@ -66,11 +59,6 @@ type TrainingHistoryItem =
   | { kind: "training_score_sheet"; id: string; date: string; createdAt: string; sheet: TrainingScoreSheetRow }
   | { kind: "practice_log"; id: string; date: string; createdAt: string; log: SimpleTrainingLogRow }
   | { kind: "detailed_training"; id: string; date: string; createdAt: string; session: Row };
-
-type ExportCourseRow = ExportCourse;
-type ExportMissRow = ExportMiss;
-type ExportTargetDefinitionRow = ExportTargetDefinition;
-type ExportPostTargetRow = ExportPostTarget;
 
 type ChartPeriod = "month" | "year" | "all" | "custom";
 
@@ -607,24 +595,10 @@ export default function DashboardPage() {
   const [simpleTrainingLogs, setSimpleTrainingLogs] = useState<SimpleTrainingLogRow[]>([]);
   const [missCounts, setMissCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState("");
   const [showAllResults, setShowAllResults] = useState(false);
   const [showAllTraining, setShowAllTraining] = useState(false);
-  const [feedbackHref, setFeedbackHref] = useState("");
-  const [dashboardMenuOpen, setDashboardMenuOpen] = useState(false);
-
   useEffect(() => {
-    setFeedbackHref(betaFeedbackMailto("Dashboard beta"));
     load();
-  }, []);
-
-  useEffect(() => {
-    function closeMenu() { setDashboardMenuOpen(false); }
-    function onKey(event: KeyboardEvent) { if (event.key === "Escape") closeMenu(); }
-    window.addEventListener("click", closeMenu);
-    window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("click", closeMenu); window.removeEventListener("keydown", onKey); };
   }, []);
 
   async function load() {
@@ -666,97 +640,6 @@ export default function DashboardPage() {
     setLoading(false);
   }
 
-  async function exportMyData() {
-    setExportError("");
-    setExporting(true);
-
-    try {
-      const { data: u, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
-      if (!u.user) {
-        router.push("/login");
-        return;
-      }
-
-      const { data: sessionData, error: sessionError } = await supabase
-        .from("sessions")
-        .select("*")
-        .eq("user_id", u.user.id)
-        .order("created_at", { ascending: false })
-        .returns<Row[]>();
-      if (sessionError) throw sessionError;
-
-      const exportSessions = sessionData || [];
-      const sessionIds = exportSessions.map((session) => session.id);
-      let exportCourses: ExportCourseRow[] = [];
-      let exportMisses: ExportMissRow[] = [];
-      let exportTargetDefinitions: ExportTargetDefinitionRow[] = [];
-      let exportPostTargets: ExportPostTargetRow[] = [];
-
-      if (sessionIds.length > 0) {
-        const [coursesResult, missesResult, definitionsResult, postTargetsResult] =
-          await Promise.all([
-            supabase
-              .from("session_courses")
-              .select("session_id,course_number,fitasc_scheme,shooter_number,start_plate")
-              .in("session_id", sessionIds)
-              .order("course_number")
-              .returns<ExportCourseRow[]>(),
-            supabase
-              .from("misses")
-              .select("session_id,course_number,plate,target_number,target_label,target_type,base_presentation,actual_presentation,presented_pair_label,shooting_order_label,is_reversed_order,missed_target,where_miss,main_reason,target_read,comment,first_where_miss,first_main_reason,first_target_read,first_comment,second_where_miss,second_main_reason,second_target_read,second_comment,created_at")
-              .in("session_id", sessionIds)
-              .order("created_at")
-              .returns<ExportMissRow[]>(),
-            supabase
-              .from("session_target_definitions")
-              .select("session_id,course_number,machine,target_type,direction,angle,speed,distance,difficulty,notes")
-              .in("session_id", sessionIds)
-              .order("course_number")
-              .returns<ExportTargetDefinitionRow[]>(),
-            supabase
-              .from("session_post_targets")
-              .select("session_id,post_number,target_position,presentation_number,presentation_type,position_in_presentation,target_label,target_type,direction,angle,speed,distance,difficulty,notes")
-              .in("session_id", sessionIds)
-              .order("post_number")
-              .order("target_position")
-              .returns<ExportPostTargetRow[]>(),
-          ]);
-
-        if (coursesResult.error) throw coursesResult.error;
-        if (missesResult.error) throw missesResult.error;
-        if (definitionsResult.error) throw definitionsResult.error;
-        if (postTargetsResult.error) throw postTargetsResult.error;
-
-        exportCourses = coursesResult.data || [];
-        exportMisses = missesResult.data || [];
-        exportTargetDefinitions = definitionsResult.data || [];
-        exportPostTargets = postTargetsResult.data || [];
-      }
-
-      const { exportFileName, exportUserDataToExcel } = await import("@/lib/export/exportUserData");
-      exportUserDataToExcel(
-        {
-          sessions: exportSessions,
-          courses: exportCourses,
-          misses: exportMisses,
-          targetDefinitions: exportTargetDefinitions,
-          postTargets: exportPostTargets,
-        },
-        exportFileName(),
-      );
-    } catch (error) {
-      setExportError("Could not export your data right now. Refresh and try again.");
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  async function logout() {
-    await supabase.auth.signOut();
-    router.push("/login");
-  }
-
   const results = useMemo(() => sessions.filter(isResultSession).sort(sortNewestFirst), [sessions]);
   const training = useMemo(() => sessions.filter(isTrainingSession).sort(sortNewestFirst), [sessions]);
   const visibleResults = showAllResults ? results : results.slice(0, 3);
@@ -794,20 +677,7 @@ export default function DashboardPage() {
             <h2>Dashboard</h2>
             <p className="dashboardHeroCopy">Choose a product area and continue with the right workflow.</p>
           </div>
-          <div className="dashboardMenuWrap" onClick={(event) => event.stopPropagation()}>
-            <button type="button" className="secondary smallButton" aria-expanded={dashboardMenuOpen} aria-haspopup="menu" onClick={() => setDashboardMenuOpen((open) => !open)}>Menu</button>
-            {dashboardMenuOpen && (
-              <div className="dashboardTopMenu" role="menu">
-                <Link role="menuitem" href="/profile" onClick={() => setDashboardMenuOpen(false)}>Shooter profile</Link>
-                <Link role="menuitem" href="/equipment" onClick={() => setDashboardMenuOpen(false)}>Equipment</Link>
-                <button role="menuitem" type="button" onClick={() => { setDashboardMenuOpen(false); exportMyData(); }} disabled={exporting || loading}>{exporting ? "Exporting..." : "Export my data"}</button>
-                {feedbackHref && <a role="menuitem" href={feedbackHref} onClick={() => setDashboardMenuOpen(false)}>Send feedback</a>}
-                <Link role="menuitem" href="/beta/checklist" onClick={() => setDashboardMenuOpen(false)}>Beta test checklist</Link>
-                <button role="menuitem" type="button" onClick={() => { setDashboardMenuOpen(false); load(); }}>Refresh</button>
-                <button role="menuitem" type="button" className="danger" onClick={() => { setDashboardMenuOpen(false); logout(); }}>Sign out</button>
-              </div>
-            )}
-          </div>
+
         </div>
         <div className="dashboardPrimaryActions" aria-label="Dashboard product areas">
           <Link href="/log-competition" className="dashboardActionCard secondaryAction">
