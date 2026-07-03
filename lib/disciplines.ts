@@ -2,6 +2,9 @@ export const COMPAK_SPORTING = "Compak Sporting";
 export const KOMPAKT_LEIRDUESTI = "Kompakt leirduesti";
 export const SPORTTRAP = "Sporttrap";
 export const LEIRDUESTI = "Leirduesti";
+export const JEGERTRAP_NORDISK_TRAP = "Jegertrap / Nordisk trap";
+export const TRAP = "Trap";
+export const SKEET = "Skeet";
 
 export const DISCIPLINE_OPTIONS = [
   COMPAK_SPORTING,
@@ -11,9 +14,9 @@ export const DISCIPLINE_OPTIONS = [
   "FITASC Sporting",
   "Sporting",
   "English Sporting",
-  "Jegertrap / Nordisk trap",
-  "Trap",
-  "Skeet",
+  JEGERTRAP_NORDISK_TRAP,
+  TRAP,
+  SKEET,
   "Other",
 ];
 

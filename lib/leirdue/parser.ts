@@ -1,4 +1,4 @@
-import { COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI } from "@/lib/disciplines";
+import { COMPAK_SPORTING, JEGERTRAP_NORDISK_TRAP, KOMPAKT_LEIRDUESTI, LEIRDUESTI, SKEET, TRAP } from "@/lib/disciplines";
 import { extractLeirdueSourceIdentifiers, normalizeLeirdueDisciplineLabel, normalizeLeirdueName, nordicSafeNameKey, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 import type { LeirdueCandidate, LeirdueCategory, LeirdueConfidence, LeirdueDebugParseInput, LeirdueDebugParseResult, LeirdueCheckedListDebug, LeirdueManualLinkParseResult, LeirdueSearchDebug, LeirdueSearchResult, LeirdueValidationChecklistItem } from "@/lib/leirdue/types";
 
@@ -2157,7 +2157,7 @@ function isEventLinkSkippable(meta: EventLinkMeta, selectedYear: number, debug: 
   return false;
 }
 
-function selectedDisciplineMatchTerms(text: string, input: LeirdueSearchInput) {
+export function selectedDisciplineMatchTerms(text: string, input: LeirdueSearchInput) {
   const normalized = normalizeText(text);
   const matches: string[] = [];
   for (const discipline of input.disciplines) {
@@ -2167,7 +2167,8 @@ function selectedDisciplineMatchTerms(text: string, input: LeirdueSearchInput) {
     else if (d.includes("leirduesti") && !d.includes("kompakt") && /(leirduesti|\bsti\b)/.test(normalized) && !/\b(kompakt|kompaktsti)\b/.test(normalized)) matches.push(discipline);
     else if (d.includes("sporting") && !d.includes("compak") && /(sporting|fitasc\s+sporting)/.test(normalized)) matches.push(discipline);
     else if (d.includes("skeet") && /\bskeet\b/.test(normalized)) matches.push(discipline);
-    else if (d.includes("trap") && /\btrap\b/.test(normalized)) matches.push(discipline);
+    else if (d === normalizeText(JEGERTRAP_NORDISK_TRAP) && /(nordisk\s+trap|jegertrap|\bnt\b)/.test(normalized)) matches.push(discipline);
+    else if (d === normalizeText(TRAP) && /\btrap\b/.test(normalized) && !/(nordisk\s+trap|jegertrap|\bnt\b)/.test(normalized)) matches.push(discipline);
   }
   return Array.from(new Set(matches));
 }
@@ -2231,9 +2232,11 @@ function isClearlyUnselectedDisciplineEvent(meta: EventLinkMeta, input: LeirdueS
   const selectedCompak = selected.some((discipline) => discipline.includes("compak") && !discipline.includes("kompakt"));
   if (selectedCompak && /\b(kompakt|kompaktsti|leirduesti)\b/.test(text) && !/\b(compak|compaq)\b/.test(text)) return true;
   const selectedSkeet = selected.some((discipline) => discipline.includes("skeet"));
-  const selectedTrap = selected.some((discipline) => discipline.includes("trap"));
+  const selectedGenericTrap = selected.some((discipline) => discipline === normalizeText(TRAP));
+  const selectedJegertrap = selected.some((discipline) => discipline === normalizeText(JEGERTRAP_NORDISK_TRAP));
   if (!selectedSkeet && /\bskeet\b/.test(text)) return true;
-  if (!selectedTrap && /(ol[-\s]?trap|nordisk\s+trap|jegertrap|\btrap\b|\bnt\b)/.test(text)) return true;
+  if (!selectedJegertrap && /(nordisk\s+trap|jegertrap|\bnt\b)/.test(text)) return true;
+  if (!selectedGenericTrap && /\btrap\b/.test(text) && !/(nordisk\s+trap|jegertrap|\bnt\b)/.test(text)) return true;
   return false;
 }
 
@@ -3109,7 +3112,7 @@ export type LeirdueSharedParsedResultRow = {
 
 export function parseLeirdueSharedResultListHtml(input: { html: string; url: string; year: number; listTitle?: string | null; selectedDisciplines?: string[] }): LeirdueSharedParsedResultRow[] {
   const year = debugSelectedYear(input.year);
-  const selectedDisciplines = input.selectedDisciplines?.length ? input.selectedDisciplines : [COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI, "Sporting", "FITASC Sporting", "Trap", "Skeet", "Jegertrap / Nordisk trap", "Other"];
+  const selectedDisciplines = input.selectedDisciplines?.length ? input.selectedDisciplines : [COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI, "Sporting", "FITASC Sporting", TRAP, SKEET, JEGERTRAP_NORDISK_TRAP, "Other"];
   const lines = htmlToLines(input.html);
   const pageText = lines.join("\n");
   const ids = extractLeirdueSourceIdentifiers(input.url);
