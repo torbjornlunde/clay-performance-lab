@@ -1,4 +1,4 @@
-import { COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI } from "@/lib/disciplines";
+import { COMPAK_SPORTING, JEGERTRAP_NORDISK_TRAP, KOMPAKT_LEIRDUESTI, LEIRDUESTI, SKEET, TRAP } from "../disciplines";
 
 export type LeirdueSourceIdentifiers = {
   stevneId: string | null;
@@ -129,10 +129,10 @@ export function normalizeLeirdueDisciplineLabel(label: string | null | undefined
   if (/\b(compak sporting|compak|kompak)\b/.test(normalized) && !/\bleirduesti\b/.test(normalized)) return { discipline: COMPAK_SPORTING, warning: null };
   if (/\b(kompakt leirduesti|compact leirduesti|kompaktsti|compaksti|kompak leirduesti|kompakt sporting)\b/.test(normalized)) return { discipline: KOMPAKT_LEIRDUESTI, warning: null };
   if (/\bleirduesti\b/.test(normalized)) return { discipline: LEIRDUESTI, warning: null };
-  if (/\bjegertrap\b/.test(normalized)) return { discipline: "Jegertrap / Nordisk trap", warning: null };
-  if (/\bnordisk\s+trap\b/.test(normalized)) return { discipline: "Jegertrap / Nordisk trap", warning: null };
-  if (/\btrap\b/.test(normalized)) return { discipline: "Trap", warning: null };
-  if (/\bskeet\b/.test(normalized)) return { discipline: "Skeet", warning: null };
+  if (/\bjegertrap\b/.test(normalized)) return { discipline: JEGERTRAP_NORDISK_TRAP, warning: null };
+  if (/\bnordisk\s+trap\b/.test(normalized)) return { discipline: JEGERTRAP_NORDISK_TRAP, warning: null };
+  if (/\btrap\b/.test(normalized)) return { discipline: TRAP, warning: null };
+  if (/\bskeet\b/.test(normalized)) return { discipline: SKEET, warning: null };
   if (/\b(engelsk sporting|sporting)\b/.test(normalized)) return { discipline: "Sporting", warning: null };
 
   return { discipline: "Other", warning: "Unknown discipline." };

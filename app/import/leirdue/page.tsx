@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
+import { COMPAK_SPORTING, DISCIPLINE_OPTIONS, JEGERTRAP_NORDISK_TRAP, KOMPAKT_LEIRDUESTI, LEIRDUESTI, SKEET, TRAP } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
 import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
 import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 
-const DEFAULT_DISCIPLINES = ["Compak Sporting", "Kompakt leirduesti", "Leirduesti", "Sporting"];
-const OPTIONAL_DISCIPLINES = ["Trap", "Skeet", "Other"];
+const DEFAULT_DISCIPLINES = [COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI, "Sporting"];
+const OPTIONAL_DISCIPLINES = [JEGERTRAP_NORDISK_TRAP, TRAP, SKEET, "Other"];
 const DISCIPLINE_CHOICES = [...DEFAULT_DISCIPLINES, ...OPTIONAL_DISCIPLINES];
 const BATCH_TIMEOUT_MS = 20_000;
 const AUTO_CONTINUATION_DELAY_MS = 750;
