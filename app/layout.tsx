@@ -3,6 +3,7 @@ import AuthHeader from "./components/AuthHeader";
 import ProfileGate from "./components/ProfileGate";
 import { ThemeProvider } from "./components/ThemeProvider";
 import "./globals.css";
+import "./beta-admin-theme.css";
 
 export const metadata: Metadata = { title: "Clay Performance Lab", description: "Performance analysis for clay target shooters." };
 
