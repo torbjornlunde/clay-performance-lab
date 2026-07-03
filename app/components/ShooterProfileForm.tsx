@@ -19,7 +19,7 @@ type ShooterProfileFormProps = {
   submittingLabel?: string;
   title: string;
   body: string;
-  validationErrors?: Partial<Record<"shooterName" | "country" | "myDisciplines", string>>;
+  validationErrors?: Partial<Record<"firstName" | "lastName" | "country" | "myDisciplines", string>>;
   showBackToDashboard?: boolean;
 };
 
@@ -65,20 +65,42 @@ export default function ShooterProfileForm({
         <p>Loading profile...</p>
       ) : (
         <>
-          <label htmlFor="shooter-name">Shooter name</label>
-          <input
-            id="shooter-name"
-            value={form.shooterName}
-            onChange={(event) => {
-              clearSuccess();
-              setForm((current) => ({ ...current, shooterName: event.target.value }));
-            }}
-            placeholder="Your shooter name"
-            aria-describedby={validationErrors.shooterName ? "shooter-name-error" : undefined}
-            aria-invalid={Boolean(validationErrors.shooterName)}
-          />
-          {validationErrors.shooterName && <p id="shooter-name-error" className="error compactValidation">{validationErrors.shooterName}</p>}
+          <div className="row">
+            <label htmlFor="first-name">First name
+              <input
+                id="first-name"
+                value={form.firstName}
+                onChange={(event) => {
+                  clearSuccess();
+                  setForm((current) => ({ ...current, firstName: event.target.value }));
+                }}
+                placeholder="First name"
+                aria-describedby={validationErrors.firstName ? "first-name-error" : undefined}
+                aria-invalid={Boolean(validationErrors.firstName)}
+                required
+              />
+              {validationErrors.firstName && <span id="first-name-error" className="error compactValidation">{validationErrors.firstName}</span>}
+            </label>
+            <label htmlFor="last-name">Last name
+              <input
+                id="last-name"
+                value={form.lastName}
+                onChange={(event) => {
+                  clearSuccess();
+                  setForm((current) => ({ ...current, lastName: event.target.value }));
+                }}
+                placeholder="Last name"
+                aria-describedby={validationErrors.lastName ? "last-name-error" : undefined}
+                aria-invalid={Boolean(validationErrors.lastName)}
+                required
+              />
+              {validationErrors.lastName && <span id="last-name-error" className="error compactValidation">{validationErrors.lastName}</span>}
+            </label>
+          </div>
           <p className="small muted">Used for your profile and future result matching.</p>
+          {form.legacyShooterName && (
+            <p className="small muted">Previous shooter name: {form.legacyShooterName}</p>
+          )}
 
           <label id="country-label" htmlFor="country">Country</label>
           <CountryPicker

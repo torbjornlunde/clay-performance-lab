@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { COMPAK_SPORTING, DISCIPLINE_OPTIONS, JEGERTRAP_NORDISK_TRAP, KOMPAKT_LEIRDUESTI, LEIRDUESTI, SKEET, TRAP } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
+import { shooterProfileDisplayName, type ShooterProfile } from "@/lib/profile";
 import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
 import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 
@@ -876,10 +877,10 @@ export default function LeirdueImportPage() {
       if (!userData.user) return;
       const { data } = await supabase
         .from("shooter_profiles")
-        .select("shooter_name")
+        .select("shooter_name,first_name,last_name")
         .eq("user_id", userData.user.id)
-        .maybeSingle<{ shooter_name: string | null }>();
-      const profileName = data?.shooter_name?.trim();
+        .maybeSingle<Pick<ShooterProfile, "shooter_name" | "first_name" | "last_name">>();
+      const profileName = shooterProfileDisplayName(data);
       if (profileName) setShooterName((current) => current || profileName);
     }
     loadShooterName();
