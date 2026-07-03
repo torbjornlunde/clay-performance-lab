@@ -8200,18 +8200,20 @@ select {
   min-height: 0;
   border-radius: 999px;
   padding: 8px 10px;
-  border: 0;
+  border: 1px solid transparent;
   background: transparent;
-  color: var(--muted);
+  color: var(--header-text);
   font-size: 13px;
   font-weight: 800;
   box-shadow: none;
 }
 
 .globalMenuButton:hover,
+.globalMenuButton:focus-visible,
 .globalMenuButton[aria-expanded="true"] {
-  background: var(--surface-raised);
-  color: var(--text);
+  background: var(--action-secondary-bg);
+  color: var(--action-secondary-text);
+  border-color: var(--action-secondary-border);
 }
 
 .globalMenu {
@@ -8229,10 +8231,10 @@ select {
   -webkit-overflow-scrolling: touch;
   scrollbar-gutter: stable;
   padding: 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-strong);
   border-radius: 16px;
-  background: var(--panel2);
-  box-shadow: var(--shadow);
+  background: var(--surface-primary);
+  box-shadow: var(--shadow-raised);
 }
 
 .globalMenu a,
@@ -8242,21 +8244,35 @@ select {
   min-height: 44px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: var(--pill-bg);
-  color: var(--pill-text);
-  border: 1px solid var(--pill-border);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
   font-weight: 900;
   text-align: left;
   box-shadow: none;
 }
 
 .globalMenu a:hover,
-.globalMenu button:hover,
+.globalMenu button:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--surface-raised);
+}
+
 .globalMenu a:focus-visible,
 .globalMenu button:focus-visible {
   color: var(--text-primary);
   border-color: var(--border-strong);
   background: var(--surface-raised);
+  box-shadow: var(--focus-ring);
+}
+
+.globalMenu button:disabled {
+  background: var(--action-disabled-bg);
+  color: var(--action-disabled-text);
+  border-color: var(--action-disabled-border);
+  box-shadow: none;
+  cursor: not-allowed;
 }
 
 .globalMenuStatus {
