@@ -8222,6 +8222,12 @@ select {
   display: grid;
   gap: 6px;
   min-width: min(250px, calc(100vw - 24px));
+  max-height: calc(100vh - 88px);
+  max-height: min(420px, calc(100dvh - 88px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -8310,6 +8316,8 @@ select {
 
   .globalMenu {
     right: 0;
+    max-height: calc(100vh - 76px);
+    max-height: calc(100dvh - 76px);
   }
 }
 
