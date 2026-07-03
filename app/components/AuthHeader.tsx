@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useId, useRef, useState } from "react";
 import { canManageBetaAccess, type UserAccessProfile } from "@/lib/access";
 import { betaFeedbackMailto } from "@/lib/betaFeedback";
 import { supabase } from "@/lib/supabase/client";
+import { exportMyDataForCurrentUser } from "@/lib/export/exportMyDataClient";
 
 function ClayTargetIcon() {
   return (
@@ -43,10 +45,18 @@ function ClayTargetIcon() {
 }
 
 export default function AuthHeader() {
+  const router = useRouter();
+  const menuId = useId();
+  const menuWrapRef = useRef<HTMLDivElement | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const shouldFocusMenuRef = useRef(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [showBetaAdmin, setShowBetaAdmin] = useState(false);
   const [feedbackHref, setFeedbackHref] = useState("");
   const [ready, setReady] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -82,6 +92,92 @@ export default function AuthHeader() {
     };
   }, []);
 
+  function getMenuItems() {
+    return Array.from(
+      menuWrapRef.current?.querySelectorAll<HTMLElement>(
+        'a[role="menuitem"], button[role="menuitem"]:not(:disabled)',
+      ) || [],
+    );
+  }
+
+  function closeMenu({ restoreFocus = false } = {}) {
+    shouldFocusMenuRef.current = false;
+    setMenuOpen(false);
+    if (restoreFocus) requestAnimationFrame(() => menuButtonRef.current?.focus());
+  }
+
+  function openMenu({ focusFirstItem = false } = {}) {
+    shouldFocusMenuRef.current = focusFirstItem;
+    setMenuOpen(true);
+  }
+
+  function handleMenuButtonKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      openMenu({ focusFirstItem: true });
+    }
+    if (event.key === "Enter" || event.key === " ") shouldFocusMenuRef.current = true;
+  }
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    if (shouldFocusMenuRef.current) {
+      requestAnimationFrame(() => {
+        getMenuItems()[0]?.focus();
+        shouldFocusMenuRef.current = false;
+      });
+    }
+
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (!menuWrapRef.current?.contains(event.target as Node)) closeMenu();
+    }
+
+    function handleMenuKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        closeMenu({ restoreFocus: true });
+        return;
+      }
+
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      const menuItems = getMenuItems();
+      if (menuItems.length === 0) return;
+      event.preventDefault();
+      const activeIndex = menuItems.indexOf(document.activeElement as HTMLElement);
+      const nextIndex = event.key === "ArrowDown"
+        ? (activeIndex + 1) % menuItems.length
+        : (activeIndex - 1 + menuItems.length) % menuItems.length;
+      menuItems[nextIndex].focus();
+    }
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", handleMenuKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", handleMenuKeyDown);
+      if (menuWrapRef.current?.contains(document.activeElement)) menuButtonRef.current?.focus();
+    };
+  }, [menuOpen]);
+
+  async function exportMyData() {
+    setExportError("");
+    setExporting(true);
+    try {
+      const result = await exportMyDataForCurrentUser();
+      if (!result.authenticated) router.push("/login");
+    } catch (error) {
+      setExportError("Could not export your data right now. Refresh and try again.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function logout() {
+    closeMenu();
+    await supabase.auth.signOut();
+    router.push("/login");
+  }
+
   return (
     <header className="header">
       <div className="logoRow">
@@ -94,10 +190,38 @@ export default function AuthHeader() {
         </Link>
         {ready && authenticated && (
           <nav className="topNav" aria-label="Primary navigation">
-            <Link href="/dashboard">Dashboard</Link>
-            <Link href="/stats">Performance</Link>
-            {feedbackHref && <a href={feedbackHref}>Feedback</a>}
-            {showBetaAdmin && <Link href="/beta/admin">Beta approvals</Link>}
+            <Link className="desktopNavItem" href="/dashboard">Dashboard</Link>
+            <Link className="desktopNavItem" href="/stats">Performance</Link>
+            <div className="globalMenuWrap" ref={menuWrapRef}>
+              <button
+                type="button"
+                className="globalMenuButton"
+                ref={menuButtonRef}
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
+                aria-controls={menuId}
+                onClick={() => menuOpen ? closeMenu() : openMenu()}
+                onKeyDown={handleMenuButtonKeyDown}
+              >
+                Menu
+              </button>
+              {menuOpen && (
+                <div className="globalMenu" id={menuId} role="menu" aria-label="Global menu">
+                  <Link className="mobileMenuItem" role="menuitem" href="/dashboard" onClick={() => closeMenu()}>Dashboard</Link>
+                  <Link className="mobileMenuItem" role="menuitem" href="/stats" onClick={() => closeMenu()}>Performance</Link>
+                  <Link role="menuitem" href="/log-competition" onClick={() => closeMenu()}>Log competition</Link>
+                  <Link role="menuitem" href="/log-training" onClick={() => closeMenu()}>Log training</Link>
+                  <Link role="menuitem" href="/profile" onClick={() => closeMenu()}>Shooter profile</Link>
+                  <Link role="menuitem" href="/equipment" onClick={() => closeMenu()}>Equipment</Link>
+                  <Link role="menuitem" href="/settings" onClick={() => closeMenu()}>Settings</Link>
+                  <button role="menuitem" type="button" onClick={() => { closeMenu({ restoreFocus: true }); exportMyData(); }} disabled={exporting}>{exporting ? "Exporting..." : "Export my data"}</button>
+                  {feedbackHref && <a role="menuitem" href={feedbackHref} onClick={() => closeMenu()}>Send feedback</a>}
+                  {showBetaAdmin && <Link role="menuitem" href="/beta/admin" onClick={() => closeMenu()}>Beta approvals</Link>}
+                  <button role="menuitem" type="button" className="danger" onClick={logout}>Sign out</button>
+                </div>
+              )}
+              {exportError && <p className="globalMenuStatus small dangerText" role="alert">{exportError}</p>}
+            </div>
           </nav>
         )}
       </div>
