@@ -101,3 +101,12 @@ export function buildTrapStandSequence(program: FixedTrapProgramDefinition, star
 
   return Array.from({ length: program.targetsPerSeries }, (_, index) => resolveTrapStand(program, startStand, index + 1));
 }
+/**
+ * Builds one complete 1-based stand sequence per supplied series start stand.
+ * Each startStands item is 1-based and represents that series' own start stand.
+ */
+export function buildTrapSeriesStandSequences(program: FixedTrapProgramDefinition, startStands: readonly number[]): number[][] {
+  validateTrapProgram(program);
+
+  return startStands.map((startStand) => buildTrapStandSequence(program, startStand));
+}

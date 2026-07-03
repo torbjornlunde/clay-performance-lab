@@ -57,5 +57,21 @@ assert.equal(trap.NORDISK_TRAP_PROGRAM.discipline, disciplines.JEGERTRAP_NORDISK
 assert.deepEqual(trap.buildTrapStandSequence(trap.JEGERTRAP_PROGRAM, 4).slice(0, 6), [4, 5, 1, 2, 3, 4], 'Jegertrap preset resolves through the generic engine');
 assert.deepEqual(trap.buildTrapStandSequence(trap.NORDISK_TRAP_PROGRAM, 1).slice(0, 6), [1, 2, 3, 4, 5, 1], 'Nordisk trap preset resolves through the generic engine');
 
+const presetSeries = trap.buildTrapSeriesStandSequences(trap.JEGERTRAP_PROGRAM, [4, 1, 3]);
+assert.equal(presetSeries.length, 3, 'one sequence is returned per supplied start stand');
+assert.deepEqual(presetSeries.map((series) => series.length), [25, 25, 25], 'each Jegertrap series keeps 25 assignments');
+assert.deepEqual(presetSeries.map((series) => series[0]), [4, 1, 3], 'each returned series starts at its own requested start stand');
+assert.deepEqual(presetSeries[0].slice(0, 6), [4, 5, 1, 2, 3, 4], 'multi-series helper preserves start stand 4 rotation');
+assert.throws(() => trap.buildTrapSeriesStandSequences(trap.JEGERTRAP_PROGRAM, [4, 6, 1]), /Start stand/, 'an invalid start stand in any series is rejected');
+assert.deepEqual(trap.buildTrapSeriesStandSequences(trap.JEGERTRAP_PROGRAM, []), [], 'empty startStands returns no series');
+assert.deepEqual(
+  trap.buildTrapSeriesStandSequences(syntheticThreeStand, [2, 1]),
+  [
+    [2, 3, 1, 2, 3, 1, 2, 3],
+    [1, 2, 3, 1, 2, 3, 1, 2],
+  ],
+  'non-five-stand programs work across multiple series',
+);
+
 execSync('rm -rf .fixed-trap-test-build');
 console.log('fixed trap program engine tests passed');
