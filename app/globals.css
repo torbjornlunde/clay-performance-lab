@@ -319,8 +319,9 @@ button.compactAction {
 }
 
 .subcard {
-  background: rgba(12, 18, 27, 0.88);
-  border: 1px solid var(--line);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
   border-radius: 18px;
   padding: 14px;
   margin: 10px 0;
@@ -850,8 +851,9 @@ body {
   grid-template-columns: 130px minmax(0, 1fr);
   gap: 12px;
   align-items: center;
-  background: rgba(12, 18, 27, 0.88);
-  border: 1px solid var(--line);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
   border-radius: 18px;
   padding: 12px;
 }
@@ -1536,8 +1538,9 @@ body {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: start;
-  background: rgba(12, 18, 27, 0.88);
-  border: 1px solid var(--line);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
   border-radius: 16px;
   padding: 12px;
 }
@@ -2429,7 +2432,8 @@ body {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: rgba(12, 18, 27, 0.88);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
 }
 
 .standPresentationType,
@@ -2438,19 +2442,20 @@ body {
   align-items: center;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: rgba(7, 11, 17, 0.72);
+  background: var(--surface-cell);
+  color: var(--text-primary);
   padding: 14px;
 }
 
 .standPresentationType {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: clamp(15px, 3.7vw, 24px);
   font-weight: 900;
 }
 
 .standMachineLabel {
   justify-content: center;
-  color: var(--text);
+  color: var(--text-primary);
   font-size: clamp(34px, 12vw, 76px);
   line-height: 1;
   letter-spacing: -0.04em;
@@ -3402,8 +3407,9 @@ body {
   min-height: 0;
   padding: 3px;
   border-radius: 11px;
-  background: rgba(12, 18, 27, 0.88);
-  border: 1px solid var(--line);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
 }
 
 .fitascFullscreenPanelStand .standMachineLabel,
@@ -3421,9 +3427,9 @@ body {
 .fitascFullscreenPanelStand .standPresentationType,
 .schemeOverviewFullscreen .schemePresentationLabel,
 .schemeOverviewFullscreen .schemeGridHeader strong {
-  color: var(--text);
-  background: rgba(7, 11, 17, 0.78);
-  border-color: rgba(132, 153, 178, 0.28);
+  color: var(--text-primary);
+  background: var(--surface-cell);
+  border-color: var(--border-subtle);
 }
 
 .fitascFullscreenPanelStand .standMachineLabel,
@@ -6807,6 +6813,7 @@ details.equipmentDetails[open] summary::after {
   --surface-raised: rgba(26, 36, 49, 0.92);
   --surface-inset: rgba(10, 16, 24, 0.8);
   --surface-cell: rgba(7, 11, 17, 0.72);
+  --surface-cell-solid: #091019;
   --surface-hero:
     linear-gradient(135deg, rgba(216, 165, 58, 0.11), transparent 42%),
     linear-gradient(180deg, rgba(21, 30, 42, 0.98), rgba(11, 17, 25, 0.98));
@@ -6827,6 +6834,15 @@ details.equipmentDetails[open] summary::after {
   --action-secondary-bg: rgba(26, 36, 49, 0.92);
   --action-secondary-text: var(--text-primary);
   --action-secondary-border: var(--border-subtle);
+  --action-secondary-hover-bg: var(--surface-raised);
+  --action-secondary-hover-text: var(--text-primary);
+  --action-secondary-hover-border: var(--border-accent);
+  --action-unselected-bg: var(--action-secondary-bg);
+  --action-unselected-text: var(--action-secondary-text);
+  --action-unselected-border: var(--action-secondary-border);
+  --action-unselected-hover-bg: var(--action-secondary-hover-bg);
+  --action-unselected-hover-text: var(--action-secondary-hover-text);
+  --action-unselected-hover-border: var(--action-secondary-hover-border);
   --action-selected-bg: linear-gradient(
     135deg,
     rgba(245, 207, 106, 0.98),
@@ -6835,7 +6851,9 @@ details.equipmentDetails[open] summary::after {
   --action-selected-text: var(--text-on-gold);
   --action-selected-border: rgba(245, 207, 106, 0.86);
   --action-disabled-bg: rgba(132, 153, 178, 0.12);
+  --action-disabled-bg-solid: #1a2431;
   --action-disabled-text: rgba(198, 208, 220, 0.68);
+  --action-disabled-text-solid: #c6d0dc;
   --action-disabled-border: rgba(132, 153, 178, 0.18);
 
   --pill-bg: rgba(10, 16, 24, 0.8);
@@ -6913,6 +6931,7 @@ html[data-theme="light"] {
   );
   --surface-inset: rgba(210, 198, 176, 0.72);
   --surface-cell: rgba(238, 229, 211, 0.92);
+  --surface-cell-solid: #eee5d3;
   --surface-hero:
     linear-gradient(135deg, rgba(179, 115, 12, 0.18), transparent 45%),
     linear-gradient(
@@ -6934,14 +6953,25 @@ html[data-theme="light"] {
   --action-primary-bg: linear-gradient(135deg, #e7b84e, #b77913);
   --action-primary-text: #17130a;
   --action-primary-border: rgba(130, 79, 4, 0.7);
-  --action-secondary-bg: linear-gradient(180deg, #303840, #20262c);
-  --action-secondary-text: #fff8e8;
-  --action-secondary-border: rgba(15, 18, 20, 0.5);
-  --action-selected-bg: linear-gradient(180deg, #2f3840, #171d22);
-  --action-selected-text: #fff8e8;
-  --action-selected-border: rgba(158, 102, 9, 0.78);
+  --action-secondary-bg: linear-gradient(180deg, #fbf5e8, #e8decb);
+  --action-secondary-text: var(--text-primary);
+  --action-secondary-border: rgba(56, 62, 67, 0.34);
+  --action-secondary-hover-bg: linear-gradient(180deg, #fff9ec, #eee5d3);
+  --action-secondary-hover-text: var(--text-primary);
+  --action-secondary-hover-border: var(--border-accent);
+  --action-unselected-bg: var(--action-secondary-bg);
+  --action-unselected-text: var(--action-secondary-text);
+  --action-unselected-border: var(--action-secondary-border);
+  --action-unselected-hover-bg: var(--action-secondary-hover-bg);
+  --action-unselected-hover-text: var(--action-secondary-hover-text);
+  --action-unselected-hover-border: var(--action-secondary-hover-border);
+  --action-selected-bg: linear-gradient(135deg, #e7b84e, #b77913);
+  --action-selected-text: var(--text-on-gold);
+  --action-selected-border: rgba(130, 79, 4, 0.7);
   --action-disabled-bg: rgba(118, 110, 96, 0.22);
-  --action-disabled-text: rgba(55, 65, 74, 0.62);
+  --action-disabled-bg-solid: #d2c6b0;
+  --action-disabled-text: rgba(55, 65, 74, 0.72);
+  --action-disabled-text-solid: #37414a;
   --action-disabled-border: rgba(56, 62, 67, 0.2);
 
   --pill-bg: rgba(234, 225, 207, 0.94);
@@ -7153,7 +7183,9 @@ button.secondary,
 .secondary:hover,
 button.secondary:hover,
 .button.secondary:hover {
-  border-color: var(--border-accent);
+  background: var(--action-secondary-hover-bg);
+  color: var(--action-secondary-hover-text);
+  border-color: var(--action-secondary-hover-border);
 }
 .danger,
 button.danger {
@@ -7411,6 +7443,7 @@ button.danger:disabled:hover {
   );
   --field-surface-secondary: rgba(12, 18, 27, 0.9);
   --field-surface-inset: rgba(7, 11, 17, 0.78);
+  --field-surface-inset-solid: #07111b;
   --field-text-primary: #f7fafc;
   --field-text-secondary: #c6d0dc;
   --field-text-muted: #a7b3c2;
@@ -7435,6 +7468,7 @@ html[data-theme="light"] {
   );
   --field-surface-secondary: rgba(25, 31, 37, 0.94);
   --field-surface-inset: rgba(12, 17, 22, 0.9);
+  --field-surface-inset-solid: #0c1116;
   --field-text-primary: #fff8e8;
   --field-text-secondary: #d9d0bd;
   --field-text-muted: #b9c0c5;
