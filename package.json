@@ -20,7 +20,8 @@
     "test:leirdue-import-filter": "node scripts/run-leirdue-import-filter-tests.mjs",
     "test:fixed-trap": "node scripts/run-fixed-trap-program-tests.mjs",
     "test:competition-activity": "node scripts/run-competition-activity-tests.mjs",
-    "test:profile-names": "node scripts/run-profile-name-tests.mjs"
+    "test:profile-names": "node scripts/run-profile-name-tests.mjs",
+    "check:theme-regression": "node scripts/theme-regression-check.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",
