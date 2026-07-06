@@ -2,10 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { analysisPresentation } from "@/lib/analysis/sessionAnalysis";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import {
+  analysisPresentation,
+  analyzeMisses,
+  type MissForAnalysis,
+} from "@/lib/analysis/sessionAnalysis";
 import { buildDeterministicSessionAnalysis } from "@/lib/analysis/deterministicSessionAnalysis";
-import { isOrdinaryLeirduesti } from "@/lib/disciplines";
+import { isCompactDiscipline, isOrdinaryLeirduesti, isPostBasedSportingDiscipline } from "@/lib/disciplines";
 import {
   normalizeLeirduestiLabel,
   shortMissedTarget,
@@ -15,6 +19,7 @@ import { supabase } from "@/lib/supabase/client";
 export default function AnalysisPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [session, setSession] = useState<any>(null);
   const [misses, setMisses] = useState<any[]>([]);
   const [definitions, setDefinitions] = useState<any[]>([]);
@@ -34,7 +39,7 @@ export default function AnalysisPage() {
     }
     const { data: sessionData } = await supabase
       .from("sessions")
-      .select("id,name,discipline,shooting_format,session_type,own_score,winning_score,total_targets,created_at,competition_date,leirdue_result_url,user_id")
+      .select("id,name,discipline,shooting_format,session_type,own_score,winning_score,total_targets,post_count,targets_per_post,created_at,competition_date,leirdue_result_url,user_id")
       .eq("id", params.id)
       .single();
     const { data: missData } = await supabase
@@ -42,11 +47,7 @@ export default function AnalysisPage() {
       .select("*")
       .eq("session_id", params.id)
       .order("created_at");
-    const [{ data: definitionData }, { data: postTargetData }, { data: importData }, { data: historyData }] = await Promise.all([
-      supabase
-        .from("session_target_definitions")
-        .select("course_number,machine,target_type,direction")
-        .eq("session_id", params.id),
+    const [{ data: postTargetData }, { data: importData }, { data: historyData }] = await Promise.all([
       supabase
         .from("session_post_targets")
         .select("post_number,target_position,presentation_number,presentation_type,position_in_presentation,target_label,target_type,direction,angle,speed,distance,difficulty,notes")
@@ -64,6 +65,13 @@ export default function AnalysisPage() {
             .order("competition_date", { ascending: false, nullsFirst: false })
         : Promise.resolve({ data: [] }),
     ]);
+    const useScorecardPath = Boolean(importData?.[0]) && isPostBasedSportingDiscipline(sessionData?.discipline);
+    const { data: definitionData } = useScorecardPath
+      ? { data: [] }
+      : await supabase
+          .from("session_target_definitions")
+          .select("course_number,machine,target_type,direction")
+          .eq("session_id", params.id);
     setSession(sessionData);
     setMisses(missData || []);
     setDefinitions(definitionData || []);
@@ -101,22 +109,42 @@ export default function AnalysisPage() {
     postTargets,
     history,
   });
-  const searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  const hasReviewedPostScorecard = Boolean(scorecardImport) && isPostBasedSportingDiscipline(session.discipline);
+  const legacyAnalysis = analyzeMisses(enrichedMisses as MissForAnalysis[]);
   const importedNotice = searchParams.get("scorecardImported") === "1";
   const isSporttrap = session.discipline === "Sporttrap";
   const isLeirduesti = isOrdinaryLeirduesti(session.discipline);
+  const isCompak = isCompactDiscipline(session.discipline);
 
   return (
     <main>
       <div className="card">
         <h2>Analysis</h2>
         <p className="small muted">{session.name}</p>
-        <span className="pill">
-          Score <strong>{deterministic.summary.score}/{deterministic.summary.totalTargets}</strong>
-        </span>
-        <span className="pill">
-          Misses <strong>{deterministic.summary.misses}</strong>
-        </span>
+        {hasReviewedPostScorecard ? (
+          <>
+            <span className="pill">
+              Score <strong>{deterministic.summary.score}/{deterministic.summary.totalTargets}</strong>
+            </span>
+            <span className="pill">
+              Misses <strong>{deterministic.summary.misses}</strong>
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="pill">
+              Detailed missed targets <strong>{legacyAnalysis.total}</strong>
+            </span>
+            <span className="pill">
+              Miss rows <strong>{legacyAnalysis.rowTotal}</strong>
+            </span>
+            {legacyAnalysis.overrideCount > 0 && (
+              <span className="pill">
+                Presentation overrides <strong>{legacyAnalysis.overrideCount}</strong>
+              </span>
+            )}
+          </>
+        )}
         {session.shooting_format && !isSporttrap && (
           <span className="pill">{session.shooting_format}</span>
         )}
@@ -134,31 +162,82 @@ export default function AnalysisPage() {
           Import complete: score {searchParams.get("score") || deterministic.summary.score}, inserted misses {searchParams.get("inserted") || scorecardImport?.inserted_misses || 0}, skipped duplicates {searchParams.get("skipped") || scorecardImport?.skipped_duplicates || 0}.
         </div>
       )}
-      <section className="card analysisSection">
-        <h2>What this scorecard tells us</h2>
-        {deterministic.findings.map((text) => <p key={text}>• {text}</p>)}
-        {deterministic.winningScore && <p>• {deterministic.winningScore.message}</p>}
-      </section>
-      <section className="card analysisSection">
-        <h2>Compared with your recent results</h2>
-        <p>{deterministic.competitionComparison.message}</p>
-        <p>{deterministic.trainingComparison.message}</p>
-        {deterministic.confidence.smallSample && <p className="small muted">Small sample: comparisons become more reliable after at least three earlier sessions of the same type.</p>}
-      </section>
-      <section className="card analysisSection">
-        <h2>Training focus</h2>
-        {deterministic.recommendations.map((item) => (
-          <div className="subcard" key={item.title}>
-            <strong>{item.title}</strong>
-            <p className="small muted">Evidence: {item.evidence}</p>
+      {hasReviewedPostScorecard ? (
+        <>
+          <section className="card analysisSection">
+            <h2>What this scorecard tells us</h2>
+            {deterministic.findings.map((text) => <p key={text}>• {text}</p>)}
+            {deterministic.winningScore && <p>• {deterministic.winningScore.message}</p>}
+          </section>
+          <section className="card analysisSection">
+            <h2>Compared with your recent results</h2>
+            <p>{deterministic.competitionComparison.message}</p>
+            <p>{deterministic.trainingComparison.message}</p>
+            {deterministic.confidence.smallSample && <p className="small muted">Small sample: comparisons become more reliable after at least three earlier sessions of the same type.</p>}
+          </section>
+          <section className="card analysisSection">
+            <h2>Training focus</h2>
+            {deterministic.recommendations.map((item) => (
+              <div className="subcard" key={item.title}>
+                <strong>{item.title}</strong>
+                <p className="small muted">Evidence: {item.evidence}</p>
+              </div>
+            ))}
+          </section>
+          {deterministic.missingData.length > 0 && (
+            <section className="card analysisSection">
+              <h2>What is missing for deeper analysis</h2>
+              {deterministic.missingData.map((text) => <p key={text}>• {text}</p>)}
+            </section>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="card">
+            <h2>Main pattern</h2>
+            {legacyAnalysis.mainPattern.map((text: string) => (
+              <p key={text}>• {text}</p>
+            ))}
           </div>
-        ))}
-      </section>
-      {deterministic.missingData.length > 0 && (
-        <section className="card analysisSection">
-          <h2>What is missing for deeper analysis</h2>
-          {deterministic.missingData.map((text) => <p key={text}>• {text}</p>)}
-        </section>
+          <div className="card">
+            <h2>{isSporttrap ? "Sporttrap patterns" : isLeirduesti ? "Leirduesti patterns" : isCompak ? `${session.discipline} patterns` : "Patterns"}</h2>
+            {isSporttrap ? (
+              <>
+                <p><strong>Misses by target label:</strong> {legacyAnalysis.formatted.byTargetLabel}</p>
+                <p><strong>Misses by actual presentation:</strong> {legacyAnalysis.formatted.byTargetType}</p>
+                <p><strong>Misses by first/second/both target:</strong> {legacyAnalysis.formatted.byTargetPosition}</p>
+                <p><strong>Misses by shooting order:</strong> {legacyAnalysis.formatted.byReversedOrder}</p>
+                <p><strong>Misses by series:</strong> {legacyAnalysis.formatted.byCourse}</p>
+                <p><strong>Misses by stand:</strong> {legacyAnalysis.formatted.byPlate}</p>
+                <p><strong>Misses by sequence:</strong> {legacyAnalysis.formatted.byTargetNumber}</p>
+              </>
+            ) : isLeirduesti ? (
+              <>
+                <p><strong>Misses by post:</strong> {legacyAnalysis.formatted.byCourse}</p>
+                <p><strong>Misses by actual presentation:</strong> {legacyAnalysis.formatted.byTargetType}</p>
+                <p><strong>Misses by first/second/both target:</strong> {legacyAnalysis.formatted.byTargetPosition}</p>
+                <p><strong>Misses by shooting order:</strong> {legacyAnalysis.formatted.byReversedOrder}</p>
+                <p><strong>Misses by main reason:</strong> {legacyAnalysis.formatted.byReason}</p>
+                <p><strong>Misses by where miss:</strong> {legacyAnalysis.formatted.byWhere}</p>
+              </>
+            ) : (
+              <>
+                <p><strong>Misses by machine/target label:</strong> {legacyAnalysis.formatted.byTargetLabel}</p>
+                <p><strong>Misses by actual presentation:</strong> {legacyAnalysis.formatted.byTargetType}</p>
+                <p><strong>Misses by first/second/both target:</strong> {legacyAnalysis.formatted.byTargetPosition}</p>
+                <p><strong>Misses by shooting order:</strong> {legacyAnalysis.formatted.byReversedOrder}</p>
+                <p><strong>Misses by course:</strong> {legacyAnalysis.formatted.byCourse}</p>
+                <p><strong>Misses by plate:</strong> {legacyAnalysis.formatted.byPlate}</p>
+              </>
+            )}
+          </div>
+          <div className="card">
+            <h2>Training recommendation</h2>
+            {legacyAnalysis.recommendation.map((text: string) => (
+              <p key={text}>• {text}</p>
+            ))}
+          </div>
+        </>
       )}
       <details className="card analysisRegisteredMisses">
         <summary><h2>Registered misses</h2></summary>
