@@ -105,7 +105,14 @@ function topSupported(entries: [string, number][], total: number, min = ANALYSIS
   return null;
 }
 function normalizeDiscipline(value?: string | null) { return normalizeLeirdueDisciplineLabel(value).discipline; }
-function sessionDateValue(s: AnalysisSession) { return Date.parse(`${s.competition_date || s.created_at || "1970-01-01"}T00:00:00Z`.replace(/T.*T/, "T")) || 0; }
+function sessionDateValue(s: AnalysisSession) {
+  const value = s.competition_date || s.created_at;
+  if (!value) return null;
+  const dateOnly = String(value).slice(0, 10);
+  const parsed = Date.parse(`${dateOnly}T00:00:00Z`);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+function sortDateValue(s: AnalysisSession) { return sessionDateValue(s) ?? 0; }
 function average(nums: number[]) { return nums.length ? nums.reduce((a,b)=>a+b,0)/nums.length : null; }
 function median(nums: number[]) { if(!nums.length) return null; const s=[...nums].sort((a,b)=>a-b); const mid=Math.floor(s.length/2); return s.length%2?s[mid]:(s[mid-1]+s[mid])/2; }
 function compare(current: number, avg: number | null) { if(avg === null) return null; const diff=current-avg; const close=ANALYSIS_THRESHOLDS.closePercentagePoints; return diff > close ? "above" : diff < -close ? "below" : "close to"; }
@@ -164,6 +171,21 @@ export function expandMissToClayAtoms(miss: AnalysisMiss, targets: PostTargetAna
   return { atoms: [] as ClayAtom[], ambiguous: true };
 }
 
+function uniqueClayAtoms(expanded: Array<{ atoms: ClayAtom[]; ambiguous: boolean }>) {
+  const unique = new Map<string, ClayAtom>();
+  let duplicateCount = 0;
+  let ambiguousRows = 0;
+  for (const item of expanded) {
+    if (item.ambiguous) ambiguousRows++;
+    for (const atom of item.atoms) {
+      const key = `${atom.postNumber}:${atom.targetPosition}`;
+      if (unique.has(key)) duplicateCount++;
+      else unique.set(key, atom);
+    }
+  }
+  return { atoms: [...unique.values()], duplicateCount, ambiguousRows };
+}
+
 export function buildDeterministicSessionAnalysis(input: {
   session: AnalysisSession;
   misses: AnalysisMiss[];
@@ -186,36 +208,50 @@ export function buildDeterministicSessionAnalysis(input: {
   findings.push(`Total misses: ${missTotal}.`);
 
   const expanded = input.misses.map(m => expandMissToClayAtoms(m, postTargets));
-  const atoms = expanded.flatMap(x => x.atoms).slice(0, missTotal);
-  const ambiguousClayCount = Math.max(0, missTotal - atoms.length);
+  const unique = uniqueClayAtoms(expanded);
+  const atoms = unique.atoms;
   const mappedCount = atoms.length;
-  const byPost = count(atoms.map(a => a.postNumber));
-  const topPost = topSupported(byPost, mappedCount, 2);
-  if (topPost) findings.push(`${topPost[1]} mapped misses came on ${unitLabel} ${topPost[0]} (${mappedCount} of ${missTotal} reviewed misses mapped).`);
-  if (byPost.length >= 2 && byPost[0][1] + byPost[1][1] >= Math.max(3, Math.ceil(mappedCount * ANALYSIS_THRESHOLDS.concentrationShare))) {
-    findings.push(`Most mapped misses came on ${unitLabel}s ${byPost[0][0]} and ${byPost[1][0]} (${byPost[0][1] + byPost[1][1]} of ${mappedCount} mapped misses).`);
+  const ambiguousClayCount = Math.max(0, missTotal - mappedCount);
+  const inconsistentMapping = mappedCount > missTotal;
+  const completeUniqueMapping = mappedCount === missTotal && ambiguousClayCount === 0 && unique.duplicateCount === 0 && unique.ambiguousRows === 0 && !inconsistentMapping;
+  if (unique.duplicateCount > 0) missingData.push(`${unique.duplicateCount} duplicate mapped clay coordinate${unique.duplicateCount === 1 ? " was" : "s were"} deduplicated before analysis.`);
+  if (inconsistentMapping) missingData.push(`Mapped clay coordinates (${mappedCount}) exceed reviewed misses (${missTotal}); post and target pattern conclusions are suppressed until the data is reconciled.`);
+  const patternAtoms = inconsistentMapping ? [] : atoms;
+  const patternMappedCount = inconsistentMapping ? 0 : mappedCount;
+  const byPost = count(patternAtoms.map(a => a.postNumber));
+  const topPost = topSupported(byPost, patternMappedCount, 2);
+  if (topPost) findings.push(`${topPost[1]} mapped misses came on ${unitLabel} ${topPost[0]} (${patternMappedCount} of ${missTotal} reviewed misses mapped).`);
+  if (byPost.length >= 2 && byPost[0][1] + byPost[1][1] >= Math.max(3, Math.ceil(patternMappedCount * ANALYSIS_THRESHOLDS.concentrationShare))) {
+    findings.push(`Most mapped misses came on ${unitLabel}s ${byPost[0][0]} and ${byPost[1][0]} (${byPost[0][1] + byPost[1][1]} of ${patternMappedCount} mapped misses).`);
   }
   const postCount = Number(input.session.post_count || 0);
   const targetsPerPost = Number(input.session.targets_per_post || 0);
-  if (postCount > 0 && targetsPerPost > 0 && typeof totalTargets === "number" && postCount * targetsPerPost === totalTargets) {
+  const completeEqualPostStructure = postCount > 0 && targetsPerPost > 0 && typeof totalTargets === "number" && postCount * targetsPerPost === totalTargets;
+  if (completeEqualPostStructure && completeUniqueMapping) {
     const postStats = Array.from({length: postCount}, (_,i)=>{ const post=i+1; const misses=atoms.filter(a=>a.postNumber===post).length; return {post, misses, hits: targetsPerPost-misses, missRate: misses/targetsPerPost}; });
     const best = Math.min(...postStats.map(p=>p.missRate));
     const worst = Math.max(...postStats.map(p=>p.missRate));
     const strongest = postStats.filter(p=>p.missRate===best).map(p=>p.post);
     const weakest = postStats.filter(p=>p.missRate===worst).map(p=>p.post);
-    findings.push(`Strongest ${strongest.length === 1 ? unitLabel : `${unitLabel}s`}: ${strongest.join(", ")} (${Math.round(best * targetsPerPost)} misses each).`);
-    findings.push(`Weakest ${weakest.length === 1 ? unitLabel : `${unitLabel}s`}: ${weakest.join(", ")} (${Math.round(worst * targetsPerPost)} misses each).`);
+    if (best === worst) {
+      findings.push(`All ${unitLabel}s performed equally by mapped miss rate (${Math.round(best * targetsPerPost)} misses each).`);
+    } else {
+      findings.push(`Strongest ${strongest.length === 1 ? unitLabel : `${unitLabel}s`}: ${strongest.join(", ")} (${Math.round(best * targetsPerPost)} misses each).`);
+      findings.push(`Weakest ${weakest.length === 1 ? unitLabel : `${unitLabel}s`}: ${weakest.join(", ")} (${Math.round(worst * targetsPerPost)} misses each).`);
+    }
+  } else if (completeEqualPostStructure && input.scorecardImport) {
+    missingData.push(`Exact strongest and weakest ${unitLabel}s cannot be identified until every reviewed miss maps to one unique target coordinate.`);
   }
   if (input.misses.length && ambiguousClayCount > 0) missingData.push(`${ambiguousClayCount} reviewed misses could not be mapped to exact target positions from the available target setup.`);
   if (input.misses.length && mappedCount < missTotal) missingData.push("Target descriptions are missing for some imported misses, so target type, direction and pair-position patterns are limited.");
-  const posEntries = count(atoms.map(x => x.positionInPresentation === 1 ? "first target" : x.positionInPresentation === 2 ? "second target" : null));
-  const topPos = topSupported(posEntries, mappedCount);
+  const posEntries = count(patternAtoms.map(x => x.positionInPresentation === 1 ? "first target" : x.positionInPresentation === 2 ? "second target" : null));
+  const topPos = topSupported(posEntries, patternMappedCount);
   if (topPos) findings.push(`${topPos[1]} mapped misses were on the ${topPos[0]} of a presentation.`);
-  const label = topSupported(count(atoms.map(x => key(x.setup?.target_label))), mappedCount);
+  const label = topSupported(count(patternAtoms.map(x => key(x.setup?.target_label))), patternMappedCount);
   if (label) findings.push(`Target ${label[0]} was missed ${label[1]} times in mapped misses.`);
-  const direction = topSupported(count(atoms.map(x => key(x.setup?.direction))), mappedCount);
+  const direction = topSupported(count(patternAtoms.map(x => key(x.setup?.direction))), patternMappedCount);
   if (direction) findings.push(`${direction[1]} mapped misses involved ${direction[0]} targets.`);
-  const targetType = topSupported(count(atoms.map(x => key(x.setup?.target_type))), mappedCount);
+  const targetType = topSupported(count(patternAtoms.map(x => key(x.setup?.target_type))), patternMappedCount);
   if (targetType) findings.push(`${targetType[1]} mapped misses involved ${targetType[0]} targets.`);
 
   const reasonEntries = count(input.misses.map(m => key(m.main_reason)));
@@ -232,13 +268,20 @@ export function buildDeterministicSessionAnalysis(input: {
   if (!recommendations.length && input.misses.length) recommendations.push({ title: "Repeat the most common mapped presentations from this reviewed scorecard.", evidence: "The scorecard gives missed target positions, while incomplete manual miss details are treated as missing evidence." });
 
   const normalized = normalizeDiscipline(input.session.discipline);
+  const viewedDate = sessionDateValue(input.session);
   const history = (input.history || [])
-    .filter(s => s.id !== input.session.id && normalizeDiscipline(s.discipline) === normalized && typeof s.own_score === "number" && typeof s.total_targets === "number" && s.total_targets > 0);
+    .filter(s => {
+      if (s.id === input.session.id || normalizeDiscipline(s.discipline) !== normalized || typeof s.own_score !== "number" || typeof s.total_targets !== "number" || s.total_targets <= 0) return false;
+      if (viewedDate === null) return true;
+      const candidateDate = sessionDateValue(s);
+      return candidateDate !== null && candidateDate < viewedDate;
+    });
+  if (viewedDate === null) missingData.push("The viewed session has no usable date, so comparison sessions are same-discipline results but are not described as earlier.");
   function comparison(type: "Competition" | "Training") {
-    const rows = history.filter(s => s.session_type === type).sort((a,b)=>sessionDateValue(b)-sessionDateValue(a)).slice(0, ANALYSIS_THRESHOLDS.recentHistoryLimit);
+    const rows = history.filter(s => s.session_type === type).sort((a,b)=>sortDateValue(b)-sortDateValue(a)).slice(0, ANALYSIS_THRESHOLDS.recentHistoryLimit);
     const pcts = rows.map(s => (Number(s.own_score) / Number(s.total_targets)) * 100);
     const avg = average(pcts), med = median(pcts);
-    return { sessionType:type, sampleSize:rows.length, averagePercentage:avg, medianPercentage:med, result: currentPct === null ? null : compare(currentPct, avg), message: rows.length ? `${type}: current result is ${compare(currentPct || 0, avg)} your recent average of ${pct(avg || 0)} (${rows.length} sessions).` : `${type}: no earlier comparable sessions found.` };
+    return { sessionType:type, sampleSize:rows.length, averagePercentage:avg, medianPercentage:med, result: currentPct === null ? null : compare(currentPct, avg), message: rows.length ? `${type}: current result is ${compare(currentPct || 0, avg)} your ${viewedDate === null ? "same-discipline" : "earlier"} average of ${pct(avg || 0)} (${rows.length} sessions).` : `${type}: no earlier comparable sessions found.` };
   }
   const competitionComparison = comparison("Competition");
   const trainingComparison = comparison("Training");
@@ -253,7 +296,7 @@ export function buildDeterministicSessionAnalysis(input: {
   } else missingData.push("Winning score is missing, so points behind the winner cannot be shown.");
 
   return {
-    summary: { score, totalTargets, hitPercentage: currentPct, misses: missTotal, mappedMisses: mappedCount, ambiguousMisses: ambiguousClayCount },
+    summary: { score, totalTargets, hitPercentage: currentPct, misses: missTotal, mappedMisses: mappedCount, ambiguousMisses: ambiguousClayCount, duplicateMappedMisses: unique.duplicateCount, inconsistentMapping },
     findings,
     competitionComparison,
     trainingComparison,

@@ -160,6 +160,8 @@ export default function AnalysisPage() {
       {importedNotice && (
         <div className="success">
           Import complete: score {searchParams.get("score") || deterministic.summary.score}, inserted misses {searchParams.get("inserted") || scorecardImport?.inserted_misses || 0}, skipped duplicates {searchParams.get("skipped") || scorecardImport?.skipped_duplicates || 0}.
+          {searchParams.get("alreadyImported") === "true" && " This scorecard had already been imported."}
+          {searchParams.get("ownScoreUpdated") === "true" && " Your official score was updated."}
         </div>
       )}
       {hasReviewedPostScorecard ? (
