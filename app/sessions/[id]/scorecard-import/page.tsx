@@ -573,7 +573,7 @@ export default function Page() {
         alreadyImported: String(Boolean(result.alreadyImported)),
         ownScoreUpdated: String(Boolean(result.ownScoreUpdated)),
       });
-      router.push(`/sessions/${id}?scorecardImported=1&${qs.toString()}`);
+      router.push(`/sessions/${id}/analysis?scorecardImported=1&${qs.toString()}`);
     } catch (e: any) {
       const retryable = {
         ...applying,
@@ -958,9 +958,9 @@ export default function Page() {
                   {w}
                 </p>
               ))}
-              <details>
+              <details className="scorecardRawTextDetails">
                 <summary>Raw detected text</summary>
-                <p className="small">
+                <p className="small scorecardRawText">
                   {pending?.analysis?.rawText || "No raw text."}
                 </p>
               </details>

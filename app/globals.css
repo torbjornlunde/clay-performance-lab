@@ -8466,3 +8466,37 @@ select {
     font-size: 14px;
   }
 }
+
+.scorecardRawTextDetails,
+.scorecardRawTextDetails summary,
+.scorecardRawText {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.scorecardRawTextDetails {
+  overflow: hidden;
+}
+
+.scorecardRawText {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  color: var(--text);
+}
+
+.analysisSection,
+.analysisRegisteredMisses,
+.analysisRegisteredMisses summary {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.analysisRegisteredMisses summary {
+  cursor: pointer;
+}
+
+.analysisRegisteredMisses summary h2 {
+  display: inline;
+}
