@@ -22,7 +22,8 @@
     "test:competition-activity": "node scripts/run-competition-activity-tests.mjs",
     "test:profile-names": "node scripts/run-profile-name-tests.mjs",
     "check:theme-regression": "node scripts/theme-regression-check.mjs",
-    "test:session-analysis": "node scripts/run-session-analysis-tests.mjs"
+    "test:session-analysis": "node scripts/run-session-analysis-tests.mjs",
+    "test:shared-post-targets": "node scripts/run-shared-post-target-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",

@@ -436,10 +436,10 @@ export default function Page() {
     ? {
         href: `/sessions/${session.id}/targets`,
         label: setupComplete
-          ? "Review post setup"
+          ? `Review ${postUnit}s and targets`
           : setupPartial
-            ? "Continue post setup"
-            : "Set up posts and targets",
+            ? `Continue ${postUnit} setup`
+            : `Set up ${postUnit}s and targets`,
         progress: `${postSetupCount ?? 0} of ${expectedPostCount} ${postUnit}s set up`,
       }
     : isCompact
