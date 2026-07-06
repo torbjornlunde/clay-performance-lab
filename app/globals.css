@@ -2424,6 +2424,19 @@ body {
   gap: 10px;
 }
 
+.standNumberButton.secondary {
+  background: var(--action-unselected-bg);
+  color: var(--action-unselected-text);
+  border-color: var(--action-unselected-border);
+}
+
+.standNumberButton.secondary:hover,
+.standNumberButton.secondary:focus-visible {
+  background: var(--action-unselected-hover-bg);
+  color: var(--action-unselected-hover-text);
+  border-color: var(--action-unselected-hover-border);
+}
+
 .standPresentationCard {
   display: grid;
   grid-template-columns: minmax(120px, 0.45fr) minmax(0, 1fr);
@@ -6831,13 +6844,17 @@ details.equipmentDetails[open] summary::after {
   --action-primary-bg: linear-gradient(135deg, var(--gold2), var(--gold));
   --action-primary-text: var(--text-on-gold);
   --action-primary-border: rgba(245, 207, 106, 0.72);
+  --action-primary-bg-start: #f5cf6a;
+  --action-primary-bg-end: #d8a53a;
   --action-secondary-bg: rgba(26, 36, 49, 0.92);
+  --action-secondary-bg-solid: #1a2431;
   --action-secondary-text: var(--text-primary);
   --action-secondary-border: var(--border-subtle);
   --action-secondary-hover-bg: var(--surface-raised);
   --action-secondary-hover-text: var(--text-primary);
   --action-secondary-hover-border: var(--border-accent);
   --action-unselected-bg: var(--action-secondary-bg);
+  --action-unselected-bg-solid: var(--action-secondary-bg-solid);
   --action-unselected-text: var(--action-secondary-text);
   --action-unselected-border: var(--action-secondary-border);
   --action-unselected-hover-bg: var(--action-secondary-hover-bg);
@@ -6850,6 +6867,8 @@ details.equipmentDetails[open] summary::after {
   );
   --action-selected-text: var(--text-on-gold);
   --action-selected-border: rgba(245, 207, 106, 0.86);
+  --action-selected-bg-start: #f5cf6a;
+  --action-selected-bg-end: #d8a53a;
   --action-disabled-bg: rgba(132, 153, 178, 0.12);
   --action-disabled-bg-solid: #1a2431;
   --action-disabled-text: rgba(198, 208, 220, 0.68);
@@ -6953,7 +6972,10 @@ html[data-theme="light"] {
   --action-primary-bg: linear-gradient(135deg, #e7b84e, #b77913);
   --action-primary-text: #17130a;
   --action-primary-border: rgba(130, 79, 4, 0.7);
+  --action-primary-bg-start: #e7b84e;
+  --action-primary-bg-end: #b77913;
   --action-secondary-bg: linear-gradient(180deg, #fbf5e8, #e8decb);
+  --action-secondary-bg-solid: #e8decb;
   --action-secondary-text: var(--text-primary);
   --action-secondary-border: rgba(56, 62, 67, 0.34);
   --action-secondary-hover-bg: linear-gradient(180deg, #fff9ec, #eee5d3);
@@ -6968,6 +6990,8 @@ html[data-theme="light"] {
   --action-selected-bg: linear-gradient(135deg, #e7b84e, #b77913);
   --action-selected-text: var(--text-on-gold);
   --action-selected-border: rgba(130, 79, 4, 0.7);
+  --action-selected-bg-start: #e7b84e;
+  --action-selected-bg-end: #b77913;
   --action-disabled-bg: rgba(118, 110, 96, 0.22);
   --action-disabled-bg-solid: #d2c6b0;
   --action-disabled-text: rgba(55, 65, 74, 0.72);
