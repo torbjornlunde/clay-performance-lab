@@ -37,6 +37,7 @@ export type PendingScorecardPhoto = {
   reviewedGridFingerprint?: string | null;
   scoreChoice?: "use_scorecard" | "keep_existing";
   acknowledgeAmbiguousExisting?: boolean;
+  localReviewRevision?: number;
   lastError?: string | null;
 };
 const DB = "scorecard-photo-imports-v1",
@@ -121,6 +122,7 @@ export function migratePendingScorecardPhoto(
     scoreChoice:
       raw.scoreChoice === "keep_existing" ? "keep_existing" : "use_scorecard",
     acknowledgeAmbiguousExisting: Boolean(raw.acknowledgeAmbiguousExisting),
+    localReviewRevision: Number.isFinite(raw.localReviewRevision) ? Number(raw.localReviewRevision) : 0,
     lastError: typeof raw.lastError === "string" ? raw.lastError : null,
     lastSafeErrorCategory: typeof raw.lastSafeErrorCategory === "string" ? raw.lastSafeErrorCategory : null,
   };

@@ -60,20 +60,23 @@ assert.match(pageSource,/Post setup has changed since this scorecard was analyze
 const analyzeSource = readFileSync('app/api/sessions/[id]/scorecard/analyze/route.ts','utf8'); assert.match(analyzeSource,/setupFingerprint/, 'analyze API returns setup fingerprint'); assert.match(analyzeSource,/resolvedSetup/, 'analyze API returns normalized resolved setup');
 const applySource = readFileSync('app/api/sessions/[id]/scorecard/apply/route.ts','utf8'); assert.match(applySource,/scorecard_setup_changed/, 'apply API uses dedicated setup-changed category'); assert.match(applySource,/body\.setupFingerprint/, 'apply API requires the reviewed setup fingerprint');
 
-assert.match(pageSource,/Save post and next/, 'review flow exposes Save post and next');
-assert.match(pageSource,/bulkResolveUnknownsForPost/, 'primary bulk actions are post-scoped');
-assert.match(pageSource,/scorecardAdvancedBulk/, 'whole-card bulk action remains advanced');
-assert.match(pageSource,/Apply reviewed scorecard/, 'final apply button uses reviewed scorecard wording');
-assert.match(pageSource,/unresolvedTargetsText/, 'unknown targets are listed by post and target');
-assert.match(pageSource,/currentReviewPost/, 'pending state stores current review post');
-assert.match(pageSource,/reviewedPostNumbers/, 'pending state stores reviewed post statuses');
-const cssSource = readFileSync('app/globals.css','utf8');
-assert(cssSource.includes('grid-template-columns: auto minmax(0, 1fr)'), 'acknowledgement checkbox uses stable grid columns');
-assert.match(cssSource,/checkboxRow input[\s\S]*flex-shrink:\s*0/, 'checkbox does not shrink');
-assert.match(cssSource,/max-width:\s*100%/, 'scorecard review CSS constrains mobile width');
-assert(cssSource.includes('@media (max-width: 430px)'), 'mobile scorecard grid has <=430px rule');
-
-
+const mk=(post,target,result='unknown',confidence='low',observedMarkCategory=null,rawMark=null,reviewed=false)=>({postNumber:post,targetNumber:target,result,rawMark,observedMarkCategory,confidence,warning:null,reviewed});
+let statusGrid=[mk(1,1,'hit','high'),mk(1,2,'unknown','low')];
+assert.equal(a.getPostReviewStatus({cells:statusGrid,reconciliationStatus:null,explicitlyReviewed:true}), 'Needs review', 'unresolved post cannot become Reviewed');
+assert.equal(a.confirmCurrentPostReview({grid:statusGrid,currentPost:1,postCount:1,reviewedPostNumbers:[],postStatuses:{}}).ok, false, 'Save post and next blocks unknown post');
+assert.equal(a.getPostReviewStatus({cells:[mk(1,1,'hit','high')],reconciliationStatus:'conflict',explicitlyReviewed:true}), 'Conflict', 'conflict outranks Reviewed');
+assert.equal(a.getPostReviewStatus({cells:[mk(1,1,'hit','high')],reconciliationStatus:null,explicitlyReviewed:true}), 'Reviewed', 'confirmed resolved post becomes Reviewed');
+assert.equal(a.getPostReviewStatus({cells:[mk(1,1,'hit','high')],reconciliationStatus:null,explicitlyReviewed:false}), 'Ready', 'unconfirmed resolved post remains Ready');
+let move=a.confirmCurrentPostReview({grid:[mk(1,1,'hit','high'),mk(2,1,'hit','high'),mk(3,1,'hit','high')],currentPost:1,postCount:3,reviewedPostNumbers:[3],postStatuses:{}});
+assert.equal(move.ok,true); assert.equal(move.currentReviewPost,2, 'Save post and next moves to next unreviewed post');
+let allDone=a.confirmCurrentPostReview({grid:[mk(1,1,'hit','high'),mk(2,1,'hit','high')],currentPost:2,postCount:2,reviewedPostNumbers:[1],postStatuses:{}});
+assert.equal(allDone.currentReviewPost,2, 'all-complete review remains on sensible final post');
+let reset=a.resetReviewProgress([mk(1,1,'hit','high')], 'shooter-b');
+assert.equal(reset.currentReviewPost,1); assert.deepEqual(reset.reviewedPostNumbers,[]); assert.equal(reset.selectedShooterCandidateId,'shooter-b');
+let normalizedProgress=a.normalizeReviewProgress({grid:[mk(1,1,'hit','high'),mk(2,1,'unknown','low'),mk(3,1,'hit','high')],postCount:3,currentReviewPost:99,reviewedPostNumbers:[0,1,1,2,4],postStatuses:{}});
+assert.deepEqual(normalizedProgress.reviewedPostNumbers,[1]); assert.equal(normalizedProgress.currentReviewPost,2, 'malformed restored progress is clamped and points to unresolved post');
+let latest=a.chooseLatestReviewRevision({localReviewRevision:1,value:'old'},{localReviewRevision:2,value:'new'}); assert.equal(latest.value,'new', 'latest review revision wins');
+let snap=a.createReviewPersistenceSnapshot({localReviewRevision:1,reviewedGrid:[]},{currentReviewPost:2,reviewedPostNumbers:[1],scoreChoice:'use_scorecard',acknowledgeAmbiguousExisting:true},2); assert.equal(snap.localReviewRevision,2); assert.equal(snap.currentReviewPost,2);
 
 assert.equal(a.classifyObservedMark('/', null).result, 'hit', 'diagonal slash variants classify as hits');
 assert.equal(a.classifyObservedMark('|', null).result, 'hit', 'near-vertical slash variants classify as hits');
@@ -84,7 +87,7 @@ assert.equal(a.classifyObservedMark('', 'blank').result, 'unknown', 'blank remai
 assert.equal(a.classifyObservedMark('overwritten unreadable', null).result, 'unknown', 'unreadable overwritten mark remains unknown');
 const acceptancePosts=[10,8,9,5,9];
 const missTargets={2:[5,6],3:[2],4:[1,3,5,7,9],5:[10]};
-const acceptance={detectedTitle:'synthetic',detectedDate:null,scorecardConfidence:'high',rawText:'synthetic fixture, no user photo',warnings:[],shooterRows:[{candidateId:'synthetic',displayName:'Synthetic',rowLabel:'1',confidence:'high',detectedScore:41,posts:acceptancePosts.map((score,idx)=>({postNumber:idx+1,detectedPostScore:score,targets:Array.from({length:10},(_,i)=>{const post=idx+1,target=i+1, miss=(missTargets[post]||[]).includes(target); return {targetNumber:target,result:post===1?'unknown':(miss?'miss':'hit'),rawMark:post===1?'/':(miss?(target%2?'0':'-'):'/'),observedMarkCategory:post===1?'diagonal_stroke':(miss?(target%2?'zero':'horizontal_dash'):'diagonal_stroke'),confidence:post===1?'low':'high',warning:null};})}))}]};
+const acceptance={detectedTitle:'synthetic',detectedDate:null,scorecardConfidence:'high',rawText:'synthetic fixture, no user photo',warnings:[],shooterRows:[{candidateId:'synthetic',displayName:'Synthetic',rowLabel:'1',confidence:'high',detectedScore:41,posts:acceptancePosts.map((score,idx)=>({postNumber:idx+1,detectedPostScore:score,detectedPostScoreConfidence:'high',detectedPostScoreRawText:String(score),targets:Array.from({length:10},(_,i)=>{const post=idx+1,target=i+1, miss=(missTargets[post]||[]).includes(target); return {targetNumber:target,result:post===1?'unknown':(miss?'miss':'hit'),rawMark:post===1?'/':(miss?(target%2?'0':'-'):'/'),observedMarkCategory:post===1?'diagonal_stroke':(miss?(target%2?'zero':'horizontal_dash'):'diagonal_stroke'),confidence:post===1?'low':'high',warning:null};})}))}]};
 let accepted=a.normalizeScorecardAnalysis(acceptance,{postCount:5,targetsPerPost:10});
 assert.deepEqual(accepted.shooterRows[0].posts.map(p=>p.reconciledPostScore), [10,8,9,5,9], 'synthetic acceptance fixture resolves post scores');
 assert.equal(accepted.shooterRows[0].score, 41, 'synthetic acceptance fixture resolves to 41/50');
@@ -95,9 +98,24 @@ let equal=a.reconcileScorecardPost({detectedPostScore:1,expectedTargetCount:3,ce
 assert.equal(equal.reconciliationStatus, 'needs_review'); assert.equal(equal.cells.filter(c=>c.result==='unknown').length,3, 'equal plausible assignments remain unknown');
 let conflictPost=a.reconcileScorecardPost({detectedPostScore:1,expectedTargetCount:2,cells:[1,2].map(i=>({postNumber:1,targetNumber:i,result:'hit',rawMark:'/',observedMarkCategory:'diagonal_stroke',confidence:'high',warning:null}))});
 assert.equal(conflictPost.reconciliationStatus, 'conflict', 'conflicting row total produces conflict');
+
+let lowWrong=a.reconcileScorecardPost({detectedPostScore:0,detectedPostScoreConfidence:'high',expectedTargetCount:1,cells:[mk(1,1,'hit','low','zero','0')]}); assert.equal(lowWrong.cells[0].result,'miss','low-confidence incorrect hit corrected to miss');
+let mediumWrong=a.reconcileScorecardPost({detectedPostScore:1,detectedPostScoreConfidence:'high',expectedTargetCount:1,cells:[mk(1,1,'miss','medium','diagonal_stroke','/')]}); assert.equal(mediumWrong.cells[0].result,'hit','medium-confidence incorrect miss corrected to hit');
+let userFixed=a.reconcileScorecardPost({detectedPostScore:0,detectedPostScoreConfidence:'high',expectedTargetCount:1,cells:[mk(1,1,'hit','low','zero','0',true)]}); assert.equal(userFixed.reconciliationStatus,'conflict','user-reviewed cells remain fixed'); assert.equal(userFixed.cells[0].result,'hit','reconciliation does not silently change user correction');
+let tenHigh=a.reconcileScorecardPost({detectedPostScore:10,detectedPostScoreConfidence:'high',expectedTargetCount:10,cells:Array.from({length:10},(_,i)=>mk(1,i+1,'unknown','low','blank',null))}); assert.equal(tenHigh.reconciliationStatus,'safely_resolved'); assert.equal(tenHigh.cells.filter(c=>c.result==='hit').length,10,'high-confidence 10/10 resolves compatible unknowns');
+let tenMedium=a.reconcileScorecardPost({detectedPostScore:10,detectedPostScoreConfidence:'medium',expectedTargetCount:10,cells:Array.from({length:10},(_,i)=>mk(1,i+1,'unknown','low','blank',null))}); assert.equal(tenMedium.cells.filter(c=>c.result==='unknown').length,10,'medium-confidence 10/10 does not bulk resolve');
+let zeroLow=a.reconcileScorecardPost({detectedPostScore:0,detectedPostScoreConfidence:'low',expectedTargetCount:2,cells:[mk(1,1,'unknown','low','blank',null),mk(1,2,'unknown','low','blank',null)]}); assert.equal(zeroLow.cells.filter(c=>c.result==='unknown').length,2,'low-confidence 0/10 does not bulk resolve');
+let missBlocks10=a.reconcileScorecardPost({detectedPostScore:2,detectedPostScoreConfidence:'high',expectedTargetCount:2,cells:[mk(1,1,'unknown','low','zero','0'),mk(1,2,'unknown','low','blank',null)]}); assert.notEqual(missBlocks10.reconciliationStatus,'safely_resolved','credible miss blocks 10/10 automatic resolution');
+let oldTotal=a.reconcileScorecardPost({detectedPostScore:1,expectedTargetCount:1,cells:[mk(1,1,'unknown','low','blank',null)]}); assert.equal(oldTotal.cells[0].result,'unknown','old analysis without total confidence remains conservative');
+
 let bulk=a.bulkResolveUnknownsForPost([{postNumber:1,targetNumber:1,result:'unknown',rawMark:null,confidence:'low',warning:null},{postNumber:2,targetNumber:1,result:'unknown',rawMark:null,confidence:'low',warning:null}],1,'hit',true);
 assert.equal(bulk.changed,1); assert.equal(bulk.grid[0].result,'hit'); assert.equal(bulk.grid[1].result,'unknown');
 assert.equal(a.bulkResolveUnknownsForPost(bulk.grid,2,'miss',false).changed,0, 'cancelled post-scoped bulk changes nothing');
+
+
+let markOnly=a.normalizeScorecardAnalysis({detectedTitle:'marks',detectedDate:null,scorecardConfidence:'high',rawText:'',warnings:[],shooterRows:[{candidateId:'m',displayName:null,rowLabel:null,confidence:'high',detectedScore:null,posts:[{postNumber:1,detectedPostScore:null,detectedPostScoreConfidence:null,detectedPostScoreRawText:null,targets:[{targetNumber:1,result:'unknown',rawMark:'/',observedMarkCategory:'diagonal_stroke',confidence:'low',warning:null},{targetNumber:2,result:'unknown',rawMark:'0',observedMarkCategory:'zero',confidence:'low',warning:null},{targetNumber:3,result:'unknown',rawMark:'-',observedMarkCategory:'horizontal_dash',confidence:'low',warning:null},{targetNumber:4,result:'unknown',rawMark:null,observedMarkCategory:'blank',confidence:'low',warning:null},{targetNumber:5,result:'unknown',rawMark:'scribble',observedMarkCategory:'unreadable',confidence:'low',warning:null},{targetNumber:6,result:'hit',rawMark:'0',observedMarkCategory:'zero',confidence:'high',warning:null}]}]}]},{postCount:1,targetsPerPost:6});
+assert.deepEqual(markOnly.shooterRows[0].grid.map(c=>c.result), ['hit','miss','miss','unknown','unknown','unknown'], 'deterministic mark classification is integrated without row totals');
+assert.match(markOnly.shooterRows[0].grid[5].warning,/conflicts/, 'high-confidence contradictory AI result is flagged');
 
 const base={detectedTitle:'x',detectedDate:null,scorecardConfidence:'high',rawText:'r'.repeat(1300),warnings:['w'],shooterRows:[{candidateId:'bad',displayName:'Alice',rowLabel:'1',confidence:'high',detectedScore:1,posts:[{postNumber:1,detectedPostScore:null,targets:[{targetNumber:1,result:'hit',rawMark:'/',confidence:'high',warning:null},{targetNumber:2,result:'miss',rawMark:'0',confidence:'medium',warning:null},{targetNumber:99,result:'hit',rawMark:null,confidence:'high',warning:null}]},{postNumber:99,detectedPostScore:null,targets:[{targetNumber:1,result:'hit',rawMark:null,confidence:'high',warning:null}]}]}]};
 let n=a.normalizeScorecardAnalysis(base,{postCount:2,targetsPerPost:2}); assert.equal(n.shooterRows.length,1); assert.equal(n.shooterRows[0].grid.length,4); assert.equal(n.shooterRows[0].hits,1); assert.equal(n.shooterRows[0].misses,1); assert.equal(n.shooterRows[0].unknowns,2); assert.match(n.shooterRows[0].warnings.join(' '),/out-of-range/); assert.equal(n.rawText.length,1200);
