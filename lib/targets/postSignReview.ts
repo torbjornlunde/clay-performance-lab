@@ -32,8 +32,6 @@ export function validateReviewTargetLabels(review: PostSignAnalysisResult) {
   const labels = review.presentations.flatMap((p) => p.targetLabels);
   const invalid = labels.find((label) => !normalizeReviewTargetLabel(label) || !isSimpleTargetLabel(label));
   if (invalid !== undefined) return { ok: false as const, message: `Target label "${invalid}" is not a simple individual label. Use labels such as A, B or C before applying.` };
-  const unique = detectedTargetLabels(review);
-  if (unique.length !== new Set(unique).size) return { ok: false as const, message: "Detected target labels must be unique before applying." };
   return { ok: true as const };
 }
 export function renameDetectedTargetLabel(review: PostSignAnalysisResult, oldLabel: string, nextLabel: string) {
