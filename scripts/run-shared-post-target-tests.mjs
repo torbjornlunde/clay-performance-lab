@@ -158,6 +158,34 @@ assert.deepEqual(reloadDeletion.posts[0].sharedPresentations.map(p=>p.target_ids
 
 
 
+
+// Sequential compact editor regression: blank → A only → A/B without advanced rows.
+let seq = m.normalizeSharedPost(1,[pt('a','A'),pt('b','B')],Array.from({length:5},(_,i)=>({presentation_number:i+1,presentation_type:'report_pair',target_ids:[]})));
+let seqA = m.applyPartialRepeatedProgramme(seq, 5, 'report_pair', ['a','']);
+assert.equal(seqA.ok, true, 'selecting A first in blank repeated pairs is allowed');
+seq = seqA.post;
+assert.deepEqual(seq.sharedPresentations.map(p=>p.target_ids), [['a',''],['a',''],['a',''],['a',''],['a','']], 'selecting first target updates all five first references and leaves second unassigned');
+let seqReload = m.migrateDraft({schemaVersion:3,sessionId:'s',postCount:1,targetsPerPost:10,defaultPostFormat:'5 pairs',posts:[seq],lastLocalUpdateAt:'2026-07-01T00:00:00.000Z',hasUnsyncedChanges:true},'s');
+assert.deepEqual(seqReload.posts[0].sharedPresentations.map(p=>p.target_ids), seq.sharedPresentations.map(p=>p.target_ids), 'offline v3 reload preserves A selected and B unassigned');
+let seqB = m.applyPartialRepeatedProgramme(seqReload.posts[0], 5, 'report_pair', ['a','b']);
+assert.equal(seqB.ok, true, 'selecting B second completes repeated pairs');
+seq = seqB.post;
+assert.deepEqual(seq.sharedPresentations.map(p=>p.target_ids), [['a','b'],['a','b'],['a','b'],['a','b'],['a','b']], 'selecting B preserves A and completes all five pairs');
+const seqRows = semanticRows(m.rowsFromPosts('s',[seq]));
+assert.equal(seqRows.length, 10, 'sequential A then B flow compiles exactly ten occurrence rows');
+assert.deepEqual(seqRows.map(r=>r.target_position), [1,2,3,4,5,6,7,8,9,10], 'sequential A then B flow keeps target positions 1-10');
+let simSeq = m.normalizeSharedPost(1,[pt('a','A'),pt('b','B')],Array.from({length:5},(_,i)=>({presentation_number:i+1,presentation_type:'simultaneous_pair',target_ids:[]})));
+simSeq = m.applyPartialRepeatedProgramme(simSeq, 5, 'simultaneous_pair', ['a','']).post;
+assert.deepEqual(simSeq.sharedPresentations.map(p=>p.target_ids), [['a',''],['a',''],['a',''],['a',''],['a','']], 'simultaneous compact flow allows A before B');
+simSeq = m.applyPartialRepeatedProgramme(simSeq, 5, 'simultaneous_pair', ['a','b']).post;
+assert.equal(simSeq.sharedPresentations.every(p=>p.presentation_type === 'simultaneous_pair'), true, 'simultaneous compact flow remains simultaneous after B is selected');
+const changedA = m.applyPartialRepeatedProgramme(seq, 5, 'report_pair', ['b','b']).post;
+assert.deepEqual(changedA.sharedPresentations.map(p=>p.target_ids), [['b','b'],['b','b'],['b','b'],['b','b'],['b','b']], 'changing first target in complete programme preserves second target');
+const changedB = m.applyPartialRepeatedProgramme(seq, 5, 'report_pair', ['a','a']).post;
+assert.deepEqual(changedB.sharedPresentations.map(p=>p.target_ids), [['a','a'],['a','a'],['a','a'],['a','a'],['a','a']], 'changing second target in complete programme preserves first target');
+const otherPost = m.normalizeSharedPost(2,[pt('c','C'),pt('d','D')],Array.from({length:5},(_,i)=>({presentation_number:i+1,presentation_type:'report_pair',target_ids:[]})));
+assert.equal(m.applyPartialRepeatedProgramme(otherPost, 5, 'report_pair', ['a','']).ok, false, 'partial compact draft target IDs from another post are rejected');
+assert.equal(m.validateRepeatedProgrammeSelection(seqA.post,'report_pair',['a','']).ok, false, 'final completeness validation still reports incomplete repeated pair until B is selected');
 const blankFiveTemplate = m.normalizeSharedPost(1, [], Array.from({length:5}, (_,i)=>({presentation_number:i+1,presentation_type:'report_pair',target_ids:[]})));
 assert.equal(m.detectCompactRepeatedProgramme(blankFiveTemplate)?.summary, '5 × Unassigned → Unassigned · Report pair', 'five-pair blank template remains in compact repeated mode');
 const describedRepeated = m.normalizeSharedPost(1,[{...pt('a','A','Rabbit','Left to right'), speed:'Fast', distance:'Long', difficulty:'4 - Hard', notes:'hold left'}, {...pt('b','B','Battue','Right to left'), speed:'Medium', distance:'Medium', difficulty:'3 - Medium', notes:'quick'}], Array.from({length:5}, (_,i)=>({presentation_number:i+1,presentation_type:'report_pair',target_ids:['a','b']})));
