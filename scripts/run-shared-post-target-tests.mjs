@@ -157,6 +157,19 @@ const reloadDeletion = m.migrateDraft({schemaVersion:3,sessionId:'s',postCount:1
 assert.deepEqual(reloadDeletion.posts[0].sharedPresentations.map(p=>p.target_ids),deletedA.sharedPresentations.map(p=>p.target_ids),'deletion and cleared references survive offline draft reload');
 
 
+
+const blankFiveTemplate = m.normalizeSharedPost(1, [], Array.from({length:5}, (_,i)=>({presentation_number:i+1,presentation_type:'report_pair',target_ids:[]})));
+assert.equal(m.detectCompactRepeatedProgramme(blankFiveTemplate)?.summary, '5 × Unassigned → Unassigned · Report pair', 'five-pair blank template remains in compact repeated mode');
+const describedRepeated = m.normalizeSharedPost(1,[{...pt('a','A','Rabbit','Left to right'), speed:'Fast', distance:'Long', difficulty:'4 - Hard', notes:'hold left'}, {...pt('b','B','Battue','Right to left'), speed:'Medium', distance:'Medium', difficulty:'3 - Medium', notes:'quick'}], Array.from({length:5}, (_,i)=>({presentation_number:i+1,presentation_type:'report_pair',target_ids:['a','b']})));
+assert.equal(m.detectCompactRepeatedProgramme(describedRepeated)?.summary, '5 × A → B · Report pair', 'ordinary target details do not create Mixed programme');
+assert.equal(m.detectCompactRepeatedProgramme(conflict), null, 'active legacy occurrence differences still prevent compact repeated mode');
+assert.equal(m.validateRepeatedProgrammeSelection(describedRepeated,'report_pair',['a','b']).ok, true, 'valid current-post target IDs pass repeated-programme selection validation');
+assert.equal(m.validateRepeatedProgrammeSelection(describedRepeated,'report_pair',['target-A','b']).ok, false, 'stale or foreign first target ID is rejected');
+assert.equal(m.validateRepeatedProgrammeSelection(describedRepeated,'report_pair',['a','target-B']).ok, false, 'stale or foreign second target ID is rejected');
+const sameIdsPostOne = m.normalizeSharedPost(1,[pt('target-A','A'),pt('target-B','B')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['target-A','target-B']}]);
+const sameIdsPostTwo = m.normalizeSharedPost(2,[pt('target-A','A'),pt('target-B','B')],[]);
+assert.deepEqual(m.affectedTargetReferences(sameIdsPostOne,'target-A').presentationNumbers,[1], 'Post 1 can arm a referenced target-A confirmation');
+assert.equal(m.affectedTargetReferences(sameIdsPostTwo,'target-A').referenceCount,0, 'Post 2 same target ID has no armed reference until its own action');
 // PR #159 blocker regressions.
 const mixedSnapshot = JSON.stringify(mixedProgram);
 assert.equal(m.detectRepeatedProgramme(mixedProgram), null, 'mixed A→B, B→A, A→C cannot safely collapse');
