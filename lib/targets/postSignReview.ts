@@ -1,4 +1,4 @@
-import type { PostSignAnalysisResult, PostSignPresentation, NotationKind } from "./postSignAnalysis";
+import { isSimpleTargetLabel, type PostSignAnalysisResult, type PostSignPresentation, type NotationKind } from "./postSignAnalysis";
 import type { PresentationType } from "./postTargets";
 
 export type PairConventionChoice = "report_pair" | "simultaneous_pair" | "manual";
@@ -25,3 +25,20 @@ export function notationLabel(kind: NotationKind) { return kind === "plus" ? "A+
 export function displayNotation(p: PostSignPresentation) { return p.sourceNotation || p.targetLabels.join(p.presentationType === "simultaneous_pair" ? "+" : p.presentationType === "single" ? "" : "→"); }
 export function hasBlockingUnresolvedPairs(review: PostSignAnalysisResult | null) { return !!review && unresolvedPairCount(review) > 0; }
 export function resolvedTypeLabel(type: PresentationType) { return type === "unknown" ? "Needs review" : type === "report_pair" ? "Report pair" : type === "simultaneous_pair" ? "Simultaneous pair" : type === "single" ? "Single" : "Other pair"; }
+
+export function normalizeReviewTargetLabel(label: string) { return label.trim().toUpperCase(); }
+export function detectedTargetLabels(review: PostSignAnalysisResult) { return Array.from(new Set(review.presentations.flatMap((p) => p.targetLabels.map(normalizeReviewTargetLabel).filter(Boolean)))); }
+export function validateReviewTargetLabels(review: PostSignAnalysisResult) {
+  const labels = review.presentations.flatMap((p) => p.targetLabels);
+  const invalid = labels.find((label) => !normalizeReviewTargetLabel(label) || !isSimpleTargetLabel(label));
+  if (invalid !== undefined) return { ok: false as const, message: `Target label "${invalid}" is not a simple individual label. Use labels such as A, B or C before applying.` };
+  return { ok: true as const };
+}
+export function renameDetectedTargetLabel(review: PostSignAnalysisResult, oldLabel: string, nextLabel: string) {
+  const oldNormalized = normalizeReviewTargetLabel(oldLabel);
+  const nextNormalized = normalizeReviewTargetLabel(nextLabel);
+  if (!nextNormalized || !isSimpleTargetLabel(nextNormalized)) return { ok: false as const, review, message: "Use a simple target label such as A, B or C." };
+  const labels = detectedTargetLabels(review);
+  if (labels.some((label) => label !== oldNormalized && label === nextNormalized)) return { ok: false as const, review, message: `Target ${nextNormalized} already exists. Choose a unique label before applying.` };
+  return { ok: true as const, review: { ...review, presentations: review.presentations.map((p) => ({ ...p, targetLabels: p.targetLabels.map((label) => normalizeReviewTargetLabel(label) === oldNormalized ? nextNormalized : label) })) } };
+}
