@@ -115,5 +115,147 @@ assert.equal(configuredLater.sharedPresentations[1].target_ids.join(','),'b,c','
 const copiedReload = m.migrateDraft({schemaVersion:3,sessionId:'s',postCount:1,targetsPerPost:10,defaultPostFormat:'5 pairs',posts:[copied],lastLocalUpdateAt:'2026-07-01T00:00:00.000Z',hasUnsyncedChanges:true},'s');
 assert.deepEqual(copiedReload.posts[0].sharedPresentations.map(p=>p.target_ids.join(',')),copied.sharedPresentations.map(p=>p.target_ids.join(',')),'offline v3 draft reload preserves copied presentations');
 assert.equal(m.copyPresentationToRemaining(renamedConflict,0,5).physicalTargets[0].legacy_overrides?.['2:1']?.target_type,'Battue','legacy overrides are not copied to unrelated new presentations');
+
+
+const repeatedBase = m.normalizeSharedPost(1,[pt('a','A','Crossing'),pt('b','B','Incoming')],[]);
+const repeatedApplied = m.applyRepeatedProgramme(repeatedBase,5,'report_pair',['a','b']);
+assert.equal(repeatedApplied.sharedPresentations.length,5,'one A/B selection creates five report-pair shared presentations');
+assert.equal(repeatedApplied.physicalTargets.length,2,'repeated programme does not duplicate physical target definitions');
+const repeatedRows = semanticRows(m.rowsFromPosts('s',[repeatedApplied]));
+assert.equal(repeatedRows.length,10,'five report pairs compile to exactly ten occurrence rows');
+assert.deepEqual(repeatedRows.map(r=>r.target_position),[1,2,3,4,5,6,7,8,9,10],'five report pairs compile target positions 1-10');
+assert.equal(repeatedRows.filter(r=>r.position_in_presentation===1).every(r=>r.target_label==='A'),true,'all first positions reference physical A');
+assert.equal(repeatedRows.filter(r=>r.position_in_presentation===2).every(r=>r.target_label==='B'),true,'all second positions reference physical B');
+assert.equal(m.detectRepeatedProgramme(repeatedApplied)?.repeatCount,5,'existing five identical pairs are detected as repeated');
+assert.equal(m.detectRepeatedProgramme(reverse)?.targetIds.join(','),'b,a','B to A repeated order is detected and preserved');
+assert.equal(m.detectRepeatedProgramme(simultaneous)?.presentationType,'simultaneous_pair','five simultaneous A+B pairs preserve simultaneous type in compact detection');
+const mixedProgram = m.normalizeSharedPost(1,[pt('a','A'),pt('b','B'),pt('c','C')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['a','b']},{presentation_number:2,presentation_type:'report_pair',target_ids:['b','a']},{presentation_number:3,presentation_type:'report_pair',target_ids:['a','c']}]);
+assert.equal(m.detectRepeatedProgramme(mixedProgram),null,'existing mixed programmes are not detected as repeated');
+const mixedTypes = m.normalizeSharedPost(1,[pt('a','A'),pt('b','B')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['a','b']},{presentation_number:2,presentation_type:'simultaneous_pair',target_ids:['a','b']}]);
+assert.equal(m.detectRepeatedProgramme(mixedTypes),null,'different pair types are not collapsed together');
+assert.equal(m.detectRepeatedProgramme(conflict),null,'active occurrence-specific overrides prevent compact collapse');
+assert.deepEqual(m.validateRepeatCount(10,'report_pair'),{ok:true,repeatCount:5},'repeat count derives from target positions divided by targets per presentation');
+assert.equal(m.validateRepeatCount(9,'report_pair').ok,false,'invalid repeat count is not rounded');
+const affectedA = m.affectedTargetReferences(repeatedApplied,'a');
+assert.deepEqual(affectedA,{referenceCount:5,presentationNumbers:[1,2,3,4,5]},'referenced target reports affected presentation numbers');
+const deletedA = m.deletePhysicalTargetAndClearReferences(repeatedApplied,'a');
+assert.equal(deletedA.physicalTargets.some(t=>t.id==='a'),false,'confirmed deletion removes physical target A');
+assert.deepEqual(deletedA.sharedPresentations.map(p=>p.target_ids),[['','b'],['','b'],['','b'],['','b'],['','b']],'deleting A clears only A references and leaves B');
+assert.equal(deletedA.physicalTargets.some(t=>t.id==='b'),true,'B remains defined after deleting A');
+const deletedRows = semanticRows(m.rowsFromPosts('s',[deletedA]));
+assert.deepEqual(deletedRows.map(r=>r.position_in_presentation===1?(r.target_label || ''):'B'),['','B','','B','','B','','B','','B'],'deleting A leaves five Unassigned to B pairs');
+const conflictDelete = m.deletePhysicalTargetAndClearReferences(multiConflict, multiConflict.physicalTargets.find(t=>t.target_label==='A').id);
+assert.equal(conflictDelete.physicalTargets.find(t=>t.target_label==='B')?.legacy_conflict,true,'deleting A does not remove B overrides or warnings');
+const removedSecond = m.removeSharedPresentation(mixedProgram,1);
+assert.deepEqual(removedSecond.sharedPresentations.map(p=>p.presentation_number),[1,2],'removing presentation 2 renumbers later presentations deterministically');
+assert.deepEqual(semanticRows(m.rowsFromPosts('s',[removedSecond])).map(r=>r.target_position),[1,2,3,4],'target positions recalculate after presentation removal');
+assert.equal(removedSecond.physicalTargets.length,3,'removing a presentation does not delete physical targets automatically');
+const withoutProgramme = m.normalizeSharedPost(repeatedApplied.post_number,repeatedApplied.physicalTargets,[],repeatedApplied.instructions,repeatedApplied.source_text,repeatedApplied.compatibilityWarnings);
+assert.equal(withoutProgramme.sharedPresentations.length,0,'remove repeated programme removes presentations');
+assert.equal(withoutProgramme.physicalTargets.length,2,'remove repeated programme retains physical targets');
+const reloadDeletion = m.migrateDraft({schemaVersion:3,sessionId:'s',postCount:1,targetsPerPost:10,defaultPostFormat:'5 pairs',posts:[deletedA],lastLocalUpdateAt:'2026-07-01T00:00:00.000Z',hasUnsyncedChanges:true},'s');
+assert.deepEqual(reloadDeletion.posts[0].sharedPresentations.map(p=>p.target_ids),deletedA.sharedPresentations.map(p=>p.target_ids),'deletion and cleared references survive offline draft reload');
+
+
+
+
+// Sequential compact editor regression: blank → A only → A/B without advanced rows.
+let seq = m.normalizeSharedPost(1,[pt('a','A'),pt('b','B')],Array.from({length:5},(_,i)=>({presentation_number:i+1,presentation_type:'report_pair',target_ids:[]})));
+let seqA = m.applyPartialRepeatedProgramme(seq, 5, 'report_pair', ['a','']);
+assert.equal(seqA.ok, true, 'selecting A first in blank repeated pairs is allowed');
+seq = seqA.post;
+assert.deepEqual(seq.sharedPresentations.map(p=>p.target_ids), [['a',''],['a',''],['a',''],['a',''],['a','']], 'selecting first target updates all five first references and leaves second unassigned');
+let seqReload = m.migrateDraft({schemaVersion:3,sessionId:'s',postCount:1,targetsPerPost:10,defaultPostFormat:'5 pairs',posts:[seq],lastLocalUpdateAt:'2026-07-01T00:00:00.000Z',hasUnsyncedChanges:true},'s');
+assert.deepEqual(seqReload.posts[0].sharedPresentations.map(p=>p.target_ids), seq.sharedPresentations.map(p=>p.target_ids), 'offline v3 reload preserves A selected and B unassigned');
+let seqB = m.applyPartialRepeatedProgramme(seqReload.posts[0], 5, 'report_pair', ['a','b']);
+assert.equal(seqB.ok, true, 'selecting B second completes repeated pairs');
+seq = seqB.post;
+assert.deepEqual(seq.sharedPresentations.map(p=>p.target_ids), [['a','b'],['a','b'],['a','b'],['a','b'],['a','b']], 'selecting B preserves A and completes all five pairs');
+const seqRows = semanticRows(m.rowsFromPosts('s',[seq]));
+assert.equal(seqRows.length, 10, 'sequential A then B flow compiles exactly ten occurrence rows');
+assert.deepEqual(seqRows.map(r=>r.target_position), [1,2,3,4,5,6,7,8,9,10], 'sequential A then B flow keeps target positions 1-10');
+let simSeq = m.normalizeSharedPost(1,[pt('a','A'),pt('b','B')],Array.from({length:5},(_,i)=>({presentation_number:i+1,presentation_type:'simultaneous_pair',target_ids:[]})));
+simSeq = m.applyPartialRepeatedProgramme(simSeq, 5, 'simultaneous_pair', ['a','']).post;
+assert.deepEqual(simSeq.sharedPresentations.map(p=>p.target_ids), [['a',''],['a',''],['a',''],['a',''],['a','']], 'simultaneous compact flow allows A before B');
+simSeq = m.applyPartialRepeatedProgramme(simSeq, 5, 'simultaneous_pair', ['a','b']).post;
+assert.equal(simSeq.sharedPresentations.every(p=>p.presentation_type === 'simultaneous_pair'), true, 'simultaneous compact flow remains simultaneous after B is selected');
+const changedA = m.applyPartialRepeatedProgramme(seq, 5, 'report_pair', ['b','b']).post;
+assert.deepEqual(changedA.sharedPresentations.map(p=>p.target_ids), [['b','b'],['b','b'],['b','b'],['b','b'],['b','b']], 'changing first target in complete programme preserves second target');
+const changedB = m.applyPartialRepeatedProgramme(seq, 5, 'report_pair', ['a','a']).post;
+assert.deepEqual(changedB.sharedPresentations.map(p=>p.target_ids), [['a','a'],['a','a'],['a','a'],['a','a'],['a','a']], 'changing second target in complete programme preserves first target');
+const otherPost = m.normalizeSharedPost(2,[pt('c','C'),pt('d','D')],Array.from({length:5},(_,i)=>({presentation_number:i+1,presentation_type:'report_pair',target_ids:[]})));
+assert.equal(m.applyPartialRepeatedProgramme(otherPost, 5, 'report_pair', ['a','']).ok, false, 'partial compact draft target IDs from another post are rejected');
+assert.equal(m.validateRepeatedProgrammeSelection(seqA.post,'report_pair',['a','']).ok, false, 'final completeness validation still reports incomplete repeated pair until B is selected');
+
+// Setup sync validation blocks incomplete partial local drafts before server write planning.
+const partialDraftPost = seqA.post;
+const partialReload = m.migrateDraft({schemaVersion:3,sessionId:'s',postCount:1,targetsPerPost:10,defaultPostFormat:'5 pairs',posts:[partialDraftPost],lastLocalUpdateAt:'2026-07-01T00:00:00.000Z',hasUnsyncedChanges:true},'s');
+assert.deepEqual(partialReload.posts[0].sharedPresentations.map(p=>p.target_ids), partialDraftPost.sharedPresentations.map(p=>p.target_ids), 'A to Unassigned remains saved in v3 local draft');
+const blockedSync = m.validatePostsForSetupSync(partialReload.posts);
+assert.equal(blockedSync.ok, false, 'Save setup is blocked for A to Unassigned partial programme');
+assert.deepEqual(blockedSync.issues.map(i=>[i.post_number,i.presentation_number,i.target_label]), [[1,1,'second target'],[1,2,'second target'],[1,3,'second target'],[1,4,'second target'],[1,5,'second target']], 'sync validation lists exact incomplete coordinates');
+const plannedRowsWhenBlocked = blockedSync.ok ? m.rowsFromPosts('s', partialReload.posts) : [];
+assert.equal(plannedRowsWhenBlocked.length, 0, 'no Supabase row write plan is produced when setup validation fails');
+const staleRowsDeletedWhenBlocked = blockedSync.ok ? ['would-delete'] : [];
+assert.equal(staleRowsDeletedWhenBlocked.length, 0, 'stale server rows are not deleted when setup validation fails');
+assert.equal(m.validatePostsForSetupSync([seq]).ok, true, 'completing B allows sync validation to pass');
+const multiIncomplete = [m.normalizeSharedPost(2,[pt('a','A')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['a','']}]), m.normalizeSharedPost(4,[pt('b','B')],[{presentation_number:3,presentation_type:'report_pair',target_ids:['','b']}])];
+assert.deepEqual(m.validatePostsForSetupSync(multiIncomplete).issues.map(i=>[i.post_number,i.presentation_number,i.target_label]), [[2,1,'second target'],[4,1,'first target']], 'multiple incomplete posts list all exact coordinates');
+const stalePost = m.normalizeSharedPost(1,[pt('a','A')],[{presentation_number:1,presentation_type:'single',target_ids:['missing']}]);
+assert.deepEqual(m.validatePostsForSetupSync([stalePost]).issues.map(i=>i.reason), ['stale_target'], 'stale target ID is reported');
+const blankLabelPost = m.normalizeSharedPost(1,[pt('blank','')],[{presentation_number:1,presentation_type:'single',target_ids:['blank']}]);
+assert.deepEqual(m.validatePostsForSetupSync([blankLabelPost]).issues.map(i=>i.reason), ['blank_label'], 'blank physical target label is reported');
+assert.equal(m.validatePostsForSetupSync([m.normalizeSharedPost(1,[pt('a','A')],[{presentation_number:1,presentation_type:'single',target_ids:['a']}])]).ok, true, 'singles validate one required target');
+assert.equal(m.validatePostsForSetupSync([m.normalizeSharedPost(1,[pt('a','A')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['a']}])]).issues.length, 1, 'pairs validate two required targets');
+
+// Mixed replacement must be complete before destructive replacement is allowed.
+function replacementIfValid(original, type, repeatCount, ids) { const before = JSON.stringify(original); const valid = m.validateRepeatedProgrammeSelection(original, type, ids); if (!valid.ok) return { ok:false, before, after: JSON.stringify(original), post: original }; return { ok:true, before, post: m.applyRepeatedProgramme(original, repeatCount, type, ids), after: '' }; }
+assert.equal(replacementIfValid(mixedProgram,'report_pair',5,['','b']).after, JSON.stringify(mixedProgram), 'mixed programme plus missing first target remains unchanged');
+assert.equal(replacementIfValid(mixedProgram,'report_pair',5,['a','']).after, JSON.stringify(mixedProgram), 'mixed programme plus missing second target remains unchanged');
+assert.equal(replacementIfValid(mixedProgram,'report_pair',5,['a','stale']).after, JSON.stringify(mixedProgram), 'mixed programme plus stale target remains unchanged');
+const blankMixedTarget = m.normalizeSharedPost(1,[pt('a','A'),pt('blank','')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['a','blank']},{presentation_number:2,presentation_type:'report_pair',target_ids:['blank','a']}]);
+assert.equal(replacementIfValid(blankMixedTarget,'report_pair',2,['a','blank']).after, JSON.stringify(blankMixedTarget), 'mixed programme plus blank target label remains unchanged');
+assert.equal(JSON.stringify(mixedProgram), JSON.stringify(mixedProgram), 'cancelled mixed replacement changes nothing');
+const validReplacement = replacementIfValid(mixedProgram,'report_pair',5,['a','b']);
+assert.equal(validReplacement.ok, true, 'valid A to B mixed replacement passes complete validation');
+assert.deepEqual(validReplacement.post.sharedPresentations.map(p=>p.target_ids), [['a','b'],['a','b'],['a','b'],['a','b'],['a','b']], 'valid A to B mixed replacement succeeds');
+const conflictBefore = JSON.stringify(conflict);
+assert.equal(replacementIfValid(conflict,'report_pair',5,['','']).after, conflictBefore, 'legacy conflict data is not lost on failed replacement validation');
+const blankFiveTemplate = m.normalizeSharedPost(1, [], Array.from({length:5}, (_,i)=>({presentation_number:i+1,presentation_type:'report_pair',target_ids:[]})));
+assert.equal(m.detectCompactRepeatedProgramme(blankFiveTemplate)?.summary, '5 × Unassigned → Unassigned · Report pair', 'five-pair blank template remains in compact repeated mode');
+const describedRepeated = m.normalizeSharedPost(1,[{...pt('a','A','Rabbit','Left to right'), speed:'Fast', distance:'Long', difficulty:'4 - Hard', notes:'hold left'}, {...pt('b','B','Battue','Right to left'), speed:'Medium', distance:'Medium', difficulty:'3 - Medium', notes:'quick'}], Array.from({length:5}, (_,i)=>({presentation_number:i+1,presentation_type:'report_pair',target_ids:['a','b']})));
+assert.equal(m.detectCompactRepeatedProgramme(describedRepeated)?.summary, '5 × A → B · Report pair', 'ordinary target details do not create Mixed programme');
+assert.equal(m.detectCompactRepeatedProgramme(conflict), null, 'active legacy occurrence differences still prevent compact repeated mode');
+assert.equal(m.validateRepeatedProgrammeSelection(describedRepeated,'report_pair',['a','b']).ok, true, 'valid current-post target IDs pass repeated-programme selection validation');
+assert.equal(m.validateRepeatedProgrammeSelection(describedRepeated,'report_pair',['target-A','b']).ok, false, 'stale or foreign first target ID is rejected');
+assert.equal(m.validateRepeatedProgrammeSelection(describedRepeated,'report_pair',['a','target-B']).ok, false, 'stale or foreign second target ID is rejected');
+const sameIdsPostOne = m.normalizeSharedPost(1,[pt('target-A','A'),pt('target-B','B')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['target-A','target-B']}]);
+const sameIdsPostTwo = m.normalizeSharedPost(2,[pt('target-A','A'),pt('target-B','B')],[]);
+assert.deepEqual(m.affectedTargetReferences(sameIdsPostOne,'target-A').presentationNumbers,[1], 'Post 1 can arm a referenced target-A confirmation');
+assert.equal(m.affectedTargetReferences(sameIdsPostTwo,'target-A').referenceCount,0, 'Post 2 same target ID has no armed reference until its own action');
+// PR #159 blocker regressions.
+const mixedSnapshot = JSON.stringify(mixedProgram);
+assert.equal(m.detectRepeatedProgramme(mixedProgram), null, 'mixed A→B, B→A, A→C cannot safely collapse');
+assert.equal(JSON.stringify(mixedProgram), mixedSnapshot, 'opening compact view/detection does not mutate a mixed programme');
+const cancelledReplacement = JSON.parse(mixedSnapshot);
+assert.equal(JSON.stringify(cancelledReplacement), mixedSnapshot, 'cancelled replacement preserves mixed programme data');
+const confirmedReplacement = m.applyRepeatedProgramme(mixedProgram, 5, 'report_pair', ['a','b']);
+assert.deepEqual(confirmedReplacement.sharedPresentations.map(p=>p.target_ids.join(',')), ['a,b','a,b','a,b','a,b','a,b'], 'confirmed replacement creates requested repeated programme');
+assert.deepEqual(confirmedReplacement.physicalTargets.map(t=>t.id).sort(), mixedProgram.physicalTargets.map(t=>t.id).sort(), 'confirmed replacement keeps all physical target definitions');
+assert.equal(m.detectRepeatedProgramme(conflict), null, 'active legacy overrides cannot be silently collapsed');
+const postOne = m.normalizeSharedPost(1,[pt('a','A'),pt('b','B')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['a','b']}]);
+const postTwo = m.normalizeSharedPost(2,[pt('c','C')],[]);
+const staleTargetIdFromPostOne = 'a';
+const safePostTwo = postTwo.physicalTargets.some(t=>t.id===staleTargetIdFromPostOne) ? m.deletePhysicalTargetAndClearReferences(postTwo, staleTargetIdFromPostOne) : postTwo;
+assert.deepEqual(safePostTwo, postTwo, 'stale Post 1 delete confirmation cannot execute against Post 2');
+assert.deepEqual(m.affectedTargetReferences(postOne,'a').presentationNumbers,[1], 'Post 1 referenced delete confirmation can be opened before navigation');
+assert.deepEqual(m.affectedTargetReferences(postTwo,'a').presentationNumbers,[], 'Post 2 has no actionable Post 1 target confirmation after navigation');
+assert.equal(m.shouldConfirmPhysicalTargetDeletion(pt('empty','A')), false, 'unreferenced label-only target deletes without confirmation');
+assert.equal(m.shouldConfirmPhysicalTargetDeletion(pt('typed','A','Rabbit')), true, 'unreferenced target with details requires confirmation');
+assert.equal(m.shouldConfirmPhysicalTargetDeletion({...pt('legacy','A'), legacy_conflict:true, legacy_overrides:{'1:1':m.blankDescription('A')}}), true, 'target with protected legacy conflict or overrides requires confirmation');
+assert.equal(m.affectedTargetReferences(postOne,'a').referenceCount > 0, true, 'referenced target retains affected-reference confirmation path');
+assert.deepEqual(m.validateRepeatCount(10,'single'), {ok:true, repeatCount:10}, 'switching 10-position pair programme to singles derives ten singles');
+assert.deepEqual(m.applyRepeatedProgramme(postOne, m.validateRepeatCount(10,'single').repeatCount, 'single', ['a']).sharedPresentations.map(p=>p.presentation_type), Array(10).fill('single'), '10 target positions become 10 singles, not 5 singles');
+assert.equal(m.validateRepeatCount(9,'report_pair').ok, false, 'repeat mismatch is reported instead of silently rounded');
 execSync('rm -rf .shared-post-target-test-build');
 console.log('shared post-target model tests passed');
