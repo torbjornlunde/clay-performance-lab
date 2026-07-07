@@ -15,10 +15,12 @@ import {
   bulkResolveUnknownsForPost,
   confirmCurrentPostReview,
   createReviewPersistenceSnapshot,
+  deriveCurrentPostReconciliation,
   findNextReviewPost,
   getPostReviewStatus,
   normalizeReviewProgress,
   resetReviewProgress,
+  unresolvedTargetsForPost,
   summarizeGrid,
   type NormalizedScorecardAnalysis,
   type ScorecardCell,
@@ -48,6 +50,7 @@ import {
   timeoutMessage,
   type ActiveScorecardOperation,
 } from "@/lib/scorecards/scorecardImportState";
+import { createOrderedPendingPersistence } from "@/lib/scorecards/orderedPendingPersistence";
 
 const MAX_SOURCE = 15 * 1024 * 1024,
   MAX_UPLOAD = 4 * 1024 * 1024;
@@ -108,70 +111,52 @@ export default function Page() {
   const [crop, setCrop] = useState<NormalizedCrop>(fullImageCrop);
   const [viewer, setViewer] = useState<"analyzed" | "original" | null>(null);
   const pendingRef = useRef<PendingScorecardPhoto | null>(null);
-  const saveChainRef = useRef(Promise.resolve());
-  const revisionRef = useRef(0);
-  const generationRef = useRef(0);
+  const persistenceRef = useRef<ReturnType<typeof createOrderedPendingPersistence<PendingScorecardPhoto>> | null>(null);
   function rememberPending(next: PendingScorecardPhoto | null) {
     pendingRef.current = next;
-    if (next?.localReviewRevision && next.localReviewRevision > revisionRef.current) revisionRef.current = next.localReviewRevision;
+    if (next?.localReviewRevision) persistenceRef.current?.noteRevision(next.localReviewRevision);
     setPending(next);
+  }
+  function currentPostReconciliation(postNumber: number) {
+    const row = pendingRef.current?.analysis?.shooterRows.find((r) => r.candidateId === selected);
+    const post = row?.posts.find((x) => x.postNumber === postNumber);
+    const cells = grid.filter((c) => c.postNumber === postNumber);
+    return deriveCurrentPostReconciliation({
+      currentCells: cells,
+      detectedPostScore: post?.detectedPostScore ?? null,
+      detectedPostScoreConfidence: post?.detectedPostScoreConfidence ?? null,
+      expectedTargetCount: cells.length,
+      originalStatus: post?.reconciliationStatus,
+      originalWarning: post?.reconciliationWarning,
+    });
   }
   function postStatusMap() {
     const map: Record<number, any> = {};
-    const row = pendingRef.current?.analysis?.shooterRows.find((r) => r.candidateId === selected);
-    row?.posts.forEach((post) => { map[post.postNumber] = post.reconciliationStatus; });
+    for (let post = 1; post <= (postCount || 0); post++) map[post] = currentPostReconciliation(post).reconciliationStatus;
     return map;
   }
   type PersistenceResult = { ok: true } | { ok: false; error: string };
-  function nextRevision() {
-    revisionRef.current += 1;
-    return revisionRef.current;
+  function persistence() {
+    if (!persistenceRef.current) {
+      persistenceRef.current = createOrderedPendingPersistence<PendingScorecardPhoto>({
+        write: savePendingScorecardPhoto,
+        delete: deletePendingScorecardPhoto,
+        currentRecord: () => pendingRef.current,
+        remember: rememberPending,
+        onStatus: (status, message) => { setSaveStatus(status); if (message) setReviewMessage(message); },
+      });
+    }
+    return persistenceRef.current;
   }
-  function invalidatePendingGeneration() {
-    generationRef.current += 1;
-    return generationRef.current;
-  }
-  function enqueuePendingWrite(next: PendingScorecardPhoto, options: { generation?: number; showStatus?: boolean } = {}): Promise<PersistenceResult> {
-    const generation = options.generation ?? generationRef.current;
-    const clientImportId = next.clientImportId;
-    const snapshot = next;
-    if (options.showStatus !== false) setSaveStatus("saving");
-    const run = async (): Promise<PersistenceResult> => {
-      if (generation !== generationRef.current) return { ok: false, error: "Skipped stale pending write." };
-      if (pendingRef.current?.clientImportId !== clientImportId) return { ok: false, error: "Skipped write for an older scorecard image." };
-      try {
-        await savePendingScorecardPhoto(snapshot);
-        if (pendingRef.current?.localReviewRevision === snapshot.localReviewRevision && options.showStatus !== false) setSaveStatus("saved");
-        return { ok: true };
-      } catch (e: any) {
-        const error = e?.message || "Could not save review on this device.";
-        if (pendingRef.current?.localReviewRevision === snapshot.localReviewRevision && options.showStatus !== false) setSaveStatus("failed");
-        return { ok: false, error };
-      }
-    };
-    const queued = saveChainRef.current.catch(() => undefined).then(run);
-    saveChainRef.current = queued.then(() => undefined, () => undefined);
-    return queued;
+  function nextRevision() { return persistence().nextRevision(); }
+  function invalidatePendingGeneration() { return persistence().invalidate(); }
+  function enqueuePendingWrite(next: PendingScorecardPhoto, options: { generation?: number; showStatus?: boolean; commit?: boolean } = {}): Promise<PersistenceResult> {
+    return persistence().enqueueWrite(next, { generation: options.generation, status: options.showStatus, commit: options.commit });
   }
   function enqueuePendingDelete(sessionId: string, clientImportId: string | null): Promise<PersistenceResult> {
-    const generation = invalidatePendingGeneration();
-    const run = async (): Promise<PersistenceResult> => {
-      if (generation !== generationRef.current) return { ok: false, error: "Skipped stale pending delete." };
-      if (clientImportId && pendingRef.current?.clientImportId && pendingRef.current.clientImportId !== clientImportId) return { ok: false, error: "Skipped delete for an older scorecard image." };
-      try {
-        await deletePendingScorecardPhoto(sessionId);
-        return { ok: true };
-      } catch (e: any) {
-        return { ok: false, error: e?.message || "Could not delete pending scorecard." };
-      }
-    };
-    const queued = saveChainRef.current.catch(() => undefined).then(run);
-    saveChainRef.current = queued.then(() => undefined, () => undefined);
-    return queued;
+    return persistence().enqueueDelete(sessionId, clientImportId);
   }
-  async function flushPendingWrites() {
-    await saveChainRef.current.catch(() => undefined);
-  }
+  async function flushPendingWrites() { await persistence().flush(); }
   function applyReviewReset(nextGrid: ScorecardCell[], selectedShooterId: string | null, base = pendingRef.current, persist = true) {
     const reset = resetReviewProgress(nextGrid, selectedShooterId);
     setSelected(reset.selectedShooterCandidateId);
@@ -270,7 +255,7 @@ export default function Page() {
       setGrid(restoredGrid);
       setCurrentPost(p.currentReviewPost || 1);
       setReviewedPosts(p.reviewedPostNumbers || []);
-      revisionRef.current = p.localReviewRevision || 0;
+      persistence().noteRevision(p.localReviewRevision || 0);
       if (navigator.onLine && canReconnectRetry(p)) void analyze(p);
     }
   }
@@ -604,14 +589,10 @@ export default function Page() {
     if (!row || !pending) return;
     applyReviewReset(row.grid, cid, pending, true);
   }
-  function persistReview(
-    nextGrid: ScorecardCell[],
-    extra: Partial<PendingScorecardPhoto> = {},
-  ): Promise<PersistenceResult> {
-    setGrid(nextGrid);
-    if (!pendingRef.current) return Promise.resolve({ ok: false, error: "No pending scorecard review to save." });
+  function buildReviewSnapshot(nextGrid: ScorecardCell[], extra: Partial<PendingScorecardPhoto> = {}) {
+    if (!pendingRef.current) return null;
     const revision = nextRevision();
-    const next = createReviewPersistenceSnapshot(pendingRef.current, {
+    return createReviewPersistenceSnapshot(pendingRef.current, {
       reviewedGrid: nextGrid,
       selectedShooterCandidateId: selected,
       scoreChoice,
@@ -621,6 +602,14 @@ export default function Page() {
       reviewedGridFingerprint: pendingRef.current.cropFingerprint || pendingRef.current.imageFingerprint,
       ...extra,
     }, revision);
+  }
+  function persistReview(
+    nextGrid: ScorecardCell[],
+    extra: Partial<PendingScorecardPhoto> = {},
+  ): Promise<PersistenceResult> {
+    setGrid(nextGrid);
+    const next = buildReviewSnapshot(nextGrid, extra);
+    if (!next) return Promise.resolve({ ok: false, error: "No pending scorecard review to save." });
     rememberPending(next);
     return enqueuePendingWrite(next);
   }
@@ -636,8 +625,11 @@ export default function Page() {
       setReviewMessage(result.ok ? outcome.message : result.error);
       return;
     }
-    const result = await persistReview(grid, { currentReviewPost: outcome.currentReviewPost, reviewedPostNumbers: outcome.reviewedPostNumbers });
+    const next = buildReviewSnapshot(grid, { currentReviewPost: outcome.currentReviewPost, reviewedPostNumbers: outcome.reviewedPostNumbers });
+    if (!next) { setReviewMessage("No pending scorecard review to save."); return; }
+    const result = await enqueuePendingWrite(next, { commit: false });
     if (!result.ok) { setReviewMessage(result.error); return; }
+    rememberPending(next);
     setReviewedPosts(outcome.reviewedPostNumbers);
     setCurrentPost(outcome.currentReviewPost);
     setReviewMessage(outcome.message);
@@ -647,11 +639,26 @@ export default function Page() {
     setCurrentPost(safe);
     persistReview(grid, { currentReviewPost: safe, reviewedPostNumbers: reviewedPosts });
   }
+
+  function currentApplyIssues() {
+    const issues: Array<{ post: number; message: string }> = [];
+    for (let post = 1; post <= (postCount || 0); post++) {
+      const cells = grid.filter((c) => c.postNumber === post);
+      const rec = currentPostReconciliation(post);
+      const status = getPostReviewStatus({ cells, reconciliationStatus: rec.reconciliationStatus, explicitlyReviewed: reviewedPosts.includes(post) });
+      if (status === "Conflict") issues.push({ post, message: `Post ${post}: ${rec.reconciliationWarning || "reconciliation conflict"}` });
+      else if (status === "Needs review") issues.push({ post, message: `Post ${post}: ${unresolvedTargetsForPost(grid, post).length ? unresolvedTargetsForPost(grid, post).join(", ") + " target(s) still need review" : "needs review"}` });
+    }
+    return issues;
+  }
   async function apply() {
     if (
       !pending ||
       !selected ||
       summary.unknowns > 0 ||
+      saveStatus === "saving" ||
+      saveStatus === "failed" ||
+      currentApplyIssues().some((issue) => issue.message) ||
       !canApplyReview(pending, pending.reviewedGridFingerprint) ||
       setupBlocksReview
     )
@@ -670,10 +677,15 @@ export default function Page() {
           pendingRef.current.imageFingerprint
         : null,
     };
+    const previousPending = pendingRef.current;
     const applyingWithRevision = { ...applying, localReviewRevision: nextRevision() };
     rememberPending(applyingWithRevision);
     const applyingSaved = await enqueuePendingWrite(applyingWithRevision);
-    if (!applyingSaved.ok) { setError(applyingSaved.error); return; }
+    if (!applyingSaved.ok) {
+      if (previousPending) rememberPending({ ...previousPending, status: "ready_for_review" as const, localReviewRevision: nextRevision() });
+      setError(applyingSaved.error);
+      return;
+    }
     try {
       const r = await fetch(`/api/sessions/${id}/scorecard/apply`, {
         method: "POST",
@@ -702,8 +714,8 @@ export default function Page() {
       }
       await flushPendingWrites();
       const deleted = await enqueuePendingDelete(id, pendingRef.current?.clientImportId || null);
-      if (!deleted.ok) { setError(deleted.error); return; }
-      rememberPending(null);
+      if (!deleted.ok) { setError(`${deleted.error} Import was applied; this local cleanup can be retried safely.`); rememberPending({ ...applyingWithRevision, status: "ready_for_review" as const, lastError: deleted.error, localReviewRevision: nextRevision() }); }
+      else rememberPending(null);
       const result = json.result || {};
       const qs = new URLSearchParams({
         score: String(result.score ?? summary.score),
@@ -1049,7 +1061,7 @@ export default function Page() {
                   const postCells = grid.filter((c) => c.postNumber === post);
                   const postSummary = summarizeGrid(postCells);
                   const postMeta = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected)?.posts.find((x) => x.postNumber === post);
-                  const status = getPostReviewStatus({ cells: postCells, reconciliationStatus: postMeta?.reconciliationStatus, explicitlyReviewed: reviewedPosts.includes(post) });
+                  const currentRec = currentPostReconciliation(post); const status = getPostReviewStatus({ cells: postCells, reconciliationStatus: currentRec.reconciliationStatus, explicitlyReviewed: reviewedPosts.includes(post) });
                   return <button type="button" key={post} className={`postNavButton ${post === currentPost ? "selected" : ""}`} onClick={() => navigatePost(post)}>
                     <strong>{profile?.reviewLabel || "Post"} {post}</strong>
                     <span>{postSummary.score}/{postCells.length} · {status}</span>
@@ -1063,11 +1075,12 @@ export default function Page() {
                 const unknownCount = postCells.filter((c) => c.result === "unknown").length;
                 const detectedPostScore = postMeta?.detectedPostScore ?? null;
                 const detectedConfidence = postMeta?.detectedPostScoreConfidence ? `${postMeta.detectedPostScoreConfidence[0].toUpperCase()}${postMeta.detectedPostScoreConfidence.slice(1)} confidence` : "confidence not read";
+                const currentRec = currentPostReconciliation(currentPost);
                 return <div className="subcard currentScorecardPost">
                   <h4>{profile?.reviewLabel || "Post"} {currentPost}</h4>
                   <p className="small">Detected post score: <strong>{detectedPostScore === null ? "Not read" : `${detectedPostScore}/${postCells.length}`}</strong> · {detectedConfidence} · Current reviewed score: <strong>{postSummary.score}/{postCells.length}</strong></p>
                   {detectedPostScore !== null && detectedPostScore !== postSummary.score && <div className="warning small">Detected post score and reviewed score differ. Review this post before applying.</div>}
-                  {postMeta?.reconciliationWarning && <div className="warning small">{postMeta.reconciliationWarning}</div>}
+                  {currentRec.reconciliationWarning && <div className="warning small">{currentRec.reconciliationWarning}</div>}
                   <div className="scorecardGrid">
                     {postCells.map((c) => (
                       <button
@@ -1120,7 +1133,7 @@ export default function Page() {
                   </div>;
                 })()}
                 <div className="compactSummary">
-                  {Array.from({ length: postCount }, (_, pi) => { const post = pi + 1; const postCells = grid.filter((c) => c.postNumber === post); const ps = summarizeGrid(postCells); const postMeta = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected)?.posts.find((x) => x.postNumber === post); const status = getPostReviewStatus({ cells: postCells, reconciliationStatus: postMeta?.reconciliationStatus, explicitlyReviewed: reviewedPosts.includes(post) }); return <button type="button" className="postSummaryButton" key={post} onClick={() => navigatePost(post)}>{profile?.reviewLabel || "Post"} {post}: {ps.score}/{ps.totalTargets} · {status}</button>; })}
+                  {Array.from({ length: postCount }, (_, pi) => { const post = pi + 1; const postCells = grid.filter((c) => c.postNumber === post); const ps = summarizeGrid(postCells); const postMeta = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected)?.posts.find((x) => x.postNumber === post); const currentRec = currentPostReconciliation(post); const status = getPostReviewStatus({ cells: postCells, reconciliationStatus: currentRec.reconciliationStatus, explicitlyReviewed: reviewedPosts.includes(post) }); return <button type="button" className="postSummaryButton" key={post} onClick={() => navigatePost(post)}>{profile?.reviewLabel || "Post"} {post}: {ps.score}/{ps.totalTargets} · {status}</button>; })}
                 </div>
               </div>
               {pending?.analysis?.warnings?.map((w) => (
@@ -1149,9 +1162,10 @@ export default function Page() {
                       const next = {
                         ...pendingRef.current,
                         acknowledgeAmbiguousExisting: e.target.checked,
+                        localReviewRevision: nextRevision(),
                       };
                       rememberPending(next);
-                      void enqueuePendingWrite({ ...next, localReviewRevision: nextRevision() });
+                      void enqueuePendingWrite(next);
                     }
                   }}
                 />
@@ -1175,9 +1189,10 @@ export default function Page() {
                           const next = {
                             ...pendingRef.current,
                             scoreChoice: value,
+                            localReviewRevision: nextRevision(),
                           };
                           rememberPending(next);
-                          void enqueuePendingWrite({ ...next, localReviewRevision: nextRevision() });
+                          void enqueuePendingWrite(next);
                         }
                       }}
                     >
@@ -1188,6 +1203,12 @@ export default function Page() {
                     </select>
                   </div>
                 )}
+              {currentApplyIssues().length > 0 && (
+                <div className="error">
+                  <strong>Scorecard cannot be applied:</strong>
+                  {currentApplyIssues().map((issue) => <button type="button" className="postSummaryButton" key={issue.post} onClick={() => navigatePost(issue.post)}>{issue.message}</button>)}
+                </div>
+              )}
               <div className="stickyApplyBar">
                 <button
                   type="button"
@@ -1195,6 +1216,9 @@ export default function Page() {
                   disabled={
                     !selected ||
                     summary.unknowns > 0 ||
+                    saveStatus === "saving" ||
+                    saveStatus === "failed" ||
+                    currentApplyIssues().some((issue) => issue.message) ||
                     pending?.status === "applying" ||
                     !canApplyReview(
                       pending,

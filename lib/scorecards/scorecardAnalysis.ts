@@ -339,7 +339,7 @@ export function reconcileScorecardPost({ cells, detectedPostScore, detectedPostS
   const totalConfidence: Confidence | null = detectedPostScoreConfidence === "high" || detectedPostScoreConfidence === "medium" || detectedPostScoreConfidence === "low" ? detectedPostScoreConfidence : null;
   if (detected === null || detected < 0 || detected > expectedTargetCount) return { cells: normalized, detectedPostScore: detected, detectedPostScoreConfidence: totalConfidence, reconciledPostScore: summarizeGrid(normalized).score, reconciliationStatus: "needs_review" as ReconciliationStatus, reconciliationWarning: detected === null ? null : "Detected post total is outside the expected target count." };
   const requiredMisses = expectedTargetCount - detected;
-  const fixed = normalized.filter((c) => c.reviewed || c.confidence === "high");
+  const fixed = normalized.filter((c) => (c.reviewed || c.confidence === "high") && (c.result === "hit" || c.result === "miss"));
   const fixedHits = fixed.filter((c) => c.result === "hit").length;
   const fixedMisses = fixed.filter((c) => c.result === "miss").length;
   if (fixedHits > detected || fixedMisses > requiredMisses) return { cells: normalized, detectedPostScore: detected, detectedPostScoreConfidence: totalConfidence, reconciledPostScore: summarizeGrid(normalized).score, reconciliationStatus: "conflict" as ReconciliationStatus, reconciliationWarning: `Fixed high-confidence or reviewed marks conflict with detected post total ${detected}/${expectedTargetCount}.` };
@@ -371,6 +371,15 @@ export function reconcileScorecardPost({ cells, detectedPostScore, detectedPostS
   }
   const cellsOut = normalized.map((c) => fixedKeys.has(cellKey(c.postNumber, c.targetNumber)) ? c : { ...c, result: ((markEvidenceResult(c) || c.result === "hit" || c.result === "miss") ? c.result : "unknown") as ScorecardOutcome });
   return { cells: cellsOut, detectedPostScore: detected, detectedPostScoreConfidence: totalConfidence, reconciledPostScore: summarizeGrid(cellsOut).score, reconciliationStatus: "needs_review" as ReconciliationStatus, reconciliationWarning: `Post total ${detected}/${expectedTargetCount} needs manual review for ambiguous targets.` };
+}
+
+export function deriveCurrentPostReconciliation({ currentCells, detectedPostScore, detectedPostScoreConfidence, expectedTargetCount, originalStatus, originalWarning }: { currentCells: ScorecardCell[]; detectedPostScore: number | null; detectedPostScoreConfidence?: Confidence | null; expectedTargetCount: number; originalStatus?: ReconciliationStatus | null; originalWarning?: string | null }) {
+  const summary = summarizeGrid(currentCells);
+  if (summary.unknowns > 0) return { reconciliationStatus: "needs_review" as ReconciliationStatus, reconciliationWarning: originalWarning || null, reviewedScore: summary.score };
+  const detected = Number.isInteger(detectedPostScore) ? Number(detectedPostScore) : null;
+  if (detected !== null && detectedPostScoreConfidence === "high" && summary.score !== detected) return { reconciliationStatus: "conflict" as ReconciliationStatus, reconciliationWarning: `Reviewed score ${summary.score}/${expectedTargetCount} conflicts with detected total ${detected}/${expectedTargetCount}.`, reviewedScore: summary.score };
+  if (detected !== null && summary.score === detected) return { reconciliationStatus: "matched" as ReconciliationStatus, reconciliationWarning: originalWarning || null, reviewedScore: summary.score };
+  return { reconciliationStatus: originalStatus === "conflict" ? "needs_review" as ReconciliationStatus : (originalStatus || "needs_review" as ReconciliationStatus), reconciliationWarning: originalWarning || null, reviewedScore: summary.score };
 }
 export type PostReviewStatus = "Conflict" | "Needs review" | "Reviewed" | "Ready";
 export function getPostReviewStatus({ cells, reconciliationStatus, explicitlyReviewed }: { cells: ScorecardCell[]; reconciliationStatus?: ReconciliationStatus | null; explicitlyReviewed: boolean }): PostReviewStatus {
