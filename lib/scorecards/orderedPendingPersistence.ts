@@ -11,6 +11,7 @@ export function createOrderedPendingPersistence<T extends OrderedPersistenceReco
   let chain = Promise.resolve();
   let generation = 0;
   let revision = 0;
+  let latestStatusOperation = 0;
   const deleted = new Set<string>();
   function nextRevision() { revision += 1; return revision; }
   function noteRevision(value?: number) { if (value && value > revision) revision = value; }
@@ -19,6 +20,7 @@ export function createOrderedPendingPersistence<T extends OrderedPersistenceReco
     const opGeneration = opts.generation ?? generation;
     const snapshot = record;
     const show = opts.status !== false;
+    const statusOperation = show ? ++latestStatusOperation : latestStatusOperation;
     if (show) options.onStatus?.("saving");
     const run = async (): Promise<OrderedPersistenceResult> => {
       if (opGeneration !== generation) return { ok: false, error: "Skipped stale pending write." };
@@ -28,11 +30,11 @@ export function createOrderedPendingPersistence<T extends OrderedPersistenceReco
       try {
         await options.write(snapshot);
         if (opts.commit !== false) options.remember(snapshot);
-        if (show && options.currentRecord()?.localReviewRevision === snapshot.localReviewRevision) options.onStatus?.("saved");
+        if (show && statusOperation === latestStatusOperation) options.onStatus?.("saved");
         return { ok: true };
       } catch (e: any) {
         const error = e?.message || "Could not save review on this device.";
-        if (show) options.onStatus?.("failed", error);
+        if (show && statusOperation === latestStatusOperation) options.onStatus?.("failed", error);
         return { ok: false, error };
       }
     };
