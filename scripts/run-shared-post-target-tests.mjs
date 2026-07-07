@@ -115,5 +115,46 @@ assert.equal(configuredLater.sharedPresentations[1].target_ids.join(','),'b,c','
 const copiedReload = m.migrateDraft({schemaVersion:3,sessionId:'s',postCount:1,targetsPerPost:10,defaultPostFormat:'5 pairs',posts:[copied],lastLocalUpdateAt:'2026-07-01T00:00:00.000Z',hasUnsyncedChanges:true},'s');
 assert.deepEqual(copiedReload.posts[0].sharedPresentations.map(p=>p.target_ids.join(',')),copied.sharedPresentations.map(p=>p.target_ids.join(',')),'offline v3 draft reload preserves copied presentations');
 assert.equal(m.copyPresentationToRemaining(renamedConflict,0,5).physicalTargets[0].legacy_overrides?.['2:1']?.target_type,'Battue','legacy overrides are not copied to unrelated new presentations');
+
+
+const repeatedBase = m.normalizeSharedPost(1,[pt('a','A','Crossing'),pt('b','B','Incoming')],[]);
+const repeatedApplied = m.applyRepeatedProgramme(repeatedBase,5,'report_pair',['a','b']);
+assert.equal(repeatedApplied.sharedPresentations.length,5,'one A/B selection creates five report-pair shared presentations');
+assert.equal(repeatedApplied.physicalTargets.length,2,'repeated programme does not duplicate physical target definitions');
+const repeatedRows = semanticRows(m.rowsFromPosts('s',[repeatedApplied]));
+assert.equal(repeatedRows.length,10,'five report pairs compile to exactly ten occurrence rows');
+assert.deepEqual(repeatedRows.map(r=>r.target_position),[1,2,3,4,5,6,7,8,9,10],'five report pairs compile target positions 1-10');
+assert.equal(repeatedRows.filter(r=>r.position_in_presentation===1).every(r=>r.target_label==='A'),true,'all first positions reference physical A');
+assert.equal(repeatedRows.filter(r=>r.position_in_presentation===2).every(r=>r.target_label==='B'),true,'all second positions reference physical B');
+assert.equal(m.detectRepeatedProgramme(repeatedApplied)?.repeatCount,5,'existing five identical pairs are detected as repeated');
+assert.equal(m.detectRepeatedProgramme(reverse)?.targetIds.join(','),'b,a','B to A repeated order is detected and preserved');
+assert.equal(m.detectRepeatedProgramme(simultaneous)?.presentationType,'simultaneous_pair','five simultaneous A+B pairs preserve simultaneous type in compact detection');
+const mixedProgram = m.normalizeSharedPost(1,[pt('a','A'),pt('b','B'),pt('c','C')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['a','b']},{presentation_number:2,presentation_type:'report_pair',target_ids:['b','a']},{presentation_number:3,presentation_type:'report_pair',target_ids:['a','c']}]);
+assert.equal(m.detectRepeatedProgramme(mixedProgram),null,'existing mixed programmes are not detected as repeated');
+const mixedTypes = m.normalizeSharedPost(1,[pt('a','A'),pt('b','B')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['a','b']},{presentation_number:2,presentation_type:'simultaneous_pair',target_ids:['a','b']}]);
+assert.equal(m.detectRepeatedProgramme(mixedTypes),null,'different pair types are not collapsed together');
+assert.equal(m.detectRepeatedProgramme(conflict),null,'active occurrence-specific overrides prevent compact collapse');
+assert.deepEqual(m.validateRepeatCount(10,'report_pair'),{ok:true,repeatCount:5},'repeat count derives from target positions divided by targets per presentation');
+assert.equal(m.validateRepeatCount(9,'report_pair').ok,false,'invalid repeat count is not rounded');
+const affectedA = m.affectedTargetReferences(repeatedApplied,'a');
+assert.deepEqual(affectedA,{referenceCount:5,presentationNumbers:[1,2,3,4,5]},'referenced target reports affected presentation numbers');
+const deletedA = m.deletePhysicalTargetAndClearReferences(repeatedApplied,'a');
+assert.equal(deletedA.physicalTargets.some(t=>t.id==='a'),false,'confirmed deletion removes physical target A');
+assert.deepEqual(deletedA.sharedPresentations.map(p=>p.target_ids),[['','b'],['','b'],['','b'],['','b'],['','b']],'deleting A clears only A references and leaves B');
+assert.equal(deletedA.physicalTargets.some(t=>t.id==='b'),true,'B remains defined after deleting A');
+const deletedRows = semanticRows(m.rowsFromPosts('s',[deletedA]));
+assert.deepEqual(deletedRows.map(r=>r.position_in_presentation===1?(r.target_label || ''):'B'),['','B','','B','','B','','B','','B'],'deleting A leaves five Unassigned to B pairs');
+const conflictDelete = m.deletePhysicalTargetAndClearReferences(multiConflict, multiConflict.physicalTargets.find(t=>t.target_label==='A').id);
+assert.equal(conflictDelete.physicalTargets.find(t=>t.target_label==='B')?.legacy_conflict,true,'deleting A does not remove B overrides or warnings');
+const removedSecond = m.removeSharedPresentation(mixedProgram,1);
+assert.deepEqual(removedSecond.sharedPresentations.map(p=>p.presentation_number),[1,2],'removing presentation 2 renumbers later presentations deterministically');
+assert.deepEqual(semanticRows(m.rowsFromPosts('s',[removedSecond])).map(r=>r.target_position),[1,2,3,4],'target positions recalculate after presentation removal');
+assert.equal(removedSecond.physicalTargets.length,3,'removing a presentation does not delete physical targets automatically');
+const withoutProgramme = m.normalizeSharedPost(repeatedApplied.post_number,repeatedApplied.physicalTargets,[],repeatedApplied.instructions,repeatedApplied.source_text,repeatedApplied.compatibilityWarnings);
+assert.equal(withoutProgramme.sharedPresentations.length,0,'remove repeated programme removes presentations');
+assert.equal(withoutProgramme.physicalTargets.length,2,'remove repeated programme retains physical targets');
+const reloadDeletion = m.migrateDraft({schemaVersion:3,sessionId:'s',postCount:1,targetsPerPost:10,defaultPostFormat:'5 pairs',posts:[deletedA],lastLocalUpdateAt:'2026-07-01T00:00:00.000Z',hasUnsyncedChanges:true},'s');
+assert.deepEqual(reloadDeletion.posts[0].sharedPresentations.map(p=>p.target_ids),deletedA.sharedPresentations.map(p=>p.target_ids),'deletion and cleared references survive offline draft reload');
+
 execSync('rm -rf .shared-post-target-test-build');
 console.log('shared post-target model tests passed');
