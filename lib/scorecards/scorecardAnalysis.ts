@@ -1,10 +1,13 @@
 export type ScorecardOutcome = "hit" | "miss" | "unknown";
+export type ObservedMarkCategory = "diagonal_stroke" | "vertical_stroke" | "check_mark" | "circle" | "zero" | "horizontal_dash" | "cross" | "blank" | "other" | "unreadable";
+export type ReconciliationStatus = "matched" | "safely_resolved" | "needs_review" | "conflict";
 export type Confidence = "high" | "medium" | "low";
 export type ScorecardCell = {
   postNumber: number;
   targetNumber: number;
   result: ScorecardOutcome;
   rawMark: string | null;
+  observedMarkCategory?: ObservedMarkCategory | null;
   confidence: Confidence;
   warning: string | null;
   reviewed?: boolean;
@@ -18,6 +21,9 @@ export type ScorecardShooter = {
   posts: Array<{
     postNumber: number;
     detectedPostScore: number | null;
+    reconciledPostScore?: number | null;
+    reconciliationStatus?: ReconciliationStatus;
+    reconciliationWarning?: string | null;
     targets: ScorecardCell[];
   }>;
   grid: ScorecardCell[];
@@ -97,6 +103,7 @@ export const scorecardAnalysisJsonSchema = {
                       "targetNumber",
                       "result",
                       "rawMark",
+                      "observedMarkCategory",
                       "confidence",
                       "warning",
                     ],
@@ -104,6 +111,7 @@ export const scorecardAnalysisJsonSchema = {
                       targetNumber: { type: "integer" },
                       result: { enum: ["hit", "miss", "unknown"] },
                       rawMark: { type: ["string", "null"] },
+                      observedMarkCategory: { enum: ["diagonal_stroke", "vertical_stroke", "check_mark", "circle", "zero", "horizontal_dash", "cross", "blank", "other", "unreadable", null] },
                       confidence: { enum: ["high", "medium", "low"] },
                       warning: { type: ["string", "null"] },
                     },
@@ -123,6 +131,17 @@ function cleanString(v: any, max = 160) {
 }
 function cleanConfidence(v: any): Confidence {
   return v === "high" || v === "medium" || v === "low" ? v : "low";
+}
+function cleanObservedMarkCategory(v: any): ObservedMarkCategory | null {
+  return ["diagonal_stroke", "vertical_stroke", "check_mark", "circle", "zero", "horizontal_dash", "cross", "blank", "other", "unreadable"].includes(v) ? v : null;
+}
+export function classifyObservedMark(rawMark: string | null | undefined, category?: ObservedMarkCategory | null): { result: ScorecardOutcome; confidence: Confidence; observedMarkCategory: ObservedMarkCategory | null } {
+  const cat = cleanObservedMarkCategory(category);
+  const raw = String(rawMark || "").trim().toLowerCase();
+  const mark = cat || (/^[\/⧸╱]+$|diagonal|slash|stroke/.test(raw) ? "diagonal_stroke" : /^\|+$|vertical/.test(raw) ? "vertical_stroke" : /✓|check/.test(raw) ? "check_mark" : /^(o|○|◯|oval|circle)$/.test(raw) ? "circle" : /^(0|zero)$/.test(raw) ? "zero" : /^[-–—−]+$|dash|minus/.test(raw) ? "horizontal_dash" : /^(x|×|cross)$/.test(raw) ? "cross" : raw === "" || raw === "blank" ? "blank" : /unread|overwrite|ambiguous|unclear/.test(raw) ? "unreadable" : "other");
+  if (["diagonal_stroke", "vertical_stroke", "check_mark"].includes(mark)) return { result: "hit", confidence: cat ? "high" : "medium", observedMarkCategory: mark as ObservedMarkCategory };
+  if (["circle", "zero", "horizontal_dash", "cross"].includes(mark)) return { result: "miss", confidence: cat ? "high" : "medium", observedMarkCategory: mark as ObservedMarkCategory };
+  return { result: "unknown", confidence: mark === "blank" ? "low" : "low", observedMarkCategory: mark as ObservedMarkCategory };
 }
 function cellKey(p: number, t: number) {
   return `${p}:${t}`;
@@ -198,6 +217,7 @@ export function normalizeScorecardAnalysis(
                 ? target.result
                 : "unknown",
             rawMark: cleanString(target.rawMark, 24),
+            observedMarkCategory: cleanObservedMarkCategory(target.observedMarkCategory),
             confidence: cleanConfidence(target.confidence),
             warning: cleanString(target.warning, 120),
           };
@@ -229,13 +249,24 @@ export function normalizeScorecardAnalysis(
               warning: "No mark detected.",
             },
           );
+      const reconciledPosts = [] as ScorecardShooter["posts"];
+      let reconciledGrid = grid;
+      for (let p = 1; p <= postCount; p++) {
+        const postInput = (Array.isArray(row.posts) ? row.posts : []).find((x: any) => Number(x.postNumber) === p);
+        const detectedPostScore = Number.isInteger(postInput?.detectedPostScore) ? Number(postInput.detectedPostScore) : null;
+        const rec = reconcileScorecardPost({ cells: reconciledGrid.filter((c) => c.postNumber === p), detectedPostScore, expectedTargetCount: targetsPerPostByPost[p - 1] });
+        reconciledGrid = reconciledGrid.map((c) => c.postNumber === p ? rec.cells.find((x) => x.targetNumber === c.targetNumber) || c : c);
+        if (rec.reconciliationWarning) warnings.push(`Post ${p}: ${rec.reconciliationWarning}`);
+        reconciledPosts.push({ postNumber: p, detectedPostScore, reconciledPostScore: rec.reconciledPostScore, reconciliationStatus: rec.reconciliationStatus, reconciliationWarning: rec.reconciliationWarning, targets: rec.cells });
+      }
+      grid.splice(0, grid.length, ...reconciledGrid);
       const s = summarizeGrid(grid);
       const detectedScore = Number.isInteger(row.detectedScore)
         ? Number(row.detectedScore)
         : null;
       if (detectedScore !== null && detectedScore !== s.score)
         warnings.push(
-          `Printed score ${detectedScore} differs from cell-derived score ${s.score}. Review every target.`,
+          `Detected total ${detectedScore} differs from reconciled target score ${s.score}. Review unresolved targets.`,
         );
       return {
         candidateId: `shooter-${idx + 1}`,
@@ -243,7 +274,7 @@ export function normalizeScorecardAnalysis(
         rowLabel: cleanString(row.rowLabel, 80),
         confidence: cleanConfidence(row.confidence),
         detectedScore,
-        posts: [],
+        posts: reconciledPosts,
         grid,
         ...s,
         warnings,
@@ -263,6 +294,40 @@ export function normalizeScorecardAnalysis(
     totalTargets,
   };
 }
+
+export function reconcileScorecardPost({ cells, detectedPostScore, expectedTargetCount }: { cells: ScorecardCell[]; detectedPostScore: number | null; expectedTargetCount: number }) {
+  const normalized = cells.slice(0, expectedTargetCount).map((cell) => ({ ...cell }));
+  const detected = Number.isInteger(detectedPostScore) ? Number(detectedPostScore) : null;
+  if (detected === null || detected < 0 || detected > expectedTargetCount) return { cells: normalized, detectedPostScore: detected, reconciledPostScore: summarizeGrid(normalized).score, reconciliationStatus: "needs_review" as ReconciliationStatus, reconciliationWarning: detected === null ? null : "Detected post total is outside the expected target count." };
+  const highHits = normalized.filter((c) => c.result === "hit" && c.confidence === "high").length;
+  const highMisses = normalized.filter((c) => c.result === "miss" && c.confidence === "high").length;
+  const requiredMisses = expectedTargetCount - detected;
+  if (highHits > detected || highMisses > requiredMisses) return { cells: normalized, detectedPostScore: detected, reconciledPostScore: summarizeGrid(normalized).score, reconciliationStatus: "conflict" as ReconciliationStatus, reconciliationWarning: `High-confidence marks conflict with detected post total ${detected}/${expectedTargetCount}.` };
+  const current = summarizeGrid(normalized);
+  if (current.unknowns === 0 && current.score === detected) return { cells: normalized, detectedPostScore: detected, reconciledPostScore: detected, reconciliationStatus: "matched" as ReconciliationStatus, reconciliationWarning: null };
+  const missEvidence = (c: ScorecardCell) => ["circle", "zero", "horizontal_dash", "cross"].includes(String(c.observedMarkCategory)) || /^(0|o|x|[-–—−])$/i.test(String(c.rawMark || "").trim());
+  const hitEvidence = (c: ScorecardCell) => ["diagonal_stroke", "vertical_stroke", "check_mark"].includes(String(c.observedMarkCategory)) || /^[\/|✓]$/.test(String(c.rawMark || "").trim());
+  const resolved = normalized.map((c) => ({ ...c }));
+  let hits = resolved.filter((c) => c.result === "hit").length;
+  let misses = resolved.filter((c) => c.result === "miss").length;
+  let unknown = resolved.filter((c) => c.result === "unknown");
+  if (detected === expectedTargetCount && !resolved.some(missEvidence)) { unknown.forEach((c) => { c.result = "hit"; c.reviewed = false; c.warning = c.warning || "Resolved from high-confidence post total."; }); return { cells: resolved, detectedPostScore: detected, reconciledPostScore: detected, reconciliationStatus: "safely_resolved" as ReconciliationStatus, reconciliationWarning: null }; }
+  if (detected === 0 && !resolved.some(hitEvidence)) { unknown.forEach((c) => { c.result = "miss"; c.reviewed = false; c.warning = c.warning || "Resolved from high-confidence post total."; }); return { cells: resolved, detectedPostScore: detected, reconciledPostScore: detected, reconciliationStatus: "safely_resolved" as ReconciliationStatus, reconciliationWarning: null }; }
+  const needHits = detected - hits, needMisses = requiredMisses - misses;
+  if (needHits < 0 || needMisses < 0) return { cells: resolved, detectedPostScore: detected, reconciledPostScore: summarizeGrid(resolved).score, reconciliationStatus: "conflict" as ReconciliationStatus, reconciliationWarning: `Detected post total ${detected}/${expectedTargetCount} conflicts with detected cells.` };
+  const unknownMissEvidence = unknown.filter(missEvidence), unknownHitEvidence = unknown.filter(hitEvidence);
+  if (unknown.length && (unknownMissEvidence.length === needMisses || unknownHitEvidence.length === needHits)) {
+    unknown.forEach((c) => { if (unknownMissEvidence.includes(c)) c.result = "miss"; else if (unknownHitEvidence.includes(c)) c.result = "hit"; else if (unknownMissEvidence.length === needMisses) c.result = "hit"; else if (unknownHitEvidence.length === needHits) c.result = "miss"; c.warning = c.warning || "Resolved from post total and mark evidence."; });
+    return { cells: resolved, detectedPostScore: detected, reconciledPostScore: detected, reconciliationStatus: "safely_resolved" as ReconciliationStatus, reconciliationWarning: null };
+  }
+  return { cells: resolved, detectedPostScore: detected, reconciledPostScore: summarizeGrid(resolved).score, reconciliationStatus: "needs_review" as ReconciliationStatus, reconciliationWarning: `Post total ${detected}/${expectedTargetCount} needs manual review for ambiguous targets.` };
+}
+export function bulkResolveUnknownsForPost(grid: ScorecardCell[], postNumber: number, result: Exclude<ScorecardOutcome, "unknown">, confirmed: boolean) {
+  if (!confirmed) return { grid, changed: 0 };
+  let changed = 0;
+  return { grid: grid.map((c) => c.postNumber === postNumber && c.result === "unknown" ? (changed++, { ...c, result, reviewed: true }) : c), changed };
+}
+
 export function applyUserCorrection(
   grid: ScorecardCell[],
   postNumber: number,
@@ -336,6 +401,7 @@ export function canonicalizeReviewedGrid(
       targetNumber: t,
       result: cell.result,
       rawMark: null,
+      observedMarkCategory: null,
       confidence: "high",
       warning: null,
       reviewed: true,

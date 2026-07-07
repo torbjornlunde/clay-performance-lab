@@ -12,6 +12,7 @@ import {
 import {
   applyUserCorrection,
   bulkResolveUnknowns,
+  bulkResolveUnknownsForPost,
   summarizeGrid,
   type NormalizedScorecardAnalysis,
   type ScorecardCell,
@@ -86,6 +87,8 @@ export default function Page() {
   const [grid, setGrid] = useState<ScorecardCell[]>([]);
   const [error, setError] = useState("");
   const [ack, setAck] = useState(false);
+  const [currentPost, setCurrentPost] = useState(1);
+  const [reviewedPosts, setReviewedPosts] = useState<number[]>([]);
   const [scoreChoice, setScoreChoice] = useState<
     "use_scorecard" | "keep_existing"
   >("use_scorecard");
@@ -178,6 +181,8 @@ export default function Page() {
       setScoreChoice(p.scoreChoice || "use_scorecard");
       const row = p.analysis?.shooterRows.find((r) => r.candidateId === sid);
       setGrid(p.reviewedGrid || row?.grid || []);
+      setCurrentPost(p.currentReviewPost || 1);
+      setReviewedPosts(p.reviewedPostNumbers || []);
       if (navigator.onLine && canReconnectRetry(p)) void analyze(p);
     }
   }
@@ -426,6 +431,8 @@ export default function Page() {
         reviewedGridFingerprint: auto
           ? rec.cropFingerprint || rec.imageFingerprint
           : null,
+        currentReviewPost: 1,
+        reviewedPostNumbers: [],
         preparationState: "review" as const,
         acknowledgeAmbiguousExisting: false,
         updatedAt: new Date().toISOString(),
@@ -493,11 +500,13 @@ export default function Page() {
     if (pendingRef.current) {
       const next = {
         ...pendingRef.current,
-        ...extra,
         reviewedGrid: nextGrid,
         selectedShooterCandidateId: selected,
         scoreChoice,
         acknowledgeAmbiguousExisting: ack,
+        currentReviewPost: currentPost,
+        reviewedPostNumbers: reviewedPosts,
+        ...extra,
         reviewedGridFingerprint: pendingRef.current
           ? pendingRef.current.cropFingerprint ||
             pendingRef.current.imageFingerprint
@@ -511,6 +520,19 @@ export default function Page() {
     persistReview(
       applyUserCorrection(grid, c.postNumber, c.targetNumber, result),
     );
+  }
+  function savePostAndNext() {
+    const nextReviewed = Array.from(new Set([...reviewedPosts, currentPost])).sort((a, b) => a - b);
+    setReviewedPosts(nextReviewed);
+    const unresolved = Array.from({ length: postCount }, (_, i) => i + 1).find((p) => !nextReviewed.includes(p) || grid.some((c) => c.postNumber === p && c.result === "unknown"));
+    const nextPost = unresolved || Math.min(postCount, currentPost + 1);
+    setCurrentPost(nextPost);
+    persistReview(grid, { currentReviewPost: nextPost, reviewedPostNumbers: nextReviewed });
+  }
+  function navigatePost(post: number) {
+    const safe = Math.max(1, Math.min(postCount || 1, post));
+    setCurrentPost(safe);
+    persistReview(grid, { currentReviewPost: safe, reviewedPostNumbers: reviewedPosts });
   }
   async function apply() {
     if (
@@ -884,75 +906,74 @@ export default function Page() {
                   />
                 </div>
               )}
-              <h3>Review grid</h3>
+              <h3>Review one {profile?.reviewLabel?.toLowerCase() || "post"} at a time</h3>
               <p>
-                Score {summary.score}/{summary.totalTargets} · Hits{" "}
-                {summary.hits} · Misses {summary.misses} · Unknown{" "}
-                {summary.unknowns}
+                Saved on this device · Score {summary.score}/{summary.totalTargets} · Unknown {summary.unknowns}
               </p>
-              <div className="btns">
-                <button
-                  className="button secondary smallButton"
-                  onClick={() =>
-                    persistReview(
-                      bulkResolveUnknowns(
-                        grid,
-                        "hit",
-                        confirm("Mark all unknown targets as hit?"),
-                      ).grid,
-                    )
-                  }
-                >
-                  Mark all unknown as hit
-                </button>
-                <button
-                  className="button secondary smallButton"
-                  onClick={() =>
-                    persistReview(
-                      bulkResolveUnknowns(
-                        grid,
-                        "miss",
-                        confirm("Mark all unknown targets as miss?"),
-                      ).grid,
-                    )
-                  }
-                >
-                  Mark all unknown as miss
-                </button>
+              <div className="postNavigator" aria-label="Scorecard post navigator">
+                {Array.from({ length: postCount }, (_, pi) => {
+                  const post = pi + 1;
+                  const postCells = grid.filter((c) => c.postNumber === post);
+                  const postSummary = summarizeGrid(postCells);
+                  const postMeta = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected)?.posts.find((x) => x.postNumber === post);
+                  const status = postMeta?.reconciliationStatus === "conflict" ? "Conflict" : reviewedPosts.includes(post) ? "Reviewed" : postSummary.unknowns ? "Needs review" : "Ready";
+                  return <button type="button" key={post} className={`postNavButton ${post === currentPost ? "selected" : ""}`} onClick={() => navigatePost(post)}>
+                    <strong>{profile?.reviewLabel || "Post"} {post}</strong>
+                    <span>{postSummary.score}/{postCells.length} · {status}</span>
+                  </button>;
+                })}
               </div>
-              {Array.from({ length: postCount }, (_, pi) => (
-                <div className="subcard" key={pi}>
-                  <h4>
-                    {profile?.reviewLabel || "Series"} {pi + 1}
-                  </h4>
+              {(() => {
+                const postCells = grid.filter((c) => c.postNumber === currentPost);
+                const postSummary = summarizeGrid(postCells);
+                const postMeta = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected)?.posts.find((x) => x.postNumber === currentPost);
+                const unknownCount = postCells.filter((c) => c.result === "unknown").length;
+                const detectedPostScore = postMeta?.detectedPostScore ?? null;
+                return <div className="subcard currentScorecardPost">
+                  <h4>{profile?.reviewLabel || "Post"} {currentPost}</h4>
+                  <p className="small">Detected post score: <strong>{detectedPostScore ?? "not read"}</strong> · Current reviewed score: <strong>{postSummary.score}/{postCells.length}</strong></p>
+                  {detectedPostScore !== null && detectedPostScore !== postSummary.score && <div className="warning small">Detected post score and reviewed score differ. Review this post before applying.</div>}
+                  {postMeta?.reconciliationWarning && <div className="warning small">{postMeta.reconciliationWarning}</div>}
                   <div className="scorecardGrid">
-                    {grid
-                      .filter((c) => c.postNumber === pi + 1)
-                      .map((c) => (
-                        <button
-                          key={`${c.postNumber}-${c.targetNumber}`}
-                          className={`scorecardCell ${c.result}`}
-                          onClick={() =>
-                            setCell(
-                              c,
-                              c.result === "hit"
-                                ? "miss"
-                                : c.result === "miss"
-                                  ? "unknown"
-                                  : "hit",
-                            )
-                          }
-                        >
-                          <strong>{c.targetNumber}</strong>
-                          <span>{c.result}</span>
-                          {c.confidence !== "high" && (
-                            <small>{c.confidence}</small>
-                          )}
-                        </button>
-                      ))}
+                    {postCells.map((c) => (
+                      <button
+                        type="button"
+                        key={`${c.postNumber}-${c.targetNumber}`}
+                        className={`scorecardCell ${c.result}`}
+                        onClick={() => setCell(c, c.result === "hit" ? "miss" : c.result === "miss" ? "unknown" : "hit")}
+                      >
+                        <strong>{c.targetNumber}</strong>
+                        <span>{c.result}</span>
+                        {c.observedMarkCategory && <small>{c.observedMarkCategory.replace("_", " ")}</small>}
+                        {c.confidence !== "high" && <small>{c.confidence}</small>}
+                      </button>
+                    ))}
                   </div>
+                  <div className="btns">
+                    <button type="button" className="button secondary smallButton" disabled={currentPost <= 1} onClick={() => navigatePost(currentPost - 1)}>Previous</button>
+                    <button type="button" className="button secondary smallButton" disabled={currentPost >= postCount} onClick={() => navigatePost(currentPost + 1)}>Next</button>
+                    <button type="button" className="button" onClick={savePostAndNext}>Save post and next</button>
+                  </div>
+                  <div className="btns">
+                    <button type="button" className="button secondary smallButton" disabled={!unknownCount} onClick={() => persistReview(bulkResolveUnknownsForPost(grid, currentPost, "hit", confirm(`Mark ${unknownCount} unknown targets in ${profile?.reviewLabel || "Post"} ${currentPost} as hit?`)).grid)}>Mark unknowns in {profile?.reviewLabel || "Post"} {currentPost} as hit</button>
+                    <button type="button" className="button secondary smallButton" disabled={!unknownCount} onClick={() => persistReview(bulkResolveUnknownsForPost(grid, currentPost, "miss", confirm(`Mark ${unknownCount} unknown targets in ${profile?.reviewLabel || "Post"} ${currentPost} as miss?`)).grid)}>Mark unknowns in {profile?.reviewLabel || "Post"} {currentPost} as miss</button>
+                  </div>
+                </div>;
+              })()}
+              <details className="scorecardAdvancedBulk">
+                <summary>Advanced whole-card actions</summary>
+                <div className="btns">
+                  <button type="button" className="button secondary smallButton" onClick={() => persistReview(bulkResolveUnknowns(grid, "hit", confirm(`Advanced action: mark all ${summary.unknowns} unknown targets on the whole card as hit?`)).grid)}>Mark all unknown as hit</button>
+                  <button type="button" className="button secondary smallButton" onClick={() => persistReview(bulkResolveUnknowns(grid, "miss", confirm(`Advanced action: mark all ${summary.unknowns} unknown targets on the whole card as miss?`)).grid)}>Mark all unknown as miss</button>
                 </div>
-              ))}
+              </details>
+              <div className="subcard finalScorecardSummary">
+                <h4>Final review</h4>
+                <p>Total score {summary.score}/{summary.totalTargets} · Hits {summary.hits} · Misses {summary.misses} · Unknown {summary.unknowns}</p>
+                <div className="compactSummary">
+                  {Array.from({ length: postCount }, (_, pi) => { const post = pi + 1; const ps = summarizeGrid(grid.filter((c) => c.postNumber === post)); return <button type="button" className="postSummaryButton" key={post} onClick={() => navigatePost(post)}>{profile?.reviewLabel || "Post"} {post}: {ps.score}/{ps.totalTargets}</button>; })}
+                </div>
+              </div>
               {pending?.analysis?.warnings?.map((w) => (
                 <p className="small muted" key={w}>
                   {w}
@@ -966,7 +987,7 @@ export default function Page() {
               </details>
               {summary.unknowns > 0 && (
                 <div className="error">
-                  Resolve every unknown target before applying.
+                  {unresolvedTargetsText(grid)}
                 </div>
               )}
               <label className="checkboxRow">
@@ -984,8 +1005,8 @@ export default function Page() {
                       void savePendingScorecardPhoto(next);
                     }
                   }}
-                />{" "}
-                I understand ambiguous existing misses will be preserved.
+                />
+                <span>I understand ambiguous existing misses will be preserved.</span>
               </label>
               {session.own_score !== null &&
                 session.own_score !== summary.score && (
@@ -1036,7 +1057,7 @@ export default function Page() {
                 >
                   {pending?.status === "applying"
                     ? "Applying..."
-                    : "Confirm import"}
+                    : "Apply reviewed scorecard"}
                 </button>
               </div>
             </div>
@@ -1045,6 +1066,14 @@ export default function Page() {
       )}
     </main>
   );
+}
+
+function unresolvedTargetsText(grid: ScorecardCell[]) {
+  const unknowns = grid.filter((c) => c.result === "unknown");
+  if (!unknowns.length) return "All targets are resolved.";
+  const byPost = new Map<number, number[]>();
+  for (const cell of unknowns) byPost.set(cell.postNumber, [...(byPost.get(cell.postNumber) || []), cell.targetNumber]);
+  return `${unknowns.length} targets still need review: ${Array.from(byPost.entries()).map(([post, targets]) => `Post ${post}: target${targets.length === 1 ? "" : "s"} ${targets.join(", ")}`).join("; ")}`;
 }
 
 function CropOverlay({
