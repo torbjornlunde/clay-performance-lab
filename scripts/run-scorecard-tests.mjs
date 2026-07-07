@@ -75,6 +75,22 @@ let reset=a.resetReviewProgress([mk(1,1,'hit','high')], 'shooter-b');
 assert.equal(reset.currentReviewPost,1); assert.deepEqual(reset.reviewedPostNumbers,[]); assert.equal(reset.selectedShooterCandidateId,'shooter-b');
 let normalizedProgress=a.normalizeReviewProgress({grid:[mk(1,1,'hit','high'),mk(2,1,'unknown','low'),mk(3,1,'hit','high')],postCount:3,currentReviewPost:99,reviewedPostNumbers:[0,1,1,2,4],postStatuses:{}});
 assert.deepEqual(normalizedProgress.reviewedPostNumbers,[1]); assert.equal(normalizedProgress.currentReviewPost,2, 'malformed restored progress is clamped and points to unresolved post');
+
+function opRecord(id, rev, extra={}) { return {clientImportId:id, localReviewRevision:rev, ...extra}; }
+let ordered={generation:1,record:opRecord('a',1,{grid:'old'}),deletedClientImportIds:[]};
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:1,snapshot:opRecord('a',2,{grid:'correction'})});
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:1,snapshot:opRecord('a',3,{ack:true})}); assert.equal(ordered.record.ack,true, 'target correction followed by acknowledgement keeps newest acknowledgement snapshot');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:1,snapshot:opRecord('a',4,{scoreChoice:'keep_existing'})}); assert.equal(ordered.record.scoreChoice,'keep_existing', 'target correction followed by scoreChoice keeps newest score choice');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:1,snapshot:opRecord('a',5,{currentReviewPost:2})}); assert.equal(ordered.record.currentReviewPost,2, 'target correction followed by navigation keeps navigation snapshot');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:2,snapshot:opRecord('b',1,{image:'new'})}); assert.equal(ordered.record.clientImportId,'b', 'new photo generation replaces older import');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:1,snapshot:opRecord('a',6,{grid:'stale'})}); assert.equal(ordered.record.clientImportId,'b', 'older clientImportId cannot overwrite newer one');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:3,snapshot:opRecord('b',2,{crop:'new-crop'})}); assert.equal(ordered.record.crop,'new-crop', 'crop change writes through newer generation');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:4,snapshot:opRecord('b',3,{status:'analyzing'})}); assert.equal(ordered.record.status,'analyzing', 're-analysis writes through newer generation');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:4,snapshot:opRecord('b',4,{status:'applying'})}); assert.equal(ordered.record.status,'applying', 'Apply writes through ordered controller');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'delete',generation:5,sessionId:'s',clientImportId:'b'}); assert.equal(ordered.record,null, 'successful delete removes pending import');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:4,snapshot:opRecord('b',5,{status:'ready_for_review'})}); assert.equal(ordered.record,null, 'deleted import cannot be recreated by stale write');
+let discarded=a.applyOrderedPendingOperation({generation:1,record:opRecord('c',1),deletedClientImportIds:[]},{kind:'delete',generation:2,sessionId:'s',clientImportId:'c'}); discarded=a.applyOrderedPendingOperation(discarded,{kind:'write',generation:1,snapshot:opRecord('c',2)}); assert.equal(discarded.record,null, 'target correction followed by Discard cannot recreate pending import');
+
 let latest=a.chooseLatestReviewRevision({localReviewRevision:1,value:'old'},{localReviewRevision:2,value:'new'}); assert.equal(latest.value,'new', 'latest review revision wins');
 let snap=a.createReviewPersistenceSnapshot({localReviewRevision:1,reviewedGrid:[]},{currentReviewPost:2,reviewedPostNumbers:[1],scoreChoice:'use_scorecard',acknowledgeAmbiguousExisting:true},2); assert.equal(snap.localReviewRevision,2); assert.equal(snap.currentReviewPost,2);
 

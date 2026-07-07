@@ -110,6 +110,7 @@ export default function Page() {
   const pendingRef = useRef<PendingScorecardPhoto | null>(null);
   const saveChainRef = useRef(Promise.resolve());
   const revisionRef = useRef(0);
+  const generationRef = useRef(0);
   function rememberPending(next: PendingScorecardPhoto | null) {
     pendingRef.current = next;
     if (next?.localReviewRevision && next.localReviewRevision > revisionRef.current) revisionRef.current = next.localReviewRevision;
@@ -121,19 +122,55 @@ export default function Page() {
     row?.posts.forEach((post) => { map[post.postNumber] = post.reconciliationStatus; });
     return map;
   }
-  function queuePendingSave(next: PendingScorecardPhoto) {
-    setSaveStatus("saving");
+  type PersistenceResult = { ok: true } | { ok: false; error: string };
+  function nextRevision() {
+    revisionRef.current += 1;
+    return revisionRef.current;
+  }
+  function invalidatePendingGeneration() {
+    generationRef.current += 1;
+    return generationRef.current;
+  }
+  function enqueuePendingWrite(next: PendingScorecardPhoto, options: { generation?: number; showStatus?: boolean } = {}): Promise<PersistenceResult> {
+    const generation = options.generation ?? generationRef.current;
+    const clientImportId = next.clientImportId;
     const snapshot = next;
-    saveChainRef.current = saveChainRef.current
-      .catch(() => undefined)
-      .then(async () => {
+    if (options.showStatus !== false) setSaveStatus("saving");
+    const run = async (): Promise<PersistenceResult> => {
+      if (generation !== generationRef.current) return { ok: false, error: "Skipped stale pending write." };
+      if (pendingRef.current?.clientImportId !== clientImportId) return { ok: false, error: "Skipped write for an older scorecard image." };
+      try {
         await savePendingScorecardPhoto(snapshot);
-        if (pendingRef.current?.localReviewRevision === snapshot.localReviewRevision) setSaveStatus("saved");
-      })
-      .catch(() => {
-        if (pendingRef.current?.localReviewRevision === snapshot.localReviewRevision) setSaveStatus("failed");
-      });
-    return saveChainRef.current;
+        if (pendingRef.current?.localReviewRevision === snapshot.localReviewRevision && options.showStatus !== false) setSaveStatus("saved");
+        return { ok: true };
+      } catch (e: any) {
+        const error = e?.message || "Could not save review on this device.";
+        if (pendingRef.current?.localReviewRevision === snapshot.localReviewRevision && options.showStatus !== false) setSaveStatus("failed");
+        return { ok: false, error };
+      }
+    };
+    const queued = saveChainRef.current.catch(() => undefined).then(run);
+    saveChainRef.current = queued.then(() => undefined, () => undefined);
+    return queued;
+  }
+  function enqueuePendingDelete(sessionId: string, clientImportId: string | null): Promise<PersistenceResult> {
+    const generation = invalidatePendingGeneration();
+    const run = async (): Promise<PersistenceResult> => {
+      if (generation !== generationRef.current) return { ok: false, error: "Skipped stale pending delete." };
+      if (clientImportId && pendingRef.current?.clientImportId && pendingRef.current.clientImportId !== clientImportId) return { ok: false, error: "Skipped delete for an older scorecard image." };
+      try {
+        await deletePendingScorecardPhoto(sessionId);
+        return { ok: true };
+      } catch (e: any) {
+        return { ok: false, error: e?.message || "Could not delete pending scorecard." };
+      }
+    };
+    const queued = saveChainRef.current.catch(() => undefined).then(run);
+    saveChainRef.current = queued.then(() => undefined, () => undefined);
+    return queued;
+  }
+  async function flushPendingWrites() {
+    await saveChainRef.current.catch(() => undefined);
   }
   function applyReviewReset(nextGrid: ScorecardCell[], selectedShooterId: string | null, base = pendingRef.current, persist = true) {
     const reset = resetReviewProgress(nextGrid, selectedShooterId);
@@ -144,14 +181,13 @@ export default function Page() {
     setAck(Boolean(reset.acknowledgeAmbiguousExisting));
     setReviewMessage("");
     if (base && persist) {
-      const revision = revisionRef.current + 1;
-      revisionRef.current = revision;
+      const revision = nextRevision();
       const next = createReviewPersistenceSnapshot(base, {
         ...reset,
         reviewedGridFingerprint: base.cropFingerprint || base.imageFingerprint,
       }, revision);
       rememberPending(next);
-      void queuePendingSave(next);
+      void enqueuePendingWrite(next);
     }
   }
   useEffect(() => {
@@ -350,8 +386,11 @@ export default function Page() {
       updatedAt: new Date().toISOString(),
       status: navigator.onLine ? "saved_on_device" : "waiting_for_connection",
     };
-    await savePendingScorecardPhoto(rec);
-    rememberPending(rec);
+    const generation = invalidatePendingGeneration();
+    const recWithRevision = { ...rec, localReviewRevision: nextRevision() };
+    rememberPending(recWithRevision);
+    const saved = await enqueuePendingWrite(recWithRevision, { generation });
+    if (!saved.ok) { setError(saved.error); return; }
     setSelected(null);
     setGrid([]);
     setCurrentPost(1);
@@ -402,10 +441,13 @@ export default function Page() {
         status: navigator.onLine ? "saved_on_device" : "waiting_for_connection",
         lastError: null,
       };
-      await savePendingScorecardPhoto(next);
-      rememberPending(next);
+      const generation = invalidatePendingGeneration();
+      const nextWithRevision = { ...next, localReviewRevision: nextRevision() };
+      rememberPending(nextWithRevision);
+      const saved = await enqueuePendingWrite(nextWithRevision, { generation });
+      if (!saved.ok) throw new Error(saved.error);
       setCrop(c);
-      await analyze(next);
+      await analyze(nextWithRevision);
     } catch (e: any) {
       setStage("");
       setError(
@@ -445,13 +487,16 @@ export default function Page() {
       acknowledgeAmbiguousExisting: false,
       preparationState: "ready" as const,
     };
-    rememberPending(analyzing);
     setSelected(null);
     setGrid([]);
     setCurrentPost(1);
     setReviewedPosts([]);
     setReviewMessage("");
-    await savePendingScorecardPhoto(analyzing);
+    const analyzingGeneration = invalidatePendingGeneration();
+    const analyzingWithRevision = { ...analyzing, localReviewRevision: nextRevision() };
+    rememberPending(analyzingWithRevision);
+    const analyzingSaved = await enqueuePendingWrite(analyzingWithRevision, { generation: analyzingGeneration });
+    if (!analyzingSaved.ok) { setError(analyzingSaved.error); return; }
     if (!navigator.onLine) return;
     try {
       abortRef.current?.abort();
@@ -511,9 +556,11 @@ export default function Page() {
         acknowledgeAmbiguousExisting: false,
         updatedAt: new Date().toISOString(),
       };
-      await savePendingScorecardPhoto(ready);
-      rememberPending(ready);
-      applyReviewReset(auto ? analysis.shooterRows[0].grid : [], auto, ready, false);
+      const readyWithRevision = { ...ready, localReviewRevision: nextRevision() };
+      rememberPending(readyWithRevision);
+      const readySaved = await enqueuePendingWrite(readyWithRevision);
+      if (!readySaved.ok) throw new Error(readySaved.error);
+      applyReviewReset(auto ? analysis.shooterRows[0].grid : [], auto, readyWithRevision, false);
       setAck(false);
       setStage("Preparing review");
       if (timerRef.current) {
@@ -543,8 +590,9 @@ export default function Page() {
         shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
       )
         return;
-      await savePendingScorecardPhoto(failed);
-      rememberPending(failed);
+      const failedWithRevision = { ...failed, localReviewRevision: nextRevision() };
+      rememberPending(failedWithRevision);
+      await enqueuePendingWrite(failedWithRevision);
       setError(failed.lastError || "");
       setStage("");
     }
@@ -559,11 +607,10 @@ export default function Page() {
   function persistReview(
     nextGrid: ScorecardCell[],
     extra: Partial<PendingScorecardPhoto> = {},
-  ) {
+  ): Promise<PersistenceResult> {
     setGrid(nextGrid);
-    if (!pendingRef.current) return Promise.resolve();
-    const revision = revisionRef.current + 1;
-    revisionRef.current = revision;
+    if (!pendingRef.current) return Promise.resolve({ ok: false, error: "No pending scorecard review to save." });
+    const revision = nextRevision();
     const next = createReviewPersistenceSnapshot(pendingRef.current, {
       reviewedGrid: nextGrid,
       selectedShooterCandidateId: selected,
@@ -575,7 +622,7 @@ export default function Page() {
       ...extra,
     }, revision);
     rememberPending(next);
-    return queuePendingSave(next);
+    return enqueuePendingWrite(next);
   }
   function setCell(c: ScorecardCell, result: ScorecardOutcome) {
     persistReview(
@@ -584,14 +631,16 @@ export default function Page() {
   }
   async function savePostAndNext() {
     const outcome = confirmCurrentPostReview({ grid, currentPost, postCount, reviewedPostNumbers: reviewedPosts, postStatuses: postStatusMap() });
-    setReviewMessage(outcome.message);
     if (!outcome.ok) {
-      await persistReview(grid, { currentReviewPost: currentPost, reviewedPostNumbers: reviewedPosts });
+      const result = await persistReview(grid, { currentReviewPost: currentPost, reviewedPostNumbers: reviewedPosts });
+      setReviewMessage(result.ok ? outcome.message : result.error);
       return;
     }
+    const result = await persistReview(grid, { currentReviewPost: outcome.currentReviewPost, reviewedPostNumbers: outcome.reviewedPostNumbers });
+    if (!result.ok) { setReviewMessage(result.error); return; }
     setReviewedPosts(outcome.reviewedPostNumbers);
     setCurrentPost(outcome.currentReviewPost);
-    await persistReview(grid, { currentReviewPost: outcome.currentReviewPost, reviewedPostNumbers: outcome.reviewedPostNumbers });
+    setReviewMessage(outcome.message);
   }
   function navigatePost(post: number) {
     const safe = Math.max(1, Math.min(postCount || 1, post));
@@ -621,8 +670,10 @@ export default function Page() {
           pendingRef.current.imageFingerprint
         : null,
     };
-    rememberPending(applying);
-    await savePendingScorecardPhoto(applying);
+    const applyingWithRevision = { ...applying, localReviewRevision: nextRevision() };
+    rememberPending(applyingWithRevision);
+    const applyingSaved = await enqueuePendingWrite(applyingWithRevision);
+    if (!applyingSaved.ok) { setError(applyingSaved.error); return; }
     try {
       const r = await fetch(`/api/sessions/${id}/scorecard/apply`, {
         method: "POST",
@@ -649,7 +700,9 @@ export default function Page() {
       if (!r.ok) {
         throw new Error(json.error?.message || "Apply failed.");
       }
-      await deletePendingScorecardPhoto(id);
+      await flushPendingWrites();
+      const deleted = await enqueuePendingDelete(id, pendingRef.current?.clientImportId || null);
+      if (!deleted.ok) { setError(deleted.error); return; }
       rememberPending(null);
       const result = json.result || {};
       const qs = new URLSearchParams({
@@ -662,12 +715,13 @@ export default function Page() {
       router.push(`/sessions/${id}/analysis?scorecardImported=1&${qs.toString()}`);
     } catch (e: any) {
       const retryable = {
-        ...applying,
+        ...applyingWithRevision,
         status: "ready_for_review" as const,
         lastError: e.message || "Apply failed",
       };
-      await savePendingScorecardPhoto(retryable);
-      rememberPending(retryable);
+      const retryableWithRevision = { ...retryable, localReviewRevision: nextRevision() };
+      rememberPending(retryableWithRevision);
+      await enqueuePendingWrite(retryableWithRevision);
       setError(retryable.lastError || "Apply failed");
     }
   }
@@ -697,13 +751,16 @@ export default function Page() {
         resolvedSetup: null,
         selectedShooterCandidateId: null,
       };
-      rememberPending(next);
-      void savePendingScorecardPhoto(next);
+      const nextWithRevision = { ...next, localReviewRevision: nextRevision() };
+      rememberPending(nextWithRevision);
+      void enqueuePendingWrite(nextWithRevision);
     }
   }
   async function discard() {
     if (confirm("Discard this local scorecard photo and review?")) {
-      await deletePendingScorecardPhoto(id);
+      await flushPendingWrites();
+      const deleted = await enqueuePendingDelete(id, pendingRef.current?.clientImportId || null);
+      if (!deleted.ok) { setError(deleted.error); return; }
       rememberPending(null);
       setGrid([]);
       setSelected(null);
@@ -1094,7 +1151,7 @@ export default function Page() {
                         acknowledgeAmbiguousExisting: e.target.checked,
                       };
                       rememberPending(next);
-                      void savePendingScorecardPhoto(next);
+                      void enqueuePendingWrite({ ...next, localReviewRevision: nextRevision() });
                     }
                   }}
                 />
@@ -1120,7 +1177,7 @@ export default function Page() {
                             scoreChoice: value,
                           };
                           rememberPending(next);
-                          void savePendingScorecardPhoto(next);
+                          void enqueuePendingWrite({ ...next, localReviewRevision: nextRevision() });
                         }
                       }}
                     >

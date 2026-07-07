@@ -507,3 +507,16 @@ export function canonicalizeReviewedGrid(
     ? { ok: false as const, errors, grid: canonical }
     : { ok: true as const, errors: [], grid: canonical };
 }
+
+export type OrderedPendingOperation<T extends { clientImportId: string; localReviewRevision?: number }> =
+  | { kind: "write"; generation: number; snapshot: T }
+  | { kind: "delete"; generation: number; sessionId: string; clientImportId: string };
+export type OrderedPendingState<T extends { clientImportId: string; localReviewRevision?: number }> = { generation: number; record: T | null; deletedClientImportIds: string[] };
+export function applyOrderedPendingOperation<T extends { clientImportId: string; localReviewRevision?: number }>(state: OrderedPendingState<T>, op: OrderedPendingOperation<T>): OrderedPendingState<T> {
+  if (op.generation < state.generation) return state;
+  if (op.kind === "delete") return { generation: op.generation, record: state.record?.clientImportId === op.clientImportId ? null : state.record, deletedClientImportIds: Array.from(new Set([...state.deletedClientImportIds, op.clientImportId])) };
+  if (state.deletedClientImportIds.includes(op.snapshot.clientImportId)) return state;
+  if (state.record && state.record.clientImportId !== op.snapshot.clientImportId && op.generation <= state.generation) return state;
+  if (state.record?.clientImportId === op.snapshot.clientImportId && (op.snapshot.localReviewRevision || 0) < (state.record.localReviewRevision || 0)) return state;
+  return { generation: op.generation, record: op.snapshot, deletedClientImportIds: state.deletedClientImportIds };
+}
