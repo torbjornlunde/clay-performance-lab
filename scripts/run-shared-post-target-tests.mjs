@@ -56,6 +56,26 @@ assert.deepEqual(semanticRows(m.rowsFromPosts('s',renamedReload.posts)).map(r=>[
 assert.deepEqual(semanticRows(m.rowsFromPosts('s',renamedReload.posts)),renamedConflictRows,'normal save preserves renamed legacy conflict semantics');
 const resolvedAfterRename = m.resolvePhysicalTargetOverrides(renamedConflict, renamedConflict.physicalTargets[0].id);
 assert.deepEqual(semanticRows(m.rowsFromPosts('s',[resolvedAfterRename])).map(r=>[r.target_label,r.target_type]),[['C','Rabbit'],['C','Rabbit']],'explicit resolution after rename applies current shared label and details everywhere');
+
+const removeFirstKeepOverride = m.normalizeSharedPost(renamedConflict.post_number, renamedConflict.physicalTargets, renamedConflict.sharedPresentations.slice(1), renamedConflict.instructions, renamedConflict.source_text, renamedConflict.compatibilityWarnings);
+assert.deepEqual(removeFirstKeepOverride.sharedPresentations[0].legacy_override_keys, ['1:1'], 'override key remaps from 2:1 to 1:1 when presentation 1 is removed');
+assert.deepEqual(semanticRows(m.rowsFromPosts('s',[removeFirstKeepOverride])).map(r=>[r.presentation_number,r.target_label,r.target_type]), [[1,'C','Battue']], 'renumbered remaining presentation preserves Battue override');
+const tripleConflict = m.normalizePost(1,[{presentation_number:1,presentation_type:'single',targets:[{...m.blankTarget(1,1),target_label:'A',target_type:'Rabbit'}]},{presentation_number:2,presentation_type:'single',targets:[{...m.blankTarget(2,1),target_label:'A',target_type:'Battue'}]},{presentation_number:3,presentation_type:'single',targets:[{...m.blankTarget(3,1),target_label:'A',target_type:'Mini'}]}]);
+const tripleRemovedFirst = m.normalizeSharedPost(tripleConflict.post_number, tripleConflict.physicalTargets, tripleConflict.sharedPresentations.slice(1), '', '', tripleConflict.compatibilityWarnings);
+assert.deepEqual(tripleRemovedFirst.sharedPresentations.map(p=>p.legacy_override_keys[0]), ['1:1','2:1'], 'multiple active overrides remap after removing an earlier presentation');
+assert.deepEqual(semanticRows(m.rowsFromPosts('s',[tripleRemovedFirst])).map(r=>r.target_type), ['Battue','Mini'], 'multiple remapped overrides preserve details');
+const reordered = m.normalizeSharedPost(tripleConflict.post_number, tripleConflict.physicalTargets, [tripleConflict.sharedPresentations[2], tripleConflict.sharedPresentations[0], tripleConflict.sharedPresentations[1]], '', '', tripleConflict.compatibilityWarnings);
+assert.deepEqual(semanticRows(m.rowsFromPosts('s',[reordered])).map(r=>r.target_type), ['Mini','Rabbit','Battue'], 'reorder keeps overrides attached to their presentation/reference');
+const pairConflict = m.normalizePost(1,[{presentation_number:1,presentation_type:'report_pair',targets:[{...m.blankTarget(1,1),target_label:'A',target_type:'Rabbit'},{...m.blankTarget(2,2),target_label:'A',target_type:'Battue'}]}]);
+const pairToSingle = m.normalizeSharedPost(pairConflict.post_number, pairConflict.physicalTargets, [{...pairConflict.sharedPresentations[0],presentation_type:'single'}], '', '', pairConflict.compatibilityWarnings);
+assert.equal(pairToSingle.sharedPresentations[0].legacy_override_keys.length, 1, 'pair to single removes second-position override key');
+assert.equal(semanticRows(m.rowsFromPosts('s',[pairToSingle]))[0].target_type, 'Rabbit', 'pair to single preserves first active details');
+const reassignedOverride = m.normalizeSharedPost(renamedConflict.post_number, renamedConflict.physicalTargets, renamedConflict.sharedPresentations.map((p,i)=>i===1?{...p,target_ids:['target-B'],legacy_override_keys:p.legacy_override_keys}:p), '', '', renamedConflict.compatibilityWarnings);
+assert.equal(reassignedOverride.sharedPresentations[1]?.legacy_override_keys?.[0] || '', '', 'reassigned reference drops stale override key');
+assert.equal(reassignedOverride.physicalTargets[0].legacy_conflict, false, 'reassigned reference removes unused A override');
+const renumberReload = m.migrateDraft({schemaVersion:3,sessionId:'s',postCount:1,targetsPerPost:1,defaultPostFormat:'single',posts:[removeFirstKeepOverride],lastLocalUpdateAt:'2026-07-01T00:00:00.000Z',hasUnsyncedChanges:true},'s');
+assert.deepEqual(semanticRows(m.rowsFromPosts('s',renumberReload.posts)).map(r=>[r.target_label,r.target_type]), [['C','Battue']], 'offline v3 reload preserves remapped override details');
+
 const removedOverride = m.normalizeSharedPost(renamedConflict.post_number, renamedConflict.physicalTargets, renamedConflict.sharedPresentations.slice(0,1), renamedConflict.instructions, renamedConflict.source_text, renamedConflict.compatibilityWarnings);
 assert.equal(removedOverride.physicalTargets[0].legacy_conflict,false,'removing the only overridden presentation clears the conflict');
 const reassigned = m.normalizeSharedPost(renamedConflict.post_number, renamedConflict.physicalTargets, renamedConflict.sharedPresentations.map((p,i)=>i===1?{...p,target_ids:['missing-target']}:p), renamedConflict.instructions, renamedConflict.source_text, renamedConflict.compatibilityWarnings);
@@ -64,6 +84,15 @@ const multiConflict = m.normalizePost(1,[{presentation_number:1,presentation_typ
 const removeAOverride = m.normalizeSharedPost(multiConflict.post_number, multiConflict.physicalTargets, multiConflict.sharedPresentations.map((p,i)=>i===1?{...p,legacy_override_keys:['']}:p), multiConflict.instructions, multiConflict.source_text, multiConflict.compatibilityWarnings);
 assert.equal(removeAOverride.physicalTargets.find(t=>t.target_label==='A').legacy_conflict,false,'removing one target override clears that target');
 assert.equal(removeAOverride.physicalTargets.find(t=>t.target_label==='B').legacy_conflict,true,'removing one target override does not clear another active target conflict');
+
+const blankPair = m.normalizeSharedPost(1,[pt('a','A'),pt('b','B')],[{presentation_number:1,presentation_type:'report_pair',target_ids:[]}]);
+assert.equal(m.copyPresentationToRemaining(blankPair,0,5).sharedPresentations.length,1,'blank report pair cannot be copied');
+assert.equal(m.duplicateSharedPresentation(blankPair,0).sharedPresentations.length,1,'blank report pair cannot be duplicated');
+assert.equal(m.copyPresentationToRemaining(m.normalizeSharedPost(1,[pt('a','A'),pt('b','B')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['a']}]),0,5).sharedPresentations.length,1,'pair with only A cannot be copied');
+assert.equal(m.copyPresentationToRemaining(m.normalizeSharedPost(1,[pt('a','A'),pt('b','B')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['','b']}]),0,5).sharedPresentations.length,1,'pair with only B cannot be copied');
+assert.equal(m.copyPresentationToRemaining(m.normalizeSharedPost(1,[pt('a','A')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['a','missing']}]),0,5).sharedPresentations.length,1,'nonexistent target reference cannot be copied');
+assert.equal(m.copyPresentationToRemaining(m.normalizeSharedPost(1,[pt('a','')],[{presentation_number:1,presentation_type:'single',target_ids:['a']}]),0,10).sharedPresentations.length,1,'blank physical target label cannot be copied');
+
 let copied = m.normalizeSharedPost(1,[pt('a','A','Crossing'),pt('b','B','Incoming')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['a','b']}]);
 copied = m.copyPresentationToRemaining(copied,0,5);
 const copiedRows = semanticRows(m.rowsFromPosts('s',[copied]));

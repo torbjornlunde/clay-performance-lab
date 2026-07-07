@@ -46,15 +46,26 @@ export function rehydrateSharedPost(post: Omit<PostTargets, 'physicalTargets'|'s
   return normalizeSharedPost(post.post_number, physicalTargets, sharedPresentations, post.instructions, post.source_text, warnings);
 }
 export function normalizeSharedPost(post_number: number, physicalTargets: PhysicalTarget[] = [], sharedPresentations: SharedPresentation[] = [], instructions = "", source_text = "", compatibilityWarnings: string[] = []): PostTargets {
-  const normalizedShared = sharedPresentations.map((p, i) => ({
-    presentation_number: i + 1,
-    presentation_type: p.presentation_type,
-    target_ids: Array.from({ length: targetCountFor(p.presentation_type) }, (_, idx) => p.target_ids[idx] || ""),
-    legacy_override_keys: Array.from({ length: targetCountFor(p.presentation_type) }, (_, idx) => {
-      const key = p.legacy_override_keys?.[idx] || "";
-      return key === `${i + 1}:${idx + 1}` ? key : "";
-    }),
-  }));
+  const sourceTargets = new Map(physicalTargets.map((target, index) => [target.id || `target-${index + 1}`, target]));
+  const remappedOverrides = new Map<string, Record<string, TargetDescription>>();
+  const normalizedShared = sharedPresentations.map((p, i) => {
+    const presentationNumber = i + 1;
+    return {
+      presentation_number: presentationNumber,
+      presentation_type: p.presentation_type,
+      target_ids: Array.from({ length: targetCountFor(p.presentation_type) }, (_, idx) => p.target_ids[idx] || ""),
+      legacy_override_keys: Array.from({ length: targetCountFor(p.presentation_type) }, (_, idx) => {
+        const targetId = p.target_ids[idx] || "";
+        const oldKey = p.legacy_override_keys ? (p.legacy_override_keys[idx] || "") : `${p.presentation_number || presentationNumber}:${idx + 1}`;
+        const override = oldKey && targetId ? sourceTargets.get(targetId)?.legacy_overrides?.[oldKey] : undefined;
+        if (!targetId || !override) return "";
+        const newKey = `${presentationNumber}:${idx + 1}`;
+        if (!remappedOverrides.has(targetId)) remappedOverrides.set(targetId, {});
+        remappedOverrides.get(targetId)![newKey] = override;
+        return newKey;
+      }),
+    };
+  });
   const activeKeysByTarget = new Map<string, Set<string>>();
   normalizedShared.forEach((presentation) => presentation.target_ids.forEach((targetId, idx) => {
     const key = presentation.legacy_override_keys?.[idx];
@@ -70,7 +81,7 @@ export function normalizeSharedPost(post_number: number, physicalTargets: Physic
     if (seen.has(id)) return;
     seen.add(id);
     const activeKeys = activeKeysByTarget.get(id) || new Set<string>();
-    const legacy_overrides = Object.fromEntries(Object.entries(t.legacy_overrides || {}).filter(([key]) => activeKeys.has(key)));
+    const legacy_overrides = Object.fromEntries(Object.entries(remappedOverrides.get(id) || {}).filter(([key]) => activeKeys.has(key)));
     const hasActiveOverrides = Object.keys(legacy_overrides).length > 0;
     if (!hasActiveOverrides) (t.legacy_warnings || []).forEach((warning) => cleanedWarnings.delete(warning));
     unique.push({
@@ -88,8 +99,9 @@ export function normalizeSharedPost(post_number: number, physicalTargets: Physic
 export function descriptionFromPhysicalTarget(pt: PhysicalTarget): TargetDescription { return { target_label: pt.target_label, target_type: pt.target_type, direction: pt.direction, angle: pt.angle, speed: pt.speed, distance: pt.distance, difficulty: pt.difficulty, notes: pt.notes }; }
 export function compilePresentations(physicalTargets: PhysicalTarget[], sharedPresentations: SharedPresentation[]): Presentation[] { const byId = new Map(physicalTargets.map((t)=>[t.id,t])); let position = 1; return sharedPresentations.map((p,i)=>{ const targets = Array.from({ length: targetCountFor(p.presentation_type) }, (_, idx) => { const pt = byId.get(p.target_ids[idx]); const overrideKey = p.legacy_override_keys?.[idx]; const override = overrideKey && pt?.legacy_overrides?.[overrideKey] ? pt.legacy_overrides[overrideKey] : null; const desc = pt ? (override ? { ...override, target_label: pt.target_label } : descriptionFromPhysicalTarget(pt)) : null; return { ...blankTarget(position + idx, idx + 1), ...(desc || {}), target_position: position + idx, position_in_presentation: idx + 1 }; }); position += targets.length; return { presentation_number: i+1, presentation_type: p.presentation_type, target_ids: p.target_ids, legacy_override_keys: p.legacy_override_keys, targets }; }); }
 export function resolvePhysicalTargetOverrides(post: PostTargets, targetId: string): PostTargets { const target = post.physicalTargets.find((t) => t.id === targetId); const warningsToRemove = new Set([...(target?.legacy_warnings || []), ...(target ? [`Target ${normalizeTargetLabel(target.target_label)} `] : [])]); const physicalTargets = post.physicalTargets.map((item) => item.id === targetId ? { ...item, legacy_conflict: false, legacy_warnings: [], legacy_overrides: undefined } : item); const sharedPresentations = post.sharedPresentations.map((presentation) => ({ ...presentation, legacy_override_keys: presentation.legacy_override_keys?.map((key, idx) => presentation.target_ids[idx] === targetId ? "" : key) || [] })); const compatibilityWarnings = (post.compatibilityWarnings || []).filter((warning) => !Array.from(warningsToRemove).some((text) => text && warning.includes(text))); return normalizeSharedPost(post.post_number, physicalTargets, sharedPresentations, post.instructions, post.source_text, compatibilityWarnings); }
-export function duplicateSharedPresentation(post: PostTargets, index: number): PostTargets { const source = post.sharedPresentations[index]; if (!source) return post; return normalizeSharedPost(post.post_number, post.physicalTargets, [...post.sharedPresentations, { presentation_number: post.sharedPresentations.length + 1, presentation_type: source.presentation_type, target_ids: [...source.target_ids], legacy_override_keys: [] }], post.instructions, post.source_text, post.compatibilityWarnings || []); }
-export function copyPresentationToRemaining(post: PostTargets, index: number, expectedPresentationCount: number): PostTargets { const source = post.sharedPresentations[index]; if (!source) return post; const next = [...post.sharedPresentations]; for (let i = index + 1; i < expectedPresentationCount; i++) { const existing = next[i]; const copy = { presentation_number: i + 1, presentation_type: source.presentation_type, target_ids: [...source.target_ids], legacy_override_keys: [] }; if (!existing) next[i] = copy; else if (!existing.target_ids.some(Boolean)) next[i] = copy; } return normalizeSharedPost(post.post_number, post.physicalTargets, next, post.instructions, post.source_text, post.compatibilityWarnings || []); }
+export function isSharedPresentationComplete(post: PostTargets, presentation: SharedPresentation | undefined) { if (!presentation) return false; const byId = new Map(post.physicalTargets.map((target) => [target.id, target])); return Array.from({ length: targetCountFor(presentation.presentation_type) }, (_, idx) => presentation.target_ids[idx] || "").every((targetId) => { const target = byId.get(targetId); return Boolean(targetId && target && normalizeTargetLabel(target.target_label)); }); }
+export function duplicateSharedPresentation(post: PostTargets, index: number): PostTargets { const source = post.sharedPresentations[index]; if (!isSharedPresentationComplete(post, source)) return post; return normalizeSharedPost(post.post_number, post.physicalTargets, [...post.sharedPresentations, { presentation_number: post.sharedPresentations.length + 1, presentation_type: source!.presentation_type, target_ids: [...source!.target_ids], legacy_override_keys: [] }], post.instructions, post.source_text, post.compatibilityWarnings || []); }
+export function copyPresentationToRemaining(post: PostTargets, index: number, expectedPresentationCount: number): PostTargets { const source = post.sharedPresentations[index]; if (!isSharedPresentationComplete(post, source)) return post; const next = [...post.sharedPresentations]; for (let i = index + 1; i < expectedPresentationCount; i++) { const existing = next[i]; const copy = { presentation_number: i + 1, presentation_type: source!.presentation_type, target_ids: [...source!.target_ids], legacy_override_keys: [] }; if (!existing) next[i] = copy; else if (!existing.target_ids.some(Boolean)) next[i] = copy; } return normalizeSharedPost(post.post_number, post.physicalTargets, next, post.instructions, post.source_text, post.compatibilityWarnings || []); }
 export function normalizePost(post_number: number, presentations: Presentation[], instructions = "", source_text = ""): PostTargets { return rehydrateSharedPost({ post_number, instructions, source_text, presentations: normalizeOccurrencePresentations(presentations) }); }
 function normalizeOccurrencePresentations(presentations: Presentation[]) { let position = 1; return presentations.map((p, i) => { const targets = Array.from({ length: targetCountFor(p.presentation_type) }, (_, idx) => { const oldTarget = p.targets[idx] || {}; return { ...blankTarget(position + idx, idx + 1), ...oldTarget, target_position: position + idx, position_in_presentation: idx + 1 }; }); position += targets.length; return { presentation_number: i + 1, presentation_type: p.presentation_type, targets }; }); }
 export function emptyPosts(count: number): PostTargets[] { return Array.from({ length: count }, (_, i) => normalizeSharedPost(i + 1)); }
