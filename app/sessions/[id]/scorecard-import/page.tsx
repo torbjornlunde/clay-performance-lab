@@ -12,6 +12,15 @@ import {
 import {
   applyUserCorrection,
   bulkResolveUnknowns,
+  bulkResolveUnknownsForPost,
+  confirmCurrentPostReview,
+  createReviewPersistenceSnapshot,
+  deriveCurrentPostReconciliation,
+  findNextReviewPost,
+  getPostReviewStatus,
+  normalizeReviewProgress,
+  resetReviewProgress,
+  unresolvedTargetsForPost,
   summarizeGrid,
   type NormalizedScorecardAnalysis,
   type ScorecardCell,
@@ -41,6 +50,7 @@ import {
   timeoutMessage,
   type ActiveScorecardOperation,
 } from "@/lib/scorecards/scorecardImportState";
+import { createOrderedPendingPersistence } from "@/lib/scorecards/orderedPendingPersistence";
 
 const MAX_SOURCE = 15 * 1024 * 1024,
   MAX_UPLOAD = 4 * 1024 * 1024;
@@ -86,6 +96,10 @@ export default function Page() {
   const [grid, setGrid] = useState<ScorecardCell[]>([]);
   const [error, setError] = useState("");
   const [ack, setAck] = useState(false);
+  const [currentPost, setCurrentPost] = useState(1);
+  const [reviewedPosts, setReviewedPosts] = useState<number[]>([]);
+  const [reviewMessage, setReviewMessage] = useState("");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const [scoreChoice, setScoreChoice] = useState<
     "use_scorecard" | "keep_existing"
   >("use_scorecard");
@@ -97,9 +111,69 @@ export default function Page() {
   const [crop, setCrop] = useState<NormalizedCrop>(fullImageCrop);
   const [viewer, setViewer] = useState<"analyzed" | "original" | null>(null);
   const pendingRef = useRef<PendingScorecardPhoto | null>(null);
+  const persistenceRef = useRef<ReturnType<typeof createOrderedPendingPersistence<PendingScorecardPhoto>> | null>(null);
   function rememberPending(next: PendingScorecardPhoto | null) {
     pendingRef.current = next;
+    if (next?.localReviewRevision) persistenceRef.current?.noteRevision(next.localReviewRevision);
     setPending(next);
+  }
+  function currentPostReconciliation(postNumber: number) {
+    const row = pendingRef.current?.analysis?.shooterRows.find((r) => r.candidateId === selected);
+    const post = row?.posts.find((x) => x.postNumber === postNumber);
+    const cells = grid.filter((c) => c.postNumber === postNumber);
+    return deriveCurrentPostReconciliation({
+      currentCells: cells,
+      detectedPostScore: post?.detectedPostScore ?? null,
+      detectedPostScoreConfidence: post?.detectedPostScoreConfidence ?? null,
+      expectedTargetCount: cells.length,
+      originalStatus: post?.reconciliationStatus,
+      originalWarning: post?.reconciliationWarning,
+    });
+  }
+  function postStatusMap() {
+    const map: Record<number, any> = {};
+    for (let post = 1; post <= (postCount || 0); post++) map[post] = currentPostReconciliation(post).reconciliationStatus;
+    return map;
+  }
+  type PersistenceResult = { ok: true } | { ok: false; error: string };
+  function persistence() {
+    if (!persistenceRef.current) {
+      persistenceRef.current = createOrderedPendingPersistence<PendingScorecardPhoto>({
+        write: savePendingScorecardPhoto,
+        delete: deletePendingScorecardPhoto,
+        currentRecord: () => pendingRef.current,
+        remember: rememberPending,
+        onStatus: (status, message) => { setSaveStatus(status); if (message) setReviewMessage(message); },
+      });
+    }
+    return persistenceRef.current;
+  }
+  function nextRevision() { return persistence().nextRevision(); }
+  function invalidatePendingGeneration() { return persistence().invalidate(); }
+  function enqueuePendingWrite(next: PendingScorecardPhoto, options: { generation?: number; showStatus?: boolean; commit?: boolean } = {}): Promise<PersistenceResult> {
+    return persistence().enqueueWrite(next, { generation: options.generation, status: options.showStatus, commit: options.commit });
+  }
+  function enqueuePendingDelete(sessionId: string, clientImportId: string | null): Promise<PersistenceResult> {
+    return persistence().enqueueDelete(sessionId, clientImportId);
+  }
+  async function flushPendingWrites() { await persistence().flush(); }
+  function applyReviewReset(nextGrid: ScorecardCell[], selectedShooterId: string | null, base = pendingRef.current, persist = true) {
+    const reset = resetReviewProgress(nextGrid, selectedShooterId);
+    setSelected(reset.selectedShooterCandidateId);
+    setGrid(reset.reviewedGrid);
+    setCurrentPost(reset.currentReviewPost);
+    setReviewedPosts(reset.reviewedPostNumbers);
+    setAck(Boolean(reset.acknowledgeAmbiguousExisting));
+    setReviewMessage("");
+    if (base && persist) {
+      const revision = nextRevision();
+      const next = createReviewPersistenceSnapshot(base, {
+        ...reset,
+        reviewedGridFingerprint: base.cropFingerprint || base.imageFingerprint,
+      }, revision);
+      rememberPending(next);
+      void enqueuePendingWrite(next);
+    }
   }
   useEffect(() => {
     mounted.current = true;
@@ -177,7 +251,11 @@ export default function Page() {
       setAck(Boolean(p.acknowledgeAmbiguousExisting));
       setScoreChoice(p.scoreChoice || "use_scorecard");
       const row = p.analysis?.shooterRows.find((r) => r.candidateId === sid);
-      setGrid(p.reviewedGrid || row?.grid || []);
+      const restoredGrid = p.reviewedGrid || row?.grid || [];
+      setGrid(restoredGrid);
+      setCurrentPost(p.currentReviewPost || 1);
+      setReviewedPosts(p.reviewedPostNumbers || []);
+      persistence().noteRevision(p.localReviewRevision || 0);
       if (navigator.onLine && canReconnectRetry(p)) void analyze(p);
     }
   }
@@ -210,6 +288,15 @@ export default function Page() {
     ? safeSetupResult.setup.targetsPerPost
     : Number(session?.targets_per_post || profile?.defaultTargetsPerSeries);
   const setupOk = Boolean(safeSetupResult?.ok);
+  useEffect(() => {
+    if (!grid.length || !postCount) return;
+    const normalized = normalizeReviewProgress({ grid, postCount, currentReviewPost: currentPost, reviewedPostNumbers: reviewedPosts, postStatuses: postStatusMap() });
+    if (normalized.currentReviewPost !== currentPost || normalized.reviewedPostNumbers.join(",") !== reviewedPosts.join(",")) {
+      setCurrentPost(normalized.currentReviewPost);
+      setReviewedPosts(normalized.reviewedPostNumbers);
+      if (pendingRef.current) persistReview(grid, { currentReviewPost: normalized.currentReviewPost, reviewedPostNumbers: normalized.reviewedPostNumbers });
+    }
+  }, [grid.length, postCount, selected]);
   useEffect(() => {
     let cancelled = false;
     async function compute() {
@@ -284,10 +371,16 @@ export default function Page() {
       updatedAt: new Date().toISOString(),
       status: navigator.onLine ? "saved_on_device" : "waiting_for_connection",
     };
-    await savePendingScorecardPhoto(rec);
-    rememberPending(rec);
+    const generation = invalidatePendingGeneration();
+    const recWithRevision = { ...rec, localReviewRevision: nextRevision() };
+    rememberPending(recWithRevision);
+    const saved = await enqueuePendingWrite(recWithRevision, { generation });
+    if (!saved.ok) { setError(saved.error); return; }
     setSelected(null);
     setGrid([]);
+    setCurrentPost(1);
+    setReviewedPosts([]);
+    setReviewMessage("");
     setAck(false);
     setScoreChoice("use_scorecard");
     setCrop(fullImageCrop);
@@ -300,6 +393,9 @@ export default function Page() {
     setError("");
     setSelected(null);
     setGrid([]);
+    setCurrentPost(1);
+    setReviewedPosts([]);
+    setReviewMessage("");
     setAck(false);
     setStage("Preparing image");
     setElapsed(0);
@@ -323,15 +419,20 @@ export default function Page() {
         setupFingerprint: null,
         resolvedSetup: null,
         selectedShooterCandidateId: null,
+        currentReviewPost: 1,
+        reviewedPostNumbers: [],
         acknowledgeAmbiguousExisting: false,
         preparationState: "ready",
         status: navigator.onLine ? "saved_on_device" : "waiting_for_connection",
         lastError: null,
       };
-      await savePendingScorecardPhoto(next);
-      rememberPending(next);
+      const generation = invalidatePendingGeneration();
+      const nextWithRevision = { ...next, localReviewRevision: nextRevision() };
+      rememberPending(nextWithRevision);
+      const saved = await enqueuePendingWrite(nextWithRevision, { generation });
+      if (!saved.ok) throw new Error(saved.error);
       setCrop(c);
-      await analyze(next);
+      await analyze(nextWithRevision);
     } catch (e: any) {
       setStage("");
       setError(
@@ -366,13 +467,21 @@ export default function Page() {
       setupFingerprint: null,
       resolvedSetup: null,
       selectedShooterCandidateId: null,
+      currentReviewPost: 1,
+      reviewedPostNumbers: [],
       acknowledgeAmbiguousExisting: false,
       preparationState: "ready" as const,
     };
-    rememberPending(analyzing);
     setSelected(null);
     setGrid([]);
-    await savePendingScorecardPhoto(analyzing);
+    setCurrentPost(1);
+    setReviewedPosts([]);
+    setReviewMessage("");
+    const analyzingGeneration = invalidatePendingGeneration();
+    const analyzingWithRevision = { ...analyzing, localReviewRevision: nextRevision() };
+    rememberPending(analyzingWithRevision);
+    const analyzingSaved = await enqueuePendingWrite(analyzingWithRevision, { generation: analyzingGeneration });
+    if (!analyzingSaved.ok) { setError(analyzingSaved.error); return; }
     if (!navigator.onLine) return;
     try {
       abortRef.current?.abort();
@@ -426,14 +535,17 @@ export default function Page() {
         reviewedGridFingerprint: auto
           ? rec.cropFingerprint || rec.imageFingerprint
           : null,
+        currentReviewPost: 1,
+        reviewedPostNumbers: [],
         preparationState: "review" as const,
         acknowledgeAmbiguousExisting: false,
         updatedAt: new Date().toISOString(),
       };
-      await savePendingScorecardPhoto(ready);
-      rememberPending(ready);
-      setSelected(auto);
-      setGrid(auto ? analysis.shooterRows[0].grid : []);
+      const readyWithRevision = { ...ready, localReviewRevision: nextRevision() };
+      rememberPending(readyWithRevision);
+      const readySaved = await enqueuePendingWrite(readyWithRevision);
+      if (!readySaved.ok) throw new Error(readySaved.error);
+      applyReviewReset(auto ? analysis.shooterRows[0].grid : [], auto, readyWithRevision, false);
       setAck(false);
       setStage("Preparing review");
       if (timerRef.current) {
@@ -463,8 +575,9 @@ export default function Page() {
         shouldIgnoreScorecardResponse(active.current, op, pendingRef.current)
       )
         return;
-      await savePendingScorecardPhoto(failed);
-      rememberPending(failed);
+      const failedWithRevision = { ...failed, localReviewRevision: nextRevision() };
+      rememberPending(failedWithRevision);
+      await enqueuePendingWrite(failedWithRevision);
       setError(failed.lastError || "");
       setStage("");
     }
@@ -474,49 +587,78 @@ export default function Page() {
       (r) => r.candidateId === cid,
     );
     if (!row || !pending) return;
-    const next = {
-      ...pending,
-      selectedShooterCandidateId: cid,
-      reviewedGridFingerprint:
-        pending.cropFingerprint || pending.imageFingerprint,
-    };
-    void savePendingScorecardPhoto({ ...next, reviewedGrid: row.grid });
-    rememberPending({ ...next, reviewedGrid: row.grid });
-    setSelected(cid);
-    setGrid(row.grid);
+    applyReviewReset(row.grid, cid, pending, true);
+  }
+  function buildReviewSnapshot(nextGrid: ScorecardCell[], extra: Partial<PendingScorecardPhoto> = {}) {
+    if (!pendingRef.current) return null;
+    const revision = nextRevision();
+    return createReviewPersistenceSnapshot(pendingRef.current, {
+      reviewedGrid: nextGrid,
+      selectedShooterCandidateId: selected,
+      scoreChoice,
+      acknowledgeAmbiguousExisting: ack,
+      currentReviewPost: currentPost,
+      reviewedPostNumbers: reviewedPosts,
+      reviewedGridFingerprint: pendingRef.current.cropFingerprint || pendingRef.current.imageFingerprint,
+      ...extra,
+    }, revision);
   }
   function persistReview(
     nextGrid: ScorecardCell[],
     extra: Partial<PendingScorecardPhoto> = {},
-  ) {
+  ): Promise<PersistenceResult> {
     setGrid(nextGrid);
-    if (pendingRef.current) {
-      const next = {
-        ...pendingRef.current,
-        ...extra,
-        reviewedGrid: nextGrid,
-        selectedShooterCandidateId: selected,
-        scoreChoice,
-        acknowledgeAmbiguousExisting: ack,
-        reviewedGridFingerprint: pendingRef.current
-          ? pendingRef.current.cropFingerprint ||
-            pendingRef.current.imageFingerprint
-          : null,
-      };
-      rememberPending(next);
-      void savePendingScorecardPhoto(next);
-    }
+    const next = buildReviewSnapshot(nextGrid, extra);
+    if (!next) return Promise.resolve({ ok: false, error: "No pending scorecard review to save." });
+    rememberPending(next);
+    return enqueuePendingWrite(next);
   }
   function setCell(c: ScorecardCell, result: ScorecardOutcome) {
     persistReview(
       applyUserCorrection(grid, c.postNumber, c.targetNumber, result),
     );
   }
+  async function savePostAndNext() {
+    const outcome = confirmCurrentPostReview({ grid, currentPost, postCount, reviewedPostNumbers: reviewedPosts, postStatuses: postStatusMap() });
+    if (!outcome.ok) {
+      const result = await persistReview(grid, { currentReviewPost: currentPost, reviewedPostNumbers: reviewedPosts });
+      setReviewMessage(result.ok ? outcome.message : result.error);
+      return;
+    }
+    const next = buildReviewSnapshot(grid, { currentReviewPost: outcome.currentReviewPost, reviewedPostNumbers: outcome.reviewedPostNumbers });
+    if (!next) { setReviewMessage("No pending scorecard review to save."); return; }
+    const result = await enqueuePendingWrite(next, { commit: false });
+    if (!result.ok) { setReviewMessage(result.error); return; }
+    rememberPending(next);
+    setReviewedPosts(outcome.reviewedPostNumbers);
+    setCurrentPost(outcome.currentReviewPost);
+    setReviewMessage(outcome.message);
+  }
+  function navigatePost(post: number) {
+    const safe = Math.max(1, Math.min(postCount || 1, post));
+    setCurrentPost(safe);
+    persistReview(grid, { currentReviewPost: safe, reviewedPostNumbers: reviewedPosts });
+  }
+
+  function currentApplyIssues() {
+    const issues: Array<{ post: number; message: string }> = [];
+    for (let post = 1; post <= (postCount || 0); post++) {
+      const cells = grid.filter((c) => c.postNumber === post);
+      const rec = currentPostReconciliation(post);
+      const status = getPostReviewStatus({ cells, reconciliationStatus: rec.reconciliationStatus, explicitlyReviewed: reviewedPosts.includes(post) });
+      if (status === "Conflict") issues.push({ post, message: `Post ${post}: ${rec.reconciliationWarning || "reconciliation conflict"}` });
+      else if (status === "Needs review") issues.push({ post, message: `Post ${post}: ${unresolvedTargetsForPost(grid, post).length ? unresolvedTargetsForPost(grid, post).join(", ") + " target(s) still need review" : "needs review"}` });
+    }
+    return issues;
+  }
   async function apply() {
     if (
       !pending ||
       !selected ||
       summary.unknowns > 0 ||
+      saveStatus === "saving" ||
+      saveStatus === "failed" ||
+      currentApplyIssues().some((issue) => issue.message) ||
       !canApplyReview(pending, pending.reviewedGridFingerprint) ||
       setupBlocksReview
     )
@@ -535,8 +677,15 @@ export default function Page() {
           pendingRef.current.imageFingerprint
         : null,
     };
-    rememberPending(applying);
-    await savePendingScorecardPhoto(applying);
+    const previousPending = pendingRef.current;
+    const applyingWithRevision = { ...applying, localReviewRevision: nextRevision() };
+    rememberPending(applyingWithRevision);
+    const applyingSaved = await enqueuePendingWrite(applyingWithRevision);
+    if (!applyingSaved.ok) {
+      if (previousPending) rememberPending({ ...previousPending, status: "ready_for_review" as const, localReviewRevision: nextRevision() });
+      setError(applyingSaved.error);
+      return;
+    }
     try {
       const r = await fetch(`/api/sessions/${id}/scorecard/apply`, {
         method: "POST",
@@ -563,8 +712,10 @@ export default function Page() {
       if (!r.ok) {
         throw new Error(json.error?.message || "Apply failed.");
       }
-      await deletePendingScorecardPhoto(id);
-      rememberPending(null);
+      await flushPendingWrites();
+      const deleted = await enqueuePendingDelete(id, pendingRef.current?.clientImportId || null);
+      if (!deleted.ok) { setError(`${deleted.error} Import was applied; this local cleanup can be retried safely.`); rememberPending({ ...applyingWithRevision, status: "ready_for_review" as const, lastError: deleted.error, localReviewRevision: nextRevision() }); }
+      else rememberPending(null);
       const result = json.result || {};
       const qs = new URLSearchParams({
         score: String(result.score ?? summary.score),
@@ -576,12 +727,13 @@ export default function Page() {
       router.push(`/sessions/${id}/analysis?scorecardImported=1&${qs.toString()}`);
     } catch (e: any) {
       const retryable = {
-        ...applying,
+        ...applyingWithRevision,
         status: "ready_for_review" as const,
         lastError: e.message || "Apply failed",
       };
-      await savePendingScorecardPhoto(retryable);
-      rememberPending(retryable);
+      const retryableWithRevision = { ...retryable, localReviewRevision: nextRevision() };
+      rememberPending(retryableWithRevision);
+      await enqueuePendingWrite(retryableWithRevision);
       setError(retryable.lastError || "Apply failed");
     }
   }
@@ -611,13 +763,16 @@ export default function Page() {
         resolvedSetup: null,
         selectedShooterCandidateId: null,
       };
-      rememberPending(next);
-      void savePendingScorecardPhoto(next);
+      const nextWithRevision = { ...next, localReviewRevision: nextRevision() };
+      rememberPending(nextWithRevision);
+      void enqueuePendingWrite(nextWithRevision);
     }
   }
   async function discard() {
     if (confirm("Discard this local scorecard photo and review?")) {
-      await deletePendingScorecardPhoto(id);
+      await flushPendingWrites();
+      const deleted = await enqueuePendingDelete(id, pendingRef.current?.clientImportId || null);
+      if (!deleted.ok) { setError(deleted.error); return; }
       rememberPending(null);
       setGrid([]);
       setSelected(null);
@@ -691,12 +846,14 @@ export default function Page() {
             </p>
             <div className="btns">
               <button
+                type="button"
                 className="button"
                 onClick={() => camera.current?.click()}
               >
                 Take photo
               </button>
               <button
+                type="button"
                 className="button secondary"
                 onClick={() => library.current?.click()}
               >
@@ -724,6 +881,7 @@ export default function Page() {
             <div className="btns">
               {pending && (
                 <button
+                  type="button"
                   className="button secondary smallButton"
                   onClick={() => setupBlocksReview ? analyze(pending) : prepareAndAnalyze(crop)}
                   disabled={pending.status === "analyzing"}
@@ -737,6 +895,7 @@ export default function Page() {
               )}
               {pending && (
                 <button
+                  type="button"
                   className="button secondary smallButton"
                   onClick={discard}
                 >
@@ -755,12 +914,14 @@ export default function Page() {
               </p>
               <div className="btns">
                 <button
+                  type="button"
                   className="button"
                   onClick={() => prepareAndAnalyze(fullImageCrop)}
                 >
                   Use full image
                 </button>
                 <button
+                  type="button"
                   className="button secondary"
                   onClick={() =>
                     setCrop({
@@ -775,6 +936,7 @@ export default function Page() {
                   Crop to my scorecard
                 </button>
                 <button
+                  type="button"
                   className="button secondary"
                   onClick={() => prepareAndAnalyze(crop)}
                 >
@@ -797,6 +959,7 @@ export default function Page() {
                     Large or detailed images can take up to about a minute.
                   </p>
                   <button
+                    type="button"
                     className="secondary smallButton"
                     onClick={cancelAnalysis}
                   >
@@ -815,7 +978,7 @@ export default function Page() {
             <div className="card error">
               Post setup has changed since this scorecard was analyzed. Analyze the saved image again before continuing. The saved image is still on this device.
               <div className="btns">
-                <button className="button" onClick={() => analyze(pending)} disabled={pending.status === "analyzing"}>
+                <button type="button" className="button" onClick={() => analyze(pending)} disabled={pending.status === "analyzing"}>
                   Analyze saved image again
                 </button>
               </div>
@@ -826,6 +989,7 @@ export default function Page() {
               <h3>Shooter row</h3>
               {pending.analysis.shooterRows.map((r) => (
                 <button
+                  type="button"
                   key={r.candidateId}
                   className={`button ${selected === r.candidateId ? "" : "secondary"}`}
                   onClick={() => selectShooter(r.candidateId)}
@@ -840,6 +1004,7 @@ export default function Page() {
             <div className="card">
               <div className="reviewReferenceBar">
                 <button
+                  type="button"
                   className="thumbnailButton"
                   onClick={() => setViewer("analyzed")}
                 >
@@ -855,6 +1020,7 @@ export default function Page() {
                     : "this crop"}
                 </span>
                 <button
+                  type="button"
                   className="secondary smallButton"
                   onClick={() => setViewer("analyzed")}
                 >
@@ -862,6 +1028,7 @@ export default function Page() {
                 </button>
                 {!isFullImageCrop(pending?.crop) && (
                   <button
+                    type="button"
                     className="secondary smallButton"
                     onClick={() => setViewer("original")}
                   >
@@ -871,7 +1038,7 @@ export default function Page() {
               </div>
               {viewer && previewUrl && (
                 <div className="imageLightbox" role="dialog" aria-modal="true">
-                  <button className="button" onClick={() => setViewer(null)}>
+                  <button type="button" className="button" onClick={() => setViewer(null)}>
                     Close
                   </button>
                   <img
@@ -884,75 +1051,91 @@ export default function Page() {
                   />
                 </div>
               )}
-              <h3>Review grid</h3>
+              <h3>Review one {profile?.reviewLabel?.toLowerCase() || "post"} at a time</h3>
               <p>
-                Score {summary.score}/{summary.totalTargets} · Hits{" "}
-                {summary.hits} · Misses {summary.misses} · Unknown{" "}
-                {summary.unknowns}
+                {saveStatus === "saving" ? "Saving on device" : saveStatus === "failed" ? "Save failed" : "Saved on this device"} · Score {summary.score}/{summary.totalTargets} · Unknown {summary.unknowns}
               </p>
-              <div className="btns">
-                <button
-                  className="button secondary smallButton"
-                  onClick={() =>
-                    persistReview(
-                      bulkResolveUnknowns(
-                        grid,
-                        "hit",
-                        confirm("Mark all unknown targets as hit?"),
-                      ).grid,
-                    )
-                  }
-                >
-                  Mark all unknown as hit
-                </button>
-                <button
-                  className="button secondary smallButton"
-                  onClick={() =>
-                    persistReview(
-                      bulkResolveUnknowns(
-                        grid,
-                        "miss",
-                        confirm("Mark all unknown targets as miss?"),
-                      ).grid,
-                    )
-                  }
-                >
-                  Mark all unknown as miss
-                </button>
+              <div className="postNavigator" aria-label="Scorecard post navigator">
+                {Array.from({ length: postCount }, (_, pi) => {
+                  const post = pi + 1;
+                  const postCells = grid.filter((c) => c.postNumber === post);
+                  const postSummary = summarizeGrid(postCells);
+                  const postMeta = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected)?.posts.find((x) => x.postNumber === post);
+                  const currentRec = currentPostReconciliation(post); const status = getPostReviewStatus({ cells: postCells, reconciliationStatus: currentRec.reconciliationStatus, explicitlyReviewed: reviewedPosts.includes(post) });
+                  return <button type="button" key={post} className={`postNavButton ${post === currentPost ? "selected" : ""}`} onClick={() => navigatePost(post)}>
+                    <strong>{profile?.reviewLabel || "Post"} {post}</strong>
+                    <span>{postSummary.score}/{postCells.length} · {status}</span>
+                  </button>;
+                })}
               </div>
-              {Array.from({ length: postCount }, (_, pi) => (
-                <div className="subcard" key={pi}>
-                  <h4>
-                    {profile?.reviewLabel || "Series"} {pi + 1}
-                  </h4>
+              {(() => {
+                const postCells = grid.filter((c) => c.postNumber === currentPost);
+                const postSummary = summarizeGrid(postCells);
+                const postMeta = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected)?.posts.find((x) => x.postNumber === currentPost);
+                const unknownCount = postCells.filter((c) => c.result === "unknown").length;
+                const detectedPostScore = postMeta?.detectedPostScore ?? null;
+                const detectedConfidence = postMeta?.detectedPostScoreConfidence ? `${postMeta.detectedPostScoreConfidence[0].toUpperCase()}${postMeta.detectedPostScoreConfidence.slice(1)} confidence` : "confidence not read";
+                const currentRec = currentPostReconciliation(currentPost);
+                return <div className="subcard currentScorecardPost">
+                  <h4>{profile?.reviewLabel || "Post"} {currentPost}</h4>
+                  <p className="small">Detected post score: <strong>{detectedPostScore === null ? "Not read" : `${detectedPostScore}/${postCells.length}`}</strong> · {detectedConfidence} · Current reviewed score: <strong>{postSummary.score}/{postCells.length}</strong></p>
+                  {detectedPostScore !== null && detectedPostScore !== postSummary.score && <div className="warning small">Detected post score and reviewed score differ. Review this post before applying.</div>}
+                  {currentRec.reconciliationWarning && <div className="warning small">{currentRec.reconciliationWarning}</div>}
                   <div className="scorecardGrid">
-                    {grid
-                      .filter((c) => c.postNumber === pi + 1)
-                      .map((c) => (
-                        <button
-                          key={`${c.postNumber}-${c.targetNumber}`}
-                          className={`scorecardCell ${c.result}`}
-                          onClick={() =>
-                            setCell(
-                              c,
-                              c.result === "hit"
-                                ? "miss"
-                                : c.result === "miss"
-                                  ? "unknown"
-                                  : "hit",
-                            )
-                          }
-                        >
-                          <strong>{c.targetNumber}</strong>
-                          <span>{c.result}</span>
-                          {c.confidence !== "high" && (
-                            <small>{c.confidence}</small>
-                          )}
-                        </button>
-                      ))}
+                    {postCells.map((c) => (
+                      <button
+                        type="button"
+                        key={`${c.postNumber}-${c.targetNumber}`}
+                        className={`scorecardCell ${c.result}`}
+                        onClick={() => setCell(c, c.result === "hit" ? "miss" : c.result === "miss" ? "unknown" : "hit")}
+                      >
+                        <strong>{c.targetNumber}</strong>
+                        <span>{c.result}</span>
+                        {c.observedMarkCategory && <small>{c.observedMarkCategory.replace("_", " ")}</small>}
+                        {c.confidence !== "high" && <small>{c.confidence}</small>}
+                      </button>
+                    ))}
                   </div>
+                  {reviewMessage && <div className={saveStatus === "failed" ? "error small" : "notice small"}>{reviewMessage}</div>}
+                  <div className="btns">
+                    <button type="button" className="button secondary smallButton" disabled={currentPost <= 1} onClick={() => navigatePost(currentPost - 1)}>Previous</button>
+                    <button type="button" className="button secondary smallButton" disabled={currentPost >= postCount} onClick={() => navigatePost(currentPost + 1)}>Next</button>
+                    <button type="button" className="button" onClick={savePostAndNext}>Save post and next</button>
+                  </div>
+                  <div className="btns">
+                    <button type="button" className="button secondary smallButton" disabled={!unknownCount} onClick={() => persistReview(bulkResolveUnknownsForPost(grid, currentPost, "hit", confirm(`Mark ${unknownCount} unknown targets in ${profile?.reviewLabel || "Post"} ${currentPost} as hit?`)).grid)}>Mark unknowns in {profile?.reviewLabel || "Post"} {currentPost} as hit</button>
+                    <button type="button" className="button secondary smallButton" disabled={!unknownCount} onClick={() => persistReview(bulkResolveUnknownsForPost(grid, currentPost, "miss", confirm(`Mark ${unknownCount} unknown targets in ${profile?.reviewLabel || "Post"} ${currentPost} as miss?`)).grid)}>Mark unknowns in {profile?.reviewLabel || "Post"} {currentPost} as miss</button>
+                  </div>
+                </div>;
+              })()}
+              <details className="scorecardAdvancedBulk">
+                <summary>Advanced whole-card actions</summary>
+                <div className="btns">
+                  <button type="button" className="button secondary smallButton" onClick={() => persistReview(bulkResolveUnknowns(grid, "hit", confirm(`Advanced action: mark all ${summary.unknowns} unknown targets on the whole card as hit?`)).grid)}>Mark all unknown as hit</button>
+                  <button type="button" className="button secondary smallButton" onClick={() => persistReview(bulkResolveUnknowns(grid, "miss", confirm(`Advanced action: mark all ${summary.unknowns} unknown targets on the whole card as miss?`)).grid)}>Mark all unknown as miss</button>
                 </div>
-              ))}
+              </details>
+              <div className="subcard finalScorecardSummary">
+                <h4>Final review</h4>
+                {(() => {
+                  const row = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected);
+                  const detected = row?.detectedScore ?? null;
+                  const official = typeof session.own_score === "number" ? session.own_score : null;
+                  const diffDetected = detected === null ? "Not read" : `${summary.score - detected >= 0 ? "+" : ""}${summary.score - detected}`;
+                  const diffOfficial = official === null ? "Not recorded" : `${summary.score - official >= 0 ? "+" : ""}${summary.score - official}`;
+                  return <div className="compactSummary">
+                    <p><strong>Reviewed score:</strong> {summary.score}/{summary.totalTargets}</p>
+                    <p><strong>Detected score:</strong> {detected === null ? "Not read" : `${detected}/${summary.totalTargets}`}</p>
+                    <p><strong>Existing official score:</strong> {official === null ? "Not recorded" : `${official}/${summary.totalTargets}`}</p>
+                    <p><strong>Difference from detected:</strong> {diffDetected}</p>
+                    <p><strong>Difference from official:</strong> {diffOfficial}</p>
+                    <p><strong>Hits:</strong> {summary.hits} · <strong>Misses:</strong> {summary.misses} · <strong>Unknowns:</strong> {summary.unknowns}</p>
+                  </div>;
+                })()}
+                <div className="compactSummary">
+                  {Array.from({ length: postCount }, (_, pi) => { const post = pi + 1; const postCells = grid.filter((c) => c.postNumber === post); const ps = summarizeGrid(postCells); const postMeta = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected)?.posts.find((x) => x.postNumber === post); const currentRec = currentPostReconciliation(post); const status = getPostReviewStatus({ cells: postCells, reconciliationStatus: currentRec.reconciliationStatus, explicitlyReviewed: reviewedPosts.includes(post) }); return <button type="button" className="postSummaryButton" key={post} onClick={() => navigatePost(post)}>{profile?.reviewLabel || "Post"} {post}: {ps.score}/{ps.totalTargets} · {status}</button>; })}
+                </div>
+              </div>
               {pending?.analysis?.warnings?.map((w) => (
                 <p className="small muted" key={w}>
                   {w}
@@ -966,7 +1149,7 @@ export default function Page() {
               </details>
               {summary.unknowns > 0 && (
                 <div className="error">
-                  Resolve every unknown target before applying.
+                  {unresolvedTargetsText(grid)}
                 </div>
               )}
               <label className="checkboxRow">
@@ -979,13 +1162,14 @@ export default function Page() {
                       const next = {
                         ...pendingRef.current,
                         acknowledgeAmbiguousExisting: e.target.checked,
+                        localReviewRevision: nextRevision(),
                       };
                       rememberPending(next);
-                      void savePendingScorecardPhoto(next);
+                      void enqueuePendingWrite(next);
                     }
                   }}
-                />{" "}
-                I understand ambiguous existing misses will be preserved.
+                />
+                <span>I understand ambiguous existing misses will be preserved.</span>
               </label>
               {session.own_score !== null &&
                 session.own_score !== summary.score && (
@@ -1005,9 +1189,10 @@ export default function Page() {
                           const next = {
                             ...pendingRef.current,
                             scoreChoice: value,
+                            localReviewRevision: nextRevision(),
                           };
                           rememberPending(next);
-                          void savePendingScorecardPhoto(next);
+                          void enqueuePendingWrite(next);
                         }
                       }}
                     >
@@ -1018,12 +1203,22 @@ export default function Page() {
                     </select>
                   </div>
                 )}
+              {currentApplyIssues().length > 0 && (
+                <div className="error">
+                  <strong>Scorecard cannot be applied:</strong>
+                  {currentApplyIssues().map((issue) => <button type="button" className="postSummaryButton" key={issue.post} onClick={() => navigatePost(issue.post)}>{issue.message}</button>)}
+                </div>
+              )}
               <div className="stickyApplyBar">
                 <button
+                  type="button"
                   className="button"
                   disabled={
                     !selected ||
                     summary.unknowns > 0 ||
+                    saveStatus === "saving" ||
+                    saveStatus === "failed" ||
+                    currentApplyIssues().some((issue) => issue.message) ||
                     pending?.status === "applying" ||
                     !canApplyReview(
                       pending,
@@ -1036,7 +1231,7 @@ export default function Page() {
                 >
                   {pending?.status === "applying"
                     ? "Applying..."
-                    : "Confirm import"}
+                    : "Apply reviewed scorecard"}
                 </button>
               </div>
             </div>
@@ -1045,6 +1240,14 @@ export default function Page() {
       )}
     </main>
   );
+}
+
+function unresolvedTargetsText(grid: ScorecardCell[]) {
+  const unknowns = grid.filter((c) => c.result === "unknown");
+  if (!unknowns.length) return "All targets are resolved.";
+  const byPost = new Map<number, number[]>();
+  for (const cell of unknowns) byPost.set(cell.postNumber, [...(byPost.get(cell.postNumber) || []), cell.targetNumber]);
+  return `${unknowns.length} targets still need review: ${Array.from(byPost.entries()).map(([post, targets]) => `Post ${post}: target${targets.length === 1 ? "" : "s"} ${targets.join(", ")}`).join("; ")}`;
 }
 
 function CropOverlay({

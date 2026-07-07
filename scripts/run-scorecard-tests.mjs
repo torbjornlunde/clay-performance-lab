@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-execSync('rm -rf .scorecard-test-build && npx tsc lib/scorecards/scorecardAnalysis.ts lib/scorecards/scorecardMissMapping.ts lib/scorecards/scorecardPhotos.ts lib/scorecards/scorecardSetup.ts lib/scorecards/scorecardProfiles.ts lib/disciplines.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM --outDir .scorecard-test-build --skipLibCheck', {stdio:'inherit'});
+execSync('rm -rf .scorecard-test-build && npx tsc lib/scorecards/scorecardAnalysis.ts lib/scorecards/orderedPendingPersistence.ts lib/scorecards/scorecardMissMapping.ts lib/scorecards/scorecardPhotos.ts lib/scorecards/scorecardSetup.ts lib/scorecards/scorecardProfiles.ts lib/disciplines.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM --outDir .scorecard-test-build --skipLibCheck', {stdio:'inherit'});
 const a = await import('../.scorecard-test-build/scorecards/scorecardAnalysis.js');
+const op = await import('../.scorecard-test-build/scorecards/orderedPendingPersistence.js');
 const m = await import('../.scorecard-test-build/scorecards/scorecardMissMapping.js');
 const q = await import('../.scorecard-test-build/scorecards/scorecardPhotos.js');
 const setup = await import('../.scorecard-test-build/scorecards/scorecardSetup.js');
@@ -59,6 +60,94 @@ assert.match(pageSource,/setupFingerprint/, 'pending review stores setup fingerp
 assert.match(pageSource,/Post setup has changed since this scorecard was analyzed/, 'UI blocks stale analyzed setup and keeps saved image for re-analysis');
 const analyzeSource = readFileSync('app/api/sessions/[id]/scorecard/analyze/route.ts','utf8'); assert.match(analyzeSource,/setupFingerprint/, 'analyze API returns setup fingerprint'); assert.match(analyzeSource,/resolvedSetup/, 'analyze API returns normalized resolved setup');
 const applySource = readFileSync('app/api/sessions/[id]/scorecard/apply/route.ts','utf8'); assert.match(applySource,/scorecard_setup_changed/, 'apply API uses dedicated setup-changed category'); assert.match(applySource,/body\.setupFingerprint/, 'apply API requires the reviewed setup fingerprint');
+
+const mk=(post,target,result='unknown',confidence='low',observedMarkCategory=null,rawMark=null,reviewed=false)=>({postNumber:post,targetNumber:target,result,rawMark,observedMarkCategory,confidence,warning:null,reviewed});
+let statusGrid=[mk(1,1,'hit','high'),mk(1,2,'unknown','low')];
+assert.equal(a.getPostReviewStatus({cells:statusGrid,reconciliationStatus:null,explicitlyReviewed:true}), 'Needs review', 'unresolved post cannot become Reviewed');
+assert.equal(a.confirmCurrentPostReview({grid:statusGrid,currentPost:1,postCount:1,reviewedPostNumbers:[],postStatuses:{}}).ok, false, 'Save post and next blocks unknown post');
+assert.equal(a.getPostReviewStatus({cells:[mk(1,1,'hit','high')],reconciliationStatus:'conflict',explicitlyReviewed:true}), 'Conflict', 'conflict outranks Reviewed');
+assert.equal(a.getPostReviewStatus({cells:[mk(1,1,'hit','high')],reconciliationStatus:null,explicitlyReviewed:true}), 'Reviewed', 'confirmed resolved post becomes Reviewed');
+assert.equal(a.getPostReviewStatus({cells:[mk(1,1,'hit','high')],reconciliationStatus:null,explicitlyReviewed:false}), 'Ready', 'unconfirmed resolved post remains Ready');
+let cleared=a.deriveCurrentPostReconciliation({currentCells:[mk(1,1,'hit','high',null,null,true),mk(1,2,'miss','high',null,null,true)],detectedPostScore:1,detectedPostScoreConfidence:'high',expectedTargetCount:2,originalStatus:'conflict',originalWarning:'original warning'}); assert.equal(cleared.reconciliationStatus,'matched','original Conflict plus valid corrections becomes Ready-capable'); assert.equal(cleared.reconciliationWarning,'original warning','original warning remains historical');
+let stillBad=a.deriveCurrentPostReconciliation({currentCells:[mk(1,1,'hit','high',null,null,true),mk(1,2,'hit','high',null,null,true)],detectedPostScore:1,detectedPostScoreConfidence:'high',expectedTargetCount:2,originalStatus:'conflict',originalWarning:'bad'}); assert.equal(stillBad.reconciliationStatus,'conflict','original Conflict plus invalid corrections remains blocked');
+let move=a.confirmCurrentPostReview({grid:[mk(1,1,'hit','high'),mk(2,1,'hit','high'),mk(3,1,'hit','high')],currentPost:1,postCount:3,reviewedPostNumbers:[3],postStatuses:{}});
+assert.equal(move.ok,true); assert.equal(move.currentReviewPost,2, 'Save post and next moves to next unreviewed post');
+let allDone=a.confirmCurrentPostReview({grid:[mk(1,1,'hit','high'),mk(2,1,'hit','high')],currentPost:2,postCount:2,reviewedPostNumbers:[1],postStatuses:{}});
+assert.equal(allDone.currentReviewPost,2, 'all-complete review remains on sensible final post');
+let reset=a.resetReviewProgress([mk(1,1,'hit','high')], 'shooter-b');
+assert.equal(reset.currentReviewPost,1); assert.deepEqual(reset.reviewedPostNumbers,[]); assert.equal(reset.selectedShooterCandidateId,'shooter-b');
+let normalizedProgress=a.normalizeReviewProgress({grid:[mk(1,1,'hit','high'),mk(2,1,'unknown','low'),mk(3,1,'hit','high')],postCount:3,currentReviewPost:99,reviewedPostNumbers:[0,1,1,2,4],postStatuses:{}});
+assert.deepEqual(normalizedProgress.reviewedPostNumbers,[1]); assert.equal(normalizedProgress.currentReviewPost,2, 'malformed restored progress is clamped and points to unresolved post');
+
+
+let callbacks=[]; let stored=null; const controller=op.createOrderedPendingPersistence({write:async(record)=>{stored=record;},delete:async()=>{stored=null;},currentRecord:()=>stored,remember:(record)=>{stored=record;},onStatus:(status,message)=>callbacks.push({status,message})});
+let r1={sessionId:'s',clientImportId:'p',localReviewRevision:controller.nextRevision(),ack:true};
+let writeResult=await controller.enqueueWrite(r1); assert.equal(writeResult.ok,true); assert.equal(stored.ack,true); assert.equal(callbacks.at(-1).status,'saved','acknowledgement success becomes Saved');
+let failing=op.createOrderedPendingPersistence({write:async()=>{throw new Error('boom');},delete:async()=>{},currentRecord:()=>r1,remember:()=>{},onStatus:(status,message)=>callbacks.push({status,message})});
+let failedRecord={sessionId:'s',clientImportId:'p',localReviewRevision:failing.nextRevision(),scoreChoice:'keep_existing'}; let failed=await failing.enqueueWrite(failedRecord); assert.equal(failed.ok,false); assert.equal(callbacks.at(-1).status,'failed','scoreChoice failure becomes Save failed');
+let delayedStored=null; let release; const delayed=op.createOrderedPendingPersistence({write:(record)=>new Promise((res)=>{release=()=>{delayedStored=record;res();};}),delete:async()=>{delayedStored=null;},currentRecord:()=>delayedStored,remember:(record)=>{delayedStored=record;},onStatus:()=>{}});
+let delayedRecord={sessionId:'s',clientImportId:'d',localReviewRevision:delayed.nextRevision(),currentReviewPost:1}; const delayedPromise=delayed.enqueueWrite(delayedRecord); await new Promise((res)=>setTimeout(res,0)); release(); assert.equal((await delayedPromise).ok,true); assert.equal(delayedStored.currentReviewPost,1,'delayed writer persists final snapshot');
+let deleteResult=await delayed.enqueueDelete('s','d'); assert.equal(deleteResult.ok,true); assert.equal(delayedStored,null,'actual ordered controller delete removes pending import');
+
+function opRecord(id, rev, extra={}) { return {clientImportId:id, localReviewRevision:rev, ...extra}; }
+let ordered={generation:1,record:opRecord('a',1,{grid:'old'}),deletedClientImportIds:[]};
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:1,snapshot:opRecord('a',2,{grid:'correction'})});
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:1,snapshot:opRecord('a',3,{ack:true})}); assert.equal(ordered.record.ack,true, 'target correction followed by acknowledgement keeps newest acknowledgement snapshot');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:1,snapshot:opRecord('a',4,{scoreChoice:'keep_existing'})}); assert.equal(ordered.record.scoreChoice,'keep_existing', 'target correction followed by scoreChoice keeps newest score choice');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:1,snapshot:opRecord('a',5,{currentReviewPost:2})}); assert.equal(ordered.record.currentReviewPost,2, 'target correction followed by navigation keeps navigation snapshot');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:2,snapshot:opRecord('b',1,{image:'new'})}); assert.equal(ordered.record.clientImportId,'b', 'new photo generation replaces older import');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:1,snapshot:opRecord('a',6,{grid:'stale'})}); assert.equal(ordered.record.clientImportId,'b', 'older clientImportId cannot overwrite newer one');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:3,snapshot:opRecord('b',2,{crop:'new-crop'})}); assert.equal(ordered.record.crop,'new-crop', 'crop change writes through newer generation');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:4,snapshot:opRecord('b',3,{status:'analyzing'})}); assert.equal(ordered.record.status,'analyzing', 're-analysis writes through newer generation');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:4,snapshot:opRecord('b',4,{status:'applying'})}); assert.equal(ordered.record.status,'applying', 'Apply writes through ordered controller');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'delete',generation:5,sessionId:'s',clientImportId:'b'}); assert.equal(ordered.record,null, 'successful delete removes pending import');
+ordered=a.applyOrderedPendingOperation(ordered,{kind:'write',generation:4,snapshot:opRecord('b',5,{status:'ready_for_review'})}); assert.equal(ordered.record,null, 'deleted import cannot be recreated by stale write');
+let discarded=a.applyOrderedPendingOperation({generation:1,record:opRecord('c',1),deletedClientImportIds:[]},{kind:'delete',generation:2,sessionId:'s',clientImportId:'c'}); discarded=a.applyOrderedPendingOperation(discarded,{kind:'write',generation:1,snapshot:opRecord('c',2)}); assert.equal(discarded.record,null, 'target correction followed by Discard cannot recreate pending import');
+
+let latest=a.chooseLatestReviewRevision({localReviewRevision:1,value:'old'},{localReviewRevision:2,value:'new'}); assert.equal(latest.value,'new', 'latest review revision wins');
+let snap=a.createReviewPersistenceSnapshot({localReviewRevision:1,reviewedGrid:[]},{currentReviewPost:2,reviewedPostNumbers:[1],scoreChoice:'use_scorecard',acknowledgeAmbiguousExisting:true},2); assert.equal(snap.localReviewRevision,2); assert.equal(snap.currentReviewPost,2);
+
+assert.equal(a.classifyObservedMark('/', null).result, 'hit', 'diagonal slash variants classify as hits');
+assert.equal(a.classifyObservedMark('|', null).result, 'hit', 'near-vertical slash variants classify as hits');
+assert.equal(a.classifyObservedMark('o', null).result, 'miss', 'circle variants classify as misses');
+assert.equal(a.classifyObservedMark('0', null).result, 'miss', 'handwritten zero classifies as miss');
+assert.equal(a.classifyObservedMark('-', null).result, 'miss', 'horizontal dash classifies as miss');
+assert.equal(a.classifyObservedMark('', 'blank').result, 'unknown', 'blank remains unknown');
+assert.equal(a.classifyObservedMark('overwritten unreadable', null).result, 'unknown', 'unreadable overwritten mark remains unknown');
+const acceptancePosts=[10,8,9,5,9];
+const missTargets={2:[5,6],3:[2],4:[1,3,5,7,9],5:[10]};
+const acceptance={detectedTitle:'synthetic',detectedDate:null,scorecardConfidence:'high',rawText:'synthetic fixture, no user photo',warnings:[],shooterRows:[{candidateId:'synthetic',displayName:'Synthetic',rowLabel:'1',confidence:'high',detectedScore:41,posts:acceptancePosts.map((score,idx)=>({postNumber:idx+1,detectedPostScore:score,detectedPostScoreConfidence:'high',detectedPostScoreRawText:String(score),targets:Array.from({length:10},(_,i)=>{const post=idx+1,target=i+1, miss=(missTargets[post]||[]).includes(target); return {targetNumber:target,result:post===1?'unknown':(miss?'miss':'hit'),rawMark:post===1?'/':(miss?(target%2?'0':'-'):'/'),observedMarkCategory:post===1?'diagonal_stroke':(miss?(target%2?'zero':'horizontal_dash'):'diagonal_stroke'),confidence:post===1?'low':'high',warning:null};})}))}]};
+let accepted=a.normalizeScorecardAnalysis(acceptance,{postCount:5,targetsPerPost:10});
+assert.deepEqual(accepted.shooterRows[0].posts.map(p=>p.reconciledPostScore), [10,8,9,5,9], 'synthetic acceptance fixture resolves post scores');
+assert.equal(accepted.shooterRows[0].score, 41, 'synthetic acceptance fixture resolves to 41/50');
+for (const [post, targets] of Object.entries(missTargets)) for (const target of targets) assert.equal(accepted.shooterRows[0].grid.find(c=>c.postNumber==post&&c.targetNumber===target).result, 'miss', 'expected synthetic miss is preserved');
+let unique=a.reconcileScorecardPost({detectedPostScore:2,expectedTargetCount:3,cells:[{postNumber:1,targetNumber:1,result:'hit',rawMark:'/',observedMarkCategory:'diagonal_stroke',confidence:'high',warning:null},{postNumber:1,targetNumber:2,result:'unknown',rawMark:'0',observedMarkCategory:'zero',confidence:'medium',warning:null},{postNumber:1,targetNumber:3,result:'unknown',rawMark:'/',observedMarkCategory:'diagonal_stroke',confidence:'medium',warning:null}]});
+assert.equal(unique.reconciliationStatus, 'safely_resolved'); assert.equal(unique.cells.find(c=>c.targetNumber===2).result, 'miss');
+let equal=a.reconcileScorecardPost({detectedPostScore:1,expectedTargetCount:3,cells:[1,2,3].map(i=>({postNumber:1,targetNumber:i,result:'unknown',rawMark:null,confidence:'low',warning:null}))});
+assert.equal(equal.reconciliationStatus, 'needs_review'); assert.equal(equal.cells.filter(c=>c.result==='unknown').length,3, 'equal plausible assignments remain unknown');
+let conflictPost=a.reconcileScorecardPost({detectedPostScore:1,expectedTargetCount:2,cells:[1,2].map(i=>({postNumber:1,targetNumber:i,result:'hit',rawMark:'/',observedMarkCategory:'diagonal_stroke',confidence:'high',warning:null}))});
+assert.equal(conflictPost.reconciliationStatus, 'conflict', 'conflicting row total produces conflict');
+
+let lowWrong=a.reconcileScorecardPost({detectedPostScore:0,detectedPostScoreConfidence:'high',expectedTargetCount:1,cells:[mk(1,1,'hit','low','zero','0')]}); assert.equal(lowWrong.cells[0].result,'miss','low-confidence incorrect hit corrected to miss');
+let mediumWrong=a.reconcileScorecardPost({detectedPostScore:1,detectedPostScoreConfidence:'high',expectedTargetCount:1,cells:[mk(1,1,'miss','medium','diagonal_stroke','/')]}); assert.equal(mediumWrong.cells[0].result,'hit','medium-confidence incorrect miss corrected to hit');
+let userFixed=a.reconcileScorecardPost({detectedPostScore:0,detectedPostScoreConfidence:'high',expectedTargetCount:1,cells:[mk(1,1,'hit','low','zero','0',true)]}); assert.equal(userFixed.reconciliationStatus,'conflict','user-reviewed cells remain fixed'); assert.equal(userFixed.cells[0].result,'hit','reconciliation does not silently change user correction');
+let tenHigh=a.reconcileScorecardPost({detectedPostScore:10,detectedPostScoreConfidence:'high',expectedTargetCount:10,cells:Array.from({length:10},(_,i)=>mk(1,i+1,'unknown','low','blank',null))}); assert.equal(tenHigh.reconciliationStatus,'safely_resolved'); assert.equal(tenHigh.cells.filter(c=>c.result==='hit').length,10,'high-confidence 10/10 resolves compatible unknowns');
+let tenMedium=a.reconcileScorecardPost({detectedPostScore:10,detectedPostScoreConfidence:'medium',expectedTargetCount:10,cells:Array.from({length:10},(_,i)=>mk(1,i+1,'unknown','low','blank',null))}); assert.equal(tenMedium.cells.filter(c=>c.result==='unknown').length,10,'medium-confidence 10/10 does not bulk resolve');
+let zeroLow=a.reconcileScorecardPost({detectedPostScore:0,detectedPostScoreConfidence:'low',expectedTargetCount:2,cells:[mk(1,1,'unknown','low','blank',null),mk(1,2,'unknown','low','blank',null)]}); assert.equal(zeroLow.cells.filter(c=>c.result==='unknown').length,2,'low-confidence 0/10 does not bulk resolve');
+let missBlocks10=a.reconcileScorecardPost({detectedPostScore:2,detectedPostScoreConfidence:'high',expectedTargetCount:2,cells:[mk(1,1,'unknown','low','zero','0'),mk(1,2,'unknown','low','blank',null)]}); assert.notEqual(missBlocks10.reconciliationStatus,'safely_resolved','credible miss blocks 10/10 automatic resolution');
+let oldTotal=a.reconcileScorecardPost({detectedPostScore:1,expectedTargetCount:1,cells:[mk(1,1,'unknown','low','blank',null)]}); assert.equal(oldTotal.cells[0].result,'unknown','old analysis without total confidence remains conservative');
+let highBlank=a.reconcileScorecardPost({detectedPostScore:1,detectedPostScoreConfidence:'high',expectedTargetCount:1,cells:[mk(1,1,'unknown','high','blank',null)]}); assert.equal(highBlank.reconciliationStatus,'safely_resolved','high-confidence blank Unknown does not create false Conflict with valid total');
+let highUnreadable=a.reconcileScorecardPost({detectedPostScore:1,detectedPostScoreConfidence:'high',expectedTargetCount:1,cells:[mk(1,1,'unknown','high','unreadable','scribble')]}); assert.equal(highUnreadable.reconciliationStatus,'safely_resolved','high-confidence unreadable Unknown remains flexible');
+let reviewedUnknown=a.reconcileScorecardPost({detectedPostScore:1,detectedPostScoreConfidence:'high',expectedTargetCount:1,cells:[mk(1,1,'unknown','low','blank',null,true)]}); assert.equal(reviewedUnknown.cells[0].result,'hit','reviewed Unknown remains unresolved/flexible rather than fixed conflict');
+
+let bulk=a.bulkResolveUnknownsForPost([{postNumber:1,targetNumber:1,result:'unknown',rawMark:null,confidence:'low',warning:null},{postNumber:2,targetNumber:1,result:'unknown',rawMark:null,confidence:'low',warning:null}],1,'hit',true);
+assert.equal(bulk.changed,1); assert.equal(bulk.grid[0].result,'hit'); assert.equal(bulk.grid[1].result,'unknown');
+assert.equal(a.bulkResolveUnknownsForPost(bulk.grid,2,'miss',false).changed,0, 'cancelled post-scoped bulk changes nothing');
+
+
+let markOnly=a.normalizeScorecardAnalysis({detectedTitle:'marks',detectedDate:null,scorecardConfidence:'high',rawText:'',warnings:[],shooterRows:[{candidateId:'m',displayName:null,rowLabel:null,confidence:'high',detectedScore:null,posts:[{postNumber:1,detectedPostScore:null,detectedPostScoreConfidence:null,detectedPostScoreRawText:null,targets:[{targetNumber:1,result:'unknown',rawMark:'/',observedMarkCategory:'diagonal_stroke',confidence:'low',warning:null},{targetNumber:2,result:'unknown',rawMark:'0',observedMarkCategory:'zero',confidence:'low',warning:null},{targetNumber:3,result:'unknown',rawMark:'-',observedMarkCategory:'horizontal_dash',confidence:'low',warning:null},{targetNumber:4,result:'unknown',rawMark:null,observedMarkCategory:'blank',confidence:'low',warning:null},{targetNumber:5,result:'unknown',rawMark:'scribble',observedMarkCategory:'unreadable',confidence:'low',warning:null},{targetNumber:6,result:'hit',rawMark:'0',observedMarkCategory:'zero',confidence:'high',warning:null}]}]}]},{postCount:1,targetsPerPost:6});
+assert.deepEqual(markOnly.shooterRows[0].grid.map(c=>c.result), ['hit','miss','miss','unknown','unknown','unknown'], 'deterministic mark classification is integrated without row totals');
+assert.match(markOnly.shooterRows[0].grid[5].warning,/conflicts/, 'high-confidence contradictory AI result is flagged');
 
 const base={detectedTitle:'x',detectedDate:null,scorecardConfidence:'high',rawText:'r'.repeat(1300),warnings:['w'],shooterRows:[{candidateId:'bad',displayName:'Alice',rowLabel:'1',confidence:'high',detectedScore:1,posts:[{postNumber:1,detectedPostScore:null,targets:[{targetNumber:1,result:'hit',rawMark:'/',confidence:'high',warning:null},{targetNumber:2,result:'miss',rawMark:'0',confidence:'medium',warning:null},{targetNumber:99,result:'hit',rawMark:null,confidence:'high',warning:null}]},{postNumber:99,detectedPostScore:null,targets:[{targetNumber:1,result:'hit',rawMark:null,confidence:'high',warning:null}]}]}]};
 let n=a.normalizeScorecardAnalysis(base,{postCount:2,targetsPerPost:2}); assert.equal(n.shooterRows.length,1); assert.equal(n.shooterRows[0].grid.length,4); assert.equal(n.shooterRows[0].hits,1); assert.equal(n.shooterRows[0].misses,1); assert.equal(n.shooterRows[0].unknowns,2); assert.match(n.shooterRows[0].warnings.join(' '),/out-of-range/); assert.equal(n.rawText.length,1200);

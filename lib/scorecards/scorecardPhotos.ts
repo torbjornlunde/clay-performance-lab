@@ -31,10 +31,13 @@ export type PendingScorecardPhoto = {
   setupFingerprint?: string | null;
   resolvedSetup?: { postCount: number; targetsPerPostByPost: number[]; totalTargets: number } | null;
   selectedShooterCandidateId?: string | null;
+  currentReviewPost?: number;
+  reviewedPostNumbers?: number[];
   reviewedGrid?: ScorecardCell[];
   reviewedGridFingerprint?: string | null;
   scoreChoice?: "use_scorecard" | "keep_existing";
   acknowledgeAmbiguousExisting?: boolean;
+  localReviewRevision?: number;
   lastError?: string | null;
 };
 const DB = "scorecard-photo-imports-v1",
@@ -110,6 +113,8 @@ export function migratePendingScorecardPhoto(
     setupFingerprint: typeof raw.setupFingerprint === "string" ? raw.setupFingerprint : null,
     resolvedSetup: raw.resolvedSetup && typeof raw.resolvedSetup === "object" ? raw.resolvedSetup : null,
     selectedShooterCandidateId: selected,
+    currentReviewPost: Number.isInteger(raw.currentReviewPost) ? Number(raw.currentReviewPost) : 1,
+    reviewedPostNumbers: Array.isArray(raw.reviewedPostNumbers) ? raw.reviewedPostNumbers.filter((n: any) => Number.isInteger(n)) : [],
     reviewedGrid: Array.isArray(raw.reviewedGrid)
       ? raw.reviewedGrid
       : fallbackGrid,
@@ -117,6 +122,7 @@ export function migratePendingScorecardPhoto(
     scoreChoice:
       raw.scoreChoice === "keep_existing" ? "keep_existing" : "use_scorecard",
     acknowledgeAmbiguousExisting: Boolean(raw.acknowledgeAmbiguousExisting),
+    localReviewRevision: Number.isFinite(raw.localReviewRevision) ? Number(raw.localReviewRevision) : 0,
     lastError: typeof raw.lastError === "string" ? raw.lastError : null,
     lastSafeErrorCategory: typeof raw.lastSafeErrorCategory === "string" ? raw.lastSafeErrorCategory : null,
   };
