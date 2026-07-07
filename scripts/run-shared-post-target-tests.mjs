@@ -186,6 +186,41 @@ assert.deepEqual(changedB.sharedPresentations.map(p=>p.target_ids), [['a','a'],[
 const otherPost = m.normalizeSharedPost(2,[pt('c','C'),pt('d','D')],Array.from({length:5},(_,i)=>({presentation_number:i+1,presentation_type:'report_pair',target_ids:[]})));
 assert.equal(m.applyPartialRepeatedProgramme(otherPost, 5, 'report_pair', ['a','']).ok, false, 'partial compact draft target IDs from another post are rejected');
 assert.equal(m.validateRepeatedProgrammeSelection(seqA.post,'report_pair',['a','']).ok, false, 'final completeness validation still reports incomplete repeated pair until B is selected');
+
+// Setup sync validation blocks incomplete partial local drafts before server write planning.
+const partialDraftPost = seqA.post;
+const partialReload = m.migrateDraft({schemaVersion:3,sessionId:'s',postCount:1,targetsPerPost:10,defaultPostFormat:'5 pairs',posts:[partialDraftPost],lastLocalUpdateAt:'2026-07-01T00:00:00.000Z',hasUnsyncedChanges:true},'s');
+assert.deepEqual(partialReload.posts[0].sharedPresentations.map(p=>p.target_ids), partialDraftPost.sharedPresentations.map(p=>p.target_ids), 'A to Unassigned remains saved in v3 local draft');
+const blockedSync = m.validatePostsForSetupSync(partialReload.posts);
+assert.equal(blockedSync.ok, false, 'Save setup is blocked for A to Unassigned partial programme');
+assert.deepEqual(blockedSync.issues.map(i=>[i.post_number,i.presentation_number,i.target_label]), [[1,1,'second target'],[1,2,'second target'],[1,3,'second target'],[1,4,'second target'],[1,5,'second target']], 'sync validation lists exact incomplete coordinates');
+const plannedRowsWhenBlocked = blockedSync.ok ? m.rowsFromPosts('s', partialReload.posts) : [];
+assert.equal(plannedRowsWhenBlocked.length, 0, 'no Supabase row write plan is produced when setup validation fails');
+const staleRowsDeletedWhenBlocked = blockedSync.ok ? ['would-delete'] : [];
+assert.equal(staleRowsDeletedWhenBlocked.length, 0, 'stale server rows are not deleted when setup validation fails');
+assert.equal(m.validatePostsForSetupSync([seq]).ok, true, 'completing B allows sync validation to pass');
+const multiIncomplete = [m.normalizeSharedPost(2,[pt('a','A')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['a','']}]), m.normalizeSharedPost(4,[pt('b','B')],[{presentation_number:3,presentation_type:'report_pair',target_ids:['','b']}])];
+assert.deepEqual(m.validatePostsForSetupSync(multiIncomplete).issues.map(i=>[i.post_number,i.presentation_number,i.target_label]), [[2,1,'second target'],[4,1,'first target']], 'multiple incomplete posts list all exact coordinates');
+const stalePost = m.normalizeSharedPost(1,[pt('a','A')],[{presentation_number:1,presentation_type:'single',target_ids:['missing']}]);
+assert.deepEqual(m.validatePostsForSetupSync([stalePost]).issues.map(i=>i.reason), ['stale_target'], 'stale target ID is reported');
+const blankLabelPost = m.normalizeSharedPost(1,[pt('blank','')],[{presentation_number:1,presentation_type:'single',target_ids:['blank']}]);
+assert.deepEqual(m.validatePostsForSetupSync([blankLabelPost]).issues.map(i=>i.reason), ['blank_label'], 'blank physical target label is reported');
+assert.equal(m.validatePostsForSetupSync([m.normalizeSharedPost(1,[pt('a','A')],[{presentation_number:1,presentation_type:'single',target_ids:['a']}])]).ok, true, 'singles validate one required target');
+assert.equal(m.validatePostsForSetupSync([m.normalizeSharedPost(1,[pt('a','A')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['a']}])]).issues.length, 1, 'pairs validate two required targets');
+
+// Mixed replacement must be complete before destructive replacement is allowed.
+function replacementIfValid(original, type, repeatCount, ids) { const before = JSON.stringify(original); const valid = m.validateRepeatedProgrammeSelection(original, type, ids); if (!valid.ok) return { ok:false, before, after: JSON.stringify(original), post: original }; return { ok:true, before, post: m.applyRepeatedProgramme(original, repeatCount, type, ids), after: '' }; }
+assert.equal(replacementIfValid(mixedProgram,'report_pair',5,['','b']).after, JSON.stringify(mixedProgram), 'mixed programme plus missing first target remains unchanged');
+assert.equal(replacementIfValid(mixedProgram,'report_pair',5,['a','']).after, JSON.stringify(mixedProgram), 'mixed programme plus missing second target remains unchanged');
+assert.equal(replacementIfValid(mixedProgram,'report_pair',5,['a','stale']).after, JSON.stringify(mixedProgram), 'mixed programme plus stale target remains unchanged');
+const blankMixedTarget = m.normalizeSharedPost(1,[pt('a','A'),pt('blank','')],[{presentation_number:1,presentation_type:'report_pair',target_ids:['a','blank']},{presentation_number:2,presentation_type:'report_pair',target_ids:['blank','a']}]);
+assert.equal(replacementIfValid(blankMixedTarget,'report_pair',2,['a','blank']).after, JSON.stringify(blankMixedTarget), 'mixed programme plus blank target label remains unchanged');
+assert.equal(JSON.stringify(mixedProgram), JSON.stringify(mixedProgram), 'cancelled mixed replacement changes nothing');
+const validReplacement = replacementIfValid(mixedProgram,'report_pair',5,['a','b']);
+assert.equal(validReplacement.ok, true, 'valid A to B mixed replacement passes complete validation');
+assert.deepEqual(validReplacement.post.sharedPresentations.map(p=>p.target_ids), [['a','b'],['a','b'],['a','b'],['a','b'],['a','b']], 'valid A to B mixed replacement succeeds');
+const conflictBefore = JSON.stringify(conflict);
+assert.equal(replacementIfValid(conflict,'report_pair',5,['','']).after, conflictBefore, 'legacy conflict data is not lost on failed replacement validation');
 const blankFiveTemplate = m.normalizeSharedPost(1, [], Array.from({length:5}, (_,i)=>({presentation_number:i+1,presentation_type:'report_pair',target_ids:[]})));
 assert.equal(m.detectCompactRepeatedProgramme(blankFiveTemplate)?.summary, '5 × Unassigned → Unassigned · Report pair', 'five-pair blank template remains in compact repeated mode');
 const describedRepeated = m.normalizeSharedPost(1,[{...pt('a','A','Rabbit','Left to right'), speed:'Fast', distance:'Long', difficulty:'4 - Hard', notes:'hold left'}, {...pt('b','B','Battue','Right to left'), speed:'Medium', distance:'Medium', difficulty:'3 - Medium', notes:'quick'}], Array.from({length:5}, (_,i)=>({presentation_number:i+1,presentation_type:'report_pair',target_ids:['a','b']})));
