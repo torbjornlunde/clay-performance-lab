@@ -150,6 +150,64 @@ export function classifyObservedMark(rawMark: string | null | undefined, categor
 function cellKey(p: number, t: number) {
   return `${p}:${t}`;
 }
+function rowLooksLikePhysicalPost(row: any, idx: number, postCount: number, targetsPerPostByPost: number[]) {
+  const posts = Array.isArray(row?.posts) ? row.posts : [];
+  if (posts.length !== 1) return false;
+  const label = cleanString(row.rowLabel, 20);
+  const labelNumber = label && /^\s*(post\s*)?\d+\s*$/i.test(label) ? Number(label.replace(/\D/g, "")) : null;
+  const postNumber = Number(posts[0]?.postNumber);
+  const score = Number.isInteger(posts[0]?.detectedPostScore)
+    ? Number(posts[0].detectedPostScore)
+    : Number.isInteger(row?.detectedScore)
+      ? Number(row.detectedScore)
+      : null;
+  const expected = targetsPerPostByPost[idx] || targetsPerPostByPost[0] || 0;
+  const plausibleScore = score === null || (score >= 0 && score <= expected);
+  return plausibleScore && (labelNumber === idx + 1 || postNumber === 1);
+}
+function repairPhysicalPostRows(input: any, postCount: number, targetsPerPostByPost: number[]) {
+  const shooterRows: any[] = Array.isArray(input?.shooterRows) ? input.shooterRows : [];
+  if (shooterRows.length !== postCount || postCount < 2) return input;
+  if (!shooterRows.every((row, idx) => rowLooksLikePhysicalPost(row, idx, postCount, targetsPerPostByPost))) return input;
+  const labels = shooterRows.map((row: any) => cleanString(row.rowLabel, 20));
+  const hasSequentialLabels = labels.every((label: string | null, idx: number) => label && Number(label.replace(/\D/g, "")) === idx + 1);
+  const allUsePostOne = shooterRows.every((row) => Number(row.posts?.[0]?.postNumber) === 1);
+  if (!hasSequentialLabels && !allUsePostOne) return input;
+  const posts = shooterRows.map((row, idx) => {
+    const post = row.posts[0] || {};
+    return {
+      ...post,
+      postNumber: idx + 1,
+      detectedPostScore: Number.isInteger(post.detectedPostScore)
+        ? Number(post.detectedPostScore)
+        : Number.isInteger(row.detectedScore)
+          ? Number(row.detectedScore)
+          : null,
+      detectedPostScoreConfidence: post.detectedPostScoreConfidence || row.confidence || null,
+      detectedPostScoreRawText: post.detectedPostScoreRawText ?? (Number.isInteger(row.detectedScore) ? String(row.detectedScore) : null),
+      targets: (Array.isArray(post.targets) ? post.targets : []).map((target: any) => ({
+        ...target,
+        postNumber: idx + 1,
+      })),
+    };
+  });
+  const detectedScores = posts.map((post: any) => post.detectedPostScore).filter((score: any) => Number.isInteger(score)) as number[];
+  return {
+    ...input,
+    warnings: [
+      ...(Array.isArray(input.warnings) ? input.warnings : []),
+      "Collapsed post table rows that were returned as shooter rows.",
+    ],
+    shooterRows: [{
+      candidateId: "detected-scorecard",
+      displayName: "Detected scorecard",
+      rowLabel: null,
+      confidence: shooterRows.some((row) => cleanConfidence(row.confidence) === "low") ? "medium" : "high",
+      detectedScore: detectedScores.length === postCount ? detectedScores.reduce((sum, score) => sum + score, 0) : null,
+      posts,
+    }],
+  };
+}
 export function summarizeGrid(grid: ScorecardCell[]) {
   const hits = grid.filter((c) => c.result === "hit").length;
   const misses = grid.filter((c) => c.result === "miss").length;
@@ -188,7 +246,12 @@ export function normalizeScorecardAnalysis(
     .slice(0, 20)
     .map((w: any) => cleanString(w, 180))
     .filter(Boolean) as string[];
-  const rows = (Array.isArray(input.shooterRows) ? input.shooterRows : [])
+  const repairedInput = repairPhysicalPostRows(input, postCount, targetsPerPostByPost);
+  const repairedWarnings = repairedInput === input ? globalWarnings : (Array.isArray(repairedInput.warnings) ? repairedInput.warnings : [])
+    .slice(0, 20)
+    .map((w: any) => cleanString(w, 180))
+    .filter(Boolean) as string[];
+  const rows = (Array.isArray(repairedInput.shooterRows) ? repairedInput.shooterRows : [])
     .slice(0, 12)
     .map((row: any, idx: number) => {
       const warnings: string[] = [];
@@ -307,12 +370,12 @@ export function normalizeScorecardAnalysis(
     });
   if (rows.length === 0) throw new Error("No shooter rows detected.");
   return {
-    detectedTitle: cleanString(input.detectedTitle, 120),
-    detectedDate: cleanString(input.detectedDate, 40),
-    scorecardConfidence: cleanConfidence(input.scorecardConfidence),
+    detectedTitle: cleanString(repairedInput.detectedTitle, 120),
+    detectedDate: cleanString(repairedInput.detectedDate, 40),
+    scorecardConfidence: cleanConfidence(repairedInput.scorecardConfidence),
     shooterRows: rows,
-    rawText: cleanString(input.rawText, 1200) || "",
-    warnings: globalWarnings,
+    rawText: cleanString(repairedInput.rawText, 1200) || "",
+    warnings: repairedWarnings,
     postCount,
     targetsPerPost,
     targetsPerPostByPost,

@@ -241,12 +241,17 @@ export default function Page() {
     if (p) {
       rememberPending(p);
       setCrop(p.crop || fullImageCrop);
-      const sid =
-        p.selectedShooterCandidateId ||
-        (p.analysis?.shooterRows.length === 1 &&
+      const auto =
+        p.analysis?.shooterRows.length === 1 &&
         p.analysis.shooterRows[0].confidence !== "low"
           ? p.analysis.shooterRows[0].candidateId
-          : null);
+          : null;
+      const savedSelection = p.analysis?.shooterRows.some(
+        (r) => r.candidateId === p.selectedShooterCandidateId,
+      )
+        ? p.selectedShooterCandidateId
+        : null;
+      const sid = savedSelection || auto || null;
       setSelected(sid || null);
       setAck(Boolean(p.acknowledgeAmbiguousExisting));
       setScoreChoice(p.scoreChoice || "use_scorecard");
@@ -984,7 +989,7 @@ export default function Page() {
               </div>
             </div>
           )}
-          {pending?.analysis && !setupBlocksReview && (
+          {pending?.analysis && pending.analysis.shooterRows.length > 1 && !setupBlocksReview && (
             <div className="card">
               <h3>Shooter row</h3>
               {pending.analysis.shooterRows.map((r) => (
