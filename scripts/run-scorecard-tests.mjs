@@ -80,6 +80,80 @@ let normalizedProgress=a.normalizeReviewProgress({grid:[mk(1,1,'hit','high'),mk(
 assert.deepEqual(normalizedProgress.reviewedPostNumbers,[1]); assert.equal(normalizedProgress.currentReviewPost,2, 'malformed restored progress is clamped and points to unresolved post');
 
 
+const hitTarget = (target) => ({targetNumber: target, result: 'hit', rawMark: '/', observedMarkCategory: 'diagonal_stroke', confidence: 'high', warning: null});
+const missTarget = (target) => ({targetNumber: target, result: 'miss', rawMark: '0', observedMarkCategory: 'zero', confidence: 'high', warning: null});
+const physicalPostTargets = {
+  1: [],
+  2: [5, 6],
+  3: [2],
+  4: [1, 3, 5, 7, 9],
+  5: [10],
+};
+function malformedPhysicalPostRows({labels = true, usePostOne = false} = {}) {
+  return {
+    detectedTitle: null,
+    detectedDate: null,
+    scorecardConfidence: 'high',
+    rawText: 'Post 1 10 Post 2 8 Post 3 9 Post 4 5 Post 5 9',
+    warnings: [],
+    shooterRows: [10, 8, 9, 5, 9].map((score, idx) => {
+      const physicalPost = idx + 1;
+      const misses = new Set(physicalPostTargets[physicalPost]);
+      return {
+        candidateId: `bad-row-${physicalPost}`,
+        displayName: null,
+        rowLabel: labels ? String(physicalPost) : null,
+        confidence: 'high',
+        detectedScore: score,
+        posts: [{
+          postNumber: usePostOne ? 1 : physicalPost,
+          detectedPostScore: score,
+          detectedPostScoreConfidence: 'high',
+          detectedPostScoreRawText: String(score),
+          targets: Array.from({length: 10}, (_, i) => misses.has(i + 1) ? missTarget(i + 1) : hitTarget(i + 1)),
+        }],
+      };
+    }),
+  };
+}
+const collapsed = a.normalizeScorecardAnalysis(malformedPhysicalPostRows(), {postCount: 5, targetsPerPost: 10});
+assert.equal(collapsed.shooterRows.length, 1, 'malformed physical post rows collapse to one shooter candidate');
+assert.equal(collapsed.shooterRows[0].candidateId, 'shooter-1', 'collapsed candidate has one stable normalized candidate id');
+assert.equal(collapsed.shooterRows[0].displayName, 'Detected scorecard', 'collapsed candidate has a clear display name');
+assert.equal(collapsed.shooterRows[0].score, 41, 'collapsed candidate score is 41/50');
+assert.equal(collapsed.shooterRows[0].detectedScore, 41, 'collapsed detected total is 41/50');
+assert.notEqual(collapsed.shooterRows[0].unknowns, 40, 'collapsed candidate does not create forty artificial unknowns');
+assert.deepEqual(collapsed.shooterRows[0].posts.map((post) => post.postNumber), [1, 2, 3, 4, 5], 'candidate row labels 1-5 map to Posts 1-5');
+assert.deepEqual(collapsed.shooterRows[0].posts.map((post) => post.reconciledPostScore), [10, 8, 9, 5, 9], 'post totals are preserved after collapse');
+for (const [postNumber, expectedMisses] of Object.entries(physicalPostTargets)) {
+  const cells = collapsed.shooterRows[0].grid.filter((cell) => cell.postNumber === Number(postNumber));
+  assert.deepEqual(cells.filter((cell) => cell.result === 'miss').map((cell) => cell.targetNumber), expectedMisses, `Post ${postNumber} miss targets survive collapse`);
+}
+assert.equal(collapsed.shooterRows[0].grid.filter((cell) => cell.postNumber === 1 && cell.result === 'hit').length, 10, 'Post 1 is 10/10');
+const missingLabels = a.normalizeScorecardAnalysis(malformedPhysicalPostRows({labels: false, usePostOne: true}), {postCount: 5, targetsPerPost: 10});
+assert.equal(missingLabels.shooterRows.length, 1, 'clear ordered post-row pattern collapses even when row labels are missing');
+assert.deepEqual(missingLabels.shooterRows[0].posts.map((post) => post.postNumber), [1, 2, 3, 4, 5], 'all-postNumber-1 grids remap to real Posts 1-5');
+assert.equal(missingLabels.shooterRows[0].score, 41, 'remapped all-postNumber-1 candidate score is 41/50');
+const trueMulti = a.normalizeScorecardAnalysis({
+  detectedTitle: null,
+  detectedDate: null,
+  scorecardConfidence: 'high',
+  rawText: '',
+  warnings: [],
+  shooterRows: [1,2,3,4,5].map((n) => ({
+    candidateId: `shooter-${n}`,
+    displayName: `Shooter ${n}`,
+    rowLabel: `Shooter ${n}`,
+    confidence: 'high',
+    detectedScore: 50,
+    posts: Array.from({length: 5}, (_, p) => ({postNumber: p + 1, detectedPostScore: 10, detectedPostScoreConfidence: 'high', detectedPostScoreRawText: '10', targets: Array.from({length: 10}, (_, i) => hitTarget(i + 1))})),
+  })),
+}, {postCount: 5, targetsPerPost: 10});
+assert.equal(trueMulti.shooterRows.length, 5, 'true multi-shooter scorecards are not collapsed accidentally');
+assert.match(pageSource, /shooterRows\.length > 1/, 'UI hides Shooter row selector when only one candidate remains');
+assert.match(pageSource, /savedSelection \|\| auto \|\| null/, 'restored selection resets safely when candidate list changes after re-analysis');
+
+
 let callbacks=[]; let stored=null; const controller=op.createOrderedPendingPersistence({write:async(record)=>{stored=record;},delete:async()=>{stored=null;},currentRecord:()=>stored,remember:(record)=>{stored=record;},onStatus:(status,message)=>callbacks.push({status,message})});
 let r1={sessionId:'s',clientImportId:'p',localReviewRevision:controller.nextRevision(),ack:true};
 let writeResult=await controller.enqueueWrite(r1); assert.equal(writeResult.ok,true); assert.equal(stored.ack,true); assert.equal(callbacks.at(-1).status,'saved','acknowledgement success becomes Saved');
