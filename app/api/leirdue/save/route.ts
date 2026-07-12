@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { LeirdueCandidate, LeirdueDuplicateMatch } from "@/lib/leirdue/types";
 import { extractLeirdueSourceIdentifiers } from "@/lib/leirdue/normalize";
 import { compareLeirdueDuplicate, type LeirdueDuplicateSessionRow } from "@/lib/leirdue/duplicates";
+import { isLeirdueSaveCandidate, leirdueWinningScoreForInsert } from "@/lib/leirdue/saveValidation";
 
 export const dynamic = "force-dynamic";
 
@@ -26,22 +27,8 @@ function supabaseForRequest(request: Request) {
   return createClient(supabaseUrl, supabaseAnonKey, { global: { headers: authorization ? { Authorization: authorization } : {} } });
 }
 
-function numberOrNull(value: unknown) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function isCandidate(value: unknown): value is LeirdueCandidate {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<LeirdueCandidate>;
-  return Boolean(
-    typeof candidate.date === "string" &&
-      typeof candidate.name === "string" &&
-      typeof candidate.discipline === "string" &&
-      numberOrNull(candidate.totalTargets) !== null &&
-      numberOrNull(candidate.ownScore) !== null &&
-      numberOrNull(candidate.winningScore) !== null,
-  );
+  return isLeirdueSaveCandidate(value);
 }
 
 function sourceNotes(candidate: LeirdueCandidate, importedAt: string) {
@@ -85,10 +72,10 @@ export async function POST(request: Request) {
   for (const candidate of candidates) {
     const ownScore = Number(candidate.ownScore);
     const totalTargets = Number(candidate.totalTargets);
-    const winningScore = Number(candidate.winningScore);
+    const winningScore = leirdueWinningScoreForInsert(candidate.winningScore);
     const url = candidate.leirdueUrl?.trim() || null;
 
-    if (!candidate.name.trim() || !candidate.date || totalTargets <= 0 || ownScore < 0 || winningScore <= 0) {
+    if (!candidate.name.trim() || !candidate.date || totalTargets <= 0 || ownScore < 0 || ownScore > totalTargets) {
       results.push({ candidate, status: "error", message: "Missing required result fields." });
       continue;
     }

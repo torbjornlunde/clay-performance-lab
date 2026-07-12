@@ -52,7 +52,7 @@ export function compareLeirdueDuplicate(candidate: LeirdueCandidate, row: Leirdu
   const sameEvent = namesLikelyMatch(row.name, candidate.name);
 
   if (sameDate && sameDiscipline && sameEvent && sameOwnScore && sameShooter) {
-    return { id: row.id, exact: sessionHasLeirdueSource(row) && sameTotalTargets && sameWinningScore, reason: "Possible duplicate: same date + discipline + shooter + total score." };
+    return { id: row.id, exact: sessionHasLeirdueSource(row) && sameTotalTargets, reason: "Possible duplicate: same date + discipline + shooter + total score." };
   }
 
   if (sameDate && sameDiscipline && sameOwnScore && (sameEvent || sameTotalTargets || sameWinningScore)) {
