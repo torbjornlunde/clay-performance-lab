@@ -93,6 +93,8 @@ type LocalSaveStatus = "idle" | "saved_local" | "syncing" | "synced" | "sync_fai
 type SetupDraft = {
   numberOfPosts: string;
   targetsPerPost: string;
+  customTargetsByPost: string[];
+  customTargetsActive: boolean;
 };
 
 type PostCompleteState = {
@@ -530,7 +532,7 @@ function setupTrimDetails(options: {
   shooters: ShooterDraft[];
   targetResults: TargetResultMap;
   nextPostCount: number;
-  nextTargetsPerPost: number;
+  nextTargetsPerPost: number | number[];
   postLabel: string;
 }) {
   const details: string[] = [];
@@ -552,13 +554,13 @@ function setupTrimDetails(options: {
       .filter(
         (item) =>
           item.postNumber <= options.nextPostCount &&
-          item.score > options.nextTargetsPerPost &&
+          item.score > expectedTargetMaxFor(options.nextTargetsPerPost, item.postNumber) &&
           !hasTargetResults(options.targetResults, item.shooter.localId, item.postNumber),
       ),
   );
   if (clampedManualScores.length > 0) {
     details.push(
-      `${clampedManualScores.length} manual total${clampedManualScores.length === 1 ? "" : "s"} above ${options.nextTargetsPerPost} will be clamped`,
+      `${clampedManualScores.length} manual total${clampedManualScores.length === 1 ? "" : "s"} above the new per-post target count will be clamped`,
     );
   }
 
@@ -573,7 +575,7 @@ function setupTrimDetails(options: {
             const targetNumber = Number(targetKey);
             return (
               postNumber > options.nextPostCount ||
-              targetNumber > options.nextTargetsPerPost
+              targetNumber > expectedTargetMaxFor(options.nextTargetsPerPost, postNumber)
             );
           }).length
         );
@@ -587,6 +589,32 @@ function setupTrimDetails(options: {
   }
 
   return details;
+}
+
+function expectedTargetMaxFor(maxTargets: number | number[], postNumber: number) {
+  return Array.isArray(maxTargets) ? maxTargets[postNumber - 1] || 1 : maxTargets;
+}
+
+function sameExpectedTargetsByPost(a?: number[] | null, b?: number[] | null) {
+  const aa = Array.isArray(a) ? a : null;
+  const bb = Array.isArray(b) ? b : null;
+  if (!aa && !bb) return true;
+  if (!aa || !bb || aa.length !== bb.length) return false;
+  return aa.every((value, index) => value === bb[index]);
+}
+
+function customTargetDraftValues(postCount: number, targetsPerPost: number, custom?: number[] | null) {
+  return Array.from({ length: postCount }, (_, index) => String(custom?.[index] || targetsPerPost));
+}
+
+function normalizeSetupCustomTargets(values: string[], postCount: number, targetsPerPost: number, customTargetsActive: boolean) {
+  if (!customTargetsActive) return { ok: true as const, counts: null, active: false };
+  if (values.length !== postCount) return { ok: false as const, counts: null, active: true };
+  const counts = values.map((value) => parsePositiveIntegerDraft(value, 1, 100));
+  if (counts.some((value) => !value)) return { ok: false as const, counts: null, active: true };
+  const normalized = counts as number[];
+  const hasOverride = normalized.some((value) => value !== targetsPerPost);
+  return { ok: true as const, counts: hasOverride ? normalized : null, active: hasOverride };
 }
 
 function parsePositiveIntegerDraft(value: string, min: number, max: number) {
@@ -630,6 +658,8 @@ export default function TrainingScoreSheetPage() {
   const [setupDraft, setSetupDraft] = useState<SetupDraft>({
     numberOfPosts: "5",
     targetsPerPost: "10",
+    customTargetsByPost: Array.from({ length: 5 }, () => "10"),
+    customTargetsActive: false,
   });
   const [setupApplyMessage, setSetupApplyMessage] = useState("");
   const [compakSchemeId, setCompakSchemeId] = useState(DEFAULT_COMPAK_SCHEME);
@@ -686,10 +716,18 @@ export default function TrainingScoreSheetPage() {
   const sheetTotalTargets = getTotalExpectedTargets(expectedTargetSetup);
   const draftPostCount = parsePositiveIntegerDraft(setupDraft.numberOfPosts, 1, 20);
   const draftTargetsPerPost = parsePositiveIntegerDraft(setupDraft.targetsPerPost, 1, 100);
+  const normalizedDraftCustomTargets = draftPostCount && draftTargetsPerPost
+    ? normalizeSetupCustomTargets(setupDraft.customTargetsByPost, draftPostCount, draftTargetsPerPost, setupDraft.customTargetsActive)
+    : { ok: false as const, counts: null, active: false };
+  const draftExpectedTargetsByPost = normalizedDraftCustomTargets.ok ? normalizedDraftCustomTargets.counts : null;
+  const draftTotalTargets = draftExpectedTargetsByPost
+    ? draftExpectedTargetsByPost.reduce((sum, count) => sum + count, 0)
+    : (draftPostCount || 0) * (draftTargetsPerPost || 0);
   const setupDraftDirty =
     setupDraft.numberOfPosts !== String(numberOfPosts) ||
-    setupDraft.targetsPerPost !== String(targetsPerPost);
-  const setupDraftValid = Boolean(draftPostCount && draftTargetsPerPost);
+    setupDraft.targetsPerPost !== String(targetsPerPost) ||
+    !sameExpectedTargetsByPost(draftExpectedTargetsByPost, expectedTargetsByPost);
+  const setupDraftValid = Boolean(draftPostCount && draftTargetsPerPost && normalizedDraftCustomTargets.ok);
   const setupSectionsOpen =
     !liveMode || showSetupDuringLive || (isCompak && showCompakSettingsDuringLive);
   const shooterSetupOpen = !liveMode || showShootersDuringLive;
@@ -955,9 +993,16 @@ export default function TrainingScoreSheetPage() {
     setLocation(draft.location);
     setDiscipline(draft.discipline);
     setSessionType(draft.sessionType);
+    const draftCustomTargets = Array.isArray(draft.expectedTargetsByPost) ? draft.expectedTargetsByPost : null;
     setNumberOfPosts(draft.numberOfPosts);
     setTargetsPerPost(draft.targetsPerPost);
-    setExpectedTargetsByPost(Array.isArray(draft.expectedTargetsByPost) ? draft.expectedTargetsByPost : null);
+    setExpectedTargetsByPost(draftCustomTargets);
+    setSetupDraft({
+      numberOfPosts: String(draft.numberOfPosts),
+      targetsPerPost: String(draft.targetsPerPost),
+      customTargetsByPost: customTargetDraftValues(draft.numberOfPosts, draft.targetsPerPost, draftCustomTargets),
+      customTargetsActive: Boolean(draftCustomTargets),
+    });
     setCompakSchemeId(normalizeCompakSchemeId(draft.compakSchemeId));
     setCompakShootingMode(normalizeCompakShootingMode(draft.compakShootingMode));
     setCompakRotationMode(normalizeCompakRotationMode(draft.compakRotationMode));
@@ -1048,6 +1093,8 @@ export default function TrainingScoreSheetPage() {
         setSessionType("training");
         setNumberOfPosts(COMPAK_DEFAULT_STANDS);
         setTargetsPerPost(COMPAK_TARGETS_PER_STAND);
+        setExpectedTargetsByPost(null);
+        setSetupDraft({ numberOfPosts: String(COMPAK_DEFAULT_STANDS), targetsPerPost: String(COMPAK_TARGETS_PER_STAND), customTargetsByPost: customTargetDraftValues(COMPAK_DEFAULT_STANDS, COMPAK_TARGETS_PER_STAND, null), customTargetsActive: false });
         setCompakSchemeId(DEFAULT_COMPAK_SCHEME);
         setCompakShootingMode("Squad");
         setCompakRotationMode("waiting_shooter");
@@ -1062,6 +1109,8 @@ export default function TrainingScoreSheetPage() {
         setSessionType("training");
         setNumberOfPosts(5);
         setTargetsPerPost(10);
+        setExpectedTargetsByPost(null);
+        setSetupDraft({ numberOfPosts: "5", targetsPerPost: "10", customTargetsByPost: customTargetDraftValues(5, 10, null), customTargetsActive: false });
         setShooters([]);
         setTargetResults({});
         setCompakSchemeRows([]);
@@ -1080,8 +1129,10 @@ export default function TrainingScoreSheetPage() {
     setSetupDraft({
       numberOfPosts: String(numberOfPosts),
       targetsPerPost: String(targetsPerPost),
+      customTargetsByPost: customTargetDraftValues(numberOfPosts, targetsPerPost, expectedTargetsByPost),
+      customTargetsActive: Boolean(expectedTargetsByPost),
     });
-  }, [numberOfPosts, targetsPerPost]);
+  }, [numberOfPosts, targetsPerPost, expectedTargetsByPost]);
 
   useEffect(() => {
     if (!titleAutoGenerated) return;
@@ -1241,9 +1292,16 @@ export default function TrainingScoreSheetPage() {
     setLocation(sheet.location || "");
     setDiscipline(sheet.discipline || LEIRDUESTI);
     setSessionType(sheet.session_type || "training");
+    const loadedExpectedTargetsByPost = Array.isArray(sheet.expected_targets_by_post) ? sheet.expected_targets_by_post : null;
     setNumberOfPosts(sheet.number_of_posts || 5);
     setTargetsPerPost(sheet.targets_per_post || 10);
-    setExpectedTargetsByPost(Array.isArray(sheet.expected_targets_by_post) ? sheet.expected_targets_by_post : null);
+    setExpectedTargetsByPost(loadedExpectedTargetsByPost);
+    setSetupDraft({
+      numberOfPosts: String(sheet.number_of_posts || 5),
+      targetsPerPost: String(sheet.targets_per_post || 10),
+      customTargetsByPost: customTargetDraftValues(sheet.number_of_posts || 5, sheet.targets_per_post || 10, loadedExpectedTargetsByPost),
+      customTargetsActive: Boolean(loadedExpectedTargetsByPost),
+    });
     setCompakSchemeId(normalizeCompakSchemeId(sheet.compak_scheme_id));
     setCompakShootingMode(normalizeCompakShootingMode(sheet.compak_shooting_mode));
     setCompakRotationMode(normalizeCompakRotationMode(sheet.compak_rotation_mode));
@@ -1351,6 +1409,8 @@ export default function TrainingScoreSheetPage() {
     }
     setNumberOfPosts(COMPAK_DEFAULT_STANDS);
     setTargetsPerPost(COMPAK_TARGETS_PER_STAND);
+    setExpectedTargetsByPost(null);
+    setSetupDraft({ numberOfPosts: String(COMPAK_DEFAULT_STANDS), targetsPerPost: String(COMPAK_TARGETS_PER_STAND), customTargetsByPost: customTargetDraftValues(COMPAK_DEFAULT_STANDS, COMPAK_TARGETS_PER_STAND, null), customTargetsActive: false });
     setSessionType((value) => (value === "shared_training" ? value : "training"));
     setShooters((current) =>
       resizeShootersForSetup(
@@ -1389,7 +1449,49 @@ export default function TrainingScoreSheetPage() {
 
   function updateSetupDraft(field: keyof SetupDraft, value: string) {
     setSetupApplyMessage("");
-    setSetupDraft((current) => ({ ...current, [field]: value }));
+    setSetupDraft((current) => {
+      const next = { ...current, [field]: value } as SetupDraft;
+      const nextPostCount = field === "numberOfPosts" ? parsePositiveIntegerDraft(value, 1, 20) : parsePositiveIntegerDraft(current.numberOfPosts, 1, 20);
+      const nextTargetsPerPost = field === "targetsPerPost" ? parsePositiveIntegerDraft(value, 1, 100) : parsePositiveIntegerDraft(current.targetsPerPost, 1, 100);
+      if (nextPostCount && nextTargetsPerPost) {
+        next.customTargetsByPost = current.customTargetsActive
+          ? Array.from({ length: nextPostCount }, (_, index) => current.customTargetsByPost[index] || String(nextTargetsPerPost))
+          : customTargetDraftValues(nextPostCount, nextTargetsPerPost, null);
+      }
+      return next;
+    });
+  }
+
+  function updateCustomTargetDraft(postIndex: number, value: string) {
+    setSetupApplyMessage("");
+    setSetupDraft((current) => ({
+      ...current,
+      customTargetsByPost: Array.from({ length: parsePositiveIntegerDraft(current.numberOfPosts, 1, 20) || current.customTargetsByPost.length }, (_, index) =>
+        index === postIndex ? value : current.customTargetsByPost[index] || current.targetsPerPost,
+      ),
+      customTargetsActive: true,
+    }));
+  }
+
+  function setAllCustomTargetDrafts(value: number) {
+    setSetupApplyMessage("");
+    const count = parsePositiveIntegerDraft(setupDraft.numberOfPosts, 1, 20) || numberOfPosts;
+    setSetupDraft((current) => ({
+      ...current,
+      customTargetsByPost: Array.from({ length: count }, () => String(value)),
+      customTargetsActive: true,
+    }));
+  }
+
+  function clearCustomTargetDrafts() {
+    setSetupApplyMessage("");
+    const count = parsePositiveIntegerDraft(setupDraft.numberOfPosts, 1, 20) || numberOfPosts;
+    const fallback = parsePositiveIntegerDraft(setupDraft.targetsPerPost, 1, 100) || targetsPerPost;
+    setSetupDraft((current) => ({
+      ...current,
+      customTargetsByPost: customTargetDraftValues(count, fallback, null),
+      customTargetsActive: false,
+    }));
   }
 
   function applySetupDraftChanges() {
@@ -1401,7 +1503,13 @@ export default function TrainingScoreSheetPage() {
       );
       return;
     }
-    if (nextPostCount === numberOfPosts && nextTargetsPerPost === targetsPerPost) {
+    if (!normalizedDraftCustomTargets.ok) {
+      setSetupApplyMessage("Every custom post count must be a whole number from 1 to 100.");
+      return;
+    }
+    const nextExpectedTargetsByPost = normalizedDraftCustomTargets.counts;
+    const nextTargetMax = nextExpectedTargetsByPost || nextTargetsPerPost;
+    if (nextPostCount === numberOfPosts && nextTargetsPerPost === targetsPerPost && sameExpectedTargetsByPost(nextExpectedTargetsByPost, expectedTargetsByPost)) {
       setSetupApplyMessage("Setup is already applied.");
       return;
     }
@@ -1410,14 +1518,14 @@ export default function TrainingScoreSheetPage() {
       shooters,
       targetResults,
       nextPostCount,
-      nextTargetsPerPost,
+      nextTargetsPerPost: nextTargetMax,
     });
     if (wouldTrim) {
       const details = setupTrimDetails({
         shooters,
         targetResults,
         nextPostCount,
-        nextTargetsPerPost,
+        nextTargetsPerPost: nextTargetMax,
         postLabel: isCompak ? "stand" : "post",
       });
       if (!window.confirm(setupTrimWarning(details))) {
@@ -1428,15 +1536,17 @@ export default function TrainingScoreSheetPage() {
 
     setNumberOfPosts(nextPostCount);
     setTargetsPerPost(nextTargetsPerPost);
-    setExpectedTargetsByPost(null);
+    setExpectedTargetsByPost(nextExpectedTargetsByPost);
     setShooters((current) =>
-      resizeShootersForSetup(current, nextPostCount, nextTargetsPerPost),
+      resizeShootersForSetup(current, nextPostCount, nextTargetMax),
     );
     setTargetResults((current) =>
-      trimTargetResults(current, nextPostCount, nextTargetsPerPost),
+      trimTargetResults(current, nextPostCount, nextTargetMax),
     );
     setSetupApplyMessage(
-      `${isCompak ? "Stand" : "Post"} setup applied: ${nextPostCount} × ${nextTargetsPerPost}. Existing in-range scores were preserved.`,
+      nextExpectedTargetsByPost
+        ? `${isCompak ? "Stand" : "Post"} setup applied: ${nextPostCount} custom counts, ${nextExpectedTargetsByPost.reduce((sum, count) => sum + count, 0)} targets per shooter.`
+        : `${isCompak ? "Stand" : "Post"} setup applied: ${nextPostCount} × ${nextTargetsPerPost}. Existing in-range scores were preserved.`,
     );
   }
 
@@ -2783,12 +2893,46 @@ export default function TrainingScoreSheetPage() {
                   />
                 </div>
               </div>
+              <details className="compactMoreActions customTargetsPanel">
+                <summary>Custom targets per post</summary>
+                <div className="customTargetsSummary">
+                  <p className="small muted">Default: {draftTargetsPerPost || targetsPerPost} targets per post</p>
+                  <p className="small muted">Custom total: {draftTotalTargets || sheetTotalTargets} targets</p>
+                </div>
+                <div className="btns">
+                  <button type="button" className="secondary smallButton" onClick={() => setAllCustomTargetDrafts(draftTargetsPerPost || targetsPerPost)}>Use same for all posts</button>
+                  <button type="button" className="secondary smallButton" onClick={clearCustomTargetDrafts}>Clear custom counts</button>
+                  <button type="button" className="secondary smallButton" onClick={() => setAllCustomTargetDrafts(8)}>Set all to 8</button>
+                  <button type="button" className="secondary smallButton" onClick={() => setAllCustomTargetDrafts(10)}>Set all to 10</button>
+                </div>
+                <div className="customTargetsGrid">
+                  {Array.from({ length: draftPostCount || numberOfPosts }, (_, index) => (
+                    <label key={index}>
+                      Post {index + 1}
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        inputMode="numeric"
+                        value={setupDraft.customTargetsByPost[index] || String(draftTargetsPerPost || targetsPerPost)}
+                        onChange={(event) => updateCustomTargetDraft(index, event.target.value)}
+                      />
+                    </label>
+                  ))}
+                </div>
+                {!normalizedDraftCustomTargets.ok && (
+                  <p className="warning small" role="alert">Every custom post count must be a positive whole number from 1 to 100, and there must be one count for each post.</p>
+                )}
+                {normalizedDraftCustomTargets.ok && !normalizedDraftCustomTargets.active && (
+                  <p className="small muted">All posts match the default, so custom counts will be cleared when applied.</p>
+                )}
+              </details>
               <div className="setupApplyPanel">
                 <div>
                   <strong>Setup changes are staged until applied.</strong>
                   <p className="small muted">Typing partial values like “1” while entering “10” will not resize posts, targets, target results, or the live cursor.</p>
                   {setupDraftDirty && setupDraftValid && draftPostCount && draftTargetsPerPost && (
-                    <p className="small muted">Pending setup: {draftPostCount} × {draftTargetsPerPost} ({draftPostCount * draftTargetsPerPost} targets per shooter).</p>
+                    <p className="small muted">Pending setup: {draftExpectedTargetsByPost ? `${draftPostCount} posts with custom counts (${draftTotalTargets} targets per shooter)` : `${draftPostCount} × ${draftTargetsPerPost} (${draftTotalTargets} targets per shooter)`}.</p>
                   )}
                   {setupApplyMessage && <p className="small muted" role="status">{setupApplyMessage}</p>}
                 </div>
