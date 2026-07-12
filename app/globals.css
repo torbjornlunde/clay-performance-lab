@@ -8703,3 +8703,19 @@ select {
 .leirdueHealthPage .compactSummaryGrid strong {
   color: var(--text-primary);
 }
+
+.leirdueSourceReview {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-muted);
+}
+.leirdueSourceReview p { margin: 0.15rem 0 0; color: var(--muted); }
+.sourceReviewStatus { padding: 0.75rem; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); }
+.sourceDiffList { display: grid; gap: 0.6rem; }
+.sourceDiffRow { display: grid; grid-template-columns: auto 1fr; gap: 0.6rem; align-items: start; min-height: 44px; padding: 0.65rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.sourceDiffRow input { width: 1.1rem; height: 1.1rem; margin-top: 0.15rem; }
+.sourceDiffRow small { display: block; color: var(--muted); overflow-wrap: anywhere; }
