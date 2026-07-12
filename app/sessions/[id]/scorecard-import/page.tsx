@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { recordAnalyticsEvent } from "@/lib/analytics";
 import {
   formatScorecardSetupSummary,
   scorecardDisciplineProfile,
@@ -358,6 +359,7 @@ export default function Page() {
       setError("Image is still too large after resizing.");
       return;
     }
+    void recordAnalyticsEvent(supabase, "scorecard_photo_uploaded", { route: "/sessions/[id]/scorecard-import", feature: "scorecard_import", sessionId: id, metadata: { targetCount: setupResult?.ok ? setupResult.setup.totalTargets : undefined } });
     const clientImportId = crypto.randomUUID();
     const imageFingerprint = await sha256(blob);
     const rec: PendingScorecardPhoto = {
@@ -558,6 +560,7 @@ export default function Page() {
       rememberPending(readyWithRevision);
       const readySaved = await enqueuePendingWrite(readyWithRevision);
       if (!readySaved.ok) throw new Error(readySaved.error);
+      void recordAnalyticsEvent(supabase, "scorecard_analysis_completed", { route: "/sessions/[id]/scorecard-import", feature: "scorecard_import", sessionId: id, metadata: { candidateCount: analysis.shooterRows.length } });
       applyReviewReset(auto ? analysis.shooterRows[0].grid : [], auto, readyWithRevision, false);
       setAck(false);
       setStage("Preparing review");
@@ -591,6 +594,7 @@ export default function Page() {
       const failedWithRevision = { ...failed, localReviewRevision: nextRevision() };
       rememberPending(failedWithRevision);
       await enqueuePendingWrite(failedWithRevision);
+      void recordAnalyticsEvent(supabase, "error_reported", { route: "/sessions/[id]/scorecard-import", feature: "scorecard_import", sessionId: id, metadata: { errorCategory: "scorecard_analysis" } });
       setError(failed.lastError || "");
       setStage("");
     }
@@ -737,6 +741,7 @@ export default function Page() {
         alreadyImported: String(Boolean(result.alreadyImported)),
         ownScoreUpdated: String(Boolean(result.ownScoreUpdated)),
       });
+      void recordAnalyticsEvent(supabase, "scorecard_review_applied", { route: "/sessions/[id]/scorecard-import", feature: "scorecard_import", sessionId: id, metadata: { scoreChoice, targetCount: grid.length } });
       router.push(`/sessions/${id}/analysis?scorecardImported=1&${qs.toString()}`);
     } catch (e: any) {
       const retryable = {

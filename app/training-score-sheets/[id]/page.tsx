@@ -15,6 +15,7 @@ import {
 } from "@/lib/fitasc/compakSchemes";
 import { useScreenWakeLock } from "@/hooks/useScreenWakeLock";
 import { supabase } from "@/lib/supabase/client";
+import { recordAnalyticsEvent } from "@/lib/analytics";
 import {
   clampScore,
   displayedPostScore,
@@ -2073,6 +2074,7 @@ export default function TrainingScoreSheetPage() {
 
     const existingSheetId = effectiveSheetId;
     const shouldCleanupExistingChildren = Boolean(existingSheetId);
+    const isCreatingSheet = !existingSheetId;
     const { data: savedSheet, error: sheetError } = existingSheetId
       ? await supabase
           .from("training_score_sheets")
@@ -2251,6 +2253,7 @@ export default function TrainingScoreSheetPage() {
     }
     writeLocalDraft(true, savedSheet.id);
     cleanupOldSyncedDrafts();
+    void recordAnalyticsEvent(supabase, isCreatingSheet ? "training_score_sheet_created" : "training_score_sheet_saved", { route: "/training-score-sheets/[id]", feature: "training_score_sheet", discipline, sessionId: savedSheet.id, metadata: { targetCount: sheetTotalTargets } });
     setSavedMessage("Training score sheet saved.");
     if (isNew && shouldNavigate) router.replace(`/training-score-sheets/${savedSheet.id}`);
     else if (shouldReload) setSavedMessage("Training score sheet saved.");

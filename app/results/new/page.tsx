@@ -8,6 +8,7 @@ import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase/client";
+import { recordAnalyticsEvent } from "@/lib/analytics";
 import { userFacingSaveError } from "@/lib/userFacingErrors";
 import { CompetitionTemplateSuggestions, type CompetitionTemplateCandidate } from "@/app/components/CompetitionTemplateSuggestions";
 import { useCompetitionTemplateCandidates } from "@/lib/competitionTemplates/useCompetitionTemplateCandidates";
@@ -137,6 +138,7 @@ export default function NewResultPage() {
       setSaving(false);
       return;
     }
+    await recordAnalyticsEvent(supabase, "result_created_manual", { route: "/results/new", feature: "manual_result", discipline, sessionId: inserted.id, metadata: { targetCount: totalTargets } });
     const applied = await applySelectedTemplate(inserted.id);
     setSaving(false);
     router.push(`/sessions/${inserted.id}${applied ? "" : "?templateApplyFailed=result"}`);
