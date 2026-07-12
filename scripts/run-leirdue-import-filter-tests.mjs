@@ -58,4 +58,21 @@ assert.match(page, /candidateSelectedByDefault[\s\S]*hasImportableResultScore\(c
 assert.match(page, /Winning score: \{candidate\.winningScore \?\? "unknown"\}/, 'UI displays unknown winning score without blocking selection');
 rmSync('.leirdue-save-test-build', { recursive: true, force: true });
 rmSync('.leirdue-save-test-tsconfig.json', { force: true });
+const recentRefreshRoute = readFileSync('app/api/leirdue/refresh-recent/route.ts', 'utf8');
+const recentRefreshMigration = readFileSync('supabase/migrations/20260712120000_leirdue_recent_refresh_job_health.sql', 'utf8');
+assert.match(recentRefreshRoute, /LEIRDUE_REFRESH_SECRET \|\| process\.env\.CRON_SECRET/, 'recent refresh endpoint accepts only the configured server-side cron secret');
+assert.match(recentRefreshRoute, /return NextResponse\.json\(\{ error: "Unauthorized\." \}, \{ status: 401 \}\)/, 'recent refresh endpoint rejects missing or incorrect secrets');
+assert.match(recentRefreshRoute, /const RECENT_WINDOW_DAYS = 14/, 'recent refresh window defaults to approximately 14 days');
+assert.match(recentRefreshRoute, /if \(eventDate && eventDate < cutoff\) continue;/, 'recent refresh excludes old dated events from daily discovery');
+assert.match(recentRefreshRoute, /parseLeirdueSharedResultListHtml/, 'recent refresh reuses the existing shared Leirdue parser');
+assert.match(recentRefreshRoute, /upsert\(rows, \{ onConflict: "result_identity" \}\)/, 'successful recent refresh upserts shared cache rows idempotently');
+assert.match(recentRefreshRoute, /leirdue_job_health/, 'recent refresh records persistent job health');
+assert.match(recentRefreshRoute, /status: "failed"/, 'recent refresh records failed job health safely');
+assert.doesNotMatch(recentRefreshRoute, /from\("sessions"\)|from\("training_logs"\)|from\("personal_logs"\)/, 'recent refresh does not write saved user result/session rows');
+assert.match(recentRefreshMigration, /job_name text primary key/, 'job health has a stable job_name key');
+assert.match(recentRefreshMigration, /status text not null check \(status in \('success','partial','failed'\)\)/, 'job health records success, partial and failed statuses');
+assert.match(recentRefreshMigration, /refreshed_count integer not null default 0/, 'job health records refreshed counts');
+assert.match(recentRefreshMigration, /failure_reason text/, 'job health records failure reasons for future alerts');
+assert.match(recentRefreshMigration, /affected_scope jsonb not null default '\{\}'::jsonb/, 'job health records affected refresh scope');
+
 console.log('Leirdue import filter normalization tests passed');
