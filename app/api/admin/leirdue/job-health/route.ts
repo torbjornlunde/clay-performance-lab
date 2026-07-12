@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { canManageBetaAccess } from "@/lib/access";
+import { leirdueAlertEmailConfigStatus } from "@/lib/leirdue/adminEmailAlerts";
 import { deriveLeirdueHealthState, LEIRDUE_RECENT_REFRESH_JOB_NAME, type LeirdueJobHealthRow } from "@/lib/leirdue/jobHealth";
 
 export const dynamic = "force-dynamic";
@@ -35,10 +36,10 @@ export async function GET(request: Request) {
   if (!admin.ok) return NextResponse.json({ error: admin.error }, { status: admin.status });
   const service = serviceClient();
   if (!service) return NextResponse.json({ error: "Missing service-role Supabase context." }, { status: 500 });
-  const { data, error } = await service.from("leirdue_job_health").select("job_name,started_at,finished_at,status,refreshed_count,error_count,last_success_at,failure_reason,affected_scope,updated_at").eq("job_name", LEIRDUE_RECENT_REFRESH_JOB_NAME).maybeSingle<LeirdueJobHealthRow>();
+  const { data, error } = await service.from("leirdue_job_health").select("job_name,started_at,finished_at,status,refreshed_count,error_count,last_success_at,failure_reason,affected_scope,updated_at,last_alert_email_sent_at,last_alert_email_status,last_alert_email_error,last_alert_incident_key,last_recovery_email_sent_at").eq("job_name", LEIRDUE_RECENT_REFRESH_JOB_NAME).maybeSingle<LeirdueJobHealthRow>();
   if (error) return NextResponse.json({ error: "Could not read Leirdue job health." }, { status: 500 });
   const state = deriveLeirdueHealthState(data);
-  return NextResponse.json({ jobName: LEIRDUE_RECENT_REFRESH_JOB_NAME, state, healthy: state === "healthy", row: data || null, staleAfterHours: 36 });
+  return NextResponse.json({ jobName: LEIRDUE_RECENT_REFRESH_JOB_NAME, state, healthy: state === "healthy", row: data || null, staleAfterHours: 36, emailAlerts: { status: leirdueAlertEmailConfigStatus() } });
 }
 
 export const __test = { requireAdmin };

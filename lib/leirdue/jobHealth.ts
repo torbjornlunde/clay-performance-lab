@@ -15,6 +15,11 @@ export type LeirdueJobHealthRow = {
   failure_reason: string | null;
   affected_scope: Record<string, unknown> | null;
   updated_at: string | null;
+  last_alert_email_sent_at: string | null;
+  last_alert_email_status: string | null;
+  last_alert_email_error: string | null;
+  last_alert_incident_key: string | null;
+  last_recovery_email_sent_at: string | null;
 };
 
 export function deriveLeirdueHealthState(row: Pick<LeirdueJobHealthRow, "status" | "last_success_at"> | null | undefined, now = new Date()): LeirdueHealthState {
@@ -42,5 +47,3 @@ export function leirdueHealthSummary(state: LeirdueHealthState) {
 export function needsLeirdueAdminAttention(state: LeirdueHealthState) {
   return state !== "healthy";
 }
-
-// Phase 3: send owner/admin email when this job becomes failed or stale, repeated parser/fetch failures occur, or the job has never run after the deployment window.

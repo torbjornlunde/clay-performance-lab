@@ -5,7 +5,7 @@ import Link from "next/link";
 import { leirdueHealthSummary, needsLeirdueAdminAttention, type LeirdueHealthState, type LeirdueJobHealthRow } from "@/lib/leirdue/jobHealth";
 import { supabase } from "@/lib/supabase/client";
 
-type HealthResponse = { state: LeirdueHealthState; healthy: boolean; row: LeirdueJobHealthRow | null; staleAfterHours: number; error?: string };
+type HealthResponse = { state: LeirdueHealthState; healthy: boolean; row: LeirdueJobHealthRow | null; staleAfterHours: number; emailAlerts?: { status: "configured" | "not_configured" }; error?: string };
 
 function formatDateTime(value: string | null | undefined) {
   if (!value) return "Never";
@@ -57,10 +57,15 @@ export default function LeirdueHealthPage() {
         <span><strong>{row?.refreshed_count ?? 0}</strong> refreshed rows</span>
         <span><strong>{row?.error_count ?? 0}</strong> errors</span>
         <span><strong>Daily</strong> next expected run</span>
+        <span><strong>{health.emailAlerts?.status === "configured" ? "Configured" : "Not configured"}</strong> email alerts</span>
       </div> : null}
       {health ? <dl className="detailList">
         <div><dt>Failure reason</dt><dd>{row?.failure_reason || "None recorded."}</dd></div>
         <div><dt>Affected scope</dt><dd>{affectedScopeSummary(row?.affected_scope)}</dd></div>
+        <div><dt>Last alert email sent</dt><dd>{formatDateTime(row?.last_alert_email_sent_at)}</dd></div>
+        <div><dt>Last alert email status</dt><dd>{row?.last_alert_email_status || (health.emailAlerts?.status === "not_configured" ? "Email alerts not configured" : "None recorded.")}</dd></div>
+        <div><dt>Last alert email error</dt><dd>{row?.last_alert_email_error || "None recorded."}</dd></div>
+        <div><dt>Last recovery email sent</dt><dd>{formatDateTime(row?.last_recovery_email_sent_at)}</dd></div>
         <div><dt>Stale rule</dt><dd>No successful refresh in the last {health.staleAfterHours} hours.</dd></div>
       </dl> : null}
       <div className="btns"><button type="button" className="secondary" onClick={() => void loadHealth()} disabled={loading}>{loading ? "Refreshing…" : "Refresh status"}</button><Link className="button secondary buttonLike" href="/admin/leirdue-cache">Open cache admin</Link></div>
