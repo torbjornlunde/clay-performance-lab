@@ -217,6 +217,7 @@ export default function AuthHeader() {
                   <button role="menuitem" type="button" onClick={() => { closeMenu({ restoreFocus: true }); exportMyData(); }} disabled={exporting}>{exporting ? "Exporting..." : "Export my data"}</button>
                   {feedbackHref && <a role="menuitem" href={feedbackHref} onClick={() => closeMenu()}>Send feedback</a>}
                   {showBetaAdmin && <Link role="menuitem" href="/beta/admin" onClick={() => closeMenu()}>Beta approvals</Link>}
+                  {showBetaAdmin && <Link role="menuitem" href="/admin/leirdue-health" onClick={() => closeMenu()}>Leirdue health</Link>}
                   <button role="menuitem" type="button" className="danger" onClick={logout}>Sign out</button>
                 </div>
               )}
