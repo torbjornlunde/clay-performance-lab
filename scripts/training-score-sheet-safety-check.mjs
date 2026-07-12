@@ -12,7 +12,8 @@ function trimTargetResults(current, maxPosts, maxTargets) {
       if (postNumber < 1 || postNumber > maxPosts) return;
       Object.entries(targets).forEach(([targetKey, result]) => {
         const targetNumber = Number(targetKey);
-        if (targetNumber < 1 || targetNumber > maxTargets) return;
+        const postMaxTargets = Array.isArray(maxTargets) ? maxTargets[postNumber - 1] : maxTargets;
+        if (targetNumber < 1 || targetNumber > postMaxTargets) return;
         next[shooterId] = next[shooterId] || {};
         next[shooterId][postNumber] = next[shooterId][postNumber] || {};
         next[shooterId][postNumber][targetNumber] = result;
@@ -37,6 +38,21 @@ function displayedPostScore(shooter, postIndex, targetResults) {
   return hasTargetResults(targetResults, shooter.localId, postNumber)
     ? scoreFromTargetResults(targetResults, shooter.localId, postNumber)
     : shooter.scores[postIndex] || 0;
+}
+
+
+function normalizeExpectedTargetsByPost(setup) {
+  const postCount = Math.max(0, Math.trunc(Number(setup.postCount) || 0));
+  const fallback = Math.max(1, Math.trunc(Number(setup.targetsPerPost) || 10));
+  return Array.isArray(setup.expectedTargetsByPost) && setup.expectedTargetsByPost.length === postCount
+    ? setup.expectedTargetsByPost.map((count) => Math.max(1, Math.trunc(Number(count) || fallback)))
+    : Array.from({ length: postCount }, () => fallback);
+}
+function getExpectedTargetsForPost(setup, postNumber) {
+  return normalizeExpectedTargetsByPost(setup)[Math.max(1, Math.trunc(postNumber)) - 1] || Math.max(1, Math.trunc(Number(setup.targetsPerPost) || 10));
+}
+function getTotalExpectedTargets(setup) {
+  return normalizeExpectedTargetsByPost(setup).reduce((sum, count) => sum + count, 0);
 }
 
 function parsePositiveIntegerDraft(value, min, max) {
@@ -90,5 +106,13 @@ assert.equal(
   2,
   "post totals are derived from target-by-target hits",
 );
+
+assert.equal(getTotalExpectedTargets({ postCount: 5, targetsPerPost: 10 }), 50, "fixed 5 posts × 10 targets still totals 50");
+assert.equal(getTotalExpectedTargets({ postCount: 3, targetsPerPost: 10, expectedTargetsByPost: [6, 8, 10] }), 24, "variable 6/8/10 posts total correctly");
+assert.equal(getTotalExpectedTargets({ postCount: 16, targetsPerPost: 8, expectedTargetsByPost: Array.from({ length: 16 }, () => 8) }), 128, "16 posts totaling 128 works");
+assert.equal(getExpectedTargetsForPost({ postCount: 3, targetsPerPost: 10, expectedTargetsByPost: [6, 8, 10] }, 2), 8, "post breakdown denominator uses each post count");
+assert.equal(trimTargetResults({ s: { 1: { 8: "hit", 9: "miss" }, 2: { 9: "hit", 10: "hit" } } }, 2, [8, 10]).s[1][9], undefined, "post with 8 targets does not preserve target slot 9");
+assert.equal(Object.keys(trimTargetResults({ s: { 1: { 8: "hit", 9: "miss" }, 2: { 9: "hit", 10: "hit" } } }, 2, [8, 10]).s[2]).length, 2, "post with 10 targets preserves 9 and 10");
+assert.equal(getTotalExpectedTargets({ postCount: 2, targetsPerPost: 10, expectedTargetsByPost: null }), 20, "old sessions without per-post config still use fixed setup");
 
 console.log("Training score sheet safety checks passed.");
