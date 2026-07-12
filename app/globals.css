@@ -4023,7 +4023,7 @@ body {
 }
 
 .scoreTotalCell {
-  color: #ffe2a0;
+  color: var(--gold-strong);
   font-weight: 950;
   white-space: nowrap;
 }
@@ -4289,7 +4289,8 @@ body {
   width: 100%;
   min-width: 520px;
   border-collapse: collapse;
-  background: rgba(10, 16, 24, 0.5);
+  background: var(--surface-inset);
+  color: var(--text-primary);
 }
 
 .breakdownTable {
@@ -4330,7 +4331,7 @@ body {
 }
 
 .rankCell {
-  color: #ffe2a0;
+  color: var(--gold-strong);
   font-weight: 950;
 }
 
@@ -4366,9 +4367,10 @@ body {
   .mobileBreakdownCard,
   .mobileLiveScoreCard {
     min-width: 0;
-    border: 1px solid var(--field-border-subtle);
+    border: 1px solid var(--border-subtle);
     border-radius: 14px;
-    background: var(--field-surface-inset);
+    background: var(--surface-inset);
+    color: var(--text-primary);
     padding: 9px;
   }
 
@@ -4390,7 +4392,7 @@ body {
   .mobileRankingIdentity strong,
   .mobileResultHeader strong {
     min-width: 0;
-    color: var(--field-text-primary);
+    color: var(--text-primary);
     line-height: 1.2;
     overflow-wrap: anywhere;
   }
@@ -4402,8 +4404,8 @@ body {
     place-items: center;
     border: 1px solid var(--field-border-strong);
     border-radius: 999px;
-    background: var(--field-active-bg);
-    color: var(--field-active-text);
+    background: var(--action-selected-bg);
+    color: var(--action-selected-text);
     font-weight: 950;
   }
 
@@ -4412,17 +4414,17 @@ body {
     grid-template-columns: auto auto;
     gap: 1px 8px;
     justify-items: end;
-    color: var(--field-text-primary);
+    color: var(--text-primary);
     white-space: nowrap;
   }
 
   .mobileRankingScore strong {
-    color: var(--field-active-text);
+    color: var(--gold-strong);
   }
 
   .mobileRankingScore small {
     grid-column: 1 / -1;
-    color: var(--field-text-secondary);
+    color: var(--text-secondary);
     font-weight: 800;
   }
 
@@ -4435,7 +4437,7 @@ body {
   }
 
   .mobileResultHeader > span {
-    color: var(--field-active-text);
+    color: var(--gold-strong);
     font-size: 16px;
     font-weight: 950;
     white-space: nowrap;
@@ -4454,23 +4456,23 @@ body {
     min-width: 0;
     min-height: 44px;
     place-content: center;
-    border: 1px solid var(--field-border-subtle);
+    border: 1px solid var(--border-subtle);
     border-radius: 10px;
-    background: var(--field-surface-secondary);
-    color: var(--field-text-primary);
+    background: var(--surface-cell);
+    color: var(--text-primary);
     padding: 4px 2px;
     text-align: center;
   }
 
   .mobilePostCell span {
-    color: var(--field-text-secondary);
+    color: var(--text-secondary);
     font-size: 10px;
     font-weight: 900;
     letter-spacing: 0.04em;
   }
 
   .mobilePostCell strong {
-    color: var(--field-text-primary);
+    color: var(--text-primary);
     font-size: 16px;
     line-height: 1;
   }

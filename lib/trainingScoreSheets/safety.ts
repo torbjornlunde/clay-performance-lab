@@ -10,6 +10,34 @@ export type ShooterScores = {
   scores: number[];
 };
 
+export type ExpectedTargetSetup = {
+  postCount: number;
+  targetsPerPost: number;
+  expectedTargetsByPost?: number[] | null;
+};
+
+export function normalizeExpectedTargetsByPost(setup: ExpectedTargetSetup) {
+  const postCount = Math.max(0, Math.trunc(Number(setup.postCount) || 0));
+  const fallback = Math.max(1, Math.trunc(Number(setup.targetsPerPost) || 10));
+  const counts = Array.isArray(setup.expectedTargetsByPost) && setup.expectedTargetsByPost.length === postCount
+    ? setup.expectedTargetsByPost.map((count) => Math.max(1, Math.trunc(Number(count) || fallback)))
+    : Array.from({ length: postCount }, () => fallback);
+  return counts;
+}
+
+export function getExpectedTargetsForPost(setup: ExpectedTargetSetup, postNumber: number) {
+  const counts = normalizeExpectedTargetsByPost(setup);
+  return counts[Math.max(1, Math.trunc(postNumber)) - 1] || Math.max(1, Math.trunc(Number(setup.targetsPerPost) || 10));
+}
+
+export function getPostScoreDenominator(setup: ExpectedTargetSetup, postNumber: number) {
+  return getExpectedTargetsForPost(setup, postNumber);
+}
+
+export function getTotalExpectedTargets(setup: ExpectedTargetSetup) {
+  return normalizeExpectedTargetsByPost(setup).reduce((sum, count) => sum + count, 0);
+}
+
 export function clampScore(value: number, max: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.min(Math.max(Math.trunc(value), 0), max);
@@ -59,7 +87,7 @@ export function totalFor(shooter: ShooterScores, targetResults: TargetResultMap)
 export function trimTargetResults(
   current: TargetResultMap,
   maxPosts: number,
-  maxTargets: number,
+  maxTargets: number | number[],
 ) {
   const next: TargetResultMap = {};
   Object.entries(current).forEach(([shooterId, posts]) => {
@@ -68,7 +96,8 @@ export function trimTargetResults(
       if (postNumber < 1 || postNumber > maxPosts) return;
       Object.entries(targets).forEach(([targetKey, result]) => {
         const targetNumber = Number(targetKey);
-        if (targetNumber < 1 || targetNumber > maxTargets) return;
+        const postMaxTargets = Array.isArray(maxTargets) ? maxTargets[postNumber - 1] : maxTargets;
+        if (targetNumber < 1 || targetNumber > postMaxTargets) return;
         next[shooterId] = next[shooterId] || {};
         next[shooterId][postNumber] = next[shooterId][postNumber] || {};
         next[shooterId][postNumber][targetNumber] = result;
@@ -81,7 +110,7 @@ export function trimTargetResults(
 export function targetResultsOutsideSetup(
   current: TargetResultMap,
   maxPosts: number,
-  maxTargets: number,
+  maxTargets: number | number[],
 ) {
   return Object.values(current).some((posts) =>
     Object.entries(posts).some(([postKey, targets]) => {
@@ -89,7 +118,8 @@ export function targetResultsOutsideSetup(
       if (postNumber < 1 || postNumber > maxPosts) return true;
       return Object.keys(targets).some((targetKey) => {
         const targetNumber = Number(targetKey);
-        return targetNumber < 1 || targetNumber > maxTargets;
+        const postMaxTargets = Array.isArray(maxTargets) ? maxTargets[postNumber - 1] : maxTargets;
+        return targetNumber < 1 || targetNumber > postMaxTargets;
       });
     }),
   );
@@ -106,16 +136,20 @@ export function manualScoresOutsidePostCount(
 
 export function manualScoresAboveTargetMax(
   shooters: ShooterScores[],
-  targetMax: number,
+  targetMax: number | number[],
 ) {
-  return shooters.some((shooter) => shooter.scores.some((score) => score > targetMax));
+  return shooters.some((shooter) =>
+    shooter.scores.some((score, index) =>
+      score > (Array.isArray(targetMax) ? targetMax[index] : targetMax),
+    ),
+  );
 }
 
 export function setupReductionWouldTrimData(options: {
   shooters: ShooterScores[];
   targetResults: TargetResultMap;
   nextPostCount: number;
-  nextTargetsPerPost: number;
+  nextTargetsPerPost: number | number[];
 }) {
   return (
     manualScoresOutsidePostCount(options.shooters, options.nextPostCount) ||
@@ -131,12 +165,12 @@ export function setupReductionWouldTrimData(options: {
 export function resizeShootersForSetup<T extends ShooterScores>(
   shooters: T[],
   postCount: number,
-  targetsPerPost: number,
+  targetsPerPost: number | number[],
 ): T[] {
   return shooters.map((shooter) => ({
     ...shooter,
-    scores: makeScores(postCount, shooter.scores).map((score) =>
-      clampScore(score, targetsPerPost),
+    scores: makeScores(postCount, shooter.scores).map((score, index) =>
+      clampScore(score, Array.isArray(targetsPerPost) ? targetsPerPost[index] : targetsPerPost),
     ),
   }));
 }

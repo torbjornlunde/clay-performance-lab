@@ -18,6 +18,8 @@ import { supabase } from "@/lib/supabase/client";
 import {
   clampScore,
   displayedPostScore,
+  getExpectedTargetsForPost,
+  getTotalExpectedTargets,
   hasTargetResults,
   makeScores,
   resizeShootersForSetup,
@@ -54,6 +56,7 @@ type ScoreSheetRow = {
   number_of_posts: number;
   targets_per_post: number;
   total_targets: number;
+  expected_targets_by_post: number[] | null;
   updated_at: string | null;
   compak_scheme_id: string | null;
   compak_shooting_mode: CompakShootingMode | null;
@@ -114,6 +117,7 @@ type LocalScoreSheetDraft = {
   sessionType: string;
   numberOfPosts: number;
   targetsPerPost: number;
+  expectedTargetsByPost?: number[] | null;
   compakSchemeId: number;
   compakShootingMode: CompakShootingMode;
   compakRotationMode: CompakRotationMode;
@@ -622,6 +626,7 @@ export default function TrainingScoreSheetPage() {
   const [sessionType, setSessionType] = useState("training");
   const [numberOfPosts, setNumberOfPosts] = useState(5);
   const [targetsPerPost, setTargetsPerPost] = useState(10);
+  const [expectedTargetsByPost, setExpectedTargetsByPost] = useState<number[] | null>(null);
   const [setupDraft, setSetupDraft] = useState<SetupDraft>({
     numberOfPosts: "5",
     targetsPerPost: "10",
@@ -676,7 +681,9 @@ export default function TrainingScoreSheetPage() {
     [numberOfPosts],
   );
   const isCompak = isCompakSporting(discipline);
-  const sheetTotalTargets = numberOfPosts * targetsPerPost;
+  const expectedTargetSetup = { postCount: numberOfPosts, targetsPerPost, expectedTargetsByPost };
+  const expectedTargetsPerPost = useMemo(() => Array.from({ length: numberOfPosts }, (_, index) => getExpectedTargetsForPost(expectedTargetSetup, index + 1)), [numberOfPosts, targetsPerPost, expectedTargetsByPost]);
+  const sheetTotalTargets = getTotalExpectedTargets(expectedTargetSetup);
   const draftPostCount = parsePositiveIntegerDraft(setupDraft.numberOfPosts, 1, 20);
   const draftTargetsPerPost = parsePositiveIntegerDraft(setupDraft.targetsPerPost, 1, 100);
   const setupDraftDirty =
@@ -708,10 +715,6 @@ export default function TrainingScoreSheetPage() {
         }))
         .filter((shooter) => shooter.displayName.length > 0),
     [shooters],
-  );
-  const targetNumbers = useMemo(
-    () => Array.from({ length: targetsPerPost }, (_, index) => index + 1),
-    [targetsPerPost],
   );
   const currentPostShooters = useMemo(
     () =>
@@ -766,6 +769,12 @@ export default function TrainingScoreSheetPage() {
   const activeTargetNumber = isCompak
     ? currentCompakTarget?.targetNumber || currentTarget
     : currentTarget;
+  const targetNumbers = useMemo(
+    () => Array.from({ length: getExpectedTargetsForPost(expectedTargetSetup, activePostNumber) }, (_, index) => index + 1),
+    [activePostNumber, numberOfPosts, targetsPerPost, expectedTargetsByPost],
+  );
+  const targetNumbersForPost = (postNumber: number) =>
+    Array.from({ length: getExpectedTargetsForPost(expectedTargetSetup, postNumber) }, (_, index) => index + 1);
   const activeCompakStandSequences = useMemo(
     () =>
       isCompak
@@ -790,7 +799,7 @@ export default function TrainingScoreSheetPage() {
       )
     : 0;
   const currentShooterRemainingTargets = Math.max(
-    (isCompak ? COMPAK_TOTAL_TARGETS : targetsPerPost) -
+    (isCompak ? COMPAK_TOTAL_TARGETS : getExpectedTargetsForPost(expectedTargetSetup, activePostNumber)) -
       (isCompak ? currentShooterScoredRoundTargets : currentShooterScoredTargets),
     0,
   );
@@ -809,7 +818,7 @@ export default function TrainingScoreSheetPage() {
   const postCompleteMisses = postComplete
     ? isCompak
       ? compakMissDetailsForStand(postCompleteStandSequences, postCompleteResults)
-      : targetNumbers
+      : targetNumbersForPost(postComplete.postNumber)
           .filter((targetNumber) => postCompleteResults[targetNumber] === "miss")
           .map((targetNumber) => `target ${targetNumber}`)
     : [];
@@ -819,7 +828,7 @@ export default function TrainingScoreSheetPage() {
   const postCompleteTargetsSoFar = postComplete
     ? isCompak
       ? COMPAK_TOTAL_TARGETS
-      : postComplete.postNumber * targetsPerPost
+      : expectedTargetsPerPost.slice(0, postComplete.postNumber).reduce((sum, count) => sum + count, 0)
     : 0;
   const compakShooterStats = useMemo(
     () =>
@@ -906,6 +915,7 @@ export default function TrainingScoreSheetPage() {
       sessionType,
       numberOfPosts,
       targetsPerPost,
+      expectedTargetsByPost,
       compakSchemeId,
       compakShootingMode,
       compakRotationMode,
@@ -947,6 +957,7 @@ export default function TrainingScoreSheetPage() {
     setSessionType(draft.sessionType);
     setNumberOfPosts(draft.numberOfPosts);
     setTargetsPerPost(draft.targetsPerPost);
+    setExpectedTargetsByPost(Array.isArray(draft.expectedTargetsByPost) ? draft.expectedTargetsByPost : null);
     setCompakSchemeId(normalizeCompakSchemeId(draft.compakSchemeId));
     setCompakShootingMode(normalizeCompakShootingMode(draft.compakShootingMode));
     setCompakRotationMode(normalizeCompakRotationMode(draft.compakRotationMode));
@@ -1123,6 +1134,7 @@ export default function TrainingScoreSheetPage() {
     sessionType,
     numberOfPosts,
     targetsPerPost,
+    expectedTargetsByPost,
     compakSchemeId,
     compakShootingMode,
     compakRotationMode,
@@ -1155,8 +1167,8 @@ export default function TrainingScoreSheetPage() {
 
   useEffect(() => {
     setCurrentPost((value) => Math.min(Math.max(value, 1), numberOfPosts));
-    setCurrentTarget((value) => Math.min(Math.max(value, 1), targetsPerPost));
-  }, [numberOfPosts, targetsPerPost]);
+    setCurrentTarget((value) => Math.min(Math.max(value, 1), getExpectedTargetsForPost(expectedTargetSetup, currentPost)));
+  }, [numberOfPosts, targetsPerPost, expectedTargetsByPost, currentPost]);
 
   useEffect(() => {
     if (!isCompak) return;
@@ -1186,7 +1198,7 @@ export default function TrainingScoreSheetPage() {
     const { data: sheet, error: sheetError } = await supabase
       .from("training_score_sheets")
       .select(
-        "id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,updated_at,compak_scheme_id,compak_shooting_mode,compak_rotation_mode",
+        "id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,expected_targets_by_post,updated_at,compak_scheme_id,compak_shooting_mode,compak_rotation_mode",
       )
       .eq("id", sheetId)
       .single<ScoreSheetRow>();
@@ -1231,6 +1243,7 @@ export default function TrainingScoreSheetPage() {
     setSessionType(sheet.session_type || "training");
     setNumberOfPosts(sheet.number_of_posts || 5);
     setTargetsPerPost(sheet.targets_per_post || 10);
+    setExpectedTargetsByPost(Array.isArray(sheet.expected_targets_by_post) ? sheet.expected_targets_by_post : null);
     setCompakSchemeId(normalizeCompakSchemeId(sheet.compak_scheme_id));
     setCompakShootingMode(normalizeCompakShootingMode(sheet.compak_shooting_mode));
     setCompakRotationMode(normalizeCompakRotationMode(sheet.compak_rotation_mode));
@@ -1244,7 +1257,7 @@ export default function TrainingScoreSheetPage() {
         return;
       if (
         target.target_number < 1 ||
-        target.target_number > (sheet.targets_per_post || 10)
+        target.target_number > getExpectedTargetsForPost({ postCount: sheet.number_of_posts || 5, targetsPerPost: sheet.targets_per_post || 10, expectedTargetsByPost: Array.isArray(sheet.expected_targets_by_post) ? sheet.expected_targets_by_post : null }, target.post_number)
       )
         return;
       loadedTargetResults[target.shooter_id] =
@@ -1264,7 +1277,7 @@ export default function TrainingScoreSheetPage() {
           if (score.post_number >= 1 && score.post_number <= scores.length) {
             scores[score.post_number - 1] = clampScore(
               score.score,
-              sheet.targets_per_post || 10,
+              getExpectedTargetsForPost({ postCount: sheet.number_of_posts || 5, targetsPerPost: sheet.targets_per_post || 10, expectedTargetsByPost: Array.isArray(sheet.expected_targets_by_post) ? sheet.expected_targets_by_post : null }, score.post_number),
             );
           }
         });
@@ -1415,6 +1428,7 @@ export default function TrainingScoreSheetPage() {
 
     setNumberOfPosts(nextPostCount);
     setTargetsPerPost(nextTargetsPerPost);
+    setExpectedTargetsByPost(null);
     setShooters((current) =>
       resizeShootersForSetup(current, nextPostCount, nextTargetsPerPost),
     );
@@ -1455,7 +1469,7 @@ export default function TrainingScoreSheetPage() {
   function updateScore(localId: string, postIndex: number, value: string) {
     const postNumber = postIndex + 1;
     if (hasTargetResults(targetResults, localId, postNumber)) return;
-    const score = value === "" ? 0 : clampScore(Number(value), targetsPerPost);
+    const score = value === "" ? 0 : clampScore(Number(value), getExpectedTargetsForPost(expectedTargetSetup, postNumber));
     setShooters((current) =>
       current.map((shooter) => {
         if (shooter.localId !== localId) return shooter;
@@ -1619,7 +1633,7 @@ export default function TrainingScoreSheetPage() {
       return;
     }
     if (currentShooterOrderIndex < 0) return;
-    if (currentTarget < targetsPerPost) {
+    if (currentTarget < getExpectedTargetsForPost(expectedTargetSetup, currentPost)) {
       setCurrentTarget((value) => value + 1);
       return;
     }
@@ -1700,7 +1714,7 @@ export default function TrainingScoreSheetPage() {
     const scoredTargetsAfterInput = Object.keys(
       nextTargetResults[currentShooterId]?.[postNumber] || {},
     ).length;
-    if (scoredTargetsAfterInput >= targetsPerPost) {
+    if (scoredTargetsAfterInput >= getExpectedTargetsForPost(expectedTargetSetup, postNumber)) {
       setPostComplete({
         shooterId: currentShooterId,
         postNumber,
@@ -1881,9 +1895,9 @@ export default function TrainingScoreSheetPage() {
         postIndex += 1
       ) {
         if (
-          displayedPostScore(shooter, postIndex, targetResults) > targetsPerPost
+          displayedPostScore(shooter, postIndex, targetResults) > expectedTargetsPerPost[postIndex]
         ) {
-          return `${formatShooterName(shooter.name)} has a score above ${targetsPerPost}.`;
+          return `${formatShooterName(shooter.name)} has a score above the expected target count for a post.`;
         }
       }
     }
@@ -1941,6 +1955,7 @@ export default function TrainingScoreSheetPage() {
       number_of_posts: numberOfPosts,
       targets_per_post: targetsPerPost,
       total_targets: sheetTotalTargets,
+      expected_targets_by_post: expectedTargetsByPost,
       compak_scheme_id: isCompak ? String(compakSchemeId) : null,
       compak_shooting_mode: isCompak ? compakShootingMode : null,
       compak_rotation_mode: isCompak ? compakRotationMode : null,
@@ -2013,9 +2028,9 @@ export default function TrainingScoreSheetPage() {
         post_number: scoreIndex + 1,
         score: clampScore(
           displayedPostScore(shooter, scoreIndex, targetResults),
-          targetsPerPost,
+          expectedTargetsPerPost[scoreIndex],
         ),
-        max_score: targetsPerPost,
+        max_score: expectedTargetsPerPost[scoreIndex],
       })),
     );
 
@@ -2101,7 +2116,7 @@ export default function TrainingScoreSheetPage() {
           (row) =>
             keptShooterIds.includes(row.shooter_id) &&
             row.post_number <= numberOfPosts &&
-            row.target_number <= targetsPerPost &&
+            row.target_number <= getExpectedTargetsForPost(expectedTargetSetup, row.post_number) &&
             !currentTargetKeys.has(
               `${row.shooter_id}:${row.post_number}:${row.target_number}`,
             ),
@@ -2220,6 +2235,7 @@ export default function TrainingScoreSheetPage() {
         number_of_posts: nextPostCount,
         targets_per_post: nextTargetsPerPost,
         total_targets: nextPostCount * nextTargetsPerPost,
+        expected_targets_by_post: null,
         compak_scheme_id: nextIsCompak ? String(compakSchemeId) : null,
         compak_shooting_mode: nextIsCompak ? compakShootingMode : null,
         compak_rotation_mode: nextIsCompak ? compakRotationMode : null,
@@ -2453,7 +2469,7 @@ export default function TrainingScoreSheetPage() {
                         <tr key={shooter.localId}>
                           <th scope="row">{shooter.displayName}</th>
                           {postNumbers.map((post, index) => (
-                            <td key={post}>{displayedPostScore(shooter, index, targetResults)}</td>
+                            <td key={post}>{displayedPostScore(shooter, index, targetResults)}/{expectedTargetsPerPost[index]}</td>
                           ))}
                           <td className="scoreTotalCell">{shooter.totalScore}/{sheetTotalTargets}</td>
                         </tr>
@@ -2478,7 +2494,7 @@ export default function TrainingScoreSheetPage() {
                         {postNumbers.map((post, index) => (
                           <div className="mobilePostCell" key={post} aria-label={`${resultPostLabels[index]} score ${displayedPostScore(shooter, index, targetResults)}`}>
                             <span>{resultPostLabels[index]}</span>
-                            <strong>{displayedPostScore(shooter, index, targetResults)}</strong>
+                            <strong>{displayedPostScore(shooter, index, targetResults)}/{expectedTargetsPerPost[index]}</strong>
                           </div>
                         ))}
                       </div>
@@ -2959,11 +2975,11 @@ export default function TrainingScoreSheetPage() {
                 </div>
                 <div>
                   <span className="small muted">Target</span>
-                  <strong>{activeTargetNumber} / {targetsPerPost}</strong>
+                  <strong>{activeTargetNumber} / {getExpectedTargetsForPost(expectedTargetSetup, activePostNumber)}</strong>
                 </div>
                 <div>
                   <span className="small muted">Score</span>
-                  <strong>{currentShooterPostScore}/{targetsPerPost} · {currentShooterTotal}/{sheetTotalTargets}</strong>
+                  <strong>{currentShooterPostScore}/{getExpectedTargetsForPost(expectedTargetSetup, activePostNumber)} · {currentShooterTotal}/{sheetTotalTargets}</strong>
                 </div>
                 <div className={`syncStatusPill syncStatus-${localSaveStatus}`}>
                   <span className="small muted">Sync</span>
@@ -3294,7 +3310,7 @@ export default function TrainingScoreSheetPage() {
                 <div className="postCompleteCard" role="status">
                   <span className="small muted">{postCompleteShooter.displayName}</span>
                   <strong>{isCompak ? "Stand" : "Post"} {postComplete.postNumber} complete</strong>
-                  <p>{isCompak ? "Plate" : "Post"} score: {postCompleteScore}/{targetsPerPost}</p>
+                  <p>{isCompak ? "Plate" : "Post"} score: {postCompleteScore}/{postComplete ? getExpectedTargetsForPost(expectedTargetSetup, postComplete.postNumber) : targetsPerPost}</p>
                   <p>Total so far: {postCompleteTotalSoFar}/{postCompleteTargetsSoFar}</p>
                   <p className="small muted">
                     Missed: {postCompleteMisses.length > 0
@@ -3628,7 +3644,7 @@ export default function TrainingScoreSheetPage() {
                               }}
                               type="number"
                               min="0"
-                              max={targetsPerPost}
+                              max={expectedTargetsPerPost[index]}
                               inputMode="numeric"
                               enterKeyHint="next"
                               pattern="[0-9]*"
