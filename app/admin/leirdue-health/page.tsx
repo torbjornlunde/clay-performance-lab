@@ -39,7 +39,7 @@ export default function LeirdueHealthPage() {
   const state = health?.state || "never_run";
   const attention = health ? needsLeirdueAdminAttention(state) : false;
 
-  return <main className="container">
+  return <main className="container leirdueHealthPage">
     <section className="card">
       <p className="eyebrow">Admin</p>
       <h1>Leirdue refresh health</h1>
@@ -63,7 +63,7 @@ export default function LeirdueHealthPage() {
         <div><dt>Affected scope</dt><dd>{affectedScopeSummary(row?.affected_scope)}</dd></div>
         <div><dt>Stale rule</dt><dd>No successful refresh in the last {health.staleAfterHours} hours.</dd></div>
       </dl> : null}
-      <div className="btns"><button type="button" className="secondary" onClick={() => void loadHealth()} disabled={loading}>{loading ? "Refreshing…" : "Refresh status"}</button><Link className="secondary buttonLike" href="/admin/leirdue-cache">Open cache admin</Link></div>
+      <div className="btns"><button type="button" className="secondary" onClick={() => void loadHealth()} disabled={loading}>{loading ? "Refreshing…" : "Refresh status"}</button><Link className="button secondary buttonLike" href="/admin/leirdue-cache">Open cache admin</Link></div>
     </section>
   </main>;
 }
