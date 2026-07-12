@@ -208,6 +208,10 @@ export default function Page() {
   const [err, setErr] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [postSetupCount, setPostSetupCount] = useState<number | null>(null);
+  const [sourceRefresh, setSourceRefresh] = useState<any>(null);
+  const [sourceRefreshing, setSourceRefreshing] = useState(false);
+  const [sourceApplying, setSourceApplying] = useState(false);
+  const [selectedSourceFields, setSelectedSourceFields] = useState<string[]>([]);
 
 
   useEffect(() => {
@@ -290,6 +294,49 @@ export default function Page() {
     setTargetDefinitions(definitionData || []);
     setCount(weightedMissCount);
     setPostSetupCount(configuredPosts);
+    setSourceRefresh(null);
+    setSelectedSourceFields([]);
+  }
+
+  async function refreshLeirdueSource() {
+    if (!session) return;
+    setSourceRefreshing(true);
+    setErr("");
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      const response = await fetch(`/api/leirdue/source-refresh/${session.id}`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const payload = await response.json();
+      if (!response.ok) { setErr(payload.error || "Could not refresh Leirdue.net source."); return; }
+      setSourceRefresh(payload);
+      setSelectedSourceFields((payload.diffs || []).filter((item: any) => item.changed && item.safeToApply).map((item: any) => item.field));
+      setSession((current: any) => current ? { ...current, last_source_checked_at: payload.checkedAt, last_source_status: payload.status, source_change_summary: payload } : current);
+    } catch {
+      setErr("Could not refresh Leirdue.net source.");
+    } finally {
+      setSourceRefreshing(false);
+    }
+  }
+
+  async function applyLeirdueSourceChanges(applyAll = false) {
+    if (!session || !sourceRefresh?.diffs?.length) return;
+    const fields = applyAll ? sourceRefresh.diffs.filter((item: any) => item.changed && item.safeToApply).map((item: any) => item.field) : selectedSourceFields;
+    if (!window.confirm("Apply the selected Leirdue.net source changes to this saved result?")) return;
+    setSourceApplying(true);
+    setErr("");
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      const response = await fetch(`/api/leirdue/source-refresh/${session.id}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ confirmed: true, selectedFields: fields }) });
+      const payload = await response.json();
+      if (!response.ok) { setErr(payload.error || "Could not apply source changes."); return; }
+      await load();
+      setSourceRefresh({ ...sourceRefresh, status: "applied", checkedAt: payload.checkedAt });
+    } catch {
+      setErr("Could not apply source changes.");
+    } finally {
+      setSourceApplying(false);
+    }
   }
 
   async function deleteSession() {
@@ -383,6 +430,7 @@ export default function Page() {
   const showSourceDetails = isLeirdueImported(session);
   const sourceUrl =
     importDetail(session, "source_url") || session.leirdue_result_url;
+  const canRefreshLeirdueSource = Boolean(sourceUrl && /^https?:\/\/(www\.)?leirdue\.net\//i.test(sourceUrl));
   const importedAt = importDetail(session, "imported_at");
   const importConfidence = importDetail(session, "confidence");
   const stevneId = importDetail(session, "stevne_id");
@@ -954,6 +1002,40 @@ export default function Page() {
                 </ResultRow>
               )}
             </div>
+            {canRefreshLeirdueSource && (
+              <div className="leirdueSourceReview">
+                <div>
+                  <strong>Linked to Leirdue.net</strong>
+                  <p>Last checked: {session.last_source_checked_at ? compactDateTime(session.last_source_checked_at) : "never"}</p>
+                </div>
+                <button type="button" className="secondary smallButton" onClick={() => void refreshLeirdueSource()} disabled={sourceRefreshing}>
+                  {sourceRefreshing ? "Checking…" : "Refresh from Leirdue.net"}
+                </button>
+                {(sourceRefresh || session.last_source_status) && (
+                  <div className="sourceReviewStatus">
+                    {((sourceRefresh?.status || session.last_source_status) === "no_changes") && <strong>Source checked · No changes found</strong>}
+                    {((sourceRefresh?.status || session.last_source_status) === "changed") && <strong>Source changed · Review update</strong>}
+                    {((sourceRefresh?.status || session.last_source_status) === "could_not_match") && <strong>Could not safely match source result</strong>}
+                    {((sourceRefresh?.status || session.last_source_status) === "fetch_failed") && <strong>Could not check Leirdue.net source</strong>}
+                    {sourceRefresh?.error && <p>{sourceRefresh.error}</p>}
+                  </div>
+                )}
+                {sourceRefresh?.diffs?.some((item: any) => item.changed) && (
+                  <div className="sourceDiffList">
+                    {sourceRefresh.diffs.filter((item: any) => item.changed).map((item: any) => (
+                      <label key={item.field} className="sourceDiffRow">
+                        <input type="checkbox" disabled={!item.safeToApply || sourceApplying} checked={selectedSourceFields.includes(item.field)} onChange={(event) => setSelectedSourceFields((fields) => event.target.checked ? Array.from(new Set([...fields, item.field])) : fields.filter((field) => field !== item.field))} />
+                        <span><strong>{item.label}</strong><small>Saved: {value(item.currentValue)} → Leirdue: {value(item.sourceValue)}{!item.safeToApply ? " · review only" : ""}</small></span>
+                      </label>
+                    ))}
+                    <div className="btns">
+                      <button type="button" className="primary smallButton" onClick={() => void applyLeirdueSourceChanges(false)} disabled={sourceApplying || selectedSourceFields.length === 0}>{sourceApplying ? "Applying…" : "Apply selected changes"}</button>
+                      <button type="button" className="secondary smallButton" onClick={() => void applyLeirdueSourceChanges(true)} disabled={sourceApplying}>Apply all safe changes</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </DetailSection>
         )}
 

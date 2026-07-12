@@ -24,7 +24,8 @@
     "check:theme-regression": "node scripts/theme-regression-check.mjs",
     "test:session-analysis": "node scripts/run-session-analysis-tests.mjs",
     "test:shared-post-targets": "node scripts/run-shared-post-target-tests.mjs",
-    "test:leirdue-health": "node scripts/run-leirdue-health-tests.mjs"
+    "test:leirdue-health": "node scripts/run-leirdue-health-tests.mjs",
+    "test:leirdue-source-refresh": "node scripts/run-leirdue-source-refresh-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",
