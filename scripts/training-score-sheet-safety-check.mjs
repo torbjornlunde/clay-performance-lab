@@ -67,6 +67,38 @@ function expectedTargetMaxFor(maxTargets, postNumber) {
   return Array.isArray(maxTargets) ? maxTargets[postNumber - 1] || 1 : maxTargets;
 }
 
+function normalizeSetupCustomTargets(values, postCount, targetsPerPost, customTargetsActive) {
+  if (!customTargetsActive) return { ok: true, counts: null, active: false };
+  if (values.length !== postCount) return { ok: false, counts: null, active: true };
+  const counts = values.map((value) => parsePositiveIntegerDraft(value, 1, 100));
+  if (counts.some((value) => !value)) return { ok: false, counts: null, active: true };
+  const hasOverride = counts.some((value) => value !== targetsPerPost);
+  return { ok: true, counts: hasOverride ? counts : null, active: hasOverride };
+}
+
+function customTargetDraftValues(postCount, targetsPerPost, custom = null) {
+  return Array.from({ length: postCount }, (_, index) => String(custom?.[index] || targetsPerPost));
+}
+
+function updateSetupDraft(current, field, value) {
+  const next = { ...current, [field]: value };
+  const nextPostCount = field === "numberOfPosts" ? parsePositiveIntegerDraft(value, 1, 20) : parsePositiveIntegerDraft(current.numberOfPosts, 1, 20);
+  const nextTargetsPerPost = field === "targetsPerPost" ? parsePositiveIntegerDraft(value, 1, 100) : parsePositiveIntegerDraft(current.targetsPerPost, 1, 100);
+  if (nextPostCount && nextTargetsPerPost) {
+    next.customTargetsByPost = current.customTargetsActive
+      ? Array.from({ length: nextPostCount }, (_, index) => current.customTargetsByPost[index] || String(nextTargetsPerPost))
+      : customTargetDraftValues(nextPostCount, nextTargetsPerPost, null);
+  }
+  return next;
+}
+
+function appliedSetupFromDraft(draft) {
+  const postCount = parsePositiveIntegerDraft(draft.numberOfPosts, 1, 20);
+  const targetsPerPost = parsePositiveIntegerDraft(draft.targetsPerPost, 1, 100);
+  const normalized = normalizeSetupCustomTargets(draft.customTargetsByPost, postCount, targetsPerPost, draft.customTargetsActive);
+  return { postCount, targetsPerPost, expectedTargetsByPost: normalized.counts, total: getTotalExpectedTargets({ postCount, targetsPerPost, expectedTargetsByPost: normalized.counts }) };
+}
+
 function setupReductionWouldTrimData({ shooters, targetResults, nextPostCount, nextTargetsPerPost }) {
   return (
     shooters.some((shooter) => shooter.scores.slice(nextPostCount).some((score) => score > 0)) ||
@@ -122,6 +154,18 @@ assert.equal(Object.keys(trimTargetResults({ s: { 1: { 8: "hit", 9: "miss" }, 2:
 assert.equal(setupReductionWouldTrimData({ shooters: [{ localId: "s", scores: [8, 10, 7] }], targetResults: { s: { 3: { 7: "hit" } } }, nextPostCount: 3, nextTargetsPerPost: [8, 10, 6] }), true, "reducing a custom post count below existing manual or target data requires confirmation");
 assert.equal(trimTargetResults({ s: { 3: { 6: "hit", 7: "miss" } } }, 3, [8, 10, 6]).s[3][7], undefined, "cancelled trim can keep current state by not applying trim; confirmed trim removes only out-of-range target data");
 assert.equal(getTotalExpectedTargets({ postCount: 2, targetsPerPost: 10, expectedTargetsByPost: null }), 20, "old sessions without per-post config still use fixed setup");
+let fixedDraft = { numberOfPosts: "5", targetsPerPost: "10", customTargetsByPost: customTargetDraftValues(5, 10, null), customTargetsActive: false };
+fixedDraft = updateSetupDraft(fixedDraft, "targetsPerPost", "8");
+assert.deepEqual(appliedSetupFromDraft(fixedDraft), { postCount: 5, targetsPerPost: 8, expectedTargetsByPost: null, total: 40 }, "fixed 5×10 changed to fixed 5×8 stores null custom counts and totals 40");
+const customDraft = { numberOfPosts: "3", targetsPerPost: "10", customTargetsByPost: ["8", "10", "6"], customTargetsActive: true };
+assert.deepEqual(appliedSetupFromDraft(customDraft), { postCount: 3, targetsPerPost: 10, expectedTargetsByPost: [8, 10, 6], total: 24 }, "custom 8/10/6 stores custom array and total 24");
+let clearedDraft = { numberOfPosts: "5", targetsPerPost: "10", customTargetsByPost: customTargetDraftValues(5, 10, [8, 10, 6, 10, 10]), customTargetsActive: false };
+clearedDraft = updateSetupDraft(clearedDraft, "targetsPerPost", "8");
+assert.deepEqual(appliedSetupFromDraft(clearedDraft), { postCount: 5, targetsPerPost: 8, expectedTargetsByPost: null, total: 40 }, "clearing custom counts then changing default remains fixed mode");
+let loadedCustomDraft = { numberOfPosts: "3", targetsPerPost: "10", customTargetsByPost: customTargetDraftValues(3, 10, [8, 10, 6]), customTargetsActive: true };
+loadedCustomDraft = updateSetupDraft(loadedCustomDraft, "targetsPerPost", "8");
+assert.deepEqual(appliedSetupFromDraft(loadedCustomDraft), { postCount: 3, targetsPerPost: 8, expectedTargetsByPost: [8, 10, 6], total: 24 }, "loaded persisted expectedTargetsByPost keeps custom mode active when default changes");
+assert.deepEqual(appliedSetupFromDraft({ numberOfPosts: "5", targetsPerPost: "10", customTargetsByPost: customTargetDraftValues(5, 10, null), customTargetsActive: false }), { postCount: 5, targetsPerPost: 10, expectedTargetsByPost: null, total: 50 }, "simple fixed setup remains unchanged");
 const pageSource = readFileSync("app/training-score-sheets/[id]/page.tsx", "utf8");
 assert.match(pageSource, /Custom targets per post/, "setup UI exposes custom targets per post section");
 assert.match(pageSource, /expected_targets_by_post: expectedTargetsByPost/, "save payload preserves expectedTargetsByPost");

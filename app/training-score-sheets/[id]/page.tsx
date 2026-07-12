@@ -94,6 +94,7 @@ type SetupDraft = {
   numberOfPosts: string;
   targetsPerPost: string;
   customTargetsByPost: string[];
+  customTargetsActive: boolean;
 };
 
 type PostCompleteState = {
@@ -606,13 +607,14 @@ function customTargetDraftValues(postCount: number, targetsPerPost: number, cust
   return Array.from({ length: postCount }, (_, index) => String(custom?.[index] || targetsPerPost));
 }
 
-function normalizeSetupCustomTargets(values: string[], postCount: number, targetsPerPost: number) {
+function normalizeSetupCustomTargets(values: string[], postCount: number, targetsPerPost: number, customTargetsActive: boolean) {
+  if (!customTargetsActive) return { ok: true as const, counts: null, active: false };
   if (values.length !== postCount) return { ok: false as const, counts: null, active: true };
   const counts = values.map((value) => parsePositiveIntegerDraft(value, 1, 100));
   if (counts.some((value) => !value)) return { ok: false as const, counts: null, active: true };
   const normalized = counts as number[];
-  const active = normalized.some((value) => value !== targetsPerPost);
-  return { ok: true as const, counts: active ? normalized : null, active };
+  const hasOverride = normalized.some((value) => value !== targetsPerPost);
+  return { ok: true as const, counts: hasOverride ? normalized : null, active: hasOverride };
 }
 
 function parsePositiveIntegerDraft(value: string, min: number, max: number) {
@@ -657,6 +659,7 @@ export default function TrainingScoreSheetPage() {
     numberOfPosts: "5",
     targetsPerPost: "10",
     customTargetsByPost: Array.from({ length: 5 }, () => "10"),
+    customTargetsActive: false,
   });
   const [setupApplyMessage, setSetupApplyMessage] = useState("");
   const [compakSchemeId, setCompakSchemeId] = useState(DEFAULT_COMPAK_SCHEME);
@@ -714,7 +717,7 @@ export default function TrainingScoreSheetPage() {
   const draftPostCount = parsePositiveIntegerDraft(setupDraft.numberOfPosts, 1, 20);
   const draftTargetsPerPost = parsePositiveIntegerDraft(setupDraft.targetsPerPost, 1, 100);
   const normalizedDraftCustomTargets = draftPostCount && draftTargetsPerPost
-    ? normalizeSetupCustomTargets(setupDraft.customTargetsByPost, draftPostCount, draftTargetsPerPost)
+    ? normalizeSetupCustomTargets(setupDraft.customTargetsByPost, draftPostCount, draftTargetsPerPost, setupDraft.customTargetsActive)
     : { ok: false as const, counts: null, active: false };
   const draftExpectedTargetsByPost = normalizedDraftCustomTargets.ok ? normalizedDraftCustomTargets.counts : null;
   const draftTotalTargets = draftExpectedTargetsByPost
@@ -998,6 +1001,7 @@ export default function TrainingScoreSheetPage() {
       numberOfPosts: String(draft.numberOfPosts),
       targetsPerPost: String(draft.targetsPerPost),
       customTargetsByPost: customTargetDraftValues(draft.numberOfPosts, draft.targetsPerPost, draftCustomTargets),
+      customTargetsActive: Boolean(draftCustomTargets),
     });
     setCompakSchemeId(normalizeCompakSchemeId(draft.compakSchemeId));
     setCompakShootingMode(normalizeCompakShootingMode(draft.compakShootingMode));
@@ -1090,7 +1094,7 @@ export default function TrainingScoreSheetPage() {
         setNumberOfPosts(COMPAK_DEFAULT_STANDS);
         setTargetsPerPost(COMPAK_TARGETS_PER_STAND);
         setExpectedTargetsByPost(null);
-        setSetupDraft({ numberOfPosts: String(COMPAK_DEFAULT_STANDS), targetsPerPost: String(COMPAK_TARGETS_PER_STAND), customTargetsByPost: customTargetDraftValues(COMPAK_DEFAULT_STANDS, COMPAK_TARGETS_PER_STAND, null) });
+        setSetupDraft({ numberOfPosts: String(COMPAK_DEFAULT_STANDS), targetsPerPost: String(COMPAK_TARGETS_PER_STAND), customTargetsByPost: customTargetDraftValues(COMPAK_DEFAULT_STANDS, COMPAK_TARGETS_PER_STAND, null), customTargetsActive: false });
         setCompakSchemeId(DEFAULT_COMPAK_SCHEME);
         setCompakShootingMode("Squad");
         setCompakRotationMode("waiting_shooter");
@@ -1106,7 +1110,7 @@ export default function TrainingScoreSheetPage() {
         setNumberOfPosts(5);
         setTargetsPerPost(10);
         setExpectedTargetsByPost(null);
-        setSetupDraft({ numberOfPosts: "5", targetsPerPost: "10", customTargetsByPost: customTargetDraftValues(5, 10, null) });
+        setSetupDraft({ numberOfPosts: "5", targetsPerPost: "10", customTargetsByPost: customTargetDraftValues(5, 10, null), customTargetsActive: false });
         setShooters([]);
         setTargetResults({});
         setCompakSchemeRows([]);
@@ -1126,6 +1130,7 @@ export default function TrainingScoreSheetPage() {
       numberOfPosts: String(numberOfPosts),
       targetsPerPost: String(targetsPerPost),
       customTargetsByPost: customTargetDraftValues(numberOfPosts, targetsPerPost, expectedTargetsByPost),
+      customTargetsActive: Boolean(expectedTargetsByPost),
     });
   }, [numberOfPosts, targetsPerPost, expectedTargetsByPost]);
 
@@ -1295,6 +1300,7 @@ export default function TrainingScoreSheetPage() {
       numberOfPosts: String(sheet.number_of_posts || 5),
       targetsPerPost: String(sheet.targets_per_post || 10),
       customTargetsByPost: customTargetDraftValues(sheet.number_of_posts || 5, sheet.targets_per_post || 10, loadedExpectedTargetsByPost),
+      customTargetsActive: Boolean(loadedExpectedTargetsByPost),
     });
     setCompakSchemeId(normalizeCompakSchemeId(sheet.compak_scheme_id));
     setCompakShootingMode(normalizeCompakShootingMode(sheet.compak_shooting_mode));
@@ -1404,7 +1410,7 @@ export default function TrainingScoreSheetPage() {
     setNumberOfPosts(COMPAK_DEFAULT_STANDS);
     setTargetsPerPost(COMPAK_TARGETS_PER_STAND);
     setExpectedTargetsByPost(null);
-    setSetupDraft({ numberOfPosts: String(COMPAK_DEFAULT_STANDS), targetsPerPost: String(COMPAK_TARGETS_PER_STAND), customTargetsByPost: customTargetDraftValues(COMPAK_DEFAULT_STANDS, COMPAK_TARGETS_PER_STAND, null) });
+    setSetupDraft({ numberOfPosts: String(COMPAK_DEFAULT_STANDS), targetsPerPost: String(COMPAK_TARGETS_PER_STAND), customTargetsByPost: customTargetDraftValues(COMPAK_DEFAULT_STANDS, COMPAK_TARGETS_PER_STAND, null), customTargetsActive: false });
     setSessionType((value) => (value === "shared_training" ? value : "training"));
     setShooters((current) =>
       resizeShootersForSetup(
@@ -1448,7 +1454,9 @@ export default function TrainingScoreSheetPage() {
       const nextPostCount = field === "numberOfPosts" ? parsePositiveIntegerDraft(value, 1, 20) : parsePositiveIntegerDraft(current.numberOfPosts, 1, 20);
       const nextTargetsPerPost = field === "targetsPerPost" ? parsePositiveIntegerDraft(value, 1, 100) : parsePositiveIntegerDraft(current.targetsPerPost, 1, 100);
       if (nextPostCount && nextTargetsPerPost) {
-        next.customTargetsByPost = Array.from({ length: nextPostCount }, (_, index) => current.customTargetsByPost[index] || String(nextTargetsPerPost));
+        next.customTargetsByPost = current.customTargetsActive
+          ? Array.from({ length: nextPostCount }, (_, index) => current.customTargetsByPost[index] || String(nextTargetsPerPost))
+          : customTargetDraftValues(nextPostCount, nextTargetsPerPost, null);
       }
       return next;
     });
@@ -1461,6 +1469,7 @@ export default function TrainingScoreSheetPage() {
       customTargetsByPost: Array.from({ length: parsePositiveIntegerDraft(current.numberOfPosts, 1, 20) || current.customTargetsByPost.length }, (_, index) =>
         index === postIndex ? value : current.customTargetsByPost[index] || current.targetsPerPost,
       ),
+      customTargetsActive: true,
     }));
   }
 
@@ -1470,6 +1479,7 @@ export default function TrainingScoreSheetPage() {
     setSetupDraft((current) => ({
       ...current,
       customTargetsByPost: Array.from({ length: count }, () => String(value)),
+      customTargetsActive: true,
     }));
   }
 
@@ -1480,6 +1490,7 @@ export default function TrainingScoreSheetPage() {
     setSetupDraft((current) => ({
       ...current,
       customTargetsByPost: customTargetDraftValues(count, fallback, null),
+      customTargetsActive: false,
     }));
   }
 
