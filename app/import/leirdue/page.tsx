@@ -101,10 +101,13 @@ function isManualLinkCandidate(candidate: LeirdueCandidate) {
   return /Manual link import parsed row/i.test(candidate.notes || "");
 }
 
+function hasImportableResultScore(candidate: LeirdueCandidate) {
+  return candidate.ownScore !== null && candidate.totalTargets !== null;
+}
+
 function candidateSelectedByDefault(candidate: LeirdueCandidate) {
   if (/Manual link import parsed row/i.test(candidate.notes || "")) return false;
-  const completeScore = candidate.ownScore !== null && candidate.totalTargets !== null && candidate.winningScore !== null;
-  return candidate.category === "recommended" && candidate.confidence === "high" && candidate.importRecommended && completeScore && (candidateUsesMainResultList(candidate) || candidateHasUsableSourceList(candidate)) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported;
+  return candidate.category === "recommended" && candidate.confidence === "high" && candidate.importRecommended && hasImportableResultScore(candidate) && (candidateUsesMainResultList(candidate) || candidateHasUsableSourceList(candidate)) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported;
 }
 
 function manualLinkNameMatchStatus(parsedName: string | null | undefined, profileName: string) {
@@ -198,11 +201,11 @@ function candidateMergeKey(candidate: LeirdueCandidate) {
 }
 
 function candidateQualityRank(candidate: LeirdueCandidate) {
-  const completeScore = candidate.ownScore !== null && candidate.totalTargets !== null && candidate.winningScore !== null;
-  if ((candidate.duplicateStatus === "exact" || candidate.alreadyImported) && completeScore) return 4;
-  if (candidate.category === "recommended" && candidate.confidence === "high" && completeScore) return 5;
-  if (candidate.category === "recommended" && completeScore) return 4;
-  if (candidate.category === "review" && completeScore) return 3;
+  const importableScore = hasImportableResultScore(candidate);
+  if ((candidate.duplicateStatus === "exact" || candidate.alreadyImported) && importableScore) return 4;
+  if (candidate.category === "recommended" && candidate.confidence === "high" && importableScore) return 5;
+  if (candidate.category === "recommended" && importableScore) return 4;
+  if (candidate.category === "review" && importableScore) return 3;
   if (candidate.ownScore !== null || candidate.totalTargets !== null) return 2;
   return 1;
 }
@@ -528,7 +531,7 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
         <div className="compactCandidateMain">
           {nameMatchLabel ? <div className="compactCandidateLine"><span className={`badge ${candidate.shooterMatchStatus === "matched_to_you" ? "badgeGreen" : "badgeGold"}`}>{nameMatchLabel}</span></div> : null}
           <div className="compactCandidateLine resultShooterLine"><strong>{candidate.shooterName || shooterName || "Unknown shooter"}</strong></div>
-          <div className="compactCandidateLine scoreLine"><strong>{candidate.ownScore ?? "?"}/{candidate.maxScore ?? candidate.totalTargets ?? "?"}</strong><span>·</span><span>Winner {candidate.winningScore ?? "?"}</span></div>
+          <div className="compactCandidateLine scoreLine"><strong>{candidate.ownScore ?? "?"}/{candidate.maxScore ?? candidate.totalTargets ?? "?"}</strong><span>·</span><span>Winning score: {candidate.winningScore ?? "unknown"}</span></div>
           <div className="compactCandidateLine"><span>{candidate.placement ? `Place ${candidate.placement}` : "Placement unknown"}</span><span>·</span><span>{candidate.listType || "Unknown list"}</span></div>
           <div className="compactCandidateLine"><span>{candidate.shootingGround || "Club unknown"}</span><span>·</span><span>{candidate.discipline || "Unknown discipline"}</span><span>·</span><span>{formatDate(candidate.date)}</span></div>
         </div>
@@ -593,7 +596,7 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
           <span className="metricChip"><strong>{candidate.shooterClass || "?"}</strong> class</span>
           <span className="metricChip"><strong>{candidate.placement ?? "?"}</strong> placement</span>
           <span className="metricChip"><strong>{candidate.seriesScores?.length ? candidate.seriesScores.join(" · ") : "?"}</strong> series/post scores</span>
-          <span className="metricChip"><strong>{candidate.winningScore ?? "?"}/{candidate.totalTargets ?? "?"}</strong> winning score</span>
+          <span className="metricChip"><strong>{candidate.winningScore ?? "unknown"}{candidate.winningScore !== null ? `/${candidate.totalTargets ?? "?"}` : ""}</strong> winning score</span>
           {percent !== null ? <span className="metricChip highlightMetric"><strong>{percent.toFixed(1)}%</strong> performance</span> : null}
           <span className="metricChip"><strong>{candidate.listType || "Unknown list"}</strong></span>
           <span className="metricChip"><strong>{sourceIds.stevneId || "?"}</strong> stevne_id</span>
