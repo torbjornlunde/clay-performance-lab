@@ -8670,3 +8670,36 @@ select {
 .detailList dt { font-weight: 700; }
 .detailList dd { margin: 0.25rem 0 0; color: var(--muted); overflow-wrap: anywhere; }
 .buttonLike { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+
+/* Leirdue health admin: keep status cards and notices theme-native in Light and Dark mode. */
+.leirdueHealthPage .callout {
+  background: var(--notice-bg);
+  color: var(--notice-text);
+  border-color: var(--border-subtle);
+}
+
+.leirdueHealthPage .callout p,
+.leirdueHealthPage .callout h2 {
+  color: var(--notice-text);
+}
+
+.leirdueHealthPage .dangerCallout {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border-color: var(--danger-border);
+}
+
+.leirdueHealthPage .dangerCallout p,
+.leirdueHealthPage .dangerCallout h2 {
+  color: var(--danger-text);
+}
+
+.leirdueHealthPage .compactSummaryGrid span {
+  background: var(--surface-cell);
+  color: var(--text-secondary);
+  border-color: var(--border-subtle);
+}
+
+.leirdueHealthPage .compactSummaryGrid strong {
+  color: var(--text-primary);
+}

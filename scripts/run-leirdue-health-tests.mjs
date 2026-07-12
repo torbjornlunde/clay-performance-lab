@@ -43,6 +43,8 @@ assert.match(uiPage, /Leirdue cache refresh needs attention/, 'admin UI renders 
 assert.match(uiPage, /Leirdue cache refresh is running as expected/, 'admin UI renders healthy state copy');
 assert.match(uiPage, /last successful refresh/i, 'admin UI renders last success');
 assert.match(uiPage, /last attempted refresh/i, 'admin UI renders last attempt');
+assert.match(uiPage, /button secondary buttonLike/, 'cache admin link uses existing secondary button styling');
+assert.match(uiPage, /leirdueHealthPage/, 'admin UI uses scoped health page theme styles');
 assert.match(uiPage, /failure_reason|Failure reason/, 'admin UI renders failure reason');
 
 const header = readFileSync('app/components/AuthHeader.tsx', 'utf8');
