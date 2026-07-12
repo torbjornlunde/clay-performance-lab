@@ -2,6 +2,8 @@ import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { nordicSafeNameKey } from "@/lib/leirdue/normalize";
+import { maybeSendLeirdueHealthEmailAlert } from "@/lib/leirdue/adminEmailAlerts";
+import type { LeirdueJobHealthRow } from "@/lib/leirdue/jobHealth";
 import { isAuthorizedLeirdueRefreshRequest } from "@/lib/leirdue/refreshAuth";
 import { parseLeirdueSharedResultListHtml } from "@/lib/leirdue/parser";
 
@@ -14,6 +16,7 @@ const LIST_BATCH_LIMIT = 20;
 const FETCH_TIMEOUT_MS = 8000;
 const PARSER_VERSION = "leirdue-shared-v1";
 const JOB_NAME = "leirdue_refresh_recent";
+const HEALTH_COLUMNS = "job_name,started_at,finished_at,status,refreshed_count,error_count,last_success_at,failure_reason,affected_scope,updated_at,last_alert_email_sent_at,last_alert_email_status,last_alert_email_error,last_alert_incident_key,last_recovery_email_sent_at";
 
 type Service = SupabaseClient;
 type EventRow = { event_id: string; source_url: string | null; event_title: string | null; event_date: string | null; year: number | null };
@@ -108,8 +111,11 @@ function rowsFromResultList(html: string, list: ListRow, year: number) {
 
 async function recordJobHealth(service: Service, input: { startedAt: string; status: "success" | "partial" | "failed"; refreshedCount: number; errorCount: number; failureReason: string | null; affectedScope: Record<string, unknown> }) {
   const finishedAt = new Date().toISOString();
-  const { data: previous } = await service.from("leirdue_job_health").select("last_success_at").eq("job_name", JOB_NAME).maybeSingle();
-  await service.from("leirdue_job_health").upsert({ job_name: JOB_NAME, started_at: input.startedAt, finished_at: finishedAt, status: input.status, refreshed_count: input.refreshedCount, error_count: input.errorCount, last_success_at: input.status === "success" || input.status === "partial" ? finishedAt : previous?.last_success_at || null, failure_reason: input.failureReason, affected_scope: input.affectedScope, updated_at: finishedAt }, { onConflict: "job_name" });
+  const { data: previous } = await service.from("leirdue_job_health").select(HEALTH_COLUMNS).eq("job_name", JOB_NAME).maybeSingle<LeirdueJobHealthRow>();
+  const current = { job_name: JOB_NAME, started_at: input.startedAt, finished_at: finishedAt, status: input.status, refreshed_count: input.refreshedCount, error_count: input.errorCount, last_success_at: input.status === "success" || input.status === "partial" ? finishedAt : previous?.last_success_at || null, failure_reason: input.failureReason, affected_scope: input.affectedScope, updated_at: finishedAt, last_alert_email_sent_at: previous?.last_alert_email_sent_at || null, last_alert_email_status: previous?.last_alert_email_status || null, last_alert_email_error: previous?.last_alert_email_error || null, last_alert_incident_key: previous?.last_alert_incident_key || null, last_recovery_email_sent_at: previous?.last_recovery_email_sent_at || null };
+  await service.from("leirdue_job_health").upsert(current, { onConflict: "job_name" });
+  const email = await maybeSendLeirdueHealthEmailAlert({ current, previous: previous || null });
+  await service.from("leirdue_job_health").update({ last_alert_email_status: email.status, last_alert_email_error: email.error, last_alert_incident_key: email.incidentKey || current.last_alert_incident_key, last_alert_email_sent_at: email.sentAt || current.last_alert_email_sent_at, last_recovery_email_sent_at: email.recoverySentAt || current.last_recovery_email_sent_at }).eq("job_name", JOB_NAME);
 }
 
 async function refreshRecent(service: Service, now = new Date()) {
