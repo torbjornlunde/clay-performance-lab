@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 function makeScores(postCount, existing = []) {
   return Array.from({ length: postCount }, (_, index) => existing[index] ?? 0);
@@ -62,17 +63,21 @@ function parsePositiveIntegerDraft(value, min, max) {
   return parsed;
 }
 
+function expectedTargetMaxFor(maxTargets, postNumber) {
+  return Array.isArray(maxTargets) ? maxTargets[postNumber - 1] || 1 : maxTargets;
+}
+
 function setupReductionWouldTrimData({ shooters, targetResults, nextPostCount, nextTargetsPerPost }) {
   return (
     shooters.some((shooter) => shooter.scores.slice(nextPostCount).some((score) => score > 0)) ||
-    shooters.some((shooter) => shooter.scores.some((score) => score > nextTargetsPerPost)) ||
+    shooters.some((shooter) => shooter.scores.some((score, index) => score > expectedTargetMaxFor(nextTargetsPerPost, index + 1))) ||
     Object.values(targetResults).some((posts) =>
       Object.entries(posts).some(([postKey, targets]) => {
         const postNumber = Number(postKey);
         if (postNumber < 1 || postNumber > nextPostCount) return true;
         return Object.keys(targets).some((targetKey) => {
           const targetNumber = Number(targetKey);
-          return targetNumber < 1 || targetNumber > nextTargetsPerPost;
+          return targetNumber < 1 || targetNumber > expectedTargetMaxFor(nextTargetsPerPost, postNumber);
         });
       }),
     )
@@ -108,11 +113,19 @@ assert.equal(
 );
 
 assert.equal(getTotalExpectedTargets({ postCount: 5, targetsPerPost: 10 }), 50, "fixed 5 posts × 10 targets still totals 50");
-assert.equal(getTotalExpectedTargets({ postCount: 3, targetsPerPost: 10, expectedTargetsByPost: [6, 8, 10] }), 24, "variable 6/8/10 posts total correctly");
+assert.equal(getTotalExpectedTargets({ postCount: 3, targetsPerPost: 10, expectedTargetsByPost: [8, 10, 6] }), 24, "custom 8/10/6 posts total correctly");
 assert.equal(getTotalExpectedTargets({ postCount: 16, targetsPerPost: 8, expectedTargetsByPost: Array.from({ length: 16 }, () => 8) }), 128, "16 posts totaling 128 works");
-assert.equal(getExpectedTargetsForPost({ postCount: 3, targetsPerPost: 10, expectedTargetsByPost: [6, 8, 10] }, 2), 8, "post breakdown denominator uses each post count");
+assert.equal(getExpectedTargetsForPost({ postCount: 3, targetsPerPost: 10, expectedTargetsByPost: [8, 10, 6] }, 1), 8, "post with 8 targets expects 8 target slots");
+assert.equal(getExpectedTargetsForPost({ postCount: 3, targetsPerPost: 10, expectedTargetsByPost: [8, 10, 6] }, 3), 6, "post with 6 targets expects 6 target slots");
 assert.equal(trimTargetResults({ s: { 1: { 8: "hit", 9: "miss" }, 2: { 9: "hit", 10: "hit" } } }, 2, [8, 10]).s[1][9], undefined, "post with 8 targets does not preserve target slot 9");
 assert.equal(Object.keys(trimTargetResults({ s: { 1: { 8: "hit", 9: "miss" }, 2: { 9: "hit", 10: "hit" } } }, 2, [8, 10]).s[2]).length, 2, "post with 10 targets preserves 9 and 10");
+assert.equal(setupReductionWouldTrimData({ shooters: [{ localId: "s", scores: [8, 10, 7] }], targetResults: { s: { 3: { 7: "hit" } } }, nextPostCount: 3, nextTargetsPerPost: [8, 10, 6] }), true, "reducing a custom post count below existing manual or target data requires confirmation");
+assert.equal(trimTargetResults({ s: { 3: { 6: "hit", 7: "miss" } } }, 3, [8, 10, 6]).s[3][7], undefined, "cancelled trim can keep current state by not applying trim; confirmed trim removes only out-of-range target data");
 assert.equal(getTotalExpectedTargets({ postCount: 2, targetsPerPost: 10, expectedTargetsByPost: null }), 20, "old sessions without per-post config still use fixed setup");
+const pageSource = readFileSync("app/training-score-sheets/[id]/page.tsx", "utf8");
+assert.match(pageSource, /Custom targets per post/, "setup UI exposes custom targets per post section");
+assert.match(pageSource, /expected_targets_by_post: expectedTargetsByPost/, "save payload preserves expectedTargetsByPost");
+assert.match(pageSource, /expectedTargetsByPost,/, "local draft includes expectedTargetsByPost");
+assert.match(pageSource, /Clear custom counts/, "custom counts can be cleared back to fixed behavior");
 
 console.log("Training score sheet safety checks passed.");

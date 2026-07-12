@@ -8651,3 +8651,4 @@ select {
 .fieldMode .postNavButton,
 .fieldMode .postSummaryButton { background: var(--field-surface-secondary); color: var(--field-text-primary); border-color: var(--field-border-subtle); }
 @media (max-width: 430px) { .scorecardGrid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap:.35rem; } .scorecardCell { padding:.35rem .2rem; font-size:.9rem; } }
+.customTargetsPanel{margin-top:.75rem}.customTargetsSummary{display:grid;gap:.25rem;margin:.5rem 0;padding:.75rem;border:1px solid var(--border-subtle);border-radius:12px;background:var(--surface-secondary)}.customTargetsGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));gap:.75rem;margin-top:.75rem}.customTargetsGrid label{display:grid;gap:.35rem}.customTargetsGrid input{min-height:44px;font-size:16px}
