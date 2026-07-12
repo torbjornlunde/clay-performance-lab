@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { nordicSafeNameKey } from "@/lib/leirdue/normalize";
+import { isAuthorizedLeirdueRefreshRequest } from "@/lib/leirdue/refreshAuth";
 import { parseLeirdueSharedResultListHtml } from "@/lib/leirdue/parser";
 
 export const dynamic = "force-dynamic";
@@ -25,16 +26,8 @@ function serviceClient() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-function configuredSecret() {
-  return process.env.LEIRDUE_REFRESH_SECRET || process.env.CRON_SECRET || null;
-}
-
 function authorized(request: Request) {
-  const secret = configuredSecret();
-  if (!secret) return false;
-  const auth = request.headers.get("authorization") || "";
-  const bearer = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : null;
-  return bearer === secret || request.headers.get("x-cron-secret") === secret;
+  return isAuthorizedLeirdueRefreshRequest(request);
 }
 
 function absoluteUrl(url: string) { return new URL(url.replace(/&amp;/g, "&"), BASE).toString(); }

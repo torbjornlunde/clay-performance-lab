@@ -60,7 +60,7 @@ rmSync('.leirdue-save-test-build', { recursive: true, force: true });
 rmSync('.leirdue-save-test-tsconfig.json', { force: true });
 const recentRefreshRoute = readFileSync('app/api/leirdue/refresh-recent/route.ts', 'utf8');
 const recentRefreshMigration = readFileSync('supabase/migrations/20260712120000_leirdue_recent_refresh_job_health.sql', 'utf8');
-assert.match(recentRefreshRoute, /LEIRDUE_REFRESH_SECRET \|\| process\.env\.CRON_SECRET/, 'recent refresh endpoint accepts only the configured server-side cron secret');
+assert.match(recentRefreshRoute, /isAuthorizedLeirdueRefreshRequest\(request\)/, 'recent refresh endpoint uses the shared allowlist auth helper for configured cron secrets');
 assert.match(recentRefreshRoute, /return NextResponse\.json\(\{ error: "Unauthorized\." \}, \{ status: 401 \}\)/, 'recent refresh endpoint rejects missing or incorrect secrets');
 assert.match(recentRefreshRoute, /const RECENT_WINDOW_DAYS = 14/, 'recent refresh window defaults to approximately 14 days');
 assert.match(recentRefreshRoute, /if \(eventDate && eventDate < cutoff\) continue;/, 'recent refresh excludes old dated events from daily discovery');
