@@ -8,6 +8,9 @@ assert.match(route, /status: 401/, 'endpoint returns 401 for unauthenticated req
 assert.match(route, /\.eq\("user_id", userId\)/, 'endpoint only loads current user result');
 assert.match(route, /confirmed !== true/, 'apply update requires explicit confirmation');
 assert.match(route, /selectedFields/, 'confirmed update applies selected fields only');
+assert.match(route, /storedSourceDiffsFromSummary\(loaded\.session\.source_change_summary\)/, 'PATCH reads diffs only from stored server source_change_summary');
+assert.match(route, /status: 409/, 'PATCH rejects missing or non-changed stored source_change_summary');
+assert.doesNotMatch(route, /body\.diffs|diffs\?:/, 'PATCH does not accept or trust client-supplied diffs');
 assert.match(route, /refreshLeirdueSource/, 'endpoint fetches and compares direct Leirdue source');
 assert.doesNotMatch(route, /leirdue_shared_shooter_results/, 'manual refresh does not rely only on shared cache');
 
@@ -20,6 +23,7 @@ assert.match(page, /Source checked · No changes found/, 'UI shows no-change sta
 assert.match(page, /Could not safely match source result/, 'UI shows low-confidence match state');
 assert.match(page, /Apply selected changes/, 'UI allows selected apply');
 assert.match(page, /window\.confirm/, 'UI requires confirmation before apply');
+assert.doesNotMatch(page, /diffs: sourceRefresh\.diffs/, 'UI does not send client-side diffs to PATCH');
 
 const css = readFileSync('app/globals.css', 'utf8');
 assert.match(css, /leirdueSourceReview/, 'source review UI has scoped theme styles');
@@ -48,6 +52,15 @@ let patch = source.applyableSessionPatch([
   { field: 'placement', label: 'Placement', currentValue: 3, sourceValue: 2, changed: true, safeToApply: false },
 ], ['winning_score']);
 assert.deepEqual(patch, { winning_score: 99 }, 'null saved winning score can be explicitly updated from source');
+const storedDiffs = source.storedSourceDiffsFromSummary({ status: 'changed', diffs: [
+  { field: 'winning_score', label: 'Winning score', currentValue: null, sourceValue: 99, changed: true, safeToApply: true },
+  { field: 'name', label: 'Event title', currentValue: 'Cup', sourceValue: 'Server Cup', changed: true, safeToApply: true },
+] });
+assert.deepEqual(source.applyableSessionPatch(storedDiffs, ['name']), { name: 'Server Cup' }, 'PATCH applies only selected fields from stored server diffs');
+assert.equal(source.storedSourceDiffsFromSummary(null), null, 'PATCH without stored source_change_summary is rejected');
+assert.equal(source.storedSourceDiffsFromSummary({ status: 'no_changes', diffs: [] }), null, 'PATCH with stored status not changed is rejected');
+const fabricatedClientDiffs = [{ field: 'own_score', label: 'Own score', currentValue: 95, sourceValue: 1, changed: true, safeToApply: true }];
+assert.deepEqual(source.applyableSessionPatch(storedDiffs, fabricatedClientDiffs.map((item) => item.field)), {}, 'fabricated client diffs cannot update a result when stored server diffs do not contain that field');
 patch = source.applyableSessionPatch([
   { field: 'own_score', label: 'Own score', currentValue: 95, sourceValue: 96, changed: true, safeToApply: true },
   { field: 'total_targets', label: 'Total targets', currentValue: 100, sourceValue: 125, changed: true, safeToApply: true },

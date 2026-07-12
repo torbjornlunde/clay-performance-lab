@@ -85,6 +85,18 @@ export async function refreshLeirdueSource(session: LeirdueRefreshSession) {
   return { status: diffs.some((item) => item.changed) ? "changed" as const : "no_changes" as const, sourceUrl, diffs, error: null };
 }
 
+export function storedSourceDiffsFromSummary(summary: unknown) {
+  if (!summary || typeof summary !== "object") return null;
+  const status = (summary as { status?: unknown }).status;
+  const diffs = (summary as { diffs?: unknown }).diffs;
+  if (status !== "changed" || !Array.isArray(diffs)) return null;
+  return diffs.filter((item): item is LeirdueSourceDiff => {
+    if (!item || typeof item !== "object") return false;
+    const diffItem = item as Partial<LeirdueSourceDiff>;
+    return typeof diffItem.field === "string" && typeof diffItem.label === "string" && typeof diffItem.changed === "boolean" && typeof diffItem.safeToApply === "boolean";
+  });
+}
+
 export function applyableSessionPatch(diffs: LeirdueSourceDiff[], selectedFields: string[]) {
   const allowed = new Set<LeirdueSourceField>(["own_score", "winning_score", "total_targets", "name", "competition_date", "discipline", "shooting_ground"]);
   const selected = new Set(selectedFields);

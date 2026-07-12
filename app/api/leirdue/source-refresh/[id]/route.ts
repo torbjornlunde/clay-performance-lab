@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { applyableSessionPatch, refreshLeirdueSource, type LeirdueSourceDiff, type LeirdueRefreshSession } from "@/lib/leirdue/sourceRefresh";
+import { applyableSessionPatch, refreshLeirdueSource, storedSourceDiffsFromSummary, type LeirdueRefreshSession } from "@/lib/leirdue/sourceRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -38,10 +38,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   const { id } = await context.params;
   const loaded = await requireSession(request, id);
   if (!loaded.ok) return NextResponse.json({ error: loaded.error }, { status: loaded.status });
-  let body: { confirmed?: boolean; selectedFields?: string[]; diffs?: LeirdueSourceDiff[] };
+  let body: { confirmed?: boolean; selectedFields?: string[] };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid update request." }, { status: 400 }); }
   if (body.confirmed !== true) return NextResponse.json({ error: "Explicit confirmation is required before updating a saved result." }, { status: 400 });
-  const diffs = Array.isArray(body.diffs) ? body.diffs : [];
+  const diffs = storedSourceDiffsFromSummary(loaded.session.source_change_summary);
+  if (!diffs) return NextResponse.json({ error: "Refresh and review Leirdue.net source changes before applying them." }, { status: 409 });
   const patch = applyableSessionPatch(diffs, Array.isArray(body.selectedFields) ? body.selectedFields : []);
   if (Object.keys(patch).length === 0) return NextResponse.json({ error: "No selected safe source changes to apply." }, { status: 400 });
   const checkedAt = new Date().toISOString();

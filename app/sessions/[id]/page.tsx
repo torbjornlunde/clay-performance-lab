@@ -327,7 +327,7 @@ export default function Page() {
     try {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
-      const response = await fetch(`/api/leirdue/source-refresh/${session.id}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ confirmed: true, selectedFields: fields, diffs: sourceRefresh.diffs }) });
+      const response = await fetch(`/api/leirdue/source-refresh/${session.id}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ confirmed: true, selectedFields: fields }) });
       const payload = await response.json();
       if (!response.ok) { setErr(payload.error || "Could not apply source changes."); return; }
       await load();
