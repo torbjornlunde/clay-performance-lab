@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { analysisPresentation } from "@/lib/analysis/sessionAnalysis";
@@ -213,6 +213,7 @@ export default function Page() {
   const [sourceRefreshing, setSourceRefreshing] = useState(false);
   const [sourceApplying, setSourceApplying] = useState(false);
   const [selectedSourceFields, setSelectedSourceFields] = useState<string[]>([]);
+  const trackedSessionOpenRef = useRef<string | null>(null);
 
 
   useEffect(() => {
@@ -297,6 +298,15 @@ export default function Page() {
     setPostSetupCount(configuredPosts);
     setSourceRefresh(null);
     setSelectedSourceFields([]);
+    if (sessionData?.id && trackedSessionOpenRef.current !== sessionData.id) {
+      trackedSessionOpenRef.current = sessionData.id;
+      void recordAnalyticsEvent(supabase, "session_detail_opened", {
+        route: "/sessions/[id]",
+        feature: "session_detail",
+        discipline: sessionData.discipline,
+        sessionId: sessionData.id,
+      });
+    }
   }
 
   async function refreshLeirdueSource() {

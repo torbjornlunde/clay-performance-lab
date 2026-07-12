@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 
-const migration = readFileSync('supabase/migrations/20260712140000_admin_analytics_events.sql', 'utf8');
+const migration = readFileSync('supabase/migrations/20260712150000_admin_analytics_events.sql', 'utf8');
 assert.match(migration, /create table if not exists public\.analytics_events/i, 'migration creates analytics_events');
 for (const column of ['user_id uuid null references auth.users(id) on delete set null','event_name text not null','occurred_at timestamptz not null default now()','metadata jsonb not null default']) assert.match(migration, new RegExp(column.replace(/[().]/g, '\\$&'), 'i'), `migration includes ${column}`);
 for (const index of ['occurred_at desc','event_name','user_id','feature']) assert.match(migration, new RegExp(index, 'i'), `migration indexes ${index}`);
