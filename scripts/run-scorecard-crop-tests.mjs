@@ -12,6 +12,20 @@ assert.deepEqual(crop.clampCrop({x:0,y:0,width:1,height:1}), crop.fullImageCrop)
 assert.equal(crop.moveCrop({x:.8,y:.8,width:.3,height:.3}, .3, .3).x + crop.moveCrop({x:.8,y:.8,width:.3,height:.3}, .3, .3).width <= 1, true);
 assert.equal(crop.resizeCrop({x:.1,y:.1,width:.2,height:.2}, 'nw', .5, .5).width >= .02, true);
 assert.equal(crop.sameCrop({x:0,y:0,width:1,height:1}, crop.fullImageCrop), true);
+const drawn = crop.cropFromDrag(0.75, 0.8, 0.25, 0.2);
+assert.equal(drawn.x, 0.25, 'dragging up/left normalizes x');
+assert.equal(drawn.y, 0.2, 'dragging up/left normalizes y');
+assert.equal(drawn.width, 0.5, 'dragging creates visible width');
+assert.equal(drawn.height, 0.6000000000000001, 'dragging creates visible height');
+const tiny = crop.cropFromDrag(0.5, 0.5, 0.5, 0.5);
+assert.equal(tiny.width >= 0.02, true, 'zero-size drawn crop is expanded to minimum usable size');
+assert.equal(tiny.height >= 0.02, true, 'zero-size drawn crop is expanded to minimum usable size');
+assert.deepEqual(crop.displayedPointToCrop(150, 90, {left: 50, top: 40, width: 200, height: 100}), {x: 0.5, y: 0.5}, 'displayed pointer coordinates subtract the rendered image offset');
+assert.deepEqual(crop.displayedPointToCrop(10, 300, {left: 50, top: 40, width: 200, height: 100}), {x: 0, y: 1}, 'displayed pointer coordinates clamp inside the image');
+assert.deepEqual(crop.cropToNaturalPixels({x: 0.25, y: 0.5, width: 0.5, height: 0.25}, 4000, 3000), {sx: 1000, sy: 1500, sw: 2000, sh: 750}, 'normalized crop maps to natural pixels for scaled images');
+assert.deepEqual(crop.cropToNaturalPixels({x: 0.9, y: 0.9, width: 0.5, height: 0.5}, 1000, 500), {sx: 500, sy: 250, sw: 500, sh: 250}, 'natural pixel crop clamps to image bounds');
+assert.deepEqual(crop.cropToNaturalPixels({x: 0.1, y: 0.1, width: 0.2, height: 0.4}, 800, 1200), {sx: 80, sy: 120, sw: 160, sh: 480}, 'natural pixel crop handles portrait images');
+
 assert.equal(state.canReconnectRetry({status:'waiting_for_connection',preparationState:'prepare',imageFingerprint:'a'}), false);
 assert.equal(state.canReconnectRetry({status:'waiting_for_connection',preparationState:'ready',imageFingerprint:'a',cropFingerprint:'b'}), true);
 const op={sessionId:'s',clientImportId:'c',imageFingerprint:'i',cropFingerprint:'f',operationId:'o'};

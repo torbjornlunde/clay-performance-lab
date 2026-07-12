@@ -33,7 +33,9 @@ import {
   type PendingScorecardPhoto,
 } from "@/lib/scorecards/scorecardPhotos";
 import {
+  cropFromDrag,
   cropToPercent,
+  displayedPointToCrop,
   fingerprintCrop,
   fullImageCrop,
   moveCrop,
@@ -393,8 +395,8 @@ export default function Page() {
     setElapsed(0);
     // Wait for the user to confirm full image or crop before analysis.
   }
-  async function prepareAndAnalyze(nextCrop = crop, rec = pending) {
-    if (!rec || rec.status === "analyzing") return;
+  async function applyCrop(nextCrop = crop, rec = pending) {
+    if (!rec || rec.status === "analyzing") return null;
     setError("");
     setSelected(null);
     setGrid([]);
@@ -437,13 +439,19 @@ export default function Page() {
       const saved = await enqueuePendingWrite(nextWithRevision, { generation });
       if (!saved.ok) throw new Error(saved.error);
       setCrop(c);
-      await analyze(nextWithRevision);
+      setStage("");
+      return nextWithRevision;
     } catch (e: any) {
       setStage("");
       setError(
         e?.message || "Could not prepare the crop. Try another crop or photo.",
       );
+      return null;
     }
+  }
+  async function prepareAndAnalyze(nextCrop = crop, rec = pending) {
+    const next = await applyCrop(nextCrop, rec);
+    if (next) await analyze(next);
   }
   async function analyze(rec = pending) {
     if (!rec) return;
@@ -888,7 +896,7 @@ export default function Page() {
                 <button
                   type="button"
                   className="button secondary smallButton"
-                  onClick={() => setupBlocksReview ? analyze(pending) : prepareAndAnalyze(crop)}
+                  onClick={() => analyze(pending)}
                   disabled={pending.status === "analyzing"}
                 >
                   {setupBlocksReview
@@ -921,9 +929,9 @@ export default function Page() {
                 <button
                   type="button"
                   className="button"
-                  onClick={() => prepareAndAnalyze(fullImageCrop)}
+                  onClick={() => applyCrop(fullImageCrop)}
                 >
-                  Use full image
+                  Reset to full image
                 </button>
                 <button
                   type="button"
@@ -943,16 +951,33 @@ export default function Page() {
                 <button
                   type="button"
                   className="button secondary"
-                  onClick={() => prepareAndAnalyze(crop)}
+                  onClick={() => applyCrop(crop)}
                 >
-                  Use this crop
+                  Apply crop
+                </button>
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() => setCrop(pending?.crop || fullImageCrop)}
+                >
+                  Cancel crop edit
                 </button>
               </div>
               <CropOverlay
-                imageUrl={previewUrl}
+                imageUrl={originalUrl || previewUrl}
                 crop={crop}
                 onChange={setCrop}
               />
+              <div className="btns">
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => analyze(pending)}
+                  disabled={!pending || pending.status === "analyzing"}
+                >
+                  Analyze prepared image
+                </button>
+              </div>
               {pending?.status === "analyzing" && (
                 <div className="analysisProgress">
                   <strong>
@@ -1269,54 +1294,64 @@ function CropOverlay({
     startX: number;
     startY: number;
     crop: NormalizedCrop;
-    mode: "move" | "nw" | "ne" | "sw" | "se";
+    mode: "draw" | "move" | "nw" | "ne" | "sw" | "se";
   } | null>(null);
   function point(event: React.PointerEvent) {
     const rect = boxRef.current?.getBoundingClientRect();
     return rect
-      ? { x: event.clientX / rect.width, y: event.clientY / rect.height }
+      ? displayedPointToCrop(event.clientX, event.clientY, rect)
       : { x: 0, y: 0 };
+  }
+  function capture(event: React.PointerEvent) {
+    boxRef.current?.setPointerCapture(event.pointerId);
   }
   function start(
     event: React.PointerEvent,
-    mode: "move" | "nw" | "ne" | "sw" | "se",
+    mode: "draw" | "move" | "nw" | "ne" | "sw" | "se",
   ) {
     event.preventDefault();
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    event.stopPropagation();
+    capture(event);
     const p = point(event);
     dragRef.current = { startX: p.x, startY: p.y, crop: clampCrop(crop), mode };
+    if (mode === "draw") onChange(cropFromDrag(p.x, p.y, p.x, p.y));
   }
   function move(event: React.PointerEvent) {
     if (!dragRef.current) return;
+    event.preventDefault();
     const p = point(event),
       d = dragRef.current;
     const dx = p.x - d.startX,
       dy = p.y - d.startY;
     onChange(
-      d.mode === "move"
-        ? moveCrop(d.crop, dx, dy)
-        : resizeCrop(d.crop, d.mode, dx, dy),
+      d.mode === "draw"
+        ? cropFromDrag(d.startX, d.startY, p.x, p.y)
+        : d.mode === "move"
+          ? moveCrop(d.crop, dx, dy)
+          : resizeCrop(d.crop, d.mode, dx, dy),
     );
   }
   function stop(event: React.PointerEvent) {
     dragRef.current = null;
     try {
-      (event.currentTarget as HTMLElement).releasePointerCapture(
-        event.pointerId,
-      );
+      boxRef.current?.releasePointerCapture(event.pointerId);
     } catch {}
   }
   return (
-    <div className="cropSurface" ref={boxRef}>
+    <div
+      className="cropSurface"
+      ref={boxRef}
+      onPointerDown={(e) => start(e, "draw")}
+      onPointerMove={move}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+    >
       <img src={imageUrl} alt="Scorecard crop preview" draggable={false} />
       <div className="cropShade" />
       <div
         className="cropFrame"
         style={cropToPercent(crop)}
         onPointerDown={(e) => start(e, "move")}
-        onPointerMove={move}
-        onPointerUp={stop}
-        onPointerCancel={stop}
         role="group"
         aria-label="Selected scorecard crop"
       >
@@ -1327,9 +1362,6 @@ function CropOverlay({
             className={`cropHandle ${handle}`}
             aria-label={`Resize crop ${handle}`}
             onPointerDown={(e) => start(e, handle)}
-            onPointerMove={move}
-            onPointerUp={stop}
-            onPointerCancel={stop}
           />
         ))}
       </div>
