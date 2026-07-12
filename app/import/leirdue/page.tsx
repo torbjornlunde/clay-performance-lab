@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { COMPAK_SPORTING, DISCIPLINE_OPTIONS, JEGERTRAP_NORDISK_TRAP, KOMPAKT_LEIRDUESTI, LEIRDUESTI, SKEET, TRAP } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
+import { recordAnalyticsEvent } from "@/lib/analytics";
 import { shooterProfileDisplayName, type ShooterProfile } from "@/lib/profile";
 import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
 import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
@@ -1093,6 +1094,7 @@ export default function LeirdueImportPage() {
 
   async function runAutoSearch(startToken: string | null, reset: boolean) {
     if (searching || continuationRequestInFlightRef.current) return;
+    if (reset) void recordAnalyticsEvent(supabase, "leirdue_search_started", { route: "/import/leirdue", feature: "leirdue_import", metadata: { year: Number(year), hasSourceUrl: Boolean(sourceUrl.trim()), selectedCount: disciplines.length } });
     continuationRequestInFlightRef.current = true;
     const activeScopeKey = currentSearchScopeKey;
     const scopeChanged = progressScopeKey !== activeScopeKey;
@@ -1213,6 +1215,7 @@ export default function LeirdueImportPage() {
         setSearchStatus("Shared index incomplete");
         setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No candidates found yet. Try broader filters or add a result manually." : `Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. More results may still be available.`);
       }
+      if (reset) void recordAnalyticsEvent(supabase, "leirdue_search_completed", { route: "/import/leirdue", feature: "leirdue_import", metadata: { candidateCount: reviewedCounts.reviewableCount, completed: !shouldContinue } });
     } catch (requestError) {
       continuationFailuresByScopeRef.current.set(activeScopeKey, (continuationFailuresByScopeRef.current.get(activeScopeKey) || 0) + 1);
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
@@ -1316,6 +1319,7 @@ export default function LeirdueImportPage() {
       });
       setSuccess("Result imported.");
     } else {
+      void recordAnalyticsEvent(supabase, "leirdue_import_saved", { route: "/import/leirdue", feature: "leirdue_import", metadata: { savedCount: saved, duplicateCount: duplicates } });
       setSuccess(`${saved} result${saved === 1 ? "" : "s"} imported. ${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped.`);
     }
   }

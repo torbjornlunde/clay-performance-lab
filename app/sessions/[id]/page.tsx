@@ -21,6 +21,7 @@ import {
 } from "@/lib/misses/labels";
 import { scoreFromMisses, totalMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
+import { recordAnalyticsEvent } from "@/lib/analytics";
 import {
   isQuickScoreNotes,
   parseQuickScoreMetadata,
@@ -305,6 +306,7 @@ export default function Page() {
     try {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
+      void recordAnalyticsEvent(supabase, "leirdue_source_refresh_checked", { route: "/sessions/[id]", feature: "leirdue_source_refresh", discipline: session.discipline, sessionId: session.id });
       const response = await fetch(`/api/leirdue/source-refresh/${session.id}`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {} });
       const payload = await response.json();
       if (!response.ok) { setErr(payload.error || "Could not refresh Leirdue.net source."); return; }
@@ -331,6 +333,7 @@ export default function Page() {
       const payload = await response.json();
       if (!response.ok) { setErr(payload.error || "Could not apply source changes."); return; }
       await load();
+      void recordAnalyticsEvent(supabase, "leirdue_source_refresh_applied", { route: "/sessions/[id]", feature: "leirdue_source_refresh", discipline: session.discipline, sessionId: session.id, metadata: { count: fields.length } });
       setSourceRefresh({ ...sourceRefresh, status: "applied", checkedAt: payload.checkedAt });
     } catch {
       setErr("Could not apply source changes.");

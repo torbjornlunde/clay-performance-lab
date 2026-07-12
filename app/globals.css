@@ -8719,3 +8719,13 @@ select {
 .sourceDiffRow { display: grid; grid-template-columns: auto 1fr; gap: 0.6rem; align-items: start; min-height: 44px; padding: 0.65rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .sourceDiffRow input { width: 1.1rem; height: 1.1rem; margin-top: 0.15rem; }
 .sourceDiffRow small { display: block; color: var(--muted); overflow-wrap: anywhere; }
+
+.adminAnalyticsPage { max-width: 1100px; }
+.analyticsMetricGrid, .analyticsGrid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax( min(100%, 220px), 1fr)); margin-top: 1rem; }
+.metricCard { display: flex; flex-direction: column; gap: .35rem; min-width: 0; }
+.metricCard span { color: var(--muted); font-size: .95rem; }
+.metricCard strong { font-size: clamp(1.7rem, 8vw, 2.6rem); line-height: 1; color: var(--text); }
+.analyticsPanel { min-width: 0; overflow-x: auto; }
+.analyticsTable { width: 100%; border-collapse: collapse; min-width: 0; }
+.analyticsTable th, .analyticsTable td { padding: .55rem 0; border-bottom: 1px solid var(--border); text-align: left; overflow-wrap: anywhere; }
+.analyticsTable td { text-align: right; font-weight: 700; color: var(--text); }
