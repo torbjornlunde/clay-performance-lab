@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
+execSync('rm -rf .coach-report-test-build && npx tsc lib/analysis/coachReport.ts lib/analysis/deterministicSessionAnalysis.ts lib/leirdue/normalize.ts lib/disciplines.ts lib/misses/scoring.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM --outDir .coach-report-test-build --skipLibCheck', { stdio: 'inherit' });
+const { buildCoachReport } = await import('../.coach-report-test-build/analysis/coachReport.js');
+
+const session = { id: 's1', name: 'County shoot', discipline: 'English Sporting', session_type: 'Competition', own_score: 18, winning_score: 22, total_targets: 25, post_count: 5, targets_per_post: 5, competition_date: '2026-07-01', location: 'North ground' };
+const scorecardImport = { reviewed_total_targets: 25, reviewed_hits: 18, reviewed_misses: 7 };
+const misses = [1,2,3,4,5,6,7].map((pos, i) => ({ id: String(i), course_number: i < 4 ? 4 : 5, target_position: pos, target_number: Math.ceil(pos / 2), missed_target: 'Single target', main_reason: 'Unknown', where_miss: 'Unknown' }));
+const notes = [{ note_scope: 'session', post_number: null, body: 'RAW SECRET NOTE tired at the end and rushed the second target' }];
+let report = buildCoachReport({ session, scorecardImport, misses, postTargets: [], history: [], privateNotes: notes, includeNotesContext: true });
+assert(report.plainText.includes('Score: 18/25'), 'report includes session score');
+assert(report.sections.some((s) => s.title === 'Key findings' && s.items.length), 'report includes key findings');
+assert(report.sections.some((s) => s.title === 'Training focus' && s.items.length), 'report includes training focus');
+assert(report.sections.some((s) => s.title === 'Recommended drills/priorities' && s.items.length), 'report includes recommendations');
+assert(report.sections.some((s) => s.title === 'Missing data / confidence notes' && s.items.length), 'report includes confidence/missing-data notes');
+assert(report.sections.some((s) => s.title === 'Notes-based context'), 'notes-based context can be included');
+assert(!report.plainText.includes('RAW SECRET NOTE'), 'raw private note text is not included');
+assert(!/[<>][a-z]/i.test(report.plainText), 'copied report is plain text, not HTML');
+assert(report.plainText.includes('Observed data shows'), 'coach-safe observed wording is used');
+assert(report.plainText.includes('The analysis suggests'), 'coach-safe suggestion wording is used');
+assert(report.plainText.includes('This should be treated as context, not a confirmed cause.'), 'notes context is caveated');
+report = buildCoachReport({ session, scorecardImport, misses, postTargets: [], history: [], privateNotes: notes, includeNotesContext: false });
+assert(!report.sections.some((s) => s.title === 'Notes-based context'), 'notes-based context can be turned off');
+assert(!report.plainText.includes('tired at the end'), 'disabled notes are omitted from report');
+
+const analysisPage = readFileSync('app/sessions/[id]/analysis/page.tsx', 'utf8');
+assert.match(analysisPage, /Coach report preview/, 'Coach report entry point exists from analysis page');
+assert.match(analysisPage, /deterministic\.findings\.length > 0 && deterministic\.recommendations\.length > 0/, 'entry point only shows when analysis can be built');
+const page = readFileSync('app/sessions/[id]/coach-report/page.tsx', 'utf8');
+for (const text of ['Coach report preview', 'Include notes-based context', 'Raw private notes are not shown', 'Copy report', 'Copied']) assert(page.includes(text), `coach report page includes ${text}`);
+assert.match(page, /navigator\.clipboard\.writeText\(report\.plainText\)/, 'copy report button writes plain text');
+const analyticsCalls = [...page.matchAll(/recordAnalyticsEvent\([\s\S]*?metadata: \{([\s\S]*?)\} \}\)/g)].map((match) => match[1]).join('\n');
+assert(!analyticsCalls.includes('plainText'), 'analytics metadata does not include report body');
+assert(!analyticsCalls.includes('privateNotes'), 'analytics metadata does not include private note rows');
+assert(!analyticsCalls.includes('body'), 'analytics metadata does not include note text body');
+assert.match(page, /coach_report_preview_opened/, 'safe preview analytics event exists');
+assert.match(page, /coach_report_copied/, 'safe copied analytics event exists');
+assert.match(page, /reportType: "single_session"/, 'analytics uses safe report type metadata');
+const analytics = readFileSync('lib/analytics.ts', 'utf8');
+for (const token of ['coach_report_preview_opened', 'coach_report_copied', 'hasNotesContext', 'sectionCount', 'reportType']) assert(analytics.includes(token), `${token} is allowlisted`);
+const css = readFileSync('app/globals.css', 'utf8');
+assert.match(css, /coachReportPage[\s\S]*display:\s*grid/, 'coach report page has responsive styles');
+assert.match(css, /coachReportPreview[\s\S]*overflow-wrap:\s*anywhere/, 'coach report preview avoids horizontal overflow');
+console.log('coach report focused tests passed');
