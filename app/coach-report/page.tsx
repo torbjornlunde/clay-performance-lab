@@ -41,6 +41,8 @@ export default function CoachReportPeriodPage() {
   const [notes, setNotes] = useState<NoteRow[]>([]);
   const [scorecardImports, setScorecardImports] = useState<ScorecardImportRow[]>([]);
   const [leirdueRows, setLeirdueRows] = useState<LeirdueRow[]>([]);
+  const [leirdueStatus, setLeirdueStatus] = useState<"idle" | "available" | "unavailable">("idle");
+  const [leirdueError, setLeirdueError] = useState("");
   const [aiReport, setAiReport] = useState<AiReport | null>(null);
   const [aiStatus, setAiStatus] = useState("");
   const [aiError, setAiError] = useState("");
@@ -64,17 +66,14 @@ export default function CoachReportPeriodPage() {
       .order("competition_date", { ascending: false, nullsFirst: false });
     const rows = (sessionRows || []) as CoachReportPeriodSession[];
     const ids = rows.map((session) => session.id);
-    const [{ data: missRows }, { data: noteRows }, { data: importRows }, { data: leirdueSharedRows }, { data: leirdueCacheRows }] = ids.length ? await Promise.all([
+    const [{ data: missRows }, { data: noteRows }, { data: importRows }] = ids.length ? await Promise.all([
       supabase.from("misses").select("id,session_id,course_number,target_position,target_number,missed_target,main_reason,where_miss,created_at").in("session_id", ids),
       supabase.from("private_session_notes").select("session_id,note_scope,post_number,body").in("session_id", ids),
       supabase.from("scorecard_imports").select("session_id,reviewed_total_targets,reviewed_hits,reviewed_misses,inserted_misses,skipped_duplicates,created_at").in("session_id", ids).order("created_at", { ascending: false }),
-      supabase.from("leirdue_shared_shooter_results").select("event_id,liste_id,normalized_name,original_name,club,placement,score,total_targets,winning_score,discipline,event_date,event_title,organizer,source_url,validation_status").gte("event_date", fromDate).lte("event_date", toDate),
-      supabase.from("leirdue_parsed_result_cache").select("event_id,liste_id,placement,own_score,total_targets,winning_score,discipline,event_date,event_title,organizer,source_url,normalized_name,original_name,club").gte("event_date", fromDate).lte("event_date", toDate),
-    ]) : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }];
+    ]) : [{ data: [] }, { data: [] }, { data: [] }];
     setSessions(rows);
     setMisses((missRows || []) as MissRow[]);
     setScorecardImports((importRows || []) as ScorecardImportRow[]);
-    setLeirdueRows([...(leirdueSharedRows || []), ...(leirdueCacheRows || [])] as LeirdueRow[]);
     const privateNotes = ((noteRows || []) as NoteRow[]).filter((note) => String(note.body || "").trim());
     setNotes(privateNotes);
     const visible = rows.filter((session) => inRange(session, fromDate, toDate)).map((session) => session.id);
@@ -102,7 +101,21 @@ export default function CoachReportPeriodPage() {
   const currentPrivateNotesBySession = useMemo(() => Object.fromEntries(selectedSessions.map((session) => [session.id, notes.filter((note) => note.session_id === session.id)])), [selectedSessions, notes]);
   const currentScorecardImportsBySession = useMemo(() => Object.fromEntries(selectedSessions.map((session) => [session.id, scorecardImports.find((row) => row.session_id === session.id) || null])), [selectedSessions, scorecardImports]);
   const previewNeedsUpdate = !previewInput || previewInput.fromDate !== fromDate || previewInput.toDate !== toDate || previewInput.includeNotesContext !== includeNotesContext || previewInput.selectedIds.length !== selectedIds.size || previewInput.selectedIds.some((id) => !selectedIds.has(id));
-  function updatePreview() { setCopyStatus(""); setAiReport(null); setAiError(""); setPreviewInput({ fromDate, toDate, selectedIds: [...selectedIds], includeNotesContext }); }
+  async function fetchLeirdueContextFor(reportSessions: CoachReportPeriodSession[]) {
+    const competitions = reportSessions.filter((session) => typeLabel(session) === "Competition");
+    if (competitions.length === 0) { setLeirdueRows([]); setLeirdueStatus("available"); setLeirdueError(""); return [] as LeirdueRow[]; }
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) { setLeirdueStatus("unavailable"); setLeirdueError("Sign in again to load Leirdue field context."); return [] as LeirdueRow[]; }
+    const response = await fetch("/api/coach-report/leirdue-context", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ sessions: competitions }) });
+    const json = await response.json();
+    const rows = Array.isArray(json.rows) ? json.rows as LeirdueRow[] : [];
+    setLeirdueRows(rows);
+    setLeirdueStatus(json.status === "available" ? "available" : "unavailable");
+    setLeirdueError(Array.isArray(json.errors) ? json.errors.join(" ") : "");
+    return rows;
+  }
+  async function updatePreview() { setCopyStatus(""); setAiReport(null); setAiError(""); const rows = await fetchLeirdueContextFor(selectedSessions); setPreviewInput({ fromDate, toDate, selectedIds: [...selectedIds], includeNotesContext }); return rows; }
 
   useEffect(() => {
     if (loading) return;
@@ -121,11 +134,12 @@ export default function CoachReportPeriodPage() {
   }
 
   async function generateAiReport() {
-    updatePreview();
     setAiStatus("Generating AI coach report...");
     setAiError("");
     setAiReport(null);
-    const currentReport = buildPeriodCoachReport({ fromDate, toDate, sessions: selectedSessions, missesBySession: currentMissesBySession, scorecardImportsBySession: currentScorecardImportsBySession, privateNotesBySession: currentPrivateNotesBySession, includeNotesContext, leirdueRows });
+    const freshLeirdueRows = await fetchLeirdueContextFor(selectedSessions);
+    setPreviewInput({ fromDate, toDate, selectedIds: [...selectedIds], includeNotesContext });
+    const currentReport = buildPeriodCoachReport({ fromDate, toDate, sessions: selectedSessions, missesBySession: currentMissesBySession, scorecardImportsBySession: currentScorecardImportsBySession, privateNotesBySession: currentPrivateNotesBySession, includeNotesContext, leirdueRows: freshLeirdueRows });
     const safeMetadata = { reportType: "ai_period", selectedSessionCount: selectedSessions.length, trainingCount: selectedSessions.filter((session) => typeLabel(session) === "Training").length, competitionCount: selectedSessions.filter((session) => typeLabel(session) === "Competition").length, disciplineCount: new Set(selectedSessions.map((session) => session.discipline || "Unknown")).size, hasLeirdueContext: currentReport.evidence.leirdueFieldContexts.length > 0, hasNotesContext: currentReport.hasNotesContext, dataQuality: currentReport.dataQuality };
     void recordAnalyticsEvent(supabase, "coach_report_ai_generate_clicked", { route: "/coach-report", feature: "coach_report", metadata: safeMetadata });
     try {
@@ -155,8 +169,8 @@ export default function CoachReportPeriodPage() {
       <p className="small muted">Private AI preview based on deterministic evidence. This is training support, not a replacement for a coach watching you shoot.</p>
       <div className="coachReportDateGrid"><label>From date<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>To date<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label></div>
       {notesForSelected.length > 0 && <div className="analysisPrivateNotesControl"><label className="checkboxRow"><input type="checkbox" checked={includeNotesContext} onChange={(event) => setIncludeNotesContext(event.target.checked)} /><span>Include notes-based context</span></label><p className="small muted">Only summarized note themes are included. Raw private notes are not shown.</p></div>}
-      <div className="btns"><button className="button secondary" type="button" onClick={updatePreview} disabled={selectedSessions.length === 0}>Update evidence preview</button>{previewNeedsUpdate && <span className="warningInline">Evidence preview needs update</span>}</div>
-      {aiStatus && <p className="successInline">{aiStatus}</p>}{aiError && <p className="errorInline">{aiError}</p>}
+      <div className="btns"><button className="button secondary" type="button" onClick={() => void updatePreview()} disabled={selectedSessions.length === 0}>Update evidence preview</button>{previewNeedsUpdate && <span className="warningInline">Evidence preview needs update</span>}</div>
+      {aiStatus && <p className="successInline">{aiStatus}</p>}{aiError && <p className="errorInline">{aiError}</p>}{leirdueStatus === "unavailable" && leirdueError && <p className="warningInline">Leirdue context unavailable: {leirdueError}</p>}
     </section>
     <section className="card coachReportSessionList"><button type="button" className="coachReportAccordionButton" aria-expanded={sessionsOpen} onClick={() => setSessionsOpen((open) => !open)}><span><strong>Selected sessions</strong><small>{selectedSummary}</small></span><span>{sessionsOpen ? "Hide" : "Show"}</span></button>{sessionsOpen && <div className="coachReportSessionPanel"><div className="btns"><button type="button" className="button secondary" onClick={() => setSelectedIds(new Set(visibleSessions.map((session) => session.id)))}>Select all</button><button type="button" className="button secondary" onClick={() => setSelectedIds(new Set())}>Clear all</button></div>{visibleSessions.length === 0 ? <p>No training or competition sessions found in this date range.</p> : visibleSessions.map((session) => { const sessionMisses = misses.filter((miss) => miss.session_id === session.id); return <label key={session.id} className="coachReportSessionCard"><input type="checkbox" checked={selectedIds.has(session.id)} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); if (event.target.checked) next.add(session.id); else next.delete(session.id); return next; })} /><span><strong>{sessionDate(session)} — {session.name || "Untitled session"}</strong><span className="small muted">{session.discipline || "Discipline not recorded"} · {typeLabel(session)} · {scoreLabel(session, sessionMisses)}{session.shooting_ground ? ` · ${session.shooting_ground}` : ""}</span></span></label>; })}</div>}</section>
     <article className="card coachReportPreview" aria-label="Coach report plain-text preview"><div className="coachReportPreviewHeader"><div><p className="eyebrow">Private coach report preview</p><h2>{aiReport ? "AI coach report" : "Deterministic evidence preview"}</h2><p className="small muted">Copy only what is visible here. AI failures keep this evidence preview available.</p></div><div className="btns"><button type="button" onClick={copyReport} disabled={report.selectedSessionCount === 0}>Copy visible report</button>{copyStatus && <span className={copyStatus === "Copied" ? "successInline" : "errorInline"}>{copyStatus}</span>}</div></div><div className="coachReportSummaryGrid"><span>{report.selectedSessionCount} sessions</span><span>{previewInput?.fromDate || fromDate} to {previewInput?.toDate || toDate}</span><span>{report.trainingCount} training</span><span>{report.competitionCount} competition</span><span>Leirdue context: {report.evidence.leirdueFieldContexts.length ? "yes" : "no"}</span><span>Data quality: {report.dataQuality}</span></div>{aiReport ? <div className="coachReportAiText">{aiReport.reportText.split("\n").filter(Boolean).map((line) => <p key={line}>{line}</p>)}</div> : report.sections.filter((section) => ["Coach takeaway", "Performance context", "Discipline-specific notes", "What to test next", "Data quality and what to log next"].includes(section.title)).map((section) => <section key={section.title} className="coachReportSection"><h2>{section.title}</h2>{section.items.slice(0, 4).map((item) => <p key={item}>• {item}</p>)}</section>)}<details><summary>Leirdue field comparison</summary>{report.evidence.leirdueFieldContexts.length ? report.evidence.leirdueFieldContexts.map((field) => <p key={field.sessionId}>{field.eventTitle}: {field.fieldSize} shooters · placement {field.placement ?? "?"} · median {field.medianScore ?? "?"} · {field.competitionLevel}</p>) : <p>No matched Leirdue field context.</p>}</details><details><summary>Evidence details</summary><pre>{JSON.stringify(report.aiEvidencePacket, null, 2)}</pre></details></article>
