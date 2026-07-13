@@ -5,19 +5,29 @@ import { buildCoachReportPrompt, COACH_REPORT_AI_SECTIONS } from "@/lib/ai/coach
 export const dynamic = "force-dynamic";
 
 const MAX_EVIDENCE_PACKET_BYTES = 80_000;
-const BLOCKED_NOTE_KEY_PATTERN = /(^|_)(body|text|content|note|notes|privateNotes|rawNote|rawNotes|private_note|private_notes)($|_)/i;
-const ALLOWED_CONTEXT_KEYS = new Set(["notesThemes", "hasNotesContext"]);
+const ALLOWED_NOTE_CONTEXT_KEYS = new Set(["notesThemes", "hasNotesContext"]);
 
-function supabaseForRequest(request: Request) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  const authorization = request.headers.get("authorization") || undefined;
-  return createClient(url, key, { auth: { persistSession: false }, global: { headers: authorization ? { Authorization: authorization } : {} } });
+type CoachReportGenerateDeps = { env?: NodeJS.ProcessEnv; createSupabaseClient?: typeof createClient; openAiFetch?: typeof fetch };
+
+function isBlockedPrivateNoteKey(key: string) {
+  if (ALLOWED_NOTE_CONTEXT_KEYS.has(key)) return false;
+  const normalized = key.toLowerCase();
+  if (["body", "text", "content", "note", "notes", "private_notes", "private_note", "raw_note", "raw_notes"].includes(normalized)) return true;
+  return /note|notes/.test(normalized) && /body|bodies|text|content|raw|private/.test(normalized);
 }
 
-async function requireUser(request: Request) {
-  const supabase = supabaseForRequest(request);
+function supabaseForRequest(request: Request, deps: CoachReportGenerateDeps = {}) {
+  const env = deps.env || process.env;
+  const url = env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  const authorization = request.headers.get("authorization") || undefined;
+  const createSupabaseClient = deps.createSupabaseClient || createClient;
+  return createSupabaseClient(url, key, { auth: { persistSession: false }, global: { headers: authorization ? { Authorization: authorization } : {} } });
+}
+
+async function requireUser(request: Request, deps: CoachReportGenerateDeps = {}) {
+  const supabase = supabaseForRequest(request, deps);
   if (!supabase) return { ok: false as const, status: 500, error: "Missing Supabase auth context." };
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData.user?.id;
@@ -36,7 +46,7 @@ function sanitizeEvidencePacket(value: unknown, path = "evidencePacket"): unknow
   const sanitized: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) {
     const childPath = `${path}.${key}`;
-    if (BLOCKED_NOTE_KEY_PATTERN.test(key) && !ALLOWED_CONTEXT_KEYS.has(key)) throw new Error(`Raw private note-like field is not allowed: ${childPath}`);
+    if (isBlockedPrivateNoteKey(key)) throw new Error(`Raw private note-like field is not allowed: ${childPath}`);
     sanitized[key] = sanitizeEvidencePacket(child, childPath);
   }
   return sanitized;
@@ -67,15 +77,17 @@ function textFromResponse(json: any) {
   return parts.map((part: any) => part?.text || "").join("\n").trim();
 }
 
-export async function POST(request: Request) {
-  const auth = await requireUser(request);
+export async function handleCoachReportGenerate(request: Request, deps: CoachReportGenerateDeps = {}) {
+  const auth = await requireUser(request, deps);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const packet = await evidencePacketFromRequest(request);
   if (!packet.ok) return NextResponse.json({ error: packet.error }, { status: packet.status });
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const env = deps.env || process.env;
+    const apiKey = env.OPENAI_API_KEY;
     if (!apiKey) return NextResponse.json({ error: "AI coach report is not configured." }, { status: 503 });
-    const response = await fetch("https://api.openai.com/v1/responses", { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: process.env.OPENAI_COACH_REPORT_MODEL || "gpt-4.1-mini", input: [{ role: "user", content: [{ type: "input_text", text: buildCoachReportPrompt(packet.evidencePacket) }] }], temperature: 0.3 }) });
+    const openAiFetch = deps.openAiFetch || fetch;
+    const response = await openAiFetch("https://api.openai.com/v1/responses", { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: env.OPENAI_COACH_REPORT_MODEL || "gpt-4.1-mini", input: [{ role: "user", content: [{ type: "input_text", text: buildCoachReportPrompt(packet.evidencePacket) }] }], temperature: 0.3 }) });
     if (!response.ok) return NextResponse.json({ error: "AI coach report failed. The deterministic evidence preview is still available." }, { status: 502 });
     const reportText = textFromResponse(await response.json());
     if (!reportText) return NextResponse.json({ error: "AI coach report returned an empty response." }, { status: 502 });
@@ -85,4 +97,6 @@ export async function POST(request: Request) {
   }
 }
 
-export const __test = { MAX_EVIDENCE_PACKET_BYTES, evidencePacketFromRequest, requireUser, sanitizeEvidencePacket };
+export async function POST(request: Request) { return handleCoachReportGenerate(request); }
+
+export const __test = { MAX_EVIDENCE_PACKET_BYTES, evidencePacketFromRequest, handleCoachReportGenerate, requireUser, sanitizeEvidencePacket };
