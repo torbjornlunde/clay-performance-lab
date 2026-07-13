@@ -32,12 +32,17 @@ assert.match(page, /window\.localStorage\.setItem\(privateNoteDraftKey\(currentU
 assert.match(page, /Saved locally · pending sync/, 'offline save shows pending sync status');
 assert.match(page, /Delete pending sync/, 'offline delete shows pending delete status');
 assert.match(page, /removePendingPrivateNote\(pending\.userId, pending\.sessionId, pending\.scope, pending\.postNumber\)/, 'online sync removes pending entry after success');
+assert.match(page, /removePrivateNoteDraft\(pending\.userId, pending\.sessionId, pending\.scope, pending\.postNumber\)/, 'successful sync removes dirty local draft');
+assert.match(page, /await load\(\{ syncPending: false \}\);\n      setNoteStatus\(\(statuses\) => \(\{ \.\.\.statuses, \[key\]: \"Synced\" \}\)\)/, 'successful online save keeps Synced after reload');
 assert.doesNotMatch(page, /if \(pending\.length > 0\) await load\(\)/, 'failed sync does not call load recursively');
 assert.match(page, /privateNoteSyncingRef\.current/, 'sync has a concurrent attempt guard');
 assert.match(page, /load\(\{ syncPending: false \}\)/, 'post-sync reload helper does not trigger another sync loop');
+assert.match(page, /syncedKeys\.reduce\(\(next, key\) => \(\{ \.\.\.next, \[key\]: \"Synced\" \}\)/, 'successful background sync keeps Synced after reload');
 assert.match(page, /catch \{[\s\S]*Sync failed · saved locally[\s\S]*private_note_sync_failed/, 'failed sync keeps pending entry in localStorage');
+assert.match(page, /catch \(error\) \{[\s\S]*writePendingPrivateNote\(pending\)[\s\S]*Saved locally · pending sync/, 'failed online save keeps local draft and pending data');
 assert.match(page, /pending\?\.action === \"upsert\"[\s\S]*drafts\[key\] = pending\.body/, 'server load does not overwrite pending local edit');
 assert.match(page, /pending\?\.action === \"delete\"[\s\S]*drafts\[key\] = \"\"/, 'pending delete does not resurrect text from server load');
+assert.match(page, /const localDraft = storageAvailable\(\)[\s\S]*if \(localDraft !== null\)/, 'server load is only overridden by pending entries or unsaved local drafts');
 assert.match(page, /localPrivateNotePostNumbers\(userId, sessionId\)/, 'local storage post keys are scanned');
 assert.match(page, /private-notes:draft:\$\{userId\}:\$\{sessionId\}:post:/, 'local draft post note with no server note still renders');
 assert.match(page, /private-notes:pending:\$\{userId\}:\$\{sessionId\}:post:/, 'local pending post note with no server note still renders');
