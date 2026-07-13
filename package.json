@@ -29,7 +29,8 @@
     "test:admin-analytics": "node scripts/run-admin-analytics-tests.mjs",
     "test:onboarding-help": "node scripts/run-onboarding-help-tests.mjs",
     "test:private-session-notes": "node scripts/run-private-session-notes-tests.mjs",
-    "test:coach-report": "node scripts/run-coach-report-tests.mjs"
+    "test:coach-report": "node scripts/run-coach-report-tests.mjs",
+    "test:coach-report-period": "node scripts/run-coach-report-period-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",

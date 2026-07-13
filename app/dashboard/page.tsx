@@ -692,6 +692,10 @@ export default function DashboardPage() {
             <span>Performance</span>
             <small>View trends, results, and performance insights.</small>
           </Link>
+          <Link href="/coach-report" className="dashboardActionCard secondaryAction">
+            <span>Coach report</span>
+            <small>Select sessions from a date range and copy a private coach-ready summary.</small>
+          </Link>
           <Link href="/fitasc" className="dashboardActionCard secondaryAction">
             <span>FITASC schemes</span>
             <small>Open FITASC/Compak scheme references.</small>

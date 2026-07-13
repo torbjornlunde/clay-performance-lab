@@ -2,7 +2,7 @@ import type { AnalysisSession, ScorecardImportSummary, PostTargetAnalysisRow, An
 import { buildDeterministicSessionAnalysis } from "./deterministicSessionAnalysis";
 
 export type CoachReportInput = {
-  session: AnalysisSession & { location?: string | null; shooting_format?: string | null };
+  session: AnalysisSession & { shooting_ground?: string | null; shooting_format?: string | null };
   misses: AnalysisMiss[];
   scorecardImport?: ScorecardImportSummary | null;
   postTargets?: PostTargetAnalysisRow[];
@@ -23,11 +23,11 @@ export function buildCoachReport(input: CoachReportInput) {
   const analysis = buildDeterministicSessionAnalysis({ ...input, includePrivateNotes: input.includeNotesContext });
   const title = clean(input.session.name) || "Untitled session";
   const discipline = clean(input.session.discipline) || "Discipline not recorded";
-  const location = clean(input.session.location) || "Location not recorded";
+  const venue = clean(input.session.shooting_ground) || "Venue/ground not recorded";
   const date = formatCoachReportDate(input.session);
   const scoreLine = `Score: ${analysis.summary.score}/${analysis.summary.totalTargets ?? "total targets not recorded"}`;
   const sections = [
-    { title: "Session", items: [`${title}`, `Date: ${date}`, `Location: ${location}`, `Discipline: ${discipline}`, scoreLine] },
+    { title: "Session", items: [`${title}`, `Date: ${date}`, `Venue/ground: ${venue}`, `Discipline: ${discipline}`, scoreLine] },
     ...(analysis.winningScore ? [{ title: "Winning score gap", items: [`Observed data shows ${analysis.winningScore.message}`] }] : []),
     { title: "Key findings", items: analysis.findings.map((text) => `Observed data shows ${text}`) },
     { title: "Training focus", items: analysis.recommendations.map((item) => `The analysis suggests ${item.title} Evidence: ${item.evidence}`) },
