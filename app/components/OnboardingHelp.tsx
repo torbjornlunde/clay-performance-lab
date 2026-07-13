@@ -14,8 +14,8 @@ function safeSet(key: string, value: string) {
   try { window.localStorage.setItem(key, value); } catch {}
 }
 
-async function recordHelpEvent(eventName: "onboarding_opened" | "onboarding_dismissed" | "contextual_help_dismissed", feature: string) {
-  await recordAnalyticsEvent(supabase, eventName, { feature, metadata: { feature } });
+async function recordHelpEvent(eventName: "onboarding_opened" | "onboarding_dismissed" | "contextual_help_dismissed", feature: string, action?: string) {
+  await recordAnalyticsEvent(supabase, eventName, { feature, metadata: { feature, action } });
 }
 
 export function OnboardingHelpPanel() {
@@ -58,10 +58,10 @@ export function OnboardingHelpPanel() {
 
   if (!ready || !open) return null;
 
-  function dismiss(action: "get_started" | "dismiss" | "open_help_later") {
-    safeSet(ONBOARDING_DISMISSED_KEY, "true");
+  function dismiss(action: "get_started" | "remind_me_later" | "dismiss") {
+    if (action !== "remind_me_later") safeSet(ONBOARDING_DISMISSED_KEY, "true");
     setOpen(false);
-    recordHelpEvent("onboarding_dismissed", action);
+    recordHelpEvent("onboarding_dismissed", "getting_started", action);
   }
 
   return (
@@ -77,8 +77,8 @@ export function OnboardingHelpPanel() {
       </ul>
       <div className="btns onboardingActions">
         <button type="button" onClick={() => dismiss("get_started")}>Get started</button>
-        <button type="button" className="secondary" onClick={() => dismiss("dismiss")}>Dismiss</button>
-        <button type="button" className="secondary" onClick={() => dismiss("open_help_later")}>Open help later</button>
+        <button type="button" className="secondary" onClick={() => dismiss("remind_me_later")}>Remind me later</button>
+        <button type="button" className="secondary" onClick={() => dismiss("dismiss")}>Dismiss tips</button>
       </div>
       <p className="small muted">You can reopen this from Menu → Help / Getting started.</p>
     </section>
