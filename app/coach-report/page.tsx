@@ -40,6 +40,7 @@ export default function CoachReportPeriodPage() {
   const [includeNotesContext, setIncludeNotesContext] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
   const [loading, setLoading] = useState(true);
+  const [previewInput, setPreviewInput] = useState<{ fromDate: string; toDate: string; selectedIds: string[]; includeNotesContext: boolean } | null>(null);
 
   useEffect(() => { void load(); }, []);
 
@@ -64,7 +65,9 @@ export default function CoachReportPeriodPage() {
     setNotes(privateNotes);
     const visible = rows.filter((session) => inRange(session, fromDate, toDate)).map((session) => session.id);
     setSelectedIds(new Set(visible));
-    setIncludeNotesContext(privateNotes.some((note) => visible.includes(note.session_id)));
+    const hasNotes = privateNotes.some((note) => visible.includes(note.session_id));
+    setIncludeNotesContext(hasNotes);
+    setPreviewInput({ fromDate, toDate, selectedIds: visible, includeNotesContext: hasNotes });
     setLoading(false);
   }
 
@@ -73,16 +76,20 @@ export default function CoachReportPeriodPage() {
     setSelectedIds(new Set(visibleSessions.map((session) => session.id)));
   }, [fromDate, toDate, sessions.length]);
   const selectedSessions = visibleSessions.filter((session) => selectedIds.has(session.id));
+  const previewSelectedIds = new Set(previewInput?.selectedIds || [...selectedIds]);
+  const previewSessions = sessions.filter((session) => previewSelectedIds.has(session.id)).sort((a, b) => sessionDate(b).localeCompare(sessionDate(a)));
   const notesForSelected = notes.filter((note) => selectedIds.has(note.session_id));
   useEffect(() => { if (notesForSelected.length > 0) setIncludeNotesContext(true); }, [notesForSelected.length]);
-  const missesBySession = useMemo(() => Object.fromEntries(selectedSessions.map((session) => [session.id, misses.filter((miss) => miss.session_id === session.id)])), [selectedSessions, misses]);
-  const privateNotesBySession = useMemo(() => Object.fromEntries(selectedSessions.map((session) => [session.id, notes.filter((note) => note.session_id === session.id)])), [selectedSessions, notes]);
-  const report = useMemo(() => buildPeriodCoachReport({ fromDate, toDate, sessions: selectedSessions, missesBySession, privateNotesBySession, includeNotesContext }), [fromDate, toDate, selectedSessions, missesBySession, privateNotesBySession, includeNotesContext]);
+  const missesBySession = useMemo(() => Object.fromEntries(previewSessions.map((session) => [session.id, misses.filter((miss) => miss.session_id === session.id)])), [previewSessions, misses]);
+  const privateNotesBySession = useMemo(() => Object.fromEntries(previewSessions.map((session) => [session.id, notes.filter((note) => note.session_id === session.id)])), [previewSessions, notes]);
+  const report = useMemo(() => buildPeriodCoachReport({ fromDate: previewInput?.fromDate || fromDate, toDate: previewInput?.toDate || toDate, sessions: previewSessions, missesBySession, privateNotesBySession, includeNotesContext: previewInput?.includeNotesContext ?? includeNotesContext }), [previewInput, fromDate, toDate, previewSessions, missesBySession, privateNotesBySession, includeNotesContext]);
+  const previewNeedsUpdate = !previewInput || previewInput.fromDate !== fromDate || previewInput.toDate !== toDate || previewInput.includeNotesContext !== includeNotesContext || previewInput.selectedIds.length !== selectedIds.size || previewInput.selectedIds.some((id) => !selectedIds.has(id));
+  function updatePreview() { setCopyStatus(""); setPreviewInput({ fromDate, toDate, selectedIds: [...selectedIds], includeNotesContext }); }
 
   useEffect(() => {
     if (loading) return;
     void recordAnalyticsEvent(supabase, "coach_report_period_preview_opened", { route: "/coach-report", feature: "coach_report", metadata: { reportType: "period", selectedSessionCount: report.selectedSessionCount, trainingCount: report.trainingCount, competitionCount: report.competitionCount, hasNotesContext: report.hasNotesContext, periodDays: report.periodDays } });
-  }, [loading, fromDate, toDate]);
+  }, [loading, previewInput?.fromDate, previewInput?.toDate]);
 
   async function copyReport() {
     setCopyStatus("");
@@ -100,7 +107,7 @@ export default function CoachReportPeriodPage() {
     <section className="card coachReportHero">
       <p className="small muted"><Link href="/dashboard">← Back to dashboard</Link></p>
       <h1>Coach report</h1>
-      <p className="muted">Choose a period, select the training and competition sessions to include, then copy a private plain-text preview.</p>
+      <p className="muted">Choose report settings, select sessions, update the preview, then review the visible report before copying it.</p>
       <p className="small muted">This is a training-support summary, not a replacement for a coach watching you shoot.</p>
       <div className="coachReportDateGrid">
         <label>From date<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
@@ -110,12 +117,12 @@ export default function CoachReportPeriodPage() {
         <label className="checkboxRow"><input type="checkbox" checked={includeNotesContext} onChange={(event) => setIncludeNotesContext(event.target.checked)} /><span>Include notes-based context</span></label>
         <p className="small muted">Only summarized note themes are included. Raw private notes are not shown.</p>
       </div>}
-      <div className="btns"><button type="button" onClick={copyReport} disabled={selectedSessions.length === 0}>Copy report</button>{copyStatus && <span className={copyStatus === "Copied" ? "successInline" : "errorInline"}>{copyStatus}</span>}</div>
     </section>
     <section className="card coachReportSessionList"><h2>Sessions in range</h2>{visibleSessions.length === 0 ? <p>No training or competition sessions found in this date range.</p> : visibleSessions.map((session) => {
       const sessionMisses = misses.filter((miss) => miss.session_id === session.id);
       return <label key={session.id} className="coachReportSessionCard"><input type="checkbox" checked={selectedIds.has(session.id)} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); if (event.target.checked) next.add(session.id); else next.delete(session.id); return next; })} /><span><strong>{sessionDate(session)} — {session.name || "Untitled session"}</strong><span className="small muted">{session.discipline || "Discipline not recorded"} · {typeLabel(session)} · {scoreLabel(session, sessionMisses)}{session.shooting_ground ? ` · ${session.shooting_ground}` : ""}</span></span></label>;
     })}</section>
-    <article className="card coachReportPreview" aria-label="Coach report plain-text preview">{report.sections.map((section) => <section key={section.title} className="coachReportSection"><h2>{section.title}</h2>{section.items.map((item) => <p key={item}>• {item}</p>)}</section>)}</article>
+    <section className="card"><div className="btns"><button type="button" onClick={updatePreview} disabled={selectedSessions.length === 0}>Update report preview</button>{previewNeedsUpdate && <span className="warningInline">Report preview needs update</span>}</div></section>
+    <article className="card coachReportPreview" aria-label="Coach report plain-text preview"><div className="coachReportPreviewHeader"><div><p className="eyebrow">Basic coach report</p><h2>Report preview</h2><p className="small muted">Review the report below before copying it.</p></div><div className="btns"><button type="button" onClick={copyReport} disabled={report.selectedSessionCount === 0}>Copy visible report</button>{copyStatus && <span className={copyStatus === "Copied" ? "successInline" : "errorInline"}>{copyStatus}</span>}</div></div><div className="coachReportSummaryGrid"><span>{report.selectedSessionCount} sessions</span><span>{previewInput?.fromDate || fromDate} to {previewInput?.toDate || toDate}</span><span>{report.trainingCount} training</span><span>{report.competitionCount} competition</span><span>Notes context: {report.hasNotesContext ? "yes" : "no"}</span><span>Data quality: {report.dataQuality}</span></div>{report.sections.map((section) => <section key={section.title} className="coachReportSection"><h2>{section.title}</h2>{section.items.map((item) => <p key={item}>• {item}</p>)}</section>)}</article>
   </main>;
 }
