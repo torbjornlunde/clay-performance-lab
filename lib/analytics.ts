@@ -28,6 +28,8 @@ export const ANALYTICS_EVENTS = [
   "contextual_help_dismissed",
   "coach_report_preview_opened",
   "coach_report_copied",
+  "coach_report_period_preview_opened",
+  "coach_report_period_copied",
 ] as const;
 
 export type AnalyticsEventName = (typeof ANALYTICS_EVENTS)[number];
@@ -53,6 +55,7 @@ const ALLOWED_METADATA_KEYS = new Set([
   "importedCount",
   "mode",
   "pendingAction",
+  "periodDays",
   "privateNoteCount",
   "resultCount",
   "reportType",
@@ -60,10 +63,13 @@ const ALLOWED_METADATA_KEYS = new Set([
   "scoreChoice",
   "scope",
   "selectedCount",
+  "selectedSessionCount",
   "sectionCount",
   "status",
   "success",
   "targetCount",
+  "trainingCount",
+  "competitionCount",
   "year",
 ]);
 
