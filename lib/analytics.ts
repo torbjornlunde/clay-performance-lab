@@ -18,6 +18,9 @@ export const ANALYTICS_EVENTS = [
   "leirdue_source_refresh_checked",
   "leirdue_source_refresh_applied",
   "error_reported",
+  "onboarding_opened",
+  "onboarding_dismissed",
+  "contextual_help_dismissed",
 ] as const;
 
 export type AnalyticsEventName = (typeof ANALYTICS_EVENTS)[number];

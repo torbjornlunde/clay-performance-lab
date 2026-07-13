@@ -8,6 +8,7 @@ import { recordAnalyticsEvent } from "@/lib/analytics";
 import { shooterProfileDisplayName, type ShooterProfile } from "@/lib/profile";
 import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
 import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
+import { ContextualHelpCard } from "@/app/components/OnboardingHelp";
 
 const DEFAULT_DISCIPLINES = [COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI, "Sporting"];
 const OPTIONAL_DISCIPLINES = [JEGERTRAP_NORDISK_TRAP, TRAP, SKEET, "Other"];
@@ -1330,6 +1331,7 @@ export default function LeirdueImportPage() {
         <p className="eyebrow">Leirdue.net import</p>
         <h2>Import from Leirdue.net</h2>
         <p>Find old competition results and review before saving.</p>
+        <ContextualHelpCard storageKey="leirdue-import">Search your Leirdue.net results, review matches, then import only the results you want.</ContextualHelpCard>
         <div className="notice small">
           Leirdue import is currently in beta. It can save time by finding many results automatically, but it may not find every result yet. Please review the imported results before saving, and add any missing results manually.
         </div>

@@ -8729,3 +8729,65 @@ select {
 .analyticsTable { width: 100%; border-collapse: collapse; min-width: 0; }
 .analyticsTable th, .analyticsTable td { padding: .55rem 0; border-bottom: 1px solid var(--border); text-align: left; overflow-wrap: anywhere; }
 .analyticsTable td { text-align: right; font-weight: 700; color: var(--text); }
+
+.onboardingHelpPanel,
+.contextualHelpCard {
+  border-color: var(--lineStrong);
+  background:
+    linear-gradient(135deg, rgba(216, 165, 58, 0.13), rgba(117, 184, 255, 0.06)),
+    var(--card-bg);
+}
+
+.onboardingHelpPanel {
+  max-width: 980px;
+  margin: 14px auto;
+  width: calc(100% - 28px);
+}
+
+.helpList {
+  margin: 10px 0 14px;
+  padding-left: 20px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.helpList li + li {
+  margin-top: 6px;
+}
+
+.onboardingActions {
+  align-items: stretch;
+}
+
+.contextualHelpCard {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  border: 1px solid var(--lineStrong);
+  border-radius: 16px;
+  padding: 12px;
+  margin: 12px 0;
+  box-shadow: none;
+}
+
+.contextualHelpCard p {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.contextualHelpCard button {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 520px) {
+  .contextualHelpCard {
+    flex-direction: column;
+  }
+
+  .contextualHelpCard button,
+  .onboardingActions button {
+    width: 100%;
+  }
+}
