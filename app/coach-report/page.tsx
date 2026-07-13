@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase/client";
 
 type MissRow = { id?: string; session_id: string; course_number: number | null; target_position?: number | null; target_number: number | null; missed_target?: string | null; main_reason?: string | null; where_miss?: string | null; created_at?: string | null };
 type NoteRow = { session_id: string; note_scope: "session" | "post"; post_number?: number | null; body?: string | null };
+type ScorecardImportRow = { session_id: string; reviewed_total_targets: number; reviewed_hits: number; reviewed_misses: number; inserted_misses?: number | null; skipped_duplicates?: number | null; created_at?: string | null };
 
 function localDateInput(date: Date) {
   const year = date.getFullYear();
@@ -36,6 +37,7 @@ export default function CoachReportPeriodPage() {
   const [sessions, setSessions] = useState<CoachReportPeriodSession[]>([]);
   const [misses, setMisses] = useState<MissRow[]>([]);
   const [notes, setNotes] = useState<NoteRow[]>([]);
+  const [scorecardImports, setScorecardImports] = useState<ScorecardImportRow[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [includeNotesContext, setIncludeNotesContext] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
@@ -55,12 +57,14 @@ export default function CoachReportPeriodPage() {
       .order("competition_date", { ascending: false, nullsFirst: false });
     const rows = (sessionRows || []) as CoachReportPeriodSession[];
     const ids = rows.map((session) => session.id);
-    const [{ data: missRows }, { data: noteRows }] = ids.length ? await Promise.all([
+    const [{ data: missRows }, { data: noteRows }, { data: importRows }] = ids.length ? await Promise.all([
       supabase.from("misses").select("id,session_id,course_number,target_position,target_number,missed_target,main_reason,where_miss,created_at").in("session_id", ids),
       supabase.from("private_session_notes").select("session_id,note_scope,post_number,body").in("session_id", ids),
-    ]) : [{ data: [] }, { data: [] }];
+      supabase.from("scorecard_imports").select("session_id,reviewed_total_targets,reviewed_hits,reviewed_misses,inserted_misses,skipped_duplicates,created_at").in("session_id", ids).order("created_at", { ascending: false }),
+    ]) : [{ data: [] }, { data: [] }, { data: [] }];
     setSessions(rows);
     setMisses((missRows || []) as MissRow[]);
+    setScorecardImports((importRows || []) as ScorecardImportRow[]);
     const privateNotes = ((noteRows || []) as NoteRow[]).filter((note) => String(note.body || "").trim());
     setNotes(privateNotes);
     const visible = rows.filter((session) => inRange(session, fromDate, toDate)).map((session) => session.id);
@@ -82,7 +86,8 @@ export default function CoachReportPeriodPage() {
   useEffect(() => { if (notesForSelected.length > 0) setIncludeNotesContext(true); }, [notesForSelected.length]);
   const missesBySession = useMemo(() => Object.fromEntries(previewSessions.map((session) => [session.id, misses.filter((miss) => miss.session_id === session.id)])), [previewSessions, misses]);
   const privateNotesBySession = useMemo(() => Object.fromEntries(previewSessions.map((session) => [session.id, notes.filter((note) => note.session_id === session.id)])), [previewSessions, notes]);
-  const report = useMemo(() => buildPeriodCoachReport({ fromDate: previewInput?.fromDate || fromDate, toDate: previewInput?.toDate || toDate, sessions: previewSessions, missesBySession, privateNotesBySession, includeNotesContext: previewInput?.includeNotesContext ?? includeNotesContext }), [previewInput, fromDate, toDate, previewSessions, missesBySession, privateNotesBySession, includeNotesContext]);
+  const scorecardImportsBySession = useMemo(() => Object.fromEntries(previewSessions.map((session) => [session.id, scorecardImports.find((row) => row.session_id === session.id) || null])), [previewSessions, scorecardImports]);
+  const report = useMemo(() => buildPeriodCoachReport({ fromDate: previewInput?.fromDate || fromDate, toDate: previewInput?.toDate || toDate, sessions: previewSessions, missesBySession, scorecardImportsBySession, privateNotesBySession, includeNotesContext: previewInput?.includeNotesContext ?? includeNotesContext }), [previewInput, fromDate, toDate, previewSessions, missesBySession, scorecardImportsBySession, privateNotesBySession, includeNotesContext]);
   const previewNeedsUpdate = !previewInput || previewInput.fromDate !== fromDate || previewInput.toDate !== toDate || previewInput.includeNotesContext !== includeNotesContext || previewInput.selectedIds.length !== selectedIds.size || previewInput.selectedIds.some((id) => !selectedIds.has(id));
   function updatePreview() { setCopyStatus(""); setPreviewInput({ fromDate, toDate, selectedIds: [...selectedIds], includeNotesContext }); }
 
@@ -123,6 +128,6 @@ export default function CoachReportPeriodPage() {
       return <label key={session.id} className="coachReportSessionCard"><input type="checkbox" checked={selectedIds.has(session.id)} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); if (event.target.checked) next.add(session.id); else next.delete(session.id); return next; })} /><span><strong>{sessionDate(session)} — {session.name || "Untitled session"}</strong><span className="small muted">{session.discipline || "Discipline not recorded"} · {typeLabel(session)} · {scoreLabel(session, sessionMisses)}{session.shooting_ground ? ` · ${session.shooting_ground}` : ""}</span></span></label>;
     })}</section>
     <section className="card"><div className="btns"><button type="button" onClick={updatePreview} disabled={selectedSessions.length === 0}>Update report preview</button>{previewNeedsUpdate && <span className="warningInline">Report preview needs update</span>}</div></section>
-    <article className="card coachReportPreview" aria-label="Coach report plain-text preview"><div className="coachReportPreviewHeader"><div><p className="eyebrow">Basic coach report</p><h2>Report preview</h2><p className="small muted">Review the report below before copying it.</p></div><div className="btns"><button type="button" onClick={copyReport} disabled={report.selectedSessionCount === 0}>Copy visible report</button>{copyStatus && <span className={copyStatus === "Copied" ? "successInline" : "errorInline"}>{copyStatus}</span>}</div></div><div className="coachReportSummaryGrid"><span>{report.selectedSessionCount} sessions</span><span>{previewInput?.fromDate || fromDate} to {previewInput?.toDate || toDate}</span><span>{report.trainingCount} training</span><span>{report.competitionCount} competition</span><span>Notes context: {report.hasNotesContext ? "yes" : "no"}</span><span>Data quality: {report.dataQuality}</span></div>{report.sections.map((section) => <section key={section.title} className="coachReportSection"><h2>{section.title}</h2>{section.items.map((item) => <p key={item}>• {item}</p>)}</section>)}</article>
+    <article className="card coachReportPreview" aria-label="Coach report plain-text preview"><div className="coachReportPreviewHeader"><div><p className="eyebrow">Evidence-based coach report</p><h2>Report preview</h2><p className="small muted">Review the report below before copying it.</p></div><div className="btns"><button type="button" onClick={copyReport} disabled={report.selectedSessionCount === 0}>Copy visible report</button>{copyStatus && <span className={copyStatus === "Copied" ? "successInline" : "errorInline"}>{copyStatus}</span>}</div></div><div className="coachReportSummaryGrid"><span>{report.selectedSessionCount} sessions</span><span>{previewInput?.fromDate || fromDate} to {previewInput?.toDate || toDate}</span><span>{report.trainingCount} training</span><span>{report.competitionCount} competition</span><span>Notes context: {report.hasNotesContext ? "yes" : "no"}</span><span>Data quality: {report.dataQuality}</span></div>{report.sections.map((section) => <section key={section.title} className="coachReportSection"><h2>{section.title}</h2>{section.items.map((item) => <p key={item}>• {item}</p>)}</section>)}</article>
   </main>;
 }
