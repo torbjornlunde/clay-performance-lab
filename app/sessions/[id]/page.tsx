@@ -126,6 +126,23 @@ function removePendingPrivateNote(userId: string, sessionId: string, scope: "ses
   window.localStorage.removeItem(privateNotePendingKey(userId, sessionId, scope, postNumber));
 }
 
+function localPrivateNotePostNumbers(userId: string, sessionId: string) {
+  if (!storageAvailable()) return [];
+  const posts = new Set<number>();
+  const prefixes = [
+    `private-notes:draft:${userId}:${sessionId}:post:`,
+    `private-notes:pending:${userId}:${sessionId}:post:`,
+  ];
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const storageKey = window.localStorage.key(index) || "";
+    const prefix = prefixes.find((item) => storageKey.startsWith(item));
+    if (!prefix) continue;
+    const postNumber = Number(storageKey.slice(prefix.length));
+    if (Number.isInteger(postNumber) && postNumber > 0) posts.add(postNumber);
+  }
+  return Array.from(posts).sort((a, b) => a - b);
+}
+
 function isLikelyNetworkError(error: unknown) {
   const message = String((error as { message?: string } | null)?.message || error || "").toLowerCase();
   return !navigator.onLine || /network|fetch|failed to fetch|load failed|offline|timeout|abort/i.test(message);
@@ -277,9 +294,11 @@ export default function Page() {
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [noteSavingKey, setNoteSavingKey] = useState<string | null>(null);
   const [noteStatus, setNoteStatus] = useState<Record<string, string>>({});
+  const [localPrivateNotePosts, setLocalPrivateNotePosts] = useState<number[]>([]);
   const [sourceApplying, setSourceApplying] = useState(false);
   const [selectedSourceFields, setSelectedSourceFields] = useState<string[]>([]);
   const trackedSessionOpenRef = useRef<string | null>(null);
+  const privateNoteSyncingRef = useRef(false);
 
 
   useEffect(() => {
@@ -305,7 +324,7 @@ export default function Page() {
     return () => window.removeEventListener("online", handleOnline);
   });
 
-  async function load() {
+  async function load({ syncPending = true }: { syncPending?: boolean } = {}) {
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) {
       router.push("/login");
@@ -377,8 +396,8 @@ export default function Page() {
     setPostSetupCount(configuredPosts);
     const notes = privateNoteData || [];
     setPrivateNotes(notes);
-    applyLocalPrivateNoteState(u.user.id, params.id, notes);
-    void syncPendingPrivateNotes(u.user.id, params.id, notes, sessionData?.discipline);
+    applyLocalPrivateNoteState(u.user.id, params.id, notes, sessionData);
+    if (syncPending) void syncPendingPrivateNotes(u.user.id, params.id, notes, sessionData?.discipline);
     setSourceRefresh(null);
     setSelectedSourceFields([]);
     if (sessionData?.id && trackedSessionOpenRef.current !== sessionData.id) {
@@ -408,12 +427,15 @@ export default function Page() {
     }
   }, [currentUserId, session?.id]);
 
-  function applyLocalPrivateNoteState(userId: string, sessionId: string, notes: PrivateSessionNote[]) {
+  function applyLocalPrivateNoteState(userId: string, sessionId: string, notes: PrivateSessionNote[], loadedSession = session) {
     const drafts: Record<string, string> = Object.fromEntries(notes.map((note) => [noteKey(note.note_scope, note.post_number), note.body]));
     const statuses: Record<string, string> = {};
+    const storagePostNumbers = localPrivateNotePostNumbers(userId, sessionId);
+    setLocalPrivateNotePosts(storagePostNumbers);
+    const inferredPostCount = Math.max(loadedSession?.course_count || 0, loadedSession?.post_count || 0);
     const scopes: Array<{ scope: "session" | "post"; postNumber: number | null }> = [
       { scope: "session", postNumber: null },
-      ...Array.from(new Set([...notes.map((note) => note.post_number).filter((n): n is number => n !== null), ...Array.from({ length: Math.max(session?.course_count || session?.post_count || 0, 0) }, (_, i) => i + 1)])).map((postNumber) => ({ scope: "post" as const, postNumber })),
+      ...Array.from(new Set([...notes.map((note) => note.post_number).filter((n): n is number => n !== null), ...storagePostNumbers, ...Array.from({ length: inferredPostCount }, (_, i) => i + 1)])).map((postNumber) => ({ scope: "post" as const, postNumber })),
     ];
     for (const { scope, postNumber } of scopes) {
       const key = noteKey(scope, postNumber);
@@ -458,27 +480,34 @@ export default function Page() {
   }
 
   async function syncPendingPrivateNotes(userId = currentUserId, sessionId = session?.id, notes = privateNotes, discipline = session?.discipline) {
-    if (!userId || !sessionId || !navigator.onLine) return;
-    const pending: PendingPrivateNote[] = [];
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const storageKey = window.localStorage.key(index) || "";
-      if (!storageKey.startsWith(`private-notes:pending:${userId}:${sessionId}:`)) continue;
-      const raw = window.localStorage.getItem(storageKey);
-      if (!raw) continue;
-      try { pending.push(JSON.parse(raw) as PendingPrivateNote); } catch { window.localStorage.removeItem(storageKey); }
-    }
-    for (const item of pending) {
-      const key = noteKey(item.scope, item.postNumber);
-      try {
-        await syncOnePrivateNote(item, notes);
-        setNoteStatus((statuses) => ({ ...statuses, [key]: "Synced" }));
-        void recordAnalyticsEvent(supabase, "private_note_sync_succeeded", { route: "/sessions/[id]", feature: "private_notes", discipline, sessionId, metadata: { scope: item.scope, hasBody: item.body.trim().length > 0, pendingAction: item.action } });
-      } catch {
-        setNoteStatus((statuses) => ({ ...statuses, [key]: "Sync failed · saved locally" }));
-        void recordAnalyticsEvent(supabase, "private_note_sync_failed", { route: "/sessions/[id]", feature: "private_notes", discipline, sessionId, metadata: { scope: item.scope, hasBody: item.body.trim().length > 0, pendingAction: item.action } });
+    if (!userId || !sessionId || !navigator.onLine || privateNoteSyncingRef.current) return;
+    privateNoteSyncingRef.current = true;
+    let syncedAny = false;
+    try {
+      const pending: PendingPrivateNote[] = [];
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        const storageKey = window.localStorage.key(index) || "";
+        if (!storageKey.startsWith(`private-notes:pending:${userId}:${sessionId}:`)) continue;
+        const raw = window.localStorage.getItem(storageKey);
+        if (!raw) continue;
+        try { pending.push(JSON.parse(raw) as PendingPrivateNote); } catch { window.localStorage.removeItem(storageKey); }
       }
+      for (const item of pending) {
+        const key = noteKey(item.scope, item.postNumber);
+        try {
+          await syncOnePrivateNote(item, notes);
+          syncedAny = true;
+          setNoteStatus((statuses) => ({ ...statuses, [key]: "Synced" }));
+          void recordAnalyticsEvent(supabase, "private_note_sync_succeeded", { route: "/sessions/[id]", feature: "private_notes", discipline, sessionId, metadata: { scope: item.scope, hasBody: item.body.trim().length > 0, pendingAction: item.action } });
+        } catch {
+          setNoteStatus((statuses) => ({ ...statuses, [key]: "Sync failed · saved locally" }));
+          void recordAnalyticsEvent(supabase, "private_note_sync_failed", { route: "/sessions/[id]", feature: "private_notes", discipline, sessionId, metadata: { scope: item.scope, hasBody: item.body.trim().length > 0, pendingAction: item.action } });
+        }
+      }
+    } finally {
+      privateNoteSyncingRef.current = false;
     }
-    if (pending.length > 0) await load();
+    if (syncedAny) await load({ syncPending: false });
   }
 
   async function savePrivateNote(scope: "session" | "post", postNumber: number | null = null) {
@@ -498,7 +527,7 @@ export default function Page() {
     try {
       await syncOnePrivateNote({ ...pending, key: privateNotePendingKey(currentUserId, session.id, scope, postNumber), updatedAt: new Date().toISOString() });
       setNoteStatus((statuses) => ({ ...statuses, [key]: "Synced" }));
-      await load();
+      await load({ syncPending: false });
       void recordAnalyticsEvent(supabase, "private_note_sync_succeeded", { route: "/sessions/[id]", feature: "private_notes", discipline: session.discipline, sessionId: session.id, metadata: { scope, hasBody: body.trim().length > 0, pendingAction: "upsert" } });
     } catch (error) {
       writePendingPrivateNote(pending);
@@ -525,7 +554,7 @@ export default function Page() {
     try {
       await syncOnePrivateNote({ ...pending, key: privateNotePendingKey(currentUserId, session.id, scope, postNumber), updatedAt: new Date().toISOString() });
       setNoteStatus((statuses) => ({ ...statuses, [key]: "Synced" }));
-      await load();
+      await load({ syncPending: false });
     } catch (error) {
       writePendingPrivateNote(pending);
       setNoteStatus((statuses) => ({ ...statuses, [key]: isLikelyNetworkError(error) ? "Delete pending sync" : "Sync failed · saved locally" }));
@@ -742,7 +771,10 @@ export default function Page() {
           }
         : null;
   const privateNotePostCount = Math.max(postSetupCount || 0, leirduestiPostCount || 0, session.post_count || 0, session.course_count || 0, courses.length || 0);
-  const privateNotePosts = privateNotePostCount > 0 ? Array.from({ length: privateNotePostCount }, (_, index) => index + 1) : [];
+  const privateNotePosts = Array.from(new Set([
+    ...(privateNotePostCount > 0 ? Array.from({ length: privateNotePostCount }, (_, index) => index + 1) : []),
+    ...localPrivateNotePosts,
+  ])).sort((a, b) => a - b);
   const loggingLabel = resultOnly
     ? "Add detailed logging"
     : count > 0

@@ -32,7 +32,16 @@ assert.match(page, /window\.localStorage\.setItem\(privateNoteDraftKey\(currentU
 assert.match(page, /Saved locally · pending sync/, 'offline save shows pending sync status');
 assert.match(page, /Delete pending sync/, 'offline delete shows pending delete status');
 assert.match(page, /removePendingPrivateNote\(pending\.userId, pending\.sessionId, pending\.scope, pending\.postNumber\)/, 'online sync removes pending entry after success');
-assert.match(page, /pending\?\.action === \"upsert\"[\s\S]*drafts\[key\] = pending\.body/, 'pending local edit wins over server load');
+assert.doesNotMatch(page, /if \(pending\.length > 0\) await load\(\)/, 'failed sync does not call load recursively');
+assert.match(page, /privateNoteSyncingRef\.current/, 'sync has a concurrent attempt guard');
+assert.match(page, /load\(\{ syncPending: false \}\)/, 'post-sync reload helper does not trigger another sync loop');
+assert.match(page, /catch \{[\s\S]*Sync failed · saved locally[\s\S]*private_note_sync_failed/, 'failed sync keeps pending entry in localStorage');
+assert.match(page, /pending\?\.action === \"upsert\"[\s\S]*drafts\[key\] = pending\.body/, 'server load does not overwrite pending local edit');
+assert.match(page, /pending\?\.action === \"delete\"[\s\S]*drafts\[key\] = \"\"/, 'pending delete does not resurrect text from server load');
+assert.match(page, /localPrivateNotePostNumbers\(userId, sessionId\)/, 'local storage post keys are scanned');
+assert.match(page, /private-notes:draft:\$\{userId\}:\$\{sessionId\}:post:/, 'local draft post note with no server note still renders');
+assert.match(page, /private-notes:pending:\$\{userId\}:\$\{sessionId\}:post:/, 'local pending post note with no server note still renders');
+assert.match(page, /\.\.\.localPrivateNotePosts/, 'rendered per-post note list includes local-only posts');
 assert.match(page, /pendingAction: item\.action|pendingAction: \"upsert\"/, 'analytics records only privacy-safe pending action');
 
 const analytics = readFileSync('lib/analytics.ts', 'utf8');
