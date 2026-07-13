@@ -15,6 +15,18 @@ assert(result.findings.some(x=>x.includes('post 4')), 'post-specific findings ar
 assert(result.recommendations.some(x=>x.evidence.includes('mapped misses')), 'recommendation states mapped evidence');
 assert(!result.findings.join(' ').match(/early|middle|late|final third/i), 'target positions do not create false timing findings');
 assert(!result.recommendations.map(x=>x.title+x.evidence).join(' ').match(/reset|fatigue|late/i), 'no unsupported late-round recommendation');
+assert.equal(result.notesBasedContext, null, 'notes context is absent when private notes are not included');
+result=a.buildDeterministicSessionAnalysis({session:baseSession,scorecardImport:imports,misses,postTargets:[],history:[],includePrivateNotes:true,privateNotes:[{note_scope:'session',post_number:null,body:'tired at the end and rushed the second target'},{note_scope:'post',post_number:4,body:'bad light on post 4 and felt behind the bird'}]});
+assert.equal(result.notesBasedContext.heading, 'Notes-based context', 'analysis output supports Notes-based context');
+assert(result.notesBasedContext.hasSessionNote, 'session-level notes can be included');
+assert(result.notesBasedContext.hasPostNotes, 'per-post notes can be included');
+assert(result.notesBasedContext.summary.join(' ').includes('Your notes suggest'), 'notes are worded as suggestions');
+assert(result.notesBasedContext.summary.join(' ').includes('post 4'), 'post-specific note comments are summarized without repeating full notes');
+assert(result.notesBasedContext.instructions.includes('user-provided context, not proven facts'), 'AI instruction says notes are context, not proven facts');
+assert(result.notesBasedContext.instructions.includes('Observed score and miss data are observed facts'), 'prompt/context separates observed facts from private notes');
+assert(!result.notesBasedContext.summary.join(' ').includes('bad light on post 4 and felt behind the bird'), 'raw note text is not repeated');
+result=a.buildDeterministicSessionAnalysis({session:baseSession,scorecardImport:imports,misses,postTargets:[],history:[],includePrivateNotes:false,privateNotes:[{note_scope:'session',body:'tired at the end'}]});
+assert.equal(result.notesBasedContext, null, 'toggle OFF prevents notes from being included');
 const postTargets=[
  {post_number:4,target_position:1,presentation_number:1,presentation_type:'report_pair',position_in_presentation:1,target_label:'A',target_type:'Crosser',direction:'left-to-right'},
  {post_number:4,target_position:2,presentation_number:1,presentation_type:'report_pair',position_in_presentation:2,target_label:'B',target_type:'Quartering',direction:'right-to-left'},
@@ -81,6 +93,6 @@ const page=readFileSync('app/sessions/[id]/scorecard-import/page.tsx','utf8');
 const analysisPage=readFileSync('app/sessions/[id]/analysis/page.tsx','utf8');
 const css=readFileSync('app/globals.css','utf8');
 assert.match(page,/scorecardRawTextDetails/); assert.match(page,/\/analysis\?scorecardImported=1/);
-assert.match(analysisPage,/useSearchParams/); assert.match(analysisPage,/hasReviewedPostScorecard/); assert.match(analysisPage,/analyzeMisses/); assert.match(analysisPage,/alreadyImported/); assert.match(analysisPage,/ownScoreUpdated/);
+assert.match(analysisPage,/useSearchParams/); assert.match(analysisPage,/from\("private_session_notes"\)/, 'private notes are queried for session analysis'); assert.match(analysisPage,/Include private notes in analysis/, 'include-private-notes toggle exists'); assert.match(analysisPage,/setIncludePrivateNotes\(notes\.length > 0\)/, 'toggle defaults ON when notes exist'); assert.match(analysisPage,/hasPrivateNotes &&/, 'toggle appears only when notes exist'); assert.match(analysisPage,/includePrivateNotes/, 'toggle state controls analysis context'); assert.match(analysisPage,/Note text is not sent to analytics/, 'privacy helper text is shown'); assert.match(analysisPage,/hasReviewedPostScorecard/); assert.match(analysisPage,/analyzeMisses/); assert.match(analysisPage,/alreadyImported/); assert.match(analysisPage,/ownScoreUpdated/);
 assert.match(css,/scorecardRawText[\s\S]*overflow-wrap:\s*anywhere/); assert.match(css,/white-space:\s*pre-wrap/); assert.match(css,/word-break:\s*break-word/); assert.match(css,/var\(--text\)/);
 console.log('session analysis focused tests passed');
