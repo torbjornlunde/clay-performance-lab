@@ -31,7 +31,9 @@
     "test:private-session-notes": "node scripts/run-private-session-notes-tests.mjs",
     "test:coach-report": "node scripts/run-coach-report-tests.mjs",
     "test:coach-report-period": "node scripts/run-coach-report-period-tests.mjs",
-    "test:coach-report-evidence": "node scripts/run-coach-report-evidence-tests.mjs"
+    "test:coach-report-evidence": "node scripts/run-coach-report-evidence-tests.mjs",
+    "test:coach-report-ai": "node scripts/run-coach-report-ai-tests.mjs",
+    "test:coach-report-leirdue-context": "node scripts/run-coach-report-leirdue-context-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",
