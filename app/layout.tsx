@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import AuthHeader from "./components/AuthHeader";
 import ProfileGate from "./components/ProfileGate";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { OnboardingHelpPanel } from "./components/OnboardingHelp";
 import "./globals.css";
 import "./beta-admin-theme.css";
 
@@ -16,6 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <ThemeProvider>
           <AuthHeader />
+          <OnboardingHelpPanel />
           <ProfileGate>{children}</ProfileGate>
         </ThemeProvider>
       </body>

@@ -15,6 +15,7 @@ for (const text of [
 assert.match(component, /ONBOARDING_DISMISSED_KEY/, 'dismissal key is centralized');
 assert.match(component, /window\.localStorage\.setItem\(key, value\)/, 'dismissal persists to localStorage');
 assert.match(component, /window\.localStorage\.getItem\(key\)/, 'dismissal reads from localStorage');
+assert.match(component, /supabase\.auth\.getUser\(\)/, 'global onboarding checks signed-in state before showing');
 assert.match(component, /recordHelpEvent\("onboarding_opened", "getting_started"\)/, 'reopen records onboarding_opened');
 assert.match(component, /recordHelpEvent\("onboarding_dismissed", action\)/, 'dismiss records onboarding_dismissed');
 assert.match(component, /recordHelpEvent\("contextual_help_dismissed", storageKey\)/, 'contextual dismiss records event');
@@ -24,8 +25,11 @@ const nav = readFileSync('app/components/AuthHeader.tsx', 'utf8');
 assert.match(nav, /Help \/ Getting started/, 'menu contains Help / Getting started');
 assert.match(nav, /openOnboardingHelp\(\)/, 'menu reopens onboarding panel');
 
+const layout = readFileSync('app/layout.tsx', 'utf8');
+assert.match(layout, /<AuthHeader \/>[\s\S]*<OnboardingHelpPanel \/>[\s\S]*<ProfileGate>/, 'onboarding panel is mounted globally anywhere AuthHeader is present');
+
 const dashboard = readFileSync('app/dashboard/page.tsx', 'utf8');
-assert.match(dashboard, /<OnboardingHelpPanel \/>/, 'dashboard renders first-use onboarding panel');
+assert.doesNotMatch(dashboard, /<OnboardingHelpPanel \/>|from "@\/app\/components\/OnboardingHelp"/, 'dashboard does not keep a duplicate dashboard-only onboarding mount');
 
 const contexts = [
   ['app/import/leirdue/page.tsx', 'leirdue-import', 'Search your Leirdue.net results, review matches, then import only the results you want.'],

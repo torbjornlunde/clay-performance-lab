@@ -7,7 +7,6 @@ import { isOrdinaryLeirduesti } from "@/lib/disciplines";
 import { calculateRollingAverage, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
 import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
-import { OnboardingHelpPanel } from "@/app/components/OnboardingHelp";
 
 type Row = {
   id: string;
@@ -671,7 +670,6 @@ export default function DashboardPage() {
 
   return (
     <main className="dashboardMain">
-      <OnboardingHelpPanel />
       <div className="heroCard dashboardHero polishedDashboardHero">
         <div className="dashboardTopRow">
           <div>

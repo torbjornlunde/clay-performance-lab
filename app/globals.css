@@ -8738,6 +8738,12 @@ select {
     var(--card-bg);
 }
 
+.onboardingHelpPanel {
+  max-width: 980px;
+  margin: 14px auto;
+  width: calc(100% - 28px);
+}
+
 .helpList {
   margin: 10px 0 14px;
   padding-left: 20px;

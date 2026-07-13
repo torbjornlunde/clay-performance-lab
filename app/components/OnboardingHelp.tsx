@@ -23,15 +23,37 @@ export function OnboardingHelpPanel() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const dismissed = safeGet(ONBOARDING_DISMISSED_KEY) === "true";
-    setOpen(!dismissed);
-    setReady(true);
+    let active = true;
+    let authenticated = false;
+
+    async function initialize() {
+      const { data } = await supabase.auth.getUser();
+      if (!active) return;
+      authenticated = Boolean(data.user);
+      const dismissed = safeGet(ONBOARDING_DISMISSED_KEY) === "true";
+      setOpen(authenticated && !dismissed);
+      setReady(true);
+    }
+
     const reopen = () => {
+      if (!authenticated) return;
       setOpen(true);
       recordHelpEvent("onboarding_opened", "getting_started");
     };
+
+    initialize();
     window.addEventListener(HELP_EVENT, reopen);
-    return () => window.removeEventListener(HELP_EVENT, reopen);
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      authenticated = Boolean(session?.user);
+      if (!authenticated) setOpen(false);
+      if (authenticated && safeGet(ONBOARDING_DISMISSED_KEY) !== "true") setOpen(true);
+      setReady(true);
+    });
+    return () => {
+      active = false;
+      window.removeEventListener(HELP_EVENT, reopen);
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   if (!ready || !open) return null;
