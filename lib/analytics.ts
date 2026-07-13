@@ -26,6 +26,8 @@ export const ANALYTICS_EVENTS = [
   "onboarding_opened",
   "onboarding_dismissed",
   "contextual_help_dismissed",
+  "coach_report_preview_opened",
+  "coach_report_copied",
 ] as const;
 
 export type AnalyticsEventName = (typeof ANALYTICS_EVENTS)[number];
@@ -45,6 +47,7 @@ const ALLOWED_METADATA_KEYS = new Set([
   "hasSourceUrl",
   "hasPostNotes",
   "hasSessionNote",
+  "hasNotesContext",
   "includesPrivateNotes",
   "hasBody",
   "importedCount",
@@ -52,17 +55,19 @@ const ALLOWED_METADATA_KEYS = new Set([
   "pendingAction",
   "privateNoteCount",
   "resultCount",
+  "reportType",
   "savedCount",
   "scoreChoice",
   "scope",
   "selectedCount",
+  "sectionCount",
   "status",
   "success",
   "targetCount",
   "year",
 ]);
 
-const SAFE_PRIVATE_NOTE_METADATA_KEYS = new Set(["includesPrivateNotes", "privateNoteCount", "hasSessionNote", "hasPostNotes"]);
+const SAFE_PRIVATE_NOTE_METADATA_KEYS = new Set(["includesPrivateNotes", "privateNoteCount", "hasSessionNote", "hasPostNotes", "hasNotesContext"]);
 const PRIVATE_KEY_PATTERN = /(email|mail|ip|user.?agent|ua|note|comment|name|shooter|image|photo|url|href|link|token|secret|password)/i;
 const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 

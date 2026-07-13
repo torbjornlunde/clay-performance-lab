@@ -42,6 +42,7 @@ const dirty = analytics.sanitizeAnalyticsMetadata({
 });
 assert.deepEqual(dirty, { year: 2026, errorCategory: 'safe' }, 'metadata allowlist removes private notes, raw names, email, IP, user agent, images, and URLs');
 assert.deepEqual(analytics.sanitizeAnalyticsMetadata({ includesPrivateNotes: true, privateNoteCount: 2, hasSessionNote: true, hasPostNotes: true, privateNote: 'secret note text' }), { includesPrivateNotes: true, privateNoteCount: 2, hasSessionNote: true, hasPostNotes: true }, 'analytics metadata only includes safe private-note booleans/counts');
+assert.deepEqual(analytics.sanitizeAnalyticsMetadata({ hasNotesContext: true, sectionCount: 7, reportType: 'single_session' }), { hasNotesContext: true, sectionCount: 7, reportType: 'single_session' }, 'coach report analytics preserves safe metadata');
 assert.equal(analytics.analyticsRoute('/sessions/1?token=secret'), '/sessions/1', 'route strips query strings');
 assert.deepEqual(analytics.sanitizeAnalyticsMetadata({ feature: 'getting_started', shooterName: 'Private Person', sourceUrl: 'https://example.com' }), { feature: 'getting_started' }, 'onboarding analytics metadata stays privacy-safe');
 let inserted = false;

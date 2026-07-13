@@ -8821,3 +8821,43 @@ select {
   margin: 1rem 0 0;
   max-width: 100%;
 }
+
+.coachReportPage {
+  display: grid;
+  gap: 1rem;
+}
+
+.coachReportHero,
+.coachReportPreview,
+.coachReportSection {
+  min-width: 0;
+}
+
+.coachReportPreview {
+  display: grid;
+  gap: 1rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.coachReportSection {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.coachReportSection:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.successInline {
+  align-self: center;
+  color: var(--success);
+  font-weight: 700;
+}
+
+.errorInline {
+  align-self: center;
+  color: var(--danger);
+  font-weight: 700;
+}
