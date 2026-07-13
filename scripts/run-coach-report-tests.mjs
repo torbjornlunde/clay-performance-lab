@@ -5,12 +5,13 @@ import { readFileSync } from 'node:fs';
 execSync('rm -rf .coach-report-test-build && npx tsc lib/analysis/coachReport.ts lib/analysis/deterministicSessionAnalysis.ts lib/leirdue/normalize.ts lib/disciplines.ts lib/misses/scoring.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM --outDir .coach-report-test-build --skipLibCheck', { stdio: 'inherit' });
 const { buildCoachReport } = await import('../.coach-report-test-build/analysis/coachReport.js');
 
-const session = { id: 's1', name: 'County shoot', discipline: 'English Sporting', session_type: 'Competition', own_score: 18, winning_score: 22, total_targets: 25, post_count: 5, targets_per_post: 5, competition_date: '2026-07-01', location: 'North ground' };
+const session = { id: 's1', name: 'County shoot', discipline: 'English Sporting', session_type: 'Competition', own_score: 18, winning_score: 22, total_targets: 25, post_count: 5, targets_per_post: 5, competition_date: '2026-07-01', shooting_ground: 'North ground' };
 const scorecardImport = { reviewed_total_targets: 25, reviewed_hits: 18, reviewed_misses: 7 };
 const misses = [1,2,3,4,5,6,7].map((pos, i) => ({ id: String(i), course_number: i < 4 ? 4 : 5, target_position: pos, target_number: Math.ceil(pos / 2), missed_target: 'Single target', main_reason: 'Unknown', where_miss: 'Unknown' }));
 const notes = [{ note_scope: 'session', post_number: null, body: 'RAW SECRET NOTE tired at the end and rushed the second target' }];
 let report = buildCoachReport({ session, scorecardImport, misses, postTargets: [], history: [], privateNotes: notes, includeNotesContext: true });
 assert(report.plainText.includes('Score: 18/25'), 'report includes session score');
+assert(report.plainText.includes('Venue/ground: North ground'), 'report uses shooting_ground as venue/ground');
 assert(report.sections.some((s) => s.title === 'Key findings' && s.items.length), 'report includes key findings');
 assert(report.sections.some((s) => s.title === 'Training focus' && s.items.length), 'report includes training focus');
 assert(report.sections.some((s) => s.title === 'Recommended drills/priorities' && s.items.length), 'report includes recommendations');
@@ -30,6 +31,8 @@ assert.match(analysisPage, /Coach report preview/, 'Coach report entry point exi
 assert.match(analysisPage, /deterministic\.findings\.length > 0 && deterministic\.recommendations\.length > 0/, 'entry point only shows when analysis can be built');
 const page = readFileSync('app/sessions/[id]/coach-report/page.tsx', 'utf8');
 for (const text of ['Coach report preview', 'Include notes-based context', 'Raw private notes are not shown', 'Copy report', 'Copied']) assert(page.includes(text), `coach report page includes ${text}`);
+assert.doesNotMatch(page, /select\("[^"]*location/, 'single-session coach report page does not select location from sessions');
+assert.match(page, /shooting_ground/, 'single-session coach report page selects shooting_ground for venue/ground');
 assert.match(page, /navigator\.clipboard\.writeText\(report\.plainText\)/, 'copy report button writes plain text');
 const analyticsCalls = [...page.matchAll(/recordAnalyticsEvent\([\s\S]*?metadata: \{([\s\S]*?)\} \}\)/g)].map((match) => match[1]).join('\n');
 assert(!analyticsCalls.includes('plainText'), 'analytics metadata does not include report body');

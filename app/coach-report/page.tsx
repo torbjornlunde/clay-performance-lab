@@ -49,7 +49,7 @@ export default function CoachReportPeriodPage() {
     if (!authData.user) { router.push("/login"); return; }
     const { data: sessionRows } = await supabase
       .from("sessions")
-      .select("id,name,discipline,session_type,own_score,total_targets,created_at,competition_date,location,shooting_ground,user_id")
+      .select("id,name,discipline,session_type,own_score,total_targets,created_at,competition_date,shooting_ground,user_id")
       .eq("user_id", authData.user.id)
       .order("competition_date", { ascending: false, nullsFirst: false });
     const rows = (sessionRows || []) as CoachReportPeriodSession[];
@@ -114,7 +114,7 @@ export default function CoachReportPeriodPage() {
     </section>
     <section className="card coachReportSessionList"><h2>Sessions in range</h2>{visibleSessions.length === 0 ? <p>No training or competition sessions found in this date range.</p> : visibleSessions.map((session) => {
       const sessionMisses = misses.filter((miss) => miss.session_id === session.id);
-      return <label key={session.id} className="coachReportSessionCard"><input type="checkbox" checked={selectedIds.has(session.id)} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); if (event.target.checked) next.add(session.id); else next.delete(session.id); return next; })} /><span><strong>{sessionDate(session)} — {session.name || "Untitled session"}</strong><span className="small muted">{session.discipline || "Discipline not recorded"} · {typeLabel(session)} · {scoreLabel(session, sessionMisses)}{(session.location || session.shooting_ground) ? ` · ${session.location || session.shooting_ground}` : ""}</span></span></label>;
+      return <label key={session.id} className="coachReportSessionCard"><input type="checkbox" checked={selectedIds.has(session.id)} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); if (event.target.checked) next.add(session.id); else next.delete(session.id); return next; })} /><span><strong>{sessionDate(session)} — {session.name || "Untitled session"}</strong><span className="small muted">{session.discipline || "Discipline not recorded"} · {typeLabel(session)} · {scoreLabel(session, sessionMisses)}{session.shooting_ground ? ` · ${session.shooting_ground}` : ""}</span></span></label>;
     })}</section>
     <article className="card coachReportPreview" aria-label="Coach report plain-text preview">{report.sections.map((section) => <section key={section.title} className="coachReportSection"><h2>{section.title}</h2>{section.items.map((item) => <p key={item}>• {item}</p>)}</section>)}</article>
   </main>;

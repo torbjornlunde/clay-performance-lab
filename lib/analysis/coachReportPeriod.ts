@@ -10,7 +10,6 @@ export type CoachReportPeriodSession = {
   total_targets?: number | null;
   created_at?: string | null;
   competition_date?: string | null;
-  location?: string | null;
   shooting_ground?: string | null;
 };
 
@@ -26,6 +25,7 @@ export type CoachReportPeriodInput = {
 function clean(value: unknown) { return String(value ?? "").trim(); }
 function typeOf(session: CoachReportPeriodSession) { return String(session.session_type || "").toLowerCase() === "competition" ? "Competition" : "Training"; }
 function dateOf(session: CoachReportPeriodSession) { return String(session.competition_date || session.created_at || "").slice(0, 10); }
+function venueFor(session: CoachReportPeriodSession) { return clean(session.shooting_ground) || "Venue/ground not recorded"; }
 function scoreFor(session: CoachReportPeriodSession, misses: AnalysisMiss[]) {
   const total = typeof session.total_targets === "number" ? session.total_targets : null;
   const score = typeof session.own_score === "number" ? session.own_score : total !== null ? scoreFromMisses(total, totalMisses(misses)) : null;
@@ -69,8 +69,8 @@ export function buildPeriodCoachReport(input: CoachReportPeriodInput) {
   const sections = [
     { title: "Report period", items: [`${input.fromDate} to ${input.toDate}`, `${periodDays(input.fromDate, input.toDate)} day period.`] },
     { title: "Included sessions count", items: [`${sessions.length} selected sessions: ${training.length} training and ${competition.length} competition.`] },
-    { title: "Training summary", items: training.length ? training.map((s) => `${dateOf(s)} — ${clean(s.name) || "Untitled training"} (${clean(s.discipline) || "Discipline not recorded"})${scoreFor(s, missesBySession[s.id] || []).score !== null ? `, score ${scoreFor(s, missesBySession[s.id] || []).score}/${scoreFor(s, missesBySession[s.id] || []).total ?? "?"}` : ""}.`) : ["No training sessions selected for this period."] },
-    { title: "Competition summary", items: competition.length ? competition.map((s) => `${dateOf(s)} — ${clean(s.name) || "Untitled competition"} (${clean(s.discipline) || "Discipline not recorded"})${scoreFor(s, missesBySession[s.id] || []).score !== null ? `, score ${scoreFor(s, missesBySession[s.id] || []).score}/${scoreFor(s, missesBySession[s.id] || []).total ?? "?"}` : ""}.`) : ["No competition sessions selected for this period."] },
+    { title: "Training summary", items: training.length ? training.map((s) => `${dateOf(s)} — ${clean(s.name) || "Untitled training"} (${clean(s.discipline) || "Discipline not recorded"}, ${venueFor(s)})${scoreFor(s, missesBySession[s.id] || []).score !== null ? `, score ${scoreFor(s, missesBySession[s.id] || []).score}/${scoreFor(s, missesBySession[s.id] || []).total ?? "?"}` : ""}.`) : ["No training sessions selected for this period."] },
+    { title: "Competition summary", items: competition.length ? competition.map((s) => `${dateOf(s)} — ${clean(s.name) || "Untitled competition"} (${clean(s.discipline) || "Discipline not recorded"}, ${venueFor(s)})${scoreFor(s, missesBySession[s.id] || []).score !== null ? `, score ${scoreFor(s, missesBySession[s.id] || []).score}/${scoreFor(s, missesBySession[s.id] || []).total ?? "?"}` : ""}.`) : ["No competition sessions selected for this period."] },
     { title: "Score trend / average score", items: scored.length ? [`Average score: ${avgScore?.toFixed(1).replace(/\.0$/, "")}.`, avgPct !== null ? `Average hit rate: ${fmtPct(avgPct)}.` : "Average hit rate could not be calculated.", scored.length > 1 ? `Newest selected scored session is ${fmtPct(scored[0].pct)}; oldest selected scored session is ${fmtPct(scored[scored.length - 1].pct)}.` : "Only one scored session is selected, so trend is limited."] : ["Score trend is unavailable because selected sessions do not have enough score and total target data."] },
     { title: "Best score / weakest score", items: best && weakest ? [`Best: ${clean(best.session.name) || best.session.id} at ${best.score}/${best.total} (${fmtPct(best.pct)}).`, `Weakest: ${clean(weakest.session.name) || weakest.session.id} at ${weakest.score}/${weakest.total} (${fmtPct(weakest.pct)}).`] : ["Best and weakest scores need scored selected sessions."] },
     { title: "Repeated miss patterns", items: repeated.length ? repeated.map(([label, count]) => `${label}: ${count} repeated misses.`) : ["No repeated miss pattern was strong enough from the selected sessions."] },

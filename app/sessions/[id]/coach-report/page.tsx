@@ -26,7 +26,7 @@ export default function CoachReportPage() {
     if (!u.user) { router.push("/login"); return; }
     const { data: sessionData } = await supabase
       .from("sessions")
-      .select("id,name,discipline,shooting_format,session_type,own_score,winning_score,total_targets,post_count,targets_per_post,created_at,competition_date,location,user_id")
+      .select("id,name,discipline,shooting_format,session_type,own_score,winning_score,total_targets,post_count,targets_per_post,created_at,competition_date,shooting_ground,user_id")
       .eq("id", params.id)
       .single();
     const [{ data: missData }, { data: postTargetData }, { data: importData }, { data: historyData }, { data: privateNoteData }] = await Promise.all([

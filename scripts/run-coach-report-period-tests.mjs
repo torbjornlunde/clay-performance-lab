@@ -6,7 +6,7 @@ execSync('rm -rf .coach-report-period-test-build && npx tsc lib/analysis/coachRe
 const { buildPeriodCoachReport } = await import('../.coach-report-period-test-build/analysis/coachReportPeriod.js');
 
 const sessions = [
-  { id: 't1', name: 'Training one', discipline: 'Sporting', session_type: 'Training', own_score: 20, total_targets: 25, competition_date: '2026-06-20', location: 'Home club' },
+  { id: 't1', name: 'Training one', discipline: 'Sporting', session_type: 'Training', own_score: 20, total_targets: 25, competition_date: '2026-06-20', shooting_ground: 'Home club' },
   { id: 'c1', name: 'County final', discipline: 'Sporting', session_type: 'Competition', own_score: 42, total_targets: 50, competition_date: '2026-07-05', shooting_ground: 'North ground' },
   { id: 'old', name: 'Old session', discipline: 'Trap', session_type: 'Training', own_score: 10, total_targets: 25, competition_date: '2026-01-01' },
 ];
@@ -22,6 +22,7 @@ assert(report.plainText.includes('2 selected sessions: 1 training and 1 competit
 assert(report.sections.some((section) => section.title === 'Training summary' && section.items.join('\n').includes('Training one')), 'training is separated in report');
 assert(report.sections.some((section) => section.title === 'Competition summary' && section.items.join('\n').includes('County final')), 'competition is separated in report');
 assert(report.plainText.includes('Average hit rate'), 'score/trend summary is included where possible');
+assert(report.plainText.includes('Home club'), 'venue/ground display works using shooting_ground');
 assert(report.plainText.includes('Best:'), 'best score summary is included');
 assert(report.plainText.includes('Weakest:'), 'weakest score summary is included');
 assert(report.plainText.includes('Behind: 2 repeated misses'), 'repeated miss patterns are included');
@@ -36,6 +37,8 @@ assert(!report.plainText.includes('Old session'), 'report only includes selected
 const page = readFileSync('app/coach-report/page.tsx', 'utf8');
 for (const text of ['Coach report', 'From date', 'To date', 'Include notes-based context', 'Raw private notes are not shown', 'Copy report', 'Copied']) assert(page.includes(text), `/coach-report page includes ${text}`);
 assert.match(page, /from\("sessions"\)[\s\S]*\.eq\("user_id", authData\.user\.id\)/, 'sessions are queried for signed-in user');
+assert.doesNotMatch(page, /select\("[^"]*location/, 'coach report period page does not select location from sessions');
+assert.match(page, /shooting_ground/, 'coach report period page uses shooting_ground for venue/ground display');
 assert.match(page, /date\.setMonth\(date\.getMonth\(\) - 1\)/, 'default date range is last 1 month');
 assert.match(page, /inRange\(session, fromDate, toDate\)/, 'sessions inside range are shown and outside range filtered');
 assert.match(page, /setSelectedIds\(new Set\(visible\)\)/, 'sessions are selected by default');
