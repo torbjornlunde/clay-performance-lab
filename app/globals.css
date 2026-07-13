@@ -8939,3 +8939,28 @@ select {
     display: grid;
   }
 }
+.coachReportHeroHeader,
+.coachReportAccordionButton {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+.coachReportAccordionButton {
+  background: var(--surface-muted, rgba(127,127,127,.08));
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  color: var(--text-primary);
+  font-size: 1rem;
+  min-height: 52px;
+  padding: .85rem;
+  text-align: left;
+  width: 100%;
+}
+.coachReportAccordionButton small { color: var(--muted); display: block; margin-top: .2rem; }
+.coachReportSessionPanel { display: grid; gap: .75rem; margin-top: .75rem; }
+.coachReportAiText { display: grid; gap: .35rem; }
+.coachReportAiText p { margin: 0; }
+.coachReportPreview details { border-top: 1px solid var(--border-subtle); padding-top: .75rem; }
+.coachReportPreview pre { max-width: 100%; overflow: auto; white-space: pre-wrap; }
+@media (max-width: 520px) { .coachReportHeroHeader { align-items: stretch; display: grid; } }

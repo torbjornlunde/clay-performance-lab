@@ -30,6 +30,9 @@ export const ANALYTICS_EVENTS = [
   "coach_report_copied",
   "coach_report_period_preview_opened",
   "coach_report_period_copied",
+  "coach_report_ai_generate_clicked",
+  "coach_report_ai_generated",
+  "coach_report_ai_failed",
 ] as const;
 
 export type AnalyticsEventName = (typeof ANALYTICS_EVENTS)[number];
@@ -50,6 +53,7 @@ const ALLOWED_METADATA_KEYS = new Set([
   "hasPostNotes",
   "hasSessionNote",
   "hasNotesContext",
+  "hasLeirdueContext",
   "includesPrivateNotes",
   "hasBody",
   "importedCount",
@@ -70,6 +74,8 @@ const ALLOWED_METADATA_KEYS = new Set([
   "targetCount",
   "trainingCount",
   "competitionCount",
+  "disciplineCount",
+  "dataQuality",
   "year",
 ]);
 

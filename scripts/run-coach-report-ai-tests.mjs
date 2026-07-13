@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
+execSync('rm -rf .coach-report-ai-test-build && npx tsc lib/ai/coachReportPrompt.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --jsx react-jsx --lib ES2022,DOM --outDir .coach-report-ai-test-build --skipLibCheck', { stdio: 'inherit' });
+const { buildCoachReportPrompt, COACH_REPORT_AI_SECTIONS } = await import('../.coach-report-ai-test-build/coachReportPrompt.js');
+const prompt = buildCoachReportPrompt({ notesThemes: ['fatigue'], privacy: { rawPrivateNotesIncluded: false } });
+for (const heading of ['Coach summary','Performance context','Main findings','Discipline-specific notes','What to train next','Data quality']) assert(prompt.includes(heading), `${heading} is required`);
+for (const guardrail of ['The data suggests','This should be tested, not assumed','Compared with the field level','Do not compare only against the winning score']) assert(prompt.includes(guardrail), `${guardrail} guardrail exists`);
+assert.equal(COACH_REPORT_AI_SECTIONS.length, 6, 'AI route exposes required sections');
+const route = readFileSync('app/api/coach-report/generate/route.ts', 'utf8');
+assert.match(route, /OPENAI_API_KEY/, 'route uses server-side OpenAI key');
+assert.match(route, /evidencePacket/, 'route receives evidence packet');
+assert.doesNotMatch(route, /reportBody.*metadata|privateNotes.*metadata/, 'route does not send report body or private notes to analytics');
+const page = readFileSync('app/coach-report/page.tsx', 'utf8');
+assert.match(page, /Generate AI coach report/, 'generate button exists');
+assert.match(page, /coach_report_ai_generate_clicked/, 'generate click analytics exists');
+assert.match(page, /coach_report_ai_generated/, 'success analytics exists');
+assert.match(page, /coach_report_ai_failed/, 'failure analytics exists');
+assert.match(page, /setAiError/, 'AI failure shows an error');
+assert.match(page, /setSelectedIds/, 'selected sessions remain managed locally when AI fails');
+assert.doesNotMatch(page, /metadata: [^{]*reportText/, 'report body is not sent to analytics metadata');
+console.log('coach report AI focused tests passed');
