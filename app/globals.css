@@ -8905,3 +8905,37 @@ select {
   margin-top: 0.25rem;
   overflow-wrap: anywhere;
 }
+
+.warningInline {
+  align-self: center;
+  color: var(--warning, #8a5a00);
+  font-weight: 700;
+}
+
+.coachReportPreviewHeader {
+  align-items: start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.coachReportSummaryGrid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.coachReportSummaryGrid span {
+  background: var(--surface-muted, rgba(127, 127, 127, 0.08));
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  font-size: 0.9rem;
+  padding: 0.45rem 0.65rem;
+}
+
+@media (max-width: 520px) {
+  .coachReportPreviewHeader {
+    display: grid;
+  }
+}
