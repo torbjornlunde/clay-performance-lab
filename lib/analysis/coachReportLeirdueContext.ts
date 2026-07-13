@@ -52,9 +52,10 @@ async function fetchAllRows(supabase: SupabaseLike, spec: QuerySpec) {
     for (const [key, value] of Object.entries(spec.filters)) query = query.eq(key, value);
     const { data, error } = await query;
     if (error) throw new Error(`Could not load Leirdue ${spec.table} context for ${spec.sessionId}.`);
-    const page = (data || []).map((row: any) => mapFor(spec.table, row)).filter((row: LeirdueResultRow) => spec.table === "leirdue_shared_shooter_results" ? row.validation_status === "valid" : row.is_importable === true);
+    const rawPage = data || [];
+    const page = rawPage.map((row: any) => mapFor(spec.table, row)).filter((row: LeirdueResultRow) => spec.table === "leirdue_shared_shooter_results" ? row.validation_status === "valid" : row.is_importable === true);
     rows.push(...page);
-    if (page.length < PAGE_SIZE) break;
+    if (rawPage.length < PAGE_SIZE) break;
   }
   return rows;
 }
