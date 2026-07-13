@@ -7,6 +7,7 @@ import { canManageBetaAccess, type UserAccessProfile } from "@/lib/access";
 import { betaFeedbackMailto } from "@/lib/betaFeedback";
 import { supabase } from "@/lib/supabase/client";
 import { exportMyDataForCurrentUser } from "@/lib/export/exportMyDataClient";
+import { openOnboardingHelp } from "@/app/components/OnboardingHelp";
 
 function ClayTargetIcon() {
   return (
@@ -214,6 +215,7 @@ export default function AuthHeader() {
                   <Link role="menuitem" href="/profile" onClick={() => closeMenu()}>Shooter profile</Link>
                   <Link role="menuitem" href="/equipment" onClick={() => closeMenu()}>Equipment</Link>
                   <Link role="menuitem" href="/settings" onClick={() => closeMenu()}>Settings</Link>
+                  <button role="menuitem" type="button" onClick={() => { closeMenu({ restoreFocus: true }); openOnboardingHelp(); }}>Help / Getting started</button>
                   <button role="menuitem" type="button" onClick={() => { closeMenu({ restoreFocus: true }); exportMyData(); }} disabled={exporting}>{exporting ? "Exporting..." : "Export my data"}</button>
                   {feedbackHref && <a role="menuitem" href={feedbackHref} onClick={() => closeMenu()}>Send feedback</a>}
                   {showBetaAdmin && <Link role="menuitem" href="/beta/admin" onClick={() => closeMenu()}>Beta approvals</Link>}

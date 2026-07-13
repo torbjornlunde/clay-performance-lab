@@ -54,6 +54,7 @@ import {
   type ActiveScorecardOperation,
 } from "@/lib/scorecards/scorecardImportState";
 import { createOrderedPendingPersistence } from "@/lib/scorecards/orderedPendingPersistence";
+import { ContextualHelpCard } from "@/app/components/OnboardingHelp";
 
 const MAX_SOURCE = 15 * 1024 * 1024,
   MAX_UPLOAD = 4 * 1024 * 1024;
@@ -810,6 +811,7 @@ export default function Page() {
         <p className="eyebrow">Import scorecard</p>
         <h2>Import scorecard</h2>
         <p>{session.name}</p>
+        <ContextualHelpCard storageKey="scorecard-photo-import">Upload a scorecard photo, crop if needed, review the detected scores, then apply.</ContextualHelpCard>
         <p className="muted">
           {setupOk && setupSummary?.compact
             ? setupSummary.compact

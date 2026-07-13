@@ -12,6 +12,7 @@ import { recordAnalyticsEvent } from "@/lib/analytics";
 import { userFacingSaveError } from "@/lib/userFacingErrors";
 import { CompetitionTemplateSuggestions, type CompetitionTemplateCandidate } from "@/app/components/CompetitionTemplateSuggestions";
 import { useCompetitionTemplateCandidates } from "@/lib/competitionTemplates/useCompetitionTemplateCandidates";
+import { ContextualHelpCard } from "@/app/components/OnboardingHelp";
 
 
 export default function NewResultPage() {
@@ -150,6 +151,7 @@ export default function NewResultPage() {
         <p className="eyebrow">Competition</p>
         <h2>Register competition</h2>
         <p>Start with the basics. You can add posts, targets, misses, equipment and analysis afterward.</p>
+        <ContextualHelpCard storageKey="manual-result">Use this when you only want to save a result quickly without detailed target logging.</ContextualHelpCard>
         <label>Competition name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Competition name" required />
         <div className="row">

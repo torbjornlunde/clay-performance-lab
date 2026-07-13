@@ -7,6 +7,7 @@ import { appBuildLabel } from "@/lib/appBuildInfo";
 import { supabase } from "@/lib/supabase/client";
 import { TRAINING_SCORE_SHEET_QUICK_START_STEPS } from "@/lib/trainingScoreSheets/feedback";
 import { userFacingDeleteError, userFacingLoadError } from "@/lib/userFacingErrors";
+import { ContextualHelpCard } from "@/app/components/OnboardingHelp";
 
 type ScoreSheetRow = {
   id: string;
@@ -441,6 +442,7 @@ export default function TrainingScoreSheetsPage() {
             <p className="muted">
               Review, reopen, and manage your training score sheets.
             </p>
+            <ContextualHelpCard storageKey="training-score-sheet">Use this when one person records scores for several shooters during training.</ContextualHelpCard>
           </div>
           <div className="btns heroActions">
             <Link href="/dashboard" className="button secondary smallButton">Dashboard</Link>

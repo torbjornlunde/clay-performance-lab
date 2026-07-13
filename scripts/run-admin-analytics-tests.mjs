@@ -27,6 +27,8 @@ assert.match(css, /adminAnalyticsPage|analyticsMetricGrid|overflow-wrap: anywher
 
 execSync('rm -rf .analytics-test-build && npx tsc lib/analytics.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM --outDir .analytics-test-build --skipLibCheck', { stdio: 'inherit' });
 const analytics = await import('../.analytics-test-build/analytics.js');
+for (const eventName of ['onboarding_opened','onboarding_dismissed','contextual_help_dismissed']) assert(analytics.ANALYTICS_EVENTS.includes(eventName), `${eventName} is allowlisted`);
+
 const dirty = analytics.sanitizeAnalyticsMetadata({
   year: 2026,
   email: 'person@example.com',
@@ -40,6 +42,7 @@ const dirty = analytics.sanitizeAnalyticsMetadata({
 });
 assert.deepEqual(dirty, { year: 2026, errorCategory: 'safe' }, 'metadata allowlist removes private notes, raw names, email, IP, user agent, images, and URLs');
 assert.equal(analytics.analyticsRoute('/sessions/1?token=secret'), '/sessions/1', 'route strips query strings');
+assert.deepEqual(analytics.sanitizeAnalyticsMetadata({ feature: 'getting_started', shooterName: 'Private Person', sourceUrl: 'https://example.com' }), { feature: 'getting_started' }, 'onboarding analytics metadata stays privacy-safe');
 let inserted = false;
 await analytics.recordAnalyticsEvent({ auth: { getUser: async () => ({ data: { user: { id: 'u1' } } }) }, from: () => ({ insert: async () => { inserted = true; throw new Error('db down'); } }) }, 'app_page_view', { metadata: { email: 'x@y.com' } });
 assert.equal(inserted, true, 'recordAnalyticsEvent attempts insert');
