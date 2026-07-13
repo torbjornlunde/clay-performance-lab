@@ -9,21 +9,27 @@ for (const text of [
   'Use Training Score Sheet',
   'Review misses and analysis later',
   'Get started',
-  'Dismiss',
-  'Open help later',
+  'Dismiss tips',
+  'Remind me later',
 ]) assert.match(component, new RegExp(text.replace(/[/.]/g, '\\$&')), `onboarding contains ${text}`);
 assert.match(component, /ONBOARDING_DISMISSED_KEY/, 'dismissal key is centralized');
 assert.match(component, /window\.localStorage\.setItem\(key, value\)/, 'dismissal persists to localStorage');
+assert.match(component, /action !== \"remind_me_later\"[\s\S]*safeSet\(ONBOARDING_DISMISSED_KEY, \"true\"\)/, 'remind me later does not persist dismissal');
+assert.match(component, /dismiss\(\"get_started\"\)[\s\S]*Get started/, 'get started action is wired');
+assert.match(component, /dismiss\(\"dismiss\"\)[\s\S]*Dismiss tips/, 'dismiss tips action is wired');
+assert.match(component, /dismiss\(\"remind_me_later\"\)[\s\S]*Remind me later/, 'remind me later action is wired');
+assert.doesNotMatch(component, /Open help later|open_help_later/, 'old open help later copy and action are removed');
 assert.match(component, /window\.localStorage\.getItem\(key\)/, 'dismissal reads from localStorage');
 assert.match(component, /supabase\.auth\.getUser\(\)/, 'global onboarding checks signed-in state before showing');
 assert.match(component, /recordHelpEvent\("onboarding_opened", "getting_started"\)/, 'reopen records onboarding_opened');
-assert.match(component, /recordHelpEvent\("onboarding_dismissed", action\)/, 'dismiss records onboarding_dismissed');
+assert.match(component, /recordHelpEvent\("onboarding_dismissed", "getting_started", action\)/, 'dismiss records onboarding_dismissed with action metadata');
 assert.match(component, /recordHelpEvent\("contextual_help_dismissed", storageKey\)/, 'contextual dismiss records event');
-assert.match(component, /metadata: \{ feature \}/, 'onboarding analytics sends only feature metadata');
+assert.match(component, /metadata: \{ feature, action \}/, 'onboarding analytics sends privacy-safe feature and action metadata');
 
 const nav = readFileSync('app/components/AuthHeader.tsx', 'utf8');
 assert.match(nav, /Help \/ Getting started/, 'menu contains Help / Getting started');
 assert.match(nav, /openOnboardingHelp\(\)/, 'menu reopens onboarding panel');
+assert.match(component, /const reopen = \(\) => \{[\s\S]*setOpen\(true\)/, 'global Help / Getting started can reopen after persisted dismissal');
 
 const layout = readFileSync('app/layout.tsx', 'utf8');
 assert.match(layout, /<AuthHeader \/>[\s\S]*<OnboardingHelpPanel \/>[\s\S]*<ProfileGate>/, 'onboarding panel is mounted globally anywhere AuthHeader is present');
