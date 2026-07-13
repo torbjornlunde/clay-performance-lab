@@ -10,9 +10,32 @@ const PAGE_SIZE = 1000;
 function clean(value: unknown) { return String(value ?? "").trim(); }
 function lower(value: unknown) { return clean(value).toLowerCase(); }
 function sessionDate(session: CoachReportLeirdueCompetitionContext) { return String(session.competition_date || "").slice(0, 10); }
+
+export function normalizeLeirdueUrl(value: unknown) {
+  const raw = clean(value);
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    url.protocol = "https:";
+    url.hostname = url.hostname.replace(/^www\./i, "").toLowerCase();
+    const params = [...url.searchParams.entries()].sort(([a], [b]) => a.localeCompare(b));
+    url.search = "";
+    for (const [key, val] of params) url.searchParams.append(key, val);
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch { return raw.replace(/^http:/i, "https:").replace(/\/$/, ""); }
+}
+export function leirdueIdsFromUrl(value: unknown) {
+  try { const url = new URL(clean(value)); return { event_id: url.searchParams.get("stevne") || url.searchParams.get("event_id") || null, liste_id: url.searchParams.get("liste_id") || null }; }
+  catch { return { event_id: null, liste_id: null }; }
+}
+function sourceUrlVariants(value: unknown) {
+  const raw = clean(value); const normalized = normalizeLeirdueUrl(raw);
+  return [...new Set([raw, normalized, raw.replace(/^http:/i, "https:"), raw.replace(/^https:/i, "http:")].filter(Boolean))];
+}
 function conservativeTextMatch(row: LeirdueResultRow, session: CoachReportLeirdueCompetitionContext) { const title = lower(row.event_title); const name = lower(session.name); const organizer = lower(row.organizer); const ground = lower(session.shooting_ground); return Boolean((title && name && (title.includes(name) || name.includes(title))) || (organizer && ground && (organizer.includes(ground) || ground.includes(organizer)))); }
 function disciplineMatches(row: LeirdueResultRow, session: CoachReportLeirdueCompetitionContext) { return !row.discipline || !session.discipline || normalizeDisciplineGroup(row.discipline) === normalizeDisciplineGroup(session.discipline); }
-function eventKey(row: LeirdueResultRow) { return [clean(row.event_id), clean(row.liste_id), clean(row.source_url), String(row.event_date || "").slice(0, 10), lower(row.event_title), normalizeDisciplineGroup(row.discipline)].join("|"); }
+function eventKey(row: LeirdueResultRow) { return [clean(row.event_id), clean(row.liste_id), normalizeLeirdueUrl(row.source_url), String(row.event_date || "").slice(0, 10), lower(row.event_title), normalizeDisciplineGroup(row.discipline)].join("|"); }
 function resultKey(row: LeirdueResultRow) { const score = typeof row.score === "number" ? row.score : row.own_score; return [eventKey(row), lower(row.normalized_name || row.original_name), score ?? "", row.placement ?? ""].join("|"); }
 
 export function mapSharedLeirdueRow(row: any): LeirdueResultRow { return { event_id: row.event_id ?? null, liste_id: row.liste_id ?? null, normalized_name: row.normalized_name ?? null, original_name: row.original_name ?? null, club: row.club ?? null, placement: row.placement ?? null, score: row.score ?? null, total_targets: row.total_targets ?? null, winning_score: row.winning_score ?? null, discipline: row.discipline ?? null, event_date: row.event_date ?? null, event_title: row.event_title ?? null, organizer: row.organizer ?? null, source_url: row.source_url ?? null, validation_status: row.validation_status ?? null }; }
@@ -44,10 +67,12 @@ export async function fetchCoachReportLeirdueContext(supabase: SupabaseLike, ses
   for (const session of competitions) {
     try {
       const candidateSpecs: QuerySpec[] = [];
-      if (session.leirdue_result_url) for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) candidateSpecs.push({ table, sessionId: session.id, filters: { source_url: session.leirdue_result_url } });
-      else if (session.event_id) for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) candidateSpecs.push({ table, sessionId: session.id, filters: session.liste_id ? { event_id: session.event_id, liste_id: session.liste_id } : { event_id: session.event_id } });
-      else if (sessionDate(session)) for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) candidateSpecs.push({ table, sessionId: session.id, filters: { event_date: sessionDate(session) } });
-      const candidates = (await Promise.all(candidateSpecs.map((spec) => fetchAllRows(supabase, spec)))).flat().filter((row) => disciplineMatches(row, session) && (session.leirdue_result_url || session.event_id || conservativeTextMatch(row, session)));
+      const derived = leirdueIdsFromUrl(session.leirdue_result_url);
+      if (session.leirdue_result_url) for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) for (const variant of sourceUrlVariants(session.leirdue_result_url)) candidateSpecs.push({ table, sessionId: session.id, filters: { source_url: variant } });
+      let candidates = (await Promise.all(candidateSpecs.map((spec) => fetchAllRows(supabase, spec)))).flat().filter((row) => disciplineMatches(row, session) && normalizeLeirdueUrl(row.source_url) === normalizeLeirdueUrl(session.leirdue_result_url));
+      if (!candidates.length) { candidateSpecs.length = 0; const eventId = session.event_id || derived.event_id; const listeId = session.liste_id || derived.liste_id; if (eventId && listeId) for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) candidateSpecs.push({ table, sessionId: session.id, filters: { event_id: eventId, liste_id: listeId } }); candidates = (await Promise.all(candidateSpecs.map((spec) => fetchAllRows(supabase, spec)))).flat().filter((row) => disciplineMatches(row, session)); }
+      if (!candidates.length) { candidateSpecs.length = 0; const eventId = session.event_id || derived.event_id; if (eventId) for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) candidateSpecs.push({ table, sessionId: session.id, filters: { event_id: eventId } }); candidates = (await Promise.all(candidateSpecs.map((spec) => fetchAllRows(supabase, spec)))).flat().filter((row) => disciplineMatches(row, session)); }
+      if (!candidates.length && sessionDate(session)) { candidateSpecs.length = 0; for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) candidateSpecs.push({ table, sessionId: session.id, filters: { event_date: sessionDate(session) } }); candidates = (await Promise.all(candidateSpecs.map((spec) => fetchAllRows(supabase, spec)))).flat().filter((row) => disciplineMatches(row, session) && conservativeTextMatch(row, session)); }
       const eventSpecs = new Map<string, QuerySpec>();
       for (const row of candidates) for (const spec of eventSpecsForMatchedRow(row, session.id)) eventSpecs.set(`${spec.table}:${JSON.stringify(spec.filters)}`, spec);
       const eventRows = (await Promise.all([...eventSpecs.values()].map((spec) => fetchAllRows(supabase, spec)))).flat().filter((row) => disciplineMatches(row, session));
