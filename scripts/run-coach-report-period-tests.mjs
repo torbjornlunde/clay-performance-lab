@@ -60,10 +60,13 @@ const analytics = readFileSync('lib/analytics.ts', 'utf8');
 for (const token of ['coach_report_period_preview_opened', 'coach_report_period_copied', 'selectedSessionCount', 'trainingCount', 'competitionCount', 'hasNotesContext', 'periodDays']) assert(analytics.includes(token), `${token} is allowlisted`);
 const css = readFileSync('app/globals.css', 'utf8');
 assert.match(css, /coachReportSessionCard[\s\S]*grid-template-columns:\s*auto 1fr/, 'session selection cards are mobile-friendly');
-console.log('coach report period focused tests passed');
-
 const vagueReport = buildPeriodCoachReport({ fromDate: '2026-06-13', toDate: '2026-07-13', sessions: selected, missesBySession: { t1: [{ session_id: 't1', course_number: 1, target_number: 1, main_reason: 'Technical' }, { session_id: 't1', course_number: 1, target_number: 2, main_reason: 'Technical' }] }, privateNotesBySession: {}, includeNotesContext: false });
 assert.match(vagueReport.plainText, /too broad to identify the exact cause/, 'vague miss categories produce a limitation warning');
 const priorities = report.sections.find((section) => section.title === 'Recommended training')?.items || [];
 assert.equal(new Set(priorities).size, priorities.length, 'training priorities are not duplicate lines');
+const priorityNumbers = priorities.map((item) => Number(item.match(/^Priority (\d+):/)?.[1])).filter(Number.isFinite);
+assert.equal(new Set(priorityNumbers).size, priorityNumbers.length, 'training priorities do not duplicate priority numbers');
+assert.deepEqual(priorityNumbers, priorities.map((_, index) => index + 1), 'training priorities do not skip priority numbers');
+assert(priorities.some((item) => item.includes('Data quality checkpoint')), 'data-quality advice is still included in recommended training');
 assert.match(report.plainText, /Coach confidence is (good|limited|weak)/i, 'missing data section explains confidence impact');
+console.log('coach report period focused tests passed');
