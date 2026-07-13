@@ -43,10 +43,14 @@ const ALLOWED_METADATA_KEYS = new Set([
   "feature",
   "flow",
   "hasSourceUrl",
+  "hasPostNotes",
+  "hasSessionNote",
+  "includesPrivateNotes",
   "hasBody",
   "importedCount",
   "mode",
   "pendingAction",
+  "privateNoteCount",
   "resultCount",
   "savedCount",
   "scoreChoice",
@@ -58,6 +62,7 @@ const ALLOWED_METADATA_KEYS = new Set([
   "year",
 ]);
 
+const SAFE_PRIVATE_NOTE_METADATA_KEYS = new Set(["includesPrivateNotes", "privateNoteCount", "hasSessionNote", "hasPostNotes"]);
 const PRIVATE_KEY_PATTERN = /(email|mail|ip|user.?agent|ua|note|comment|name|shooter|image|photo|url|href|link|token|secret|password)/i;
 const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 
@@ -77,7 +82,7 @@ export function sanitizeAnalyticsMetadata(metadata: Record<string, unknown> | nu
   const clean: Record<string, string | number | boolean | null> = {};
   if (!metadata) return clean;
   for (const [key, rawValue] of Object.entries(metadata)) {
-    if (!ALLOWED_METADATA_KEYS.has(key) || PRIVATE_KEY_PATTERN.test(key)) continue;
+    if (!ALLOWED_METADATA_KEYS.has(key) || (!SAFE_PRIVATE_NOTE_METADATA_KEYS.has(key) && PRIVATE_KEY_PATTERN.test(key))) continue;
     const value = sanitizeValue(rawValue);
     if (value !== undefined) clean[key] = value;
   }

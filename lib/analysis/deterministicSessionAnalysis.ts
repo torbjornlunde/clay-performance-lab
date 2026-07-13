@@ -48,6 +48,12 @@ export type PostTargetAnalysisRow = {
   notes?: string | null;
 };
 
+export type PrivateSessionAnalysisNote = {
+  note_scope: "session" | "post";
+  post_number?: number | null;
+  body?: string | null;
+};
+
 export type ScorecardImportSummary = {
   reviewed_total_targets: number;
   reviewed_hits: number;
@@ -192,6 +198,8 @@ export function buildDeterministicSessionAnalysis(input: {
   scorecardImport?: ScorecardImportSummary | null;
   postTargets?: PostTargetAnalysisRow[];
   history?: AnalysisSession[];
+  privateNotes?: PrivateSessionAnalysisNote[];
+  includePrivateNotes?: boolean;
 }) {
   const postTargets = input.postTargets || [];
   const weightedMisses = totalMisses(input.misses);
@@ -202,6 +210,7 @@ export function buildDeterministicSessionAnalysis(input: {
   const findings: string[] = [];
   const missingData: string[] = [];
   const recommendations: Array<{title:string;evidence:string}> = [];
+  const notesBasedContext = input.includePrivateNotes ? summarizePrivateNotesContext(input.privateNotes || []) : null;
   const unitLabel = postTargetUnitLabel(input.session.discipline).toLowerCase();
 
   findings.push(`Score: ${score}/${totalTargets}${currentPct === null ? "" : ` (${pct(currentPct)})`}.`);
@@ -266,6 +275,7 @@ export function buildDeterministicSessionAnalysis(input: {
   if (topPos) recommendations.push({ title: `Practise transitions into the ${topPos[0]}.`, evidence: `${topPos[1]} mapped misses occurred in that proven presentation position.` });
   if (!postTargets.length && input.misses.length) recommendations.push({ title: "Add target descriptions for the mapped scorecard positions.", evidence: "Without available target setup, direction, speed and target-type repeats cannot be proven." });
   if (!recommendations.length && input.misses.length) recommendations.push({ title: "Repeat the most common mapped presentations from this reviewed scorecard.", evidence: "The scorecard gives missed target positions, while incomplete manual miss details are treated as missing evidence." });
+  if (notesBasedContext?.trainingPriority && recommendations.length < 3) recommendations.push({ title: notesBasedContext.trainingPriority, evidence: "Private notes are user-provided context, not observed scorecard facts." });
 
   const normalized = normalizeDiscipline(input.session.discipline);
   const viewedDate = sessionDateValue(input.session);
@@ -302,7 +312,48 @@ export function buildDeterministicSessionAnalysis(input: {
     trainingComparison,
     winningScore,
     recommendations: recommendations.slice(0,3),
+    notesBasedContext,
     missingData: [...new Set(missingData)],
     confidence: { smallSample: competitionComparison.sampleSize < ANALYSIS_THRESHOLDS.smallSample || trainingComparison.sampleSize < ANALYSIS_THRESHOLDS.smallSample, thresholds: ANALYSIS_THRESHOLDS },
+  };
+}
+
+
+export const PRIVATE_NOTES_ANALYSIS_CONTEXT_INSTRUCTIONS = [
+  "Observed score and miss data are observed facts.",
+  "Private notes are user-provided context, not proven facts.",
+  "When using notes, say phrases like your notes suggest or based on your note instead of stating causes as certain.",
+  "Do not repeat full private note text; summarize short themes only.",
+].join(" ");
+
+const NOTE_THEME_RULES: Array<{ theme: string; pattern: RegExp; summary: string; priority: string }> = [
+  { theme: "fatigue", pattern: /\b(tired|fatigue|exhaust|late|end|worn out)\b/i, summary: "Your notes suggest fatigue or end-of-round energy may have been relevant context.", priority: "Plan a short late-round focus and stamina drill." },
+  { theme: "light/wind", pattern: /\b(light|glare|sun|shadow|wind|rain|weather|background)\b/i, summary: "Your notes mention light, wind or visual conditions; treat that as context rather than a confirmed technical fault.", priority: "Practise the repeated target types under varied visual conditions." },
+  { theme: "focus/rhythm", pattern: /\b(focus|rushed|rush|rhythm|tempo|concentrat|routine|reset)\b/i, summary: "Your notes suggest focus, rhythm or pre-shot routine may be worth checking.", priority: "Rehearse a simple pre-shot rhythm before repeating this presentation." },
+  { theme: "technical feeling", pattern: /\b(behind|ahead|lead|line|hold|move|gun|mount|swing|technical)\b/i, summary: "Your notes describe a technical feeling; use it as a cue to test, not as proof of the miss cause.", priority: "Test the noted technical feeling on the highest-evidence presentation first." },
+];
+
+export function summarizePrivateNotesContext(notes: PrivateSessionAnalysisNote[]) {
+  const usable = notes
+    .map((note) => ({ scope: note.note_scope, postNumber: note.post_number ?? null, body: String(note.body || "").trim() }))
+    .filter((note) => note.body.length > 0);
+  if (!usable.length) return null;
+  const combined = usable.map((note) => note.body).join("\n");
+  const matched = NOTE_THEME_RULES.filter((rule) => rule.pattern.test(combined));
+  const themes = matched.map((rule) => rule.theme);
+  const postNumbers = [...new Set(usable.filter((note) => note.scope === "post" && note.postNumber).map((note) => Number(note.postNumber)))].sort((a,b)=>a-b);
+  const summary = matched.length
+    ? matched.slice(0, 3).map((rule) => rule.summary)
+    : ["Your private notes add user-stated context, but no strong recurring note theme was detected."];
+  if (postNumbers.length) summary.push(`Specific post comments were present for post${postNumbers.length === 1 ? "" : "s"} ${postNumbers.join(", ")}.`);
+  return {
+    heading: "Notes-based context",
+    noteCount: usable.length,
+    hasSessionNote: usable.some((note) => note.scope === "session"),
+    hasPostNotes: usable.some((note) => note.scope === "post"),
+    themes,
+    summary,
+    trainingPriority: matched[0]?.priority || "Use your private notes as a brief reflection cue after the main scorecard priorities.",
+    instructions: PRIVATE_NOTES_ANALYSIS_CONTEXT_INSTRUCTIONS,
   };
 }

@@ -26,6 +26,8 @@ export default function AnalysisPage() {
   const [postTargets, setPostTargets] = useState<any[]>([]);
   const [imports, setImports] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
+  const [privateNotes, setPrivateNotes] = useState<any[]>([]);
+  const [includePrivateNotes, setIncludePrivateNotes] = useState(true);
 
   useEffect(() => {
     load();
@@ -47,7 +49,7 @@ export default function AnalysisPage() {
       .select("*")
       .eq("session_id", params.id)
       .order("created_at");
-    const [{ data: postTargetData }, { data: importData }, { data: historyData }] = await Promise.all([
+    const [{ data: postTargetData }, { data: importData }, { data: historyData }, { data: privateNoteData }] = await Promise.all([
       supabase
         .from("session_post_targets")
         .select("post_number,target_position,presentation_number,presentation_type,position_in_presentation,target_label,target_type,direction,angle,speed,distance,difficulty,notes")
@@ -64,6 +66,10 @@ export default function AnalysisPage() {
             .eq("user_id", sessionData.user_id)
             .order("competition_date", { ascending: false, nullsFirst: false })
         : Promise.resolve({ data: [] }),
+      supabase
+        .from("private_session_notes")
+        .select("note_scope,post_number,body")
+        .eq("session_id", params.id),
     ]);
     const useScorecardPath = Boolean(importData?.[0]) && isPostBasedSportingDiscipline(sessionData?.discipline);
     const { data: definitionData } = useScorecardPath
@@ -77,7 +83,10 @@ export default function AnalysisPage() {
     setDefinitions(definitionData || []);
     setPostTargets(postTargetData || []);
     setImports(importData || []);
+    const notes = (privateNoteData || []).filter((note) => String(note.body || "").trim().length > 0);
     setHistory(historyData || []);
+    setPrivateNotes(notes);
+    setIncludePrivateNotes(notes.length > 0);
   }
 
   if (!session) {
@@ -108,6 +117,8 @@ export default function AnalysisPage() {
     scorecardImport,
     postTargets,
     history,
+    privateNotes,
+    includePrivateNotes,
   });
   const hasReviewedPostScorecard = Boolean(scorecardImport) && isPostBasedSportingDiscipline(session.discipline);
   const legacyAnalysis = analyzeMisses(enrichedMisses as MissForAnalysis[]);
@@ -115,6 +126,7 @@ export default function AnalysisPage() {
   const isSporttrap = session.discipline === "Sporttrap";
   const isLeirduesti = isOrdinaryLeirduesti(session.discipline);
   const isCompak = isCompactDiscipline(session.discipline);
+  const hasPrivateNotes = privateNotes.length > 0;
 
   return (
     <main>
@@ -148,6 +160,20 @@ export default function AnalysisPage() {
         {session.shooting_format && !isSporttrap && (
           <span className="pill">{session.shooting_format}</span>
         )}
+
+        {hasPrivateNotes && (
+          <div className="analysisPrivateNotesControl">
+            <label className="checkboxRow">
+              <input
+                type="checkbox"
+                checked={includePrivateNotes}
+                onChange={(event) => setIncludePrivateNotes(event.target.checked)}
+              />
+              <span>Include private notes in analysis</span>
+            </label>
+            <p className="small muted">Only used for your private analysis. Note text is not sent to analytics.</p>
+          </div>
+        )}
         <div className="btns">
           <Link className="button" href={`/sessions/${session.id}/log`}>
             Log more
@@ -177,6 +203,14 @@ export default function AnalysisPage() {
             <p>{deterministic.trainingComparison.message}</p>
             {deterministic.confidence.smallSample && <p className="small muted">Small sample: comparisons become more reliable after at least three earlier sessions of the same type.</p>}
           </section>
+
+          {deterministic.notesBasedContext && (
+            <section className="card analysisSection">
+              <h2>Notes-based context</h2>
+              {deterministic.notesBasedContext.summary.map((text) => <p key={text}>• {text}</p>)}
+              <p className="small muted">Private notes are user-provided context, not proven facts. The analysis uses them carefully and does not send note text to analytics.</p>
+            </section>
+          )}
           <section className="card analysisSection">
             <h2>Training focus</h2>
             {deterministic.recommendations.map((item) => (
@@ -233,6 +267,13 @@ export default function AnalysisPage() {
               </>
             )}
           </div>
+          {deterministic.notesBasedContext && (
+            <div className="card analysisSection">
+              <h2>Notes-based context</h2>
+              {deterministic.notesBasedContext.summary.map((text) => <p key={text}>• {text}</p>)}
+              <p className="small muted">Private notes are user-provided context, not proven facts. The analysis uses them carefully and does not send note text to analytics.</p>
+            </div>
+          )}
           <div className="card">
             <h2>Training recommendation</h2>
             {legacyAnalysis.recommendation.map((text: string) => (
