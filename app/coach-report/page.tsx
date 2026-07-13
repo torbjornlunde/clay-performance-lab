@@ -129,7 +129,10 @@ export default function CoachReportPeriodPage() {
     const safeMetadata = { reportType: "ai_period", selectedSessionCount: selectedSessions.length, trainingCount: selectedSessions.filter((session) => typeLabel(session) === "Training").length, competitionCount: selectedSessions.filter((session) => typeLabel(session) === "Competition").length, disciplineCount: new Set(selectedSessions.map((session) => session.discipline || "Unknown")).size, hasLeirdueContext: currentReport.evidence.leirdueFieldContexts.length > 0, hasNotesContext: currentReport.hasNotesContext, dataQuality: currentReport.dataQuality };
     void recordAnalyticsEvent(supabase, "coach_report_ai_generate_clicked", { route: "/coach-report", feature: "coach_report", metadata: safeMetadata });
     try {
-      const response = await fetch("/api/coach-report/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ evidencePacket: currentReport.aiEvidencePacket }) });
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error("You must be signed in to generate an AI coach report.");
+      const response = await fetch("/api/coach-report/generate", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ evidencePacket: currentReport.aiEvidencePacket }) });
       const json = await response.json();
       if (!response.ok) throw new Error(json?.error || "AI coach report failed.");
       setAiReport({ reportText: json.reportText, sections: json.sections || [] });
