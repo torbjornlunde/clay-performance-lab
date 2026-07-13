@@ -8791,3 +8791,20 @@ select {
     width: 100%;
   }
 }
+
+.privateNotesCard textarea,
+.privatePostNote textarea {
+  min-height: 104px;
+  resize: vertical;
+}
+
+.privateNotesBody {
+  display: grid;
+  gap: 10px;
+}
+
+.postPrivateNotesList {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}

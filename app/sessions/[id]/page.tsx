@@ -58,6 +58,14 @@ type Miss = {
   created_at: string;
 };
 
+type PrivateSessionNote = {
+  id: string;
+  note_scope: "session" | "post";
+  post_number: number | null;
+  body: string;
+  updated_at: string;
+};
+
 type TargetDefinition = {
   id: string;
   course_number: number;
@@ -211,6 +219,11 @@ export default function Page() {
   const [postSetupCount, setPostSetupCount] = useState<number | null>(null);
   const [sourceRefresh, setSourceRefresh] = useState<any>(null);
   const [sourceRefreshing, setSourceRefreshing] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [privateNotes, setPrivateNotes] = useState<PrivateSessionNote[]>([]);
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [noteSavingKey, setNoteSavingKey] = useState<string | null>(null);
+  const [noteStatus, setNoteStatus] = useState<Record<string, string>>({});
   const [sourceApplying, setSourceApplying] = useState(false);
   const [selectedSourceFields, setSelectedSourceFields] = useState<string[]>([]);
   const trackedSessionOpenRef = useRef<string | null>(null);
@@ -239,6 +252,7 @@ export default function Page() {
       router.push("/login");
       return;
     }
+    setCurrentUserId(u.user.id);
     const { data: sessionData } = await supabase
       .from("sessions")
       .select("*")
@@ -289,6 +303,12 @@ export default function Page() {
         );
       }
     }
+    const { data: privateNoteData } = await supabase
+      .from("private_session_notes")
+      .select("id,note_scope,post_number,body,updated_at")
+      .eq("session_id", params.id)
+      .order("updated_at", { ascending: false })
+      .returns<PrivateSessionNote[]>();
     const weightedMissCount = totalMisses(missData || []);
     setSession(sessionData);
     setCourses(courseData || []);
@@ -296,6 +316,10 @@ export default function Page() {
     setTargetDefinitions(definitionData || []);
     setCount(weightedMissCount);
     setPostSetupCount(configuredPosts);
+    const notes = privateNoteData || [];
+    setPrivateNotes(notes);
+    setNoteDrafts(Object.fromEntries(notes.map((note) => [noteKey(note.note_scope, note.post_number), note.body])));
+    setNoteStatus({});
     setSourceRefresh(null);
     setSelectedSourceFields([]);
     if (sessionData?.id && trackedSessionOpenRef.current !== sessionData.id) {
@@ -307,6 +331,75 @@ export default function Page() {
         sessionId: sessionData.id,
       });
     }
+  }
+
+  function noteKey(scope: "session" | "post", postNumber: number | null = null) {
+    return scope === "session" ? "session" : `post-${postNumber}`;
+  }
+
+  function noteFor(scope: "session" | "post", postNumber: number | null = null) {
+    return privateNotes.find((note) => note.note_scope === scope && note.post_number === postNumber) || null;
+  }
+
+  function setNoteDraft(key: string, body: string) {
+    setNoteDrafts((drafts) => ({ ...drafts, [key]: body }));
+    setNoteStatus((statuses) => ({ ...statuses, [key]: "" }));
+  }
+
+  async function savePrivateNote(scope: "session" | "post", postNumber: number | null = null) {
+    if (!session || !currentUserId) return;
+    const key = noteKey(scope, postNumber);
+    const body = noteDrafts[key] || "";
+    setNoteSavingKey(key);
+    setNoteStatus((statuses) => ({ ...statuses, [key]: "Saving..." }));
+    const existing = noteFor(scope, postNumber);
+    const payload = { user_id: currentUserId, session_id: session.id, note_scope: scope, post_number: postNumber, body };
+    const request = existing
+      ? supabase.from("private_session_notes").update({ body }).eq("id", existing.id)
+      : supabase.from("private_session_notes").insert(payload);
+    const { error } = await request;
+    setNoteSavingKey(null);
+    if (error) {
+      setNoteStatus((statuses) => ({ ...statuses, [key]: error.message || "Could not save note." }));
+      return;
+    }
+    await load();
+    setNoteStatus((statuses) => ({ ...statuses, [key]: "Saved." }));
+    void recordAnalyticsEvent(supabase, "private_note_saved", {
+      route: "/sessions/[id]",
+      feature: "private_notes",
+      discipline: session.discipline,
+      sessionId: session.id,
+      metadata: { scope, hasBody: body.trim().length > 0 },
+    });
+  }
+
+  async function deletePrivateNote(scope: "session" | "post", postNumber: number | null = null) {
+    const existing = noteFor(scope, postNumber);
+    const key = noteKey(scope, postNumber);
+    if (!existing || !session) {
+      setNoteDraft(key, "");
+      return;
+    }
+    if (!window.confirm("Clear this private note?")) return;
+    setNoteSavingKey(key);
+    setNoteStatus((statuses) => ({ ...statuses, [key]: "Clearing..." }));
+    const { error } = await supabase.from("private_session_notes").delete().eq("id", existing.id);
+    setNoteSavingKey(null);
+    if (error) {
+      setNoteStatus((statuses) => ({ ...statuses, [key]: error.message || "Could not clear note." }));
+      return;
+    }
+    setNoteDraft(key, "");
+    await load();
+    setNoteStatus((statuses) => ({ ...statuses, [key]: "Cleared." }));
+    void recordAnalyticsEvent(supabase, "private_note_deleted", {
+      route: "/sessions/[id]",
+      feature: "private_notes",
+      discipline: session.discipline,
+      sessionId: session.id,
+      metadata: { scope, hasBody: Boolean(existing.body.trim()) },
+    });
   }
 
   async function refreshLeirdueSource() {
@@ -516,6 +609,8 @@ export default function Page() {
             progress: `${sporttrapSeriesCount || 1} series · Stand ${sporttrapStand ?? "not set"}`,
           }
         : null;
+  const privateNotePostCount = Math.max(postSetupCount || 0, leirduestiPostCount || 0, session.post_count || 0, session.course_count || 0, courses.length || 0);
+  const privateNotePosts = privateNotePostCount > 0 ? Array.from({ length: privateNotePostCount }, (_, index) => index + 1) : [];
   const loggingLabel = resultOnly
     ? "Add detailed logging"
     : count > 0
@@ -716,6 +811,68 @@ export default function Page() {
                 {deleting ? "Deleting..." : "Delete result"}
               </button>
             </div>
+          </div>
+        </details>
+      </div>
+
+
+      <div className="card privateNotesCard">
+        <details className="detailAccordion">
+          <summary>
+            <span>Private notes</span>
+            <span className="countPill">Private</span>
+          </summary>
+          <div className="detailAccordionBody privateNotesBody">
+            <p className="muted small">Only you can see these notes.</p>
+            <p className="muted small">Use this for wind, focus, technical thoughts, or what to train next.</p>
+            <label>
+              Session note
+              <textarea
+                value={noteDrafts.session || ""}
+                onChange={(event) => setNoteDraft("session", event.target.value)}
+                placeholder="Wind, light, focus, technical feeling, what went wrong, or what to train next"
+              />
+            </label>
+            <div className="btns compactActions">
+              <button type="button" className="smallButton" disabled={noteSavingKey === "session"} onClick={() => void savePrivateNote("session")}>
+                {noteSavingKey === "session" ? "Saving..." : "Save session note"}
+              </button>
+              <button type="button" className="secondary smallButton" disabled={noteSavingKey === "session"} onClick={() => void deletePrivateNote("session")}>
+                Clear/delete
+              </button>
+              {noteStatus.session && <span className="small muted" role="status">{noteStatus.session}</span>}
+            </div>
+            {privateNotePosts.length > 0 && (
+              <details className="postPrivateNotes">
+                <summary>Optional per-post notes</summary>
+                <div className="postPrivateNotesList">
+                  {privateNotePosts.map((postNumber) => {
+                    const key = noteKey("post", postNumber);
+                    return (
+                      <div className="subcard compactSubcard privatePostNote" key={postNumber}>
+                        <label>
+                          Post {postNumber} note
+                          <textarea
+                            value={noteDrafts[key] || ""}
+                            onChange={(event) => setNoteDraft(key, event.target.value)}
+                            placeholder={`Private note for post ${postNumber}`}
+                          />
+                        </label>
+                        <div className="btns compactActions">
+                          <button type="button" className="smallButton" disabled={noteSavingKey === key} onClick={() => void savePrivateNote("post", postNumber)}>
+                            {noteSavingKey === key ? "Saving..." : "Save"}
+                          </button>
+                          <button type="button" className="secondary smallButton" disabled={noteSavingKey === key} onClick={() => void deletePrivateNote("post", postNumber)}>
+                            Clear/delete
+                          </button>
+                          {noteStatus[key] && <span className="small muted" role="status">{noteStatus[key]}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
+            )}
           </div>
         </details>
       </div>
