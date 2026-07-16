@@ -1,12 +1,13 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { AccessStatus, BetaAccessListEntry, SystemRole, UserAccessProfile } from "@/lib/access";
+import type { AccessStatus, BetaAccessListEntry, BetaInterestSubmission, SystemRole, UserAccessProfile } from "@/lib/access";
 import { canManageBetaAccess, isProtectedOwnerEmail, normalizeAccessEmail } from "@/lib/access";
 import { supabase } from "@/lib/supabase/client";
 
 const USER_COLUMNS = "user_id,email,full_name,access_status,system_role,account_type,created_at,updated_at,approved_at,approved_by";
 const ACCESS_LIST_COLUMNS = "id,email,full_name,access_status_to_grant,system_role_to_grant,note,created_at,created_by";
+const INTEREST_COLUMNS = "id,name,email,country,main_discipline,level_comment,instagram_handle,created_at,updated_at";
 
 type AccessListForm = {
   email: string;
@@ -44,6 +45,7 @@ export default function BetaAdminPage() {
   const [me, setMe] = useState<UserAccessProfile | null>(null);
   const [users, setUsers] = useState<UserAccessProfile[]>([]);
   const [accessList, setAccessList] = useState<BetaAccessListEntry[]>([]);
+  const [interestList, setInterestList] = useState<BetaInterestSubmission[]>([]);
   const [form, setForm] = useState<AccessListForm>({ email: "", fullName: "", role: "user", note: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -95,19 +97,21 @@ export default function BetaAdminPage() {
       return;
     }
 
-    const [{ data: userRows, error: usersError }, { data: accessRows, error: accessError }] = await Promise.all([
+    const [{ data: userRows, error: usersError }, { data: accessRows, error: accessError }, { data: interestRows, error: interestError }] = await Promise.all([
       supabase.from("user_access_profiles").select(USER_COLUMNS).order("created_at", { ascending: false }),
       supabase.from("beta_access_list").select(ACCESS_LIST_COLUMNS).order("created_at", { ascending: false }),
+      supabase.from("beta_interest_submissions").select(INTEREST_COLUMNS).order("created_at", { ascending: false }),
     ]);
 
-    if (usersError || accessError) {
-      setError(usersError?.message || accessError?.message || "Unable to load beta access data.");
+    if (usersError || accessError || interestError) {
+      setError(usersError?.message || accessError?.message || interestError?.message || "Unable to load beta access data.");
       setLoading(false);
       return;
     }
 
     setUsers(sortByCreatedAtDesc((userRows ?? []) as UserAccessProfile[]));
     setAccessList(sortByCreatedAtDesc((accessRows ?? []) as BetaAccessListEntry[]));
+    setInterestList(sortByCreatedAtDesc((interestRows ?? []) as BetaInterestSubmission[]));
     setLoading(false);
   }
 
@@ -224,6 +228,50 @@ export default function BetaAdminPage() {
           <UserSection title="Pending users" users={grouped.pending} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
           <UserSection title="Approved users" users={grouped.approved} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
           <UserSection title="Rejected / revoked users" users={grouped.restricted} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
+
+
+          <section className="card">
+            <div className="sectionHeader">
+              <div>
+                <p className="eyebrow">Interest list</p>
+                <h2>Closed beta registrations</h2>
+                <p className="small muted">These submissions are for follow-up only. They do not create accounts or grant app access.</p>
+              </div>
+              <span className="countPill">{interestList.length}</span>
+            </div>
+            {interestList.length === 0 ? (
+              <div className="emptyState">No beta interest submissions yet.</div>
+            ) : (
+              <div className="accessTableWrap">
+                <table className="accessTable">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Country</th>
+                      <th>Discipline</th>
+                      <th>Instagram</th>
+                      <th>Comment</th>
+                      <th>Submitted</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {interestList.map((entry) => (
+                      <tr key={entry.id}>
+                        <td>{entry.name}</td>
+                        <td>{entry.email}</td>
+                        <td>{entry.country}</td>
+                        <td>{entry.main_discipline}</td>
+                        <td>{entry.instagram_handle || "—"}</td>
+                        <td>{entry.level_comment || "—"}</td>
+                        <td>{formatDate(entry.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
 
           <section className="card">
             <div className="sectionHeader">

@@ -13,6 +13,9 @@ export default function HomePage() {
           <Link href="/login" className="button">
             Login / create account
           </Link>
+          <Link href="/join-beta" className="button secondary">
+            Join the closed beta
+          </Link>
         </div>
       </div>
     </main>
