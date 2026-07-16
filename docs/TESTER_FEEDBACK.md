@@ -30,6 +30,39 @@ When a tester suggestion is released, the tester or beta group should be told th
 
 ---
 
+## Torbjørn – NM week 2026
+
+### Detailed competition logging was too heavy during real competition week
+
+**Original situation:** During NM week, the user had two NM events, four Khan Arms Cup events and twelve press/training rounds. In that situation, it was only realistic to log the competition/result and upload score sheets. The 12 press rounds were logged only as training.
+
+**Pain points:**
+
+- Setting up every clay target and pair during competition was too time-consuming.
+- The app asked for too much target/pair detail at the wrong moment.
+- Existing dropdowns did not describe clay presentations well enough.
+- The user had to add Leirdue.net links afterward, which added friction.
+- Detailed target setup was attempted for two Khan Arms Cup competitions, but the flow felt too cumbersome.
+
+**Status:** Accepted
+
+**Priority:** Core product friction; important before broader beta / App Store readiness
+
+**Product decision:** Detailed target setup must become optional, progressive and much more visual. The app should not force full course/target setup before or during busy competition logging.
+
+**Planned direction:**
+
+- Keep fast result + score sheet upload as the primary competition-week flow.
+- Let users add Leirdue.net link during creation/import/session detail without awkward after-editing.
+- Let detailed target definitions be added later, especially for misses or important stands.
+- Support partial detail: missed targets only, difficult stands only, or full setup when the user has time.
+- Build a visual target builder based on speed, angle, distance and position relative to the shooter.
+- Use AI to draft target descriptions from voice/text/photo where possible, with user review before save.
+
+**Detailed roadmap:** [ROADMAP_VISUAL_TARGET_BUILDER.md](./ROADMAP_VISUAL_TARGET_BUILDER.md)
+
+---
+
 ## Simon – 27 June 2026
 
 ### Competition activity summary
