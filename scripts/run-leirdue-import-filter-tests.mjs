@@ -75,4 +75,9 @@ assert.match(recentRefreshMigration, /refreshed_count integer not null default 0
 assert.match(recentRefreshMigration, /failure_reason text/, 'job health records failure reasons for future alerts');
 assert.match(recentRefreshMigration, /affected_scope jsonb not null default '\{\}'::jsonb/, 'job health records affected refresh scope');
 
+const leirdueSearchRoute = readFileSync('app/api/leirdue/search/route.ts', 'utf8');
+assert.match(leirdueSearchRoute, /shared\.stats\.ok && shared\.stats\.reviewableCount > 0/, 'initial shared cache only returns early when reviewable candidates exist');
+assert.match(leirdueSearchRoute, /Shared cache unavailable; live\/cached fallback continued\./, 'shared cache read errors continue into live/cached fallback');
+assert.match(leirdueSearchRoute, /live\/cached fallback continued/, 'empty incomplete shared cache continues into fallback search');
+
 console.log('Leirdue import filter normalization tests passed');

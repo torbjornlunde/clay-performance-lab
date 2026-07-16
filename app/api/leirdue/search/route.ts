@@ -114,8 +114,10 @@ export async function POST(request: Request) {
   }
 
   try {
+    let initialShared: Awaited<ReturnType<typeof getSharedLeirdueShooterResults>> | null = null;
     if (requestMode === "initial" && !explicitContinue && !continuationToken && !sourceUrl) {
       const shared = await getSharedLeirdueShooterResults({ shooterName, year, disciplines, authorization: request.headers.get("authorization") });
+      initialShared = shared;
       const debug = emptyLeirdueSearchDebug();
       debug.selectedYear = year;
       debug.normalizedSearchName = shooterName.toLowerCase().replace(/\s+/g, " ").trim();
@@ -155,7 +157,7 @@ export async function POST(request: Request) {
       debug.continuationAvailable = false;
       debug.message = shared.stats.indexingComplete ? "Search complete. Shared Leirdue cache returned indexed results." : "Results still being indexed. Cached results are shown now. Additional Leirdue.net results may become available as the shared index is updated.";
       debug.candidateReasons.unshift(`Shared cache-only search: ${shared.stats.totalRows} total rows, ${shared.stats.validCount} valid, ${shared.stats.needsReviewCount} needs_review, ${shared.stats.invalidCount} invalid, ${shared.stats.failedCount} failed, exactNameRows=${shared.stats.exactNameRowsFound}, clubSuffixedRows=${shared.stats.clubSuffixedRowsFound}, ambiguousRejected=${shared.stats.ambiguousNameRowsRejected}, beforeSemanticDedup=${shared.stats.rowsBeforeSemanticDeduplication}, afterSemanticDedup=${shared.stats.canonicalCandidatesAfterSemanticDeduplication}, duplicateSourcesHidden=${shared.stats.duplicateSourceListsHidden}, ${shared.stats.reviewableCount} reviewable, coverage=${shared.stats.coverageStatus}, liveCrawlStarted=false.`);
-      return NextResponse.json({ candidates: shared.candidates, debug, continuationToken: null });
+      if (shared.stats.ok && shared.stats.reviewableCount > 0) return NextResponse.json({ candidates: shared.candidates, debug, continuationToken: null });
     }
 
     const cached = !sourceUrl
@@ -227,6 +229,18 @@ export async function POST(request: Request) {
     result.debug.cacheDiagnostics.sentExplicitContinue = explicitContinue;
     result.debug.cacheDiagnostics.requestScopeKey = `${shooterName.toLowerCase().replace(/\s+/g, " ").trim()}|${year}|${disciplines.map((discipline) => discipline.toLowerCase().trim()).sort().join(",")}`;
     applyCacheStatsToDebug(result.debug, cached, progress);
+    if (initialShared) {
+      result.debug.cacheDiagnostics.totalSharedRows = initialShared.stats.totalRows;
+      result.debug.cacheDiagnostics.validSharedRows = initialShared.stats.validCount;
+      result.debug.cacheDiagnostics.needsReviewSharedRows = initialShared.stats.needsReviewCount;
+      result.debug.cacheDiagnostics.invalidSharedRows = initialShared.stats.invalidCount;
+      result.debug.cacheDiagnostics.failedSharedRows = initialShared.stats.failedCount;
+      result.debug.cacheDiagnostics.ingestionComplete = initialShared.stats.indexingComplete;
+      result.debug.cacheDiagnostics.ingestionYear = year;
+      result.debug.cacheDiagnostics.ingestionScopeKey = `${year}:shared:v1`;
+      result.debug.cacheDiagnostics.userSearchLiveCrawlStarted = true;
+      result.debug.candidateReasons.unshift(initialShared.stats.ok ? `Shared cache fallback: ${initialShared.stats.reviewableCount} reviewable shared candidates; coverage=${initialShared.stats.coverageStatus}; live/cached fallback continued.` : "Shared cache unavailable; live/cached fallback continued.");
+    }
     result.debug.cacheDiagnostics.savedContinuationTokenPresent = Boolean(savedContinuationToken || (continuationToken && !restartRequested));
     if (restartRequested) {
       result.debug.cacheDiagnostics.invalidCompleteStateDetected = true;
