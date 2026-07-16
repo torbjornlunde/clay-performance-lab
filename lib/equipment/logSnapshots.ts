@@ -9,9 +9,21 @@ export function slotLabel(slot: string) {
   return labels[slot] || slot;
 }
 
+export function weaponTechnicalSummary(weapon?: Pick<EquipmentWeapon, "manufacturer" | "model" | "gauge"> | null) {
+  if (!weapon) return "";
+  return [weapon.manufacturer, weapon.model, weapon.gauge].filter(Boolean).join(" · ");
+}
+
 export function weaponSummary(weapon?: EquipmentWeapon | null) {
   if (!weapon) return "";
-  return [weapon.manufacturer, weapon.model, weapon.gauge].filter(Boolean).join(" · ") || weapon.display_name;
+  return weapon.display_name?.trim() || weaponTechnicalSummary(weapon);
+}
+
+export function weaponOptionLabel(weapon?: EquipmentWeapon | null) {
+  if (!weapon) return "";
+  const primary = weaponSummary(weapon);
+  const secondary = weaponTechnicalSummary(weapon);
+  return secondary && secondary !== primary ? `${primary} — ${secondary}` : primary;
 }
 
 export function ammoSummary(ammo?: EquipmentAmmo | null) {
@@ -34,7 +46,7 @@ export function buildEquipmentSnapshot(selection: EquipmentSelection, weapons: E
   if (!weapon && !ammunition && selectedAssignments.length === 0) return null;
   return {
     version: 1,
-    weapon: weapon ? { id: weapon.id, manufacturer: weapon.manufacturer, model: weapon.model, gauge: weapon.gauge, display_label: weapon.display_name } : null,
+    weapon: weapon ? { id: weapon.id, manufacturer: weapon.manufacturer, model: weapon.model, gauge: weapon.gauge, display_label: weaponSummary(weapon), technical_label: weaponTechnicalSummary(weapon) } : null,
     ammunition: ammunition ? { id: ammunition.id, manufacturer: ammunition.manufacturer, product_name: ammunition.product_name, gauge: ammunition.gauge, payload: ammunition.payload_grams, shot_size: ammunition.shot_size, display_label: ammoSummary(ammunition) } : null,
     chokes: selectedAssignments.map((assignment) => {
       const choke = chokes.find((item) => item.id === assignment.choke_id) || null;
@@ -46,5 +58,5 @@ export function buildEquipmentSnapshot(selection: EquipmentSelection, weapons: E
 
 export function equipmentSnapshotLines(snapshot: any): string[] {
   if (!snapshot) return [];
-  return [snapshot.weapon?.display_label || [snapshot.weapon?.manufacturer, snapshot.weapon?.model, snapshot.weapon?.gauge].filter(Boolean).join(" · "), snapshot.ammunition?.display_label || [snapshot.ammunition?.manufacturer, snapshot.ammunition?.product_name, snapshot.ammunition?.payload ? `${snapshot.ammunition.payload} g` : null, snapshot.ammunition?.shot_size].filter(Boolean).join(" · "), ...(snapshot.chokes || []).map((item: any) => item.display_summary)].filter(Boolean);
+  return [snapshot.weapon?.display_label || [snapshot.weapon?.manufacturer, snapshot.weapon?.model, snapshot.weapon?.gauge].filter(Boolean).join(" · "), snapshot.weapon?.technical_label && snapshot.weapon?.technical_label !== snapshot.weapon?.display_label ? snapshot.weapon.technical_label : null, snapshot.ammunition?.display_label || [snapshot.ammunition?.manufacturer, snapshot.ammunition?.product_name, snapshot.ammunition?.payload ? `${snapshot.ammunition.payload} g` : null, snapshot.ammunition?.shot_size].filter(Boolean).join(" · "), ...(snapshot.chokes || []).map((item: any) => item.display_summary)].filter(Boolean);
 }
