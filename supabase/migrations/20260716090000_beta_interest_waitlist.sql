@@ -1,4 +1,12 @@
 -- Closed beta interest submissions for public waitlist follow-up.
+create or replace function public.normalize_beta_email(value text)
+returns text
+language sql
+immutable
+as $$
+  select nullif(lower(trim(value)), '');
+$$;
+
 create table if not exists public.beta_interest_submissions (
   id uuid primary key default gen_random_uuid(),
   name text not null,
