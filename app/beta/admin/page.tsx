@@ -1,13 +1,14 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { AccessStatus, BetaAccessListEntry, BetaInterestSubmission, SystemRole, UserAccessProfile } from "@/lib/access";
+import type { AccessStatus, BetaAccessListEntry, BetaFeedback, BetaFeedbackAdminStatus, BetaInterestSubmission, SystemRole, UserAccessProfile } from "@/lib/access";
 import { canManageBetaAccess, isProtectedOwnerEmail, normalizeAccessEmail } from "@/lib/access";
 import { supabase } from "@/lib/supabase/client";
 
 const USER_COLUMNS = "user_id,email,full_name,access_status,system_role,account_type,created_at,updated_at,approved_at,approved_by";
 const ACCESS_LIST_COLUMNS = "id,email,full_name,access_status_to_grant,system_role_to_grant,note,created_at,created_by";
-const INTEREST_COLUMNS = "id,name,email,country,main_discipline,level_comment,instagram_handle,created_at,updated_at";
+const INTEREST_COLUMNS = "id,name,email,country,main_discipline,level_comment,instagram_handle,admin_status,handled_at,handled_by,access_list_entry_id,admin_note,approval_email_sent_at,approval_email_error,created_at,updated_at";
+const FEEDBACK_COLUMNS = "id,user_id,email,feedback_type,severity,message,page_path,user_agent,app_context,admin_status,admin_note,created_at,updated_at";
 
 type AccessListForm = {
   email: string;
@@ -46,6 +47,7 @@ export default function BetaAdminPage() {
   const [users, setUsers] = useState<UserAccessProfile[]>([]);
   const [accessList, setAccessList] = useState<BetaAccessListEntry[]>([]);
   const [interestList, setInterestList] = useState<BetaInterestSubmission[]>([]);
+  const [feedbackList, setFeedbackList] = useState<BetaFeedback[]>([]);
   const [form, setForm] = useState<AccessListForm>({ email: "", fullName: "", role: "user", note: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -97,14 +99,15 @@ export default function BetaAdminPage() {
       return;
     }
 
-    const [{ data: userRows, error: usersError }, { data: accessRows, error: accessError }, { data: interestRows, error: interestError }] = await Promise.all([
+    const [{ data: userRows, error: usersError }, { data: accessRows, error: accessError }, { data: interestRows, error: interestError }, { data: feedbackRows, error: feedbackError }] = await Promise.all([
       supabase.from("user_access_profiles").select(USER_COLUMNS).order("created_at", { ascending: false }),
       supabase.from("beta_access_list").select(ACCESS_LIST_COLUMNS).order("created_at", { ascending: false }),
       supabase.from("beta_interest_submissions").select(INTEREST_COLUMNS).order("created_at", { ascending: false }),
+      supabase.from("beta_feedback").select(FEEDBACK_COLUMNS).order("created_at", { ascending: false }),
     ]);
 
-    if (usersError || accessError || interestError) {
-      setError(usersError?.message || accessError?.message || interestError?.message || "Unable to load beta access data.");
+    if (usersError || accessError || interestError || feedbackError) {
+      setError(usersError?.message || accessError?.message || interestError?.message || feedbackError?.message || "Unable to load beta access data.");
       setLoading(false);
       return;
     }
@@ -112,6 +115,7 @@ export default function BetaAdminPage() {
     setUsers(sortByCreatedAtDesc((userRows ?? []) as UserAccessProfile[]));
     setAccessList(sortByCreatedAtDesc((accessRows ?? []) as BetaAccessListEntry[]));
     setInterestList(sortByCreatedAtDesc((interestRows ?? []) as BetaInterestSubmission[]));
+    setFeedbackList(sortByCreatedAtDesc((feedbackRows ?? []) as BetaFeedback[]));
     setLoading(false);
   }
 
@@ -149,6 +153,48 @@ export default function BetaAdminPage() {
     }
 
     setMessage("User access updated.");
+    await loadAdminData();
+  }
+
+
+  async function runInterestAction(entry: BetaInterestSubmission, action: "preapprove" | "resend_email" | "reject") {
+    setSaving(true);
+    setError("");
+    setMessage("");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setSaving(false);
+      setError("Please sign in again before changing beta interest status.");
+      return;
+    }
+    const response = await fetch("/api/beta-admin/interest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ interestId: entry.id, action }),
+    });
+    const result = await response.json().catch(() => ({}));
+    setSaving(false);
+    if (!response.ok) {
+      setError(result.error || "Beta interest action failed.");
+      return;
+    }
+    if (result.warning) setError(result.warning);
+    setMessage(action === "reject" ? "Interest submission marked rejected / not now." : result.emailStatus === "sent" ? "Access approved and approval email sent." : "Access approved. Approval email needs attention.");
+    await loadAdminData();
+  }
+
+  async function updateFeedbackStatus(entry: BetaFeedback, status: BetaFeedbackAdminStatus) {
+    setSaving(true);
+    setError("");
+    setMessage("");
+    const { error: updateError } = await supabase.from("beta_feedback").update({ admin_status: status }).eq("id", entry.id);
+    setSaving(false);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    setMessage("Feedback status updated.");
     await loadAdminData();
   }
 
@@ -235,7 +281,7 @@ export default function BetaAdminPage() {
               <div>
                 <p className="eyebrow">Interest list</p>
                 <h2>Closed beta registrations</h2>
-                <p className="small muted">These submissions are for follow-up only. They do not create accounts or grant app access.</p>
+                <p className="small muted">Pre-approve interest here. This grants regular beta user access only and never creates Supabase auth users.</p>
               </div>
               <span className="countPill">{interestList.length}</span>
             </div>
@@ -247,27 +293,74 @@ export default function BetaAdminPage() {
                   <thead>
                     <tr>
                       <th>Name</th>
+                      <th>Status</th>
                       <th>Email</th>
                       <th>Country</th>
                       <th>Discipline</th>
                       <th>Instagram</th>
                       <th>Comment</th>
                       <th>Submitted</th>
+                      <th>Email status</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {interestList.map((entry) => (
                       <tr key={entry.id}>
                         <td>{entry.name}</td>
+                        <td>{entry.admin_status}</td>
                         <td>{entry.email}</td>
                         <td>{entry.country}</td>
                         <td>{entry.main_discipline}</td>
                         <td>{entry.instagram_handle || "—"}</td>
                         <td>{entry.level_comment || "—"}</td>
                         <td>{formatDate(entry.created_at)}</td>
+                        <td>{entry.approval_email_sent_at ? `Sent ${formatDate(entry.approval_email_sent_at)}` : entry.approval_email_error ? `Failed: ${entry.approval_email_error}` : "Not sent"}</td>
+                        <td>
+                          <div className="tableActions">
+                            <button type="button" className="smallButton" disabled={saving || entry.admin_status === "pre_approved" || entry.admin_status === "approved_existing_user"} onClick={() => runInterestAction(entry, "preapprove")}>Pre-approve</button>
+                            {(entry.admin_status === "pre_approved" || entry.admin_status === "approved_existing_user") && <button type="button" className="secondary smallButton" disabled={saving} onClick={() => runInterestAction(entry, "resend_email")}>Resend approval email</button>}
+                            <button type="button" className="danger smallButton" disabled={saving || entry.admin_status === "rejected"} onClick={() => runInterestAction(entry, "reject")}>Reject / Not now</button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section className="card">
+            <div className="sectionHeader">
+              <div>
+                <p className="eyebrow">Beta feedback</p>
+                <h2>Internal app feedback</h2>
+                <p className="small muted">Newest in-app beta feedback. This replaces mailto/Outlook feedback.</p>
+              </div>
+              <span className="countPill">{feedbackList.length}</span>
+            </div>
+            {feedbackList.length === 0 ? (
+              <div className="emptyState">No beta feedback yet.</div>
+            ) : (
+              <div className="accessTableWrap">
+                <table className="accessTable">
+                  <thead><tr><th>Type</th><th>Severity</th><th>Email/user</th><th>Page</th><th>Message</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>
+                  <tbody>{feedbackList.map((entry) => (
+                    <tr key={entry.id}>
+                      <td>{entry.feedback_type}</td>
+                      <td>{entry.severity}</td>
+                      <td>{entry.email || entry.user_id || "—"}</td>
+                      <td>{entry.page_path || "—"}</td>
+                      <td>{entry.message}</td>
+                      <td>{entry.admin_status}</td>
+                      <td>{formatDate(entry.created_at)}</td>
+                      <td><div className="tableActions">
+                        <button type="button" className="smallButton" disabled={saving || entry.admin_status === "reviewed"} onClick={() => updateFeedbackStatus(entry, "reviewed")}>Reviewed</button>
+                        <button type="button" className="secondary smallButton" disabled={saving || entry.admin_status === "resolved"} onClick={() => updateFeedbackStatus(entry, "resolved")}>Resolved</button>
+                      </div></td>
+                    </tr>
+                  ))}</tbody>
                 </table>
               </div>
             )}

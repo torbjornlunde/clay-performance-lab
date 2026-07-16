@@ -15,6 +15,8 @@ export type UserAccessProfile = {
   approved_by: string | null;
 };
 
+export type BetaInterestAdminStatus = "new" | "pre_approved" | "approved_existing_user" | "contacted" | "rejected";
+
 export type BetaInterestSubmission = {
   id: string;
   name: string;
@@ -23,6 +25,31 @@ export type BetaInterestSubmission = {
   main_discipline: string;
   level_comment: string | null;
   instagram_handle: string | null;
+  admin_status: BetaInterestAdminStatus;
+  handled_at: string | null;
+  handled_by: string | null;
+  access_list_entry_id: string | null;
+  admin_note: string | null;
+  approval_email_sent_at: string | null;
+  approval_email_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BetaFeedbackAdminStatus = "new" | "reviewed" | "resolved";
+
+export type BetaFeedback = {
+  id: string;
+  user_id: string | null;
+  email: string | null;
+  feedback_type: string;
+  severity: string;
+  message: string;
+  page_path: string | null;
+  user_agent: string | null;
+  app_context: Record<string, unknown>;
+  admin_status: BetaFeedbackAdminStatus;
+  admin_note: string | null;
   created_at: string;
   updated_at: string;
 };

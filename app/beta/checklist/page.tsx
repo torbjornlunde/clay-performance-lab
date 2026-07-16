@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { betaFeedbackMailto } from "@/lib/betaFeedback";
+import { betaFeedbackHref } from "@/lib/betaFeedback";
 
 const checklistItems = [
   "Sign in and confirm access works",
@@ -18,7 +18,7 @@ export default function BetaChecklistPage() {
   const [feedbackHref, setFeedbackHref] = useState("");
 
   useEffect(() => {
-    setFeedbackHref(betaFeedbackMailto("Beta test checklist"));
+    setFeedbackHref(betaFeedbackHref("Beta test checklist"));
   }, []);
 
   return (
@@ -33,7 +33,7 @@ export default function BetaChecklistPage() {
           </p>
         </div>
         <div className="heroActions stackedOnMobile">
-          {feedbackHref && <a className="button" href={feedbackHref}>Send feedback</a>}
+          {feedbackHref && <Link className="button" href={feedbackHref}>Send feedback</Link>}
           <Link href="/dashboard" className="button secondary">Back to Dashboard</Link>
         </div>
       </section>
