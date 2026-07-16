@@ -35,8 +35,7 @@ create table if not exists public.beta_feedback (
   constraint beta_feedback_type_check check (feedback_type in ('Bug', 'Feature request', 'Confusing flow', 'Data/import problem', 'Other')),
   constraint beta_feedback_severity_check check (severity in ('Low', 'Normal', 'High', 'Blocker')),
   constraint beta_feedback_admin_status_check check (admin_status in ('new', 'reviewed', 'resolved')),
-  constraint beta_feedback_message_required check (length(trim(message)) between 1 and 4000),
-  constraint beta_feedback_user_owns_row check (user_id is null or user_id = auth.uid())
+  constraint beta_feedback_message_required check (length(trim(message)) between 1 and 4000)
 );
 
 create index if not exists beta_feedback_created_at_idx on public.beta_feedback(created_at desc);
@@ -117,7 +116,7 @@ begin
 
   insert into public.beta_access_list (email, full_name, access_status_to_grant, system_role_to_grant, note, created_by)
   values (interest.email, interest.name, 'approved', 'user', note_text, auth.uid())
-  on conflict (normalized_email) do update
+  on conflict (normalized_email) where normalized_email is not null do update
     set full_name = coalesce(excluded.full_name, public.beta_access_list.full_name),
         access_status_to_grant = 'approved',
         system_role_to_grant = 'user',
