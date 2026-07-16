@@ -712,6 +712,12 @@ export default function Page() {
     searchParams.get("describeMisses") === "1" ||
     searchParams.get("resultSaved") === "1" ||
     searchParams.get("scorecardImported") === "1";
+  const missedTargetCtaHref = count > 0
+    ? `/sessions/${session.id}/misses`
+    : `/sessions/${session.id}/log`;
+  const missedTargetCtaLabel = count > 0
+    ? "Describe missed targets"
+    : "Log missed targets";
   const importedAt = importDetail(session, "imported_at");
   const importConfidence = importDetail(session, "confidence");
   const stevneId = importDetail(session, "stevne_id");
@@ -881,8 +887,8 @@ export default function Page() {
           <div className="compactNotice">
             <strong>Optional next step:</strong> describe the targets you missed for better later analysis.
             <div className="btns compactNoticeActions">
-              <Link className="button smallButton" href={`/sessions/${session.id}/misses`}>
-                {count > 0 ? "Describe missed targets" : "Add details for missed targets"}
+              <Link className="button smallButton" href={missedTargetCtaHref}>
+                {missedTargetCtaLabel}
               </Link>
               <Link className="button secondary smallButton" href={`/sessions/${session.id}`}>
                 Skip for now
@@ -953,11 +959,8 @@ export default function Page() {
               <small>{setupAction.progress}</small>
             </Link>
           )}
-          <Link
-            href={`/sessions/${session.id}/misses`}
-            className={count > 0 ? "button secondary" : "button secondary"}
-          >
-            {count > 0 ? "Describe missed targets" : "Add details for missed targets"}
+          <Link href={missedTargetCtaHref} className="button secondary">
+            {missedTargetCtaLabel}
           </Link>
         </div>
         <details className="detailAccordion">
