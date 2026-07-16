@@ -12,7 +12,7 @@ const BETA_ADMIN_PATH = "/beta/admin";
 const COMPLETE_PROFILE_PATH = "/complete-profile";
 
 function isPublicPath(pathname: string) {
-  return pathname === "/" || pathname === "/login";
+  return pathname === "/" || pathname === "/login" || pathname === "/join-beta";
 }
 
 function isBetaBlockedPath(pathname: string) {

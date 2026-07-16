@@ -15,6 +15,18 @@ export type UserAccessProfile = {
   approved_by: string | null;
 };
 
+export type BetaInterestSubmission = {
+  id: string;
+  name: string;
+  email: string;
+  country: string;
+  main_discipline: string;
+  level_comment: string | null;
+  instagram_handle: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type BetaAccessListEntry = {
   id: string;
   email: string | null;
