@@ -168,7 +168,7 @@ export default function MissesPage() {
       </div>
       <div className="missReviewList">
         {misses.length === 0 ? (
-          <div className="card">No misses registered yet.</div>
+          <div className="card">No missed targets have been logged yet. Log the missed targets first, then you can describe them for analysis.</div>
         ) : (
           misses.map((miss) => (
             <div className="card missReviewCard" key={miss.id}>

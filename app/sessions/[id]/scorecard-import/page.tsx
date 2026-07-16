@@ -110,6 +110,8 @@ export default function Page() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
   const [stage, setStage] = useState("");
+  const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
+  const [leirdueSaveStatus, setLeirdueSaveStatus] = useState("");
   const [currentSetupFingerprint, setCurrentSetupFingerprint] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [crop, setCrop] = useState<NormalizedCrop>(fullImageCrop);
@@ -223,6 +225,7 @@ export default function Page() {
       .eq("id", id)
       .single();
     setSession(s);
+    setLeirdueResultUrl(s?.leirdue_result_url || "");
     const loadedProfile = scorecardDisciplineProfile(s?.discipline);
     setTargetDefinitions([]);
     setTargetDefinitionsError("");
@@ -669,6 +672,20 @@ export default function Page() {
     }
     return issues;
   }
+  async function saveLeirdueLink() {
+    setLeirdueSaveStatus("Saving...");
+    const { error: updateError } = await supabase
+      .from("sessions")
+      .update({ leirdue_result_url: leirdueResultUrl.trim() || null })
+      .eq("id", id);
+    if (updateError) {
+      setLeirdueSaveStatus("Could not save Leirdue.net link.");
+      return;
+    }
+    setSession((current: any) => current ? { ...current, leirdue_result_url: leirdueResultUrl.trim() || null } : current);
+    setLeirdueSaveStatus("Saved.");
+  }
+
   async function apply() {
     if (
       !pending ||
@@ -743,7 +760,7 @@ export default function Page() {
         ownScoreUpdated: String(Boolean(result.ownScoreUpdated)),
       });
       void recordAnalyticsEvent(supabase, "scorecard_review_applied", { route: "/sessions/[id]/scorecard-import", feature: "scorecard_import", sessionId: id, metadata: { scoreChoice, targetCount: grid.length } });
-      router.push(`/sessions/${id}/analysis?scorecardImported=1&${qs.toString()}`);
+      router.push(`/sessions/${id}?scorecardImported=1&describeMisses=1&${qs.toString()}`);
     } catch (e: any) {
       const retryable = {
         ...applyingWithRevision,
@@ -830,6 +847,16 @@ export default function Page() {
         <Link className="button secondary smallButton" href={`/sessions/${id}`}>
           Back to competition
         </Link>
+      </div>
+      <div className="card">
+        <h3>Optional Leirdue.net link</h3>
+        <p className="small muted">Paste the published result link now, or leave it blank and add it later.</p>
+        <label>Leirdue.net result link</label>
+        <input value={leirdueResultUrl} onChange={(e) => setLeirdueResultUrl(e.target.value)} placeholder="https://www.leirdue.net/..." type="url" />
+        <div className="btns">
+          <button type="button" className="secondary smallButton" onClick={saveLeirdueLink}>Save link</button>
+          {leirdueSaveStatus && <span className="small muted">{leirdueSaveStatus}</span>}
+        </div>
       </div>
       {unsupported && (
         <div className="card error">
