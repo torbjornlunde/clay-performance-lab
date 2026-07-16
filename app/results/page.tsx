@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { buildCompetitionActivitySummary } from "@/lib/competitionActivity";
 import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
 import { isQuickScoreNotes, parseQuickScoreMetadata } from "@/lib/quick-score/metadata";
@@ -49,6 +50,10 @@ function formatDate(value: string) {
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function formatMetricNumber(value: number) {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
 }
 
 function sortableDate(session: SessionRow) {
@@ -119,6 +124,16 @@ function statusBadges(session: SessionRow, missCounts: Record<string, number>, c
   return Array.from(new Set(badges));
 }
 
+function ResultActivityMetric({ label, value, helper }: { label: string; value: string; helper?: string }) {
+  return (
+    <div className="trainingVolumeMetric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {helper && <small>{helper}</small>}
+    </div>
+  );
+}
+
 function resultMatchesFilter(session: SessionRow, filter: ResultFilter, missCounts: Record<string, number>, courseCounts: Record<string, number>) {
   const source = resultSource(session, missCounts, courseCounts);
   if (filter === "all") return true;
@@ -135,6 +150,7 @@ export default function ResultsPage() {
   const [missCounts, setMissCounts] = useState<Record<string, number>>({});
   const [courseCounts, setCourseCounts] = useState<Record<string, number>>({});
   const [filter, setFilter] = useState<ResultFilter>("all");
+  const [selectedCompetitionYear, setSelectedCompetitionYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -192,6 +208,14 @@ export default function ResultsPage() {
     setCourseCounts(({ [session.id]: _removed, ...rest }) => rest);
   }
 
+  const competitionActivity = useMemo(
+    () => buildCompetitionActivitySummary(sessions, selectedCompetitionYear),
+    [sessions, selectedCompetitionYear],
+  );
+  const competitionActivityYears = competitionActivity.years.includes(selectedCompetitionYear)
+    ? competitionActivity.years
+    : [selectedCompetitionYear, ...competitionActivity.years];
+
   const visibleResults = useMemo(
     () => sessions
       .filter((session) => resultMatchesFilter(session, filter, missCounts, courseCounts))
@@ -212,6 +236,57 @@ export default function ResultsPage() {
           <Link href="/import/leirdue" className="button secondary">Import from Leirdue.net</Link>
         </div>
       </div>
+
+      <section className="card statsCompetitionActivityCard" aria-labelledby="results-competition-activity-heading">
+        <div className="sectionHeader listSectionHeader">
+          <div>
+            <p className="eyebrow">Competition only</p>
+            <h2 id="results-competition-activity-heading">Competition activity</h2>
+            <p className="small muted">Training sessions are excluded. Exact duplicate Leirdue.net result links are counted once.</p>
+          </div>
+          <label className="competitionYearSelector">
+            <span>Year</span>
+            <select
+              value={selectedCompetitionYear}
+              onChange={(event) => setSelectedCompetitionYear(Number(event.target.value))}
+              disabled={loading || competitionActivityYears.length === 0}
+              aria-label="Competition activity year"
+            >
+              {competitionActivityYears.map((year) => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {loading ? (
+          <p>Loading...</p>
+        ) : competitionActivity.allTimeCompetitionCount === 0 ? (
+          <div className="emptyState compactEmptyState">
+            <p>No saved competitions yet. Register a competition or import one from Leirdue.net to see your activity here.</p>
+          </div>
+        ) : (
+          <>
+            <div className="competitionActivityGrid">
+              <ResultActivityMetric label="All-time competitions" value={formatMetricNumber(competitionActivity.allTimeCompetitionCount)} />
+              <ResultActivityMetric
+                label="All-time competition targets"
+                value={formatMetricNumber(competitionActivity.allTimeCompetitionTargetCount)}
+                helper={competitionActivity.hasUnknownAllTimeTargets ? "Known targets only; some competitions have no target count" : undefined}
+              />
+              <ResultActivityMetric label={`${selectedCompetitionYear} competitions`} value={formatMetricNumber(competitionActivity.selectedYearCompetitionCount)} />
+              <ResultActivityMetric
+                label={`${selectedCompetitionYear} competition targets`}
+                value={formatMetricNumber(competitionActivity.selectedYearCompetitionTargetCount)}
+                helper={competitionActivity.hasUnknownSelectedYearTargets ? "Known targets only; some competitions have no target count" : undefined}
+              />
+            </div>
+            {competitionActivity.selectedYearCompetitionCount === 0 && (
+              <p className="small muted competitionActivityNote">No saved competitions in {selectedCompetitionYear}. Choose another year from your competition history to review activity.</p>
+            )}
+          </>
+        )}
+      </section>
 
       <div className="card">
         <div className="sectionHeader">

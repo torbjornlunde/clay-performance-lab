@@ -4,6 +4,8 @@ export type CompetitionActivitySession = {
   total_targets?: number | null;
   competition_date?: string | null;
   created_at: string;
+  leirdue_result_url?: string | null;
+  notes?: string | null;
 };
 
 export type CompetitionActivitySummary = {
@@ -56,11 +58,48 @@ function targetCountValue(session: CompetitionActivitySession) {
     : null;
 }
 
+function importDetail(session: CompetitionActivitySession, key: string) {
+  if (typeof session.notes !== "string") return null;
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = session.notes.match(new RegExp(`(?:^|\\. )${escapedKey}:\\s*([\\s\\S]*?)(?=\\. [a-z_]+:|$)`, "i"));
+  return match?.[1]?.trim() || null;
+}
+
+function normalizedLeirdueUrl(session: CompetitionActivitySession) {
+  const raw = session.leirdue_result_url || importDetail(session, "source_url");
+  if (!raw || !/^https?:\/\/(www\.)?leirdue\.net\//i.test(raw)) return null;
+  try {
+    const url = new URL(raw);
+    url.protocol = url.protocol.toLowerCase();
+    url.hostname = url.hostname.toLowerCase();
+    url.hash = "";
+    url.searchParams.sort();
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return raw.trim().replace(/\/$/, "");
+  }
+}
+
+function canonicalCompetitionSessions(sessions: CompetitionActivitySession[]) {
+  const byLeirdueUrl = new Set<string>();
+  const rows: CompetitionActivitySession[] = [];
+  for (const session of sessions) {
+    if (session.session_type !== "Competition") continue;
+    const leirdueUrl = normalizedLeirdueUrl(session);
+    if (leirdueUrl) {
+      if (byLeirdueUrl.has(leirdueUrl)) continue;
+      byLeirdueUrl.add(leirdueUrl);
+    }
+    rows.push(session);
+  }
+  return rows;
+}
+
 export function buildCompetitionActivitySummary(
   sessions: CompetitionActivitySession[],
   selectedYear: number,
 ): CompetitionActivitySummary {
-  const competitions = sessions.filter((session) => session.session_type === "Competition");
+  const competitions = canonicalCompetitionSessions(sessions);
   const years = Array.from(
     new Set(competitions.map(yearForSession).filter((year): year is number => year !== null)),
   ).sort((a, b) => b - a);
