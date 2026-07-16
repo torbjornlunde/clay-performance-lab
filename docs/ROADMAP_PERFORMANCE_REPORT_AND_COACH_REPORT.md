@@ -24,6 +24,130 @@ A plain list of statistics is not enough. The report must pull the shooter into 
 
 The app should be useful even when the shooter does not have a real coach.
 
+## AI analysis layer
+
+Performance Report should include a real AI analysis layer. It should not only be a rule-based prompt that inserts statistics into fixed text.
+
+The right model is hybrid:
+
+1. deterministic data preparation
+2. statistical pattern detection
+3. discipline-specific context
+4. AI reasoning over structured findings
+5. confidence and guardrails
+6. user-facing explanation and next action
+
+### Deterministic data preparation
+
+Before AI generates any insight, the app should prepare clean structured facts:
+
+- selected time range
+- training versus competition split
+- discipline and variant
+- total targets / shots
+- hit rate and miss count
+- target categories where known
+- pair type and first/second bird where relevant
+- stand / station / plate where known
+- equipment used where recorded
+- trend compared with previous period
+- sample size per finding
+- data-quality warnings
+
+This layer must be deterministic and testable.
+
+### Pattern detection
+
+The app should calculate candidate findings before AI writes the report.
+
+Examples:
+
+- largest target-loss category
+- weakest station / plate / stand
+- strongest area
+- most improved area
+- repeated issue across several sessions
+- training-only pattern versus competition-confirmed pattern
+- equipment-linked difference where sample size is large enough
+- low-confidence findings that should not be over-emphasized
+
+### AI reasoning
+
+AI should then analyze the structured findings and produce:
+
+- the main training focus
+- why this focus was selected
+- what evidence supports it
+- what the app cannot know from the data
+- what the next practical training should be
+- whether a real coach review may be useful
+- an explanation in plain shooter language
+
+The AI should be allowed to connect patterns across multiple dimensions, for example:
+
+- repeated second-bird misses in report pairs
+- mostly on longer crossers
+- stronger pattern in competition than training
+- no clear equipment link
+- enough data to suggest training focus, but not enough to diagnose technique
+
+### What AI must not do
+
+AI must not:
+
+- invent target data that was not logged
+- diagnose technique as fact when only result data exists
+- claim a cause such as eye dominance, hold point, timing, gun fit or choke unless the data actually supports it
+- hide low sample size
+- mix training and competition without saying so
+- pretend different discipline variants are directly comparable
+- make a coach marketplace recommendation look like neutral analysis if it is paid placement
+
+### User-facing AI style
+
+The report should feel like a performance assistant, not a generic chatbot.
+
+Good style:
+
+`Your biggest current loss is the second bird in report pairs. The pattern is strongest on longer left-to-right targets. Train this first, but treat the cause as open until you have video or coach feedback.`
+
+Bad style:
+
+`You are bad at report pairs because your timing is wrong.`
+
+### AI output should be structured
+
+The AI should return structured output, not just free text.
+
+Example fields:
+
+- `main_focus_title`
+- `main_focus_reason`
+- `evidence_points`
+- `confidence_level`
+- `confidence_reason`
+- `training_plan`
+- `positive_trend`
+- `strong_area`
+- `coach_review_recommended`
+- `coach_review_reason`
+- `limitations`
+
+The UI can then render the same AI result as cards, charts, report sections and share/export views.
+
+### AI and rules together
+
+Rules should protect the analysis, not replace it.
+
+Examples:
+
+- A rule can block AI from giving a high-confidence recommendation when sample size is too small.
+- A rule can require training and competition to be separated.
+- A rule can require the AI to cite which data points support an insight.
+- A rule can suppress equipment comparisons below a minimum target count.
+
+AI should do the higher-level synthesis and wording.
+
 ## Performance Report
 
 ### User
@@ -150,6 +274,8 @@ This can become a revenue stream, but trust is more important than short-term mo
 - Performance Report should not become hidden advertising for coaches.
 - Coach Report must only share data the shooter chooses to share.
 - A coach should not get access to the shooter’s private history unless explicitly granted.
+- AI must not invent causes or confidence that the underlying data does not support.
+- AI insights should be grounded in structured facts and rendered with visible confidence / limitations.
 
 ## Visual and engagement requirements
 
@@ -177,3 +303,5 @@ Performance Report should come before a full Coach Report because it helps every
 3. The app should remain useful without a real coach.
 4. The app may later recommend a real coach when the data shows that human interpretation is needed.
 5. A future coach marketplace can be a revenue stream, but paid placement must be transparent and must not undermine trust.
+6. Performance Report must include a real AI analysis layer over structured shooting data, not only fixed rule-based text.
+7. Rules and statistics should prepare and protect the analysis; AI should synthesize the findings, explain them and suggest the next action.
