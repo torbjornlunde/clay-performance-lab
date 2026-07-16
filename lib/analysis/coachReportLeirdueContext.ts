@@ -1,7 +1,7 @@
 import { normalizeDisciplineGroup, type LeirdueResultRow } from "./coachReportEvidence";
 
 export type CoachReportLeirdueCompetitionContext = { id: string; name?: string | null; discipline?: string | null; competition_date?: string | null; shooting_ground?: string | null; leirdue_result_url?: string | null; event_id?: string | null; liste_id?: string | null };
-export type CoachReportLeirdueContextResult = { status: "available" | "unavailable"; rows: LeirdueResultRow[]; errors: string[] };
+export type CoachReportLeirdueContextResult = { status: "available" | "unavailable"; rows: LeirdueResultRow[]; errors: string[]; message?: string };
 
 type SupabaseLike = { from(table: string): any };
 type QuerySpec = { table: "leirdue_shared_shooter_results" | "leirdue_parsed_result_cache"; filters: Record<string, string>; sessionId: string };
@@ -51,13 +51,22 @@ async function fetchAllRows(supabase: SupabaseLike, spec: QuerySpec) {
     let query = supabase.from(spec.table).select(selectFor(spec.table)).range(from, from + PAGE_SIZE - 1);
     for (const [key, value] of Object.entries(spec.filters)) query = query.eq(key, value);
     const { data, error } = await query;
-    if (error) throw new Error(`Could not load Leirdue ${spec.table} context for ${spec.sessionId}.`);
+    if (error) throw new Error(`Could not load ${spec.table}.`);
     const rawPage = data || [];
     const page = rawPage.map((row: any) => mapFor(spec.table, row)).filter((row: LeirdueResultRow) => spec.table === "leirdue_shared_shooter_results" ? row.validation_status === "valid" : row.is_importable === true);
     rows.push(...page);
     if (rawPage.length < PAGE_SIZE) break;
   }
   return rows;
+}
+
+
+async function fetchSpecGroup(supabase: SupabaseLike, specs: QuerySpec[], errors: string[]) {
+  const pages = await Promise.all(specs.map(async (spec) => {
+    try { return await fetchAllRows(supabase, spec); }
+    catch { errors.push("Some Leirdue cache rows could not be loaded."); return [] as LeirdueResultRow[]; }
+  }));
+  return pages.flat();
 }
 
 function eventSpecsForMatchedRow(row: LeirdueResultRow, sessionId: string): QuerySpec[] { const specs: QuerySpec[] = []; for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) { if (row.event_id) specs.push({ table, sessionId, filters: row.liste_id ? { event_id: row.event_id, liste_id: row.liste_id } : { event_id: row.event_id } }); else if (row.source_url) specs.push({ table, sessionId, filters: { source_url: row.source_url } }); } return specs; }
@@ -71,18 +80,20 @@ export async function fetchCoachReportLeirdueContext(supabase: SupabaseLike, ses
       const candidateSpecs: QuerySpec[] = [];
       const derived = leirdueIdsFromUrl(session.leirdue_result_url);
       if (session.leirdue_result_url) for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) for (const variant of sourceUrlVariants(session.leirdue_result_url)) candidateSpecs.push({ table, sessionId: session.id, filters: { source_url: variant } });
-      let candidates = (await Promise.all(candidateSpecs.map((spec) => fetchAllRows(supabase, spec)))).flat().filter((row) => disciplineMatches(row, session) && normalizeLeirdueUrl(row.source_url) === normalizeLeirdueUrl(session.leirdue_result_url));
-      if (!candidates.length) { candidateSpecs.length = 0; const eventId = session.event_id || derived.event_id; const listeId = session.liste_id || derived.liste_id; if (eventId && listeId) for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) candidateSpecs.push({ table, sessionId: session.id, filters: { event_id: eventId, liste_id: listeId } }); candidates = (await Promise.all(candidateSpecs.map((spec) => fetchAllRows(supabase, spec)))).flat().filter((row) => disciplineMatches(row, session)); }
-      if (!candidates.length) { candidateSpecs.length = 0; const eventId = session.event_id || derived.event_id; if (eventId) for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) candidateSpecs.push({ table, sessionId: session.id, filters: { event_id: eventId } }); candidates = (await Promise.all(candidateSpecs.map((spec) => fetchAllRows(supabase, spec)))).flat().filter((row) => disciplineMatches(row, session)); }
-      if (!candidates.length && sessionDate(session)) { candidateSpecs.length = 0; for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) candidateSpecs.push({ table, sessionId: session.id, filters: { event_date: sessionDate(session) } }); candidates = (await Promise.all(candidateSpecs.map((spec) => fetchAllRows(supabase, spec)))).flat().filter((row) => disciplineMatches(row, session) && conservativeTextMatch(row, session)); const matchedEventKeys = new Set(candidates.map(conservativeEventListKey)); if (matchedEventKeys.size > 1) throw new Error(`Ambiguous Leirdue match for ${session.id}; multiple event/list combinations matched.`); }
+      let candidates = (await fetchSpecGroup(supabase, candidateSpecs, errors)).filter((row) => disciplineMatches(row, session) && normalizeLeirdueUrl(row.source_url) === normalizeLeirdueUrl(session.leirdue_result_url));
+      if (!candidates.length) { candidateSpecs.length = 0; const eventId = session.event_id || derived.event_id; const listeId = session.liste_id || derived.liste_id; if (eventId && listeId) for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) candidateSpecs.push({ table, sessionId: session.id, filters: { event_id: eventId, liste_id: listeId } }); candidates = (await fetchSpecGroup(supabase, candidateSpecs, errors)).filter((row) => disciplineMatches(row, session)); }
+      if (!candidates.length) { candidateSpecs.length = 0; const eventId = session.event_id || derived.event_id; if (eventId) for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) candidateSpecs.push({ table, sessionId: session.id, filters: { event_id: eventId } }); candidates = (await fetchSpecGroup(supabase, candidateSpecs, errors)).filter((row) => disciplineMatches(row, session)); }
+      if (!candidates.length && sessionDate(session)) { candidateSpecs.length = 0; for (const table of ["leirdue_shared_shooter_results", "leirdue_parsed_result_cache"] as const) candidateSpecs.push({ table, sessionId: session.id, filters: { event_date: sessionDate(session) } }); candidates = (await fetchSpecGroup(supabase, candidateSpecs, errors)).filter((row) => disciplineMatches(row, session) && conservativeTextMatch(row, session)); const matchedEventKeys = new Set(candidates.map(conservativeEventListKey)); if (matchedEventKeys.size > 1) throw new Error("Multiple Leirdue event/list combinations matched the selected session."); }
       const eventSpecs = new Map<string, QuerySpec>();
       for (const row of candidates) for (const spec of eventSpecsForMatchedRow(row, session.id)) eventSpecs.set(`${spec.table}:${JSON.stringify(spec.filters)}`, spec);
-      const eventRows = (await Promise.all([...eventSpecs.values()].map((spec) => fetchAllRows(supabase, spec)))).flat().filter((row) => disciplineMatches(row, session));
+      const eventRows = (await fetchSpecGroup(supabase, [...eventSpecs.values()], errors)).filter((row) => disciplineMatches(row, session));
       matchedRows.push(...eventRows);
-    } catch (error: any) { errors.push(error?.message || `Could not load Leirdue context for ${session.id}.`); }
+    } catch (error: any) { errors.push(error?.message || "Could not load Leirdue context."); }
   }
   const deduped = [...new Map(matchedRows.map((row) => [resultKey(row), row])).values()];
-  return { status: errors.length ? "unavailable" : "available", rows: deduped, errors };
+  const safeErrors = [...new Set(errors)].slice(0, 3);
+  const message = deduped.length ? undefined : "Leirdue context could not be loaded. The report can still be generated without field-strength comparison.";
+  return { status: deduped.length ? "available" : "unavailable", rows: deduped, errors: safeErrors, message };
 }
 
 export const __test = { eventKey, resultKey, PAGE_SIZE };

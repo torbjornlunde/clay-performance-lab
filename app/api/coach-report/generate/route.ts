@@ -9,9 +9,10 @@ const ALLOWED_NOTE_CONTEXT_KEYS = new Set(["notesThemes", "hasNotesContext"]);
 
 type CoachReportGenerateDeps = { env?: NodeJS.ProcessEnv; createSupabaseClient?: typeof createClient; openAiFetch?: typeof fetch };
 
-function isBlockedPrivateNoteKey(key: string) {
-  if (ALLOWED_NOTE_CONTEXT_KEYS.has(key)) return false;
+function isBlockedPrivateNoteKey(key: string, path = "") {
   const normalized = key.toLowerCase();
+  if (path === "evidencePacket.privacy" && (normalized === "rawprivatenotesincluded" || normalized === "reportbodyincludedinanalytics")) return false;
+  if (ALLOWED_NOTE_CONTEXT_KEYS.has(key)) return false;
   if (["body", "text", "content", "note", "notes", "private_notes", "private_note", "raw_note", "raw_notes"].includes(normalized)) return true;
   return /note|notes/.test(normalized) && /body|bodies|text|content|raw|private/.test(normalized);
 }
@@ -46,7 +47,7 @@ function sanitizeEvidencePacket(value: unknown, path = "evidencePacket"): unknow
   const sanitized: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) {
     const childPath = `${path}.${key}`;
-    if (isBlockedPrivateNoteKey(key)) throw new Error(`Raw private note-like field is not allowed: ${childPath}`);
+    if (isBlockedPrivateNoteKey(key, path)) throw new Error(`Raw private note-like field is not allowed: ${childPath}`);
     sanitized[key] = sanitizeEvidencePacket(child, childPath);
   }
   return sanitized;

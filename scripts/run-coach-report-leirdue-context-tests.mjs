@@ -89,10 +89,16 @@ fetched = await fetchCoachReportLeirdueContext(supabaseFixture({ leirdue_shared_
   { event_id: 'amb2', liste_id: 'b', normalized_name: 'b', original_name: 'B', placement: 1, score: 25, total_targets: 25, discipline: 'Leirduesti', event_date: '2026-07-01', event_title: 'Same Cup', organizer: 'Same Ground', source_url: 'amb2', validation_status: 'valid' },
 ], leirdue_parsed_result_cache: [] }), [{ id: 'ambiguous', name: 'Same Cup', discipline: 'Leirduesti', competition_date: '2026-07-01', shooting_ground: 'Same Ground' }]);
 assert.equal(fetched.status, 'unavailable', 'ambiguous fallback returns controlled unavailable status');
-assert.match(fetched.errors.join(' '), /Ambiguous Leirdue match/, 'ambiguous fallback explains that multiple event/list combinations matched');
+assert.match(fetched.errors.join(' '), /Multiple Leirdue event\/list combinations matched/, 'ambiguous fallback explains that multiple event/list combinations matched');
 fetched = await fetchCoachReportLeirdueContext(supabaseFixture({ leirdue_shared_shooter_results: [], leirdue_parsed_result_cache: [] }, true), [session]);
 assert.equal(fetched.status, 'unavailable', 'query failures return controlled unavailable state');
 assert(fetched.errors.length > 0, 'query failure includes controlled error text');
+assert(!fetched.errors.join(' ').includes(session.id), 'query failure does not expose raw session ids');
+assert(!fetched.errors.join(' ').includes('leirdue_shared_shooter_results'), 'query failure does not expose raw table names');
+assert.equal(fetched.message, 'Leirdue context could not be loaded. The report can still be generated without field-strength comparison.', 'empty context returns user-safe fallback message');
+const partial = await fetchCoachReportLeirdueContext({ from(table) { const fixture = supabaseFixture({ leirdue_parsed_result_cache: [{ event_id: 'partial', liste_id: 'main', shooter_name_normalized: 'ok', shooter_name_display: 'OK', placement: 1, own_score: 24, total_targets: 25, discipline: 'Leirduesti', event_date: '2026-07-01', event_title: 'Partial Cup', organizer: 'Oslo', source_url: 'partial-url', is_importable: true }] }); if (table === 'leirdue_shared_shooter_results') return { select() { return this; }, eq() { return this; }, range() { return this; }, then(resolve) { return resolve({ data: null, error: new Error('table unavailable') }); } }; return fixture.from(table); } }, [{ id: 'partial-session', name: 'Partial Cup', discipline: 'Leirduesti', competition_date: '2026-07-01', shooting_ground: 'Oslo', event_id: 'partial' }]);
+assert.equal(partial.status, 'available', 'parsed cache rows are returned when shared cache table fails');
+assert.equal(partial.rows.length, 1, 'partial table failure does not discard successful parsed cache rows');
 const separateEvents = buildLeirdueFieldContext({ ...session, name: 'Event', own_score: 90 }, [{ event_id: null, liste_id: null, normalized_name: 'same', placement: 1, score: 90, discipline: 'Leirduesti', event_date: '2026-07-01', event_title: 'Event A', source_url: 'event-a', validation_status: 'valid' }, { event_id: null, liste_id: null, normalized_name: 'same', placement: 1, score: 90, discipline: 'Leirduesti', event_date: '2026-07-01', event_title: 'Event B', source_url: 'event-b', validation_status: 'valid' }]);
 assert.equal(separateEvents.fieldSize, 2, 'separate events are not collapsed by deduplication fallback');
 console.log('coach report Leirdue context focused tests passed');

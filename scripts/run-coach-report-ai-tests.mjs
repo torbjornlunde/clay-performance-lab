@@ -30,13 +30,19 @@ assert.equal(response.status, 200, 'authenticated request can generate report');
 assert.equal((await response.json()).reportText, 'Coach summary\n- Good', 'authenticated request returns generated report');
 assert.equal(capture.supabaseOptions.global.headers.Authorization, 'Bearer token', 'request auth header is forwarded to Supabase auth');
 assert(!JSON.stringify(capture.openAiBody).includes('RAW PRIVATE NOTE'), 'raw private note body is not forwarded to OpenAI');
+assert(JSON.stringify(capture.openAiBody).includes('notesThemes'), 'safe summarized note context reaches OpenAI packet');
 
 response = await handleCoachReportGenerate(new Request('https://app.test/api/coach-report/generate', { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': String(__test.MAX_EVIDENCE_PACKET_BYTES + 1) }, body: '{}' }), deps());
 assert.equal(response.status, 413, 'oversized evidence packet is rejected');
 
 response = await handleCoachReportGenerate(req({ privateNoteBodies: ['RAW PRIVATE NOTE fatigue'], notesThemes: ['fatigue'] }), deps());
 assert.equal(response.status, 400, 'raw private note body-like fields are rejected');
-assert.doesNotThrow(() => __test.sanitizeEvidencePacket({ notesThemes: ['fatigue'], hasNotesContext: true }), 'summarized note themes are accepted');
+for (const key of ['body', 'text', 'content', 'rawPrivateNotes']) {
+  assert.throws(() => __test.sanitizeEvidencePacket({ selectedSessions: [{ [key]: 'RAW PRIVATE NOTE fatigue' }] }), /Raw private note-like field/, `${key} raw note field is rejected`);
+}
+assert.doesNotThrow(() => __test.sanitizeEvidencePacket({ notesThemes: ['fatigue'], hasNotesContext: true, privacy: { rawPrivateNotesIncluded: false, reportBodyIncludedInAnalytics: false } }), 'summarized note themes and safe privacy metadata are accepted');
+const sanitized = __test.sanitizeEvidencePacket({ notesThemes: ['fatigue'], privacy: { rawPrivateNotesIncluded: false } });
+assert(!JSON.stringify(sanitized).includes('RAW PRIVATE NOTE'), 'sanitized AI packet has no raw private note body');
 
 const page = readFileSync('app/coach-report/page.tsx', 'utf8');
 assert.match(page, /Generate AI coach report/, 'generate button exists');
