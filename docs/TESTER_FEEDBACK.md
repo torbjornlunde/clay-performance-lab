@@ -88,7 +88,7 @@ When a tester suggestion is released, the tester or beta group should be told th
 
 **Original need:** Under equipment, allow a custom name for a gun when the user owns more than one of the same model or uses different barrel sets.
 
-**Status:** Next
+**Status:** Implemented in PR - pending review
 
 **Priority:** High-value quick win
 

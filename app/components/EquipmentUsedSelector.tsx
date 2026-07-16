@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { buildEquipmentSnapshot, ammoSummary, chokeLabelFromAssignment, slotLabel, weaponSummary, type EquipmentAmmo, type EquipmentAssignment, type EquipmentChoke, type EquipmentSelection, type EquipmentWeapon } from "@/lib/equipment/logSnapshots";
+import { buildEquipmentSnapshot, ammoSummary, chokeLabelFromAssignment, slotLabel, weaponOptionLabel, weaponSummary, weaponTechnicalSummary, type EquipmentAmmo, type EquipmentAssignment, type EquipmentChoke, type EquipmentSelection, type EquipmentWeapon } from "@/lib/equipment/logSnapshots";
 import { supabase } from "@/lib/supabase/client";
 
 type Props = { value: EquipmentSelection; onChange: (selection: EquipmentSelection, snapshot: any) => void; defaultOpen?: boolean };
@@ -61,7 +61,7 @@ export function EquipmentUsedSelector({ value, onChange, defaultOpen = false }: 
           <label htmlFor="equipment-weapon">Weapon</label>
           <select id="equipment-weapon" value={value.weaponId} onChange={(e) => update({ weaponId: e.target.value })}>
             <option value="">No weapon recorded</option>
-            {weapons.map((weapon) => <option key={weapon.id} value={weapon.id}>{weaponSummary(weapon)}</option>)}
+            {weapons.map((weapon) => <option key={weapon.id} value={weapon.id}>{weaponOptionLabel(weapon)}</option>)}
           </select>
         </div>
         <div>
@@ -81,7 +81,13 @@ export function EquipmentUsedSelector({ value, onChange, defaultOpen = false }: 
           })}
         </div>
       ) : selectedWeapon ? <p className="small muted">No current choke setup saved for this weapon.</p> : null}
-      {(selectedWeapon || selectedAmmo) && <p className="small muted">Selected: {[selectedWeapon ? weaponSummary(selectedWeapon) : null, selectedAmmo ? ammoSummary(selectedAmmo) : null].filter(Boolean).join(" · ")}</p>}
+      {selectedWeapon ? (
+        <div className="small muted">
+          <strong>Selected weapon:</strong> {weaponSummary(selectedWeapon)}
+          {weaponTechnicalSummary(selectedWeapon) && weaponTechnicalSummary(selectedWeapon) !== weaponSummary(selectedWeapon) ? <><br />{weaponTechnicalSummary(selectedWeapon)}</> : null}
+        </div>
+      ) : null}
+      {selectedAmmo ? <p className="small muted"><strong>Selected ammunition:</strong> {ammoSummary(selectedAmmo)}</p> : null}
     </details>
   );
 }
