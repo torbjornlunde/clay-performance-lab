@@ -306,6 +306,8 @@ For busy competition weeks, the app should offer a low-friction mode:
 
 The user should never feel forced to build every target while tired between events.
 
+Implemented first low-friction step: manual competition result creation and scorecard import now support early Leirdue.net link entry, and saved/imported results prompt an optional missed-target detail path before any full target-builder work. Existing miss records are reused for presentation structure, first/second bird and notes.
+
 ## Leirdue.net link friction
 
 The flow should allow Leirdue.net link entry earlier and more naturally:

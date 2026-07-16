@@ -708,6 +708,10 @@ export default function Page() {
   const sourceUrl =
     importDetail(session, "source_url") || session.leirdue_result_url;
   const canRefreshLeirdueSource = Boolean(sourceUrl && /^https?:\/\/(www\.)?leirdue\.net\//i.test(sourceUrl));
+  const shouldPromptMissDetails =
+    searchParams.get("describeMisses") === "1" ||
+    searchParams.get("resultSaved") === "1" ||
+    searchParams.get("scorecardImported") === "1";
   const importedAt = importDetail(session, "imported_at");
   const importConfidence = importDetail(session, "confidence");
   const stevneId = importDetail(session, "stevne_id");
@@ -873,6 +877,19 @@ export default function Page() {
               : ""}
           </div>
         )}
+        {shouldPromptMissDetails && (
+          <div className="compactNotice">
+            <strong>Optional next step:</strong> describe the targets you missed for better later analysis.
+            <div className="btns compactNoticeActions">
+              <Link className="button smallButton" href={`/sessions/${session.id}/misses`}>
+                {count > 0 ? "Describe missed targets" : "Add details for missed targets"}
+              </Link>
+              <Link className="button secondary smallButton" href={`/sessions/${session.id}`}>
+                Skip for now
+              </Link>
+            </div>
+          </div>
+        )}
         {resultOnly && !hasScoreMismatch ? (
           <div className="compactNotice">
             This is a result-only entry. Detailed misses have not been logged
@@ -936,14 +953,12 @@ export default function Page() {
               <small>{setupAction.progress}</small>
             </Link>
           )}
-          {count > 0 && (
-            <Link
-              href={`/sessions/${session.id}/misses`}
-              className="button secondary"
-            >
-              Review misses
-            </Link>
-          )}
+          <Link
+            href={`/sessions/${session.id}/misses`}
+            className={count > 0 ? "button secondary" : "button secondary"}
+          >
+            {count > 0 ? "Describe missed targets" : "Add details for missed targets"}
+          </Link>
         </div>
         <details className="detailAccordion">
           <summary>

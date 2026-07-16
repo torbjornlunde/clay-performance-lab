@@ -24,6 +24,7 @@ export default function NewResultPage() {
   const [totalTargets, setTotalTargets] = useState("");
   const [ownScore, setOwnScore] = useState("");
   const [winningScore, setWinningScore] = useState("");
+  const [leirdueResultUrl, setLeirdueResultUrl] = useState("");
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
@@ -128,7 +129,7 @@ export default function NewResultPage() {
       shooting_ground: shootingGround.trim() || null,
       own_score: ownScoreValue,
       winning_score: winningScoreValue,
-      leirdue_result_url: null,
+      leirdue_result_url: leirdueResultUrl.trim() || null,
       equipment_weapon_id: equipmentSelection.weaponId || null,
       equipment_ammunition_profile_id: equipmentSelection.ammunitionId || null,
       equipment_snapshot: equipmentSnapshot,
@@ -142,7 +143,11 @@ export default function NewResultPage() {
     await recordAnalyticsEvent(supabase, "result_created_manual", { route: "/results/new", feature: "manual_result", discipline, sessionId: inserted.id, metadata: { targetCount: totalTargets } });
     const applied = await applySelectedTemplate(inserted.id);
     setSaving(false);
-    router.push(`/sessions/${inserted.id}${applied ? "" : "?templateApplyFailed=result"}`);
+    const params = new URLSearchParams();
+    if (!applied) params.set("templateApplyFailed", "result");
+    if (ownScoreValue !== null) params.set("resultSaved", "1");
+    const query = params.toString();
+    router.push(`/sessions/${inserted.id}${query ? `?${query}` : ""}`);
   }
 
   return (
@@ -160,6 +165,8 @@ export default function NewResultPage() {
         </div>
         <label>Shooting ground</label>
         <input value={shootingGround} onChange={(e) => setShootingGround(e.target.value)} placeholder="Optional" />
+        <label>Leirdue.net result link</label>
+        <input value={leirdueResultUrl} onChange={(e) => setLeirdueResultUrl(e.target.value)} placeholder="Paste optional Leirdue.net result URL" type="url" />
         <details className="detailAccordion">
           <summary><span>Add result now</span></summary>
           <div className="detailAccordionBody">
