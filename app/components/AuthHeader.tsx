@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { canManageBetaAccess, type UserAccessProfile } from "@/lib/access";
-import { betaFeedbackMailto } from "@/lib/betaFeedback";
+import { betaFeedbackHref } from "@/lib/betaFeedback";
 import { supabase } from "@/lib/supabase/client";
 import { exportMyDataForCurrentUser } from "@/lib/export/exportMyDataClient";
 import { openOnboardingHelp } from "@/app/components/OnboardingHelp";
@@ -77,7 +77,7 @@ export default function AuthHeader() {
       } else {
         setShowBetaAdmin(false);
       }
-      setFeedbackHref(betaFeedbackMailto("General beta"));
+      setFeedbackHref(betaFeedbackHref("General beta"));
       setReady(true);
     }
 
@@ -217,7 +217,7 @@ export default function AuthHeader() {
                   <Link role="menuitem" href="/settings" onClick={() => closeMenu()}>Settings</Link>
                   <button role="menuitem" type="button" onClick={() => { closeMenu({ restoreFocus: true }); openOnboardingHelp(); }}>Help / Getting started</button>
                   <button role="menuitem" type="button" onClick={() => { closeMenu({ restoreFocus: true }); exportMyData(); }} disabled={exporting}>{exporting ? "Exporting..." : "Export my data"}</button>
-                  {feedbackHref && <a role="menuitem" href={feedbackHref} onClick={() => closeMenu()}>Send feedback</a>}
+                  {feedbackHref && <Link role="menuitem" href={feedbackHref} onClick={() => closeMenu()}>Send feedback</Link>}
                   {showBetaAdmin && <Link role="menuitem" href="/beta/admin" onClick={() => closeMenu()}>Beta approvals</Link>}
                   {showBetaAdmin && <Link role="menuitem" href="/admin/analytics" onClick={() => closeMenu()}>Analytics</Link>}
                   {showBetaAdmin && <Link role="menuitem" href="/admin/leirdue-health" onClick={() => closeMenu()}>Leirdue health</Link>}
