@@ -1,6 +1,6 @@
 # Clay Performance Lab – produktplan
 
-Sist oppdatert: 3. juli 2026
+Sist oppdatert: 16. juli 2026
 
 Dette dokumentet er prosjektets hovedkilde for produktstatus, prioriteringer og avgrensninger. Det skal oppdateres når en funksjon endrer status, når en viktig beslutning tas, eller når en PR flytter noe fra plan til produksjon.
 
@@ -29,8 +29,11 @@ Clay Performance Lab skal gjøre det enklere for leirdueskyttere å:
 3. se utvikling over tid
 4. dele og gjenbruke bane-, post- og dueoppsett trygt
 5. gi en trener et bedre og mer strukturert beslutningsgrunnlag
+6. bruke avansert AI på strukturert skytterdata for å gjøre resultatdata om til praktisk treningsfokus
 
 Appen skal fungere både for enkel resultatregistrering og for detaljert prestasjonsanalyse. Avanserte funksjoner skal ikke gjøre den grunnleggende flyten tung.
+
+Clay Performance Lab skal behandles som et AI-native performance-produkt, ikke bare en scoreføringsapp med AI-tekst på toppen. Se [ROADMAP_AI_NATIVE_PRODUCT_STRATEGY.md](./ROADMAP_AI_NATIVE_PRODUCT_STRATEGY.md).
 
 ---
 
@@ -195,20 +198,24 @@ Det skal normalt bare være én større produktfunksjon under aktiv utvikling om
 
 **Første avgrensning:** Start med Training Score Sheet og enkel bomregistrering. Ikke forsøk å gjøre alle appfunksjoner offline samtidig.
 
-### Prioritet 5: Coach Report v1
+### Prioritet 5: Performance Report v1 og coach-ready rapportgrunnlag
 
-**Problem:** Data finnes, men er ikke samlet i et kort og nyttig grunnlag for trener og skytter.
+**Problem:** Data finnes, men den må bli en engasjerende, AI-støttet prestasjonsanalyse som hjelper skytteren videre – ikke bare en liste med tall.
 
 **Minste nyttige versjon:**
 
-- Velg siste X sessioner eller datoperiode.
+- Shooter-facing **Performance Report** med én tydelig hovedprioritet for neste trening.
 - Egen seksjon for konkurranse og trening.
 - Kombinert oversikt uten å blande datatypene ukritisk.
 - Treffprosent og bommønstre etter tilgjengelig dueinformasjon.
-- Tydelig markering av lite datagrunnlag.
-- Forhåndsvisning før rapporten deles.
+- Ekte AI-syntese over strukturert data, med regler/statistikk som beskytter analysen.
+- Tydelig markering av lite datagrunnlag og usikkerhet.
+- Disiplinspesifikk visuell visning der datagrunnlaget støtter det.
+- Forhåndsvisning før Coach Report deles.
 
-**Ikke i første versjon:** Egen coach-konto, løpende chat, automatiske treningsprogrammer eller skjult deling.
+**Ikke i første versjon:** Egen coach-konto, løpende chat, automatiske treningsprogrammer, skjult deling eller betalt coach-marketplace.
+
+**Detaljer:** Se [ROADMAP_PERFORMANCE_REPORT_AND_COACH_REPORT.md](./ROADMAP_PERFORMANCE_REPORT_AND_COACH_REPORT.md) og [ROADMAP_DISCIPLINE_SPECIFIC_VISUALS.md](./ROADMAP_DISCIPLINE_SPECIFIC_VISUALS.md).
 
 ### Prioritet 6: Våpentesting og enkel sammenligning
 
@@ -229,6 +236,14 @@ Det skal normalt bare være én større produktfunksjon under aktiv utvikling om
 ## 5. Senere idébank
 
 Disse punktene er ønskelige, men skal ikke behandles som neste oppgave uten at prioriteringen endres eksplisitt.
+
+### AI-native analyse og assistenter
+
+- Clay Performance Lab skal bygges som et AI-native performance-produkt, ikke bare scoreføring med AI-tekst på toppen.
+- AI skal brukes til å tolke strukturert skytterdata, forklare mønstre og foreslå praktisk treningsfokus.
+- AI Shooting Assistant Chat skal senere kunne svare på spørsmål om skytterens data, rapporter, trening og hagleskyting innenfor trygge grenser.
+- AI App Copilot skal senere kunne hjelpe brukeren å opprette økter, rapporter, søk og treningsplaner ved tekst eller tale, men alltid med forhåndsvisning og bekreftelse før viktige handlinger.
+- Detaljer: [ROADMAP_AI_NATIVE_PRODUCT_STRATEGY.md](./ROADMAP_AI_NATIVE_PRODUCT_STRATEGY.md), [ROADMAP_AI_SHOOTING_ASSISTANT_CHAT.md](./ROADMAP_AI_SHOOTING_ASSISTANT_CHAT.md), [ROADMAP_AI_APP_COPILOT.md](./ROADMAP_AI_APP_COPILOT.md).
 
 ### Trening og læring
 
@@ -283,6 +298,13 @@ Disse punktene er ønskelige, men skal ikke behandles som neste oppgave uten at 
 - Valgfri skytterprofil med aliaser, standardvåpen, ammunisjon og linser.
 - Pro-funksjoner og betaling først når onboarding, import og logging er stabile.
 
+### Konkurrentposisjonering og lansering
+
+- Smoke'em / Smoke 'Em Claysports og BestShot følges som relevante referanser.
+- Clay Performance Lab bør bevege seg raskere mot riktige offentlige kanaler, men ikke på bekostning av datakvalitet og tillit.
+- Sosial feed, trophies, leaderboards og full club premium er senere muligheter, ikke første lanseringsblokker.
+- Detaljer: [ROADMAP_COMPETITOR_POSITIONING_AND_LAUNCH_WINDOW.md](./ROADMAP_COMPETITOR_POSITIONING_AND_LAUNCH_WINDOW.md).
+
 ---
 
 ## 6. Låste beslutninger og avgrensninger
@@ -299,7 +321,7 @@ Disse beslutningene skal ikke åpnes på nytt uten en tydelig ny begrunnelse.
 8. **FITASC Sporting er foreløpig ikke støttet i delbare konkurranseoppsett.**
 9. **Scorecard-import og Leirdue.net-import bruker ikke automatisk delte konkurranseoppsett ennå.**
 10. **Offline skal bygges smalt og sikkert.** Kritisk logging prioriteres før full offline-støtte i hele appen.
-11. **Coach Report v1 skal være en rapport, ikke et komplett coach-system.**
+11. **Performance Report kommer før full Coach Report.** Shooter-facing analyse skal hjelpe brukeren selv først; Coach Report er den mer datarike delings-/eksportversjonen for ekte coach.
 12. **Sammenligning av våpen skal vise usikkerhet.** Små utvalg og forskjell mellom trening og konkurranse skal ikke skjules.
 13. **En funksjon er først ferdig når kode, database og faktisk brukerflyt er kontrollert.**
 14. **Nye store funksjoner skal kobles til denne roadmapen.** PR-beskrivelsen skal si hvilket roadmap-punkt den gjennomfører eller endrer.
@@ -307,6 +329,9 @@ Disse beslutningene skal ikke åpnes på nytt uten en tydelig ny begrunnelse.
 16. **Choke- og ammunisjonsvelgeren skal i første versjon prioritere brukerens egne registrerte choker og patroner.** Den skal vise usikkerhet, bruke egne mønstringstester når de finnes og aldri fremstille anbefalingen som en garanti for treff.
 17. **Brukerrolle og produktnivå er separate systemer.** Betaling gir aldri automatisk tilgang til andres data.
 18. **Konkrete innspill fra aktive betatestere skal registreres og vurderes før nye spekulative funksjoner.** Små forbedringer med høy nytte og lav risiko kan trekkes foran større roadmap-punkter.
+19. **Clay Performance Lab skal være AI-native.** AI skal bruke strukturert skytterdata til analyse, forklaring og treningsfokus, ikke bare generere generisk tekst.
+20. **AI må være datagrunnlagt og ærlig om usikkerhet.** AI skal ikke finne på årsaker, skjule lavt datagrunnlag eller presentere tekniske diagnoser som fakta uten støtte.
+21. **AI App Copilot skal ikke endre viktig data i skjul.** Den kan lage forslag, drafts og prefill, men viktige handlinger må forhåndsvises og bekreftes av brukeren.
 
 ---
 
