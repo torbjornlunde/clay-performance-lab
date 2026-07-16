@@ -69,7 +69,7 @@ When a tester suggestion is released, the tester or beta group should be told th
 
 **Original need:** Show total number of competitions, total number of competition shots/targets and competitions within a selected year.
 
-**Status:** Next
+**Status:** Implemented in first compact version
 
 **Priority:** High-value quick win
 
@@ -83,6 +83,8 @@ When a tester suggestion is released, the tester or beta group should be told th
 - use imported and manually registered competition results without double-counting duplicates
 
 **Why prioritized:** It gives immediate value from existing data, is easy for users to understand and came directly from an active tester.
+
+**Implemented:** Results now shows a compact competition-only activity summary with all-time competitions, all-time competition targets, selected-year competitions and selected-year targets. Training sessions are excluded, imported/manual competition sessions are included, and exact duplicate Leirdue.net result URLs are counted once.
 
 ### Custom name for guns and barrel setups
 
