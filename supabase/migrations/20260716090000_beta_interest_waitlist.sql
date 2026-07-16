@@ -27,6 +27,16 @@ create table if not exists public.beta_interest_submissions (
 create unique index if not exists beta_interest_submissions_normalized_email_unique_idx
   on public.beta_interest_submissions(normalized_email);
 
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
 drop trigger if exists beta_interest_submissions_set_updated_at on public.beta_interest_submissions;
 create trigger beta_interest_submissions_set_updated_at
   before update on public.beta_interest_submissions
