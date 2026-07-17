@@ -22,6 +22,7 @@ import { EquipmentUsedSelector } from "@/app/components/EquipmentUsedSelector";
 import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { supabase } from "@/lib/supabase/client";
 import { normalizeDefaultPostFormat, postFormatOptions } from "@/lib/targets/postSetupState";
+import { prioritizedDisciplineOptions } from "@/lib/profile";
 
 type Session = {
   id: string;
@@ -87,6 +88,7 @@ export default function EditSessionPage() {
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [name, setName] = useState("");
   const [discipline, setDiscipline] = useState("");
+  const disciplineOptions = useMemo(() => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, discipline ? [discipline] : []), [discipline]);
   const [sessionType, setSessionType] = useState("Training");
   const [format, setFormat] = useState("Inline");
   const [count, setCount] = useState(1);
@@ -568,7 +570,7 @@ export default function EditSessionPage() {
               value={discipline}
               onChange={(e) => setDiscipline(e.target.value)}
             >
-              {DISCIPLINE_OPTIONS.map((option) => (
+              {disciplineOptions.map((option) => (
                 <option key={option}>{option}</option>
               ))}
             </select>

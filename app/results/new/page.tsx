@@ -32,9 +32,10 @@ export default function NewResultPage() {
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [applyMessage, setApplyMessage] = useState("");
   const [myDisciplines, setMyDisciplines] = useState<string[]>([]);
+  const [shooterCountry, setShooterCountry] = useState("");
   const [equipmentSelection, setEquipmentSelection] = useState<EquipmentSelection>({ weaponId: "", ammunitionId: "", includeChokes: true });
   const [equipmentSnapshot, setEquipmentSnapshot] = useState<any>(null);
-  const disciplineOptions = useMemo(() => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, myDisciplines), [myDisciplines]);
+  const disciplineOptions = useMemo(() => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, myDisciplines, shooterCountry), [myDisciplines, shooterCountry]);
   const suggestionTargetCount = totalTargets.trim() ? Number(totalTargets) || null : null;
   const suggestions = useCompetitionTemplateCandidates({ name, competitionDate, shootingGround, discipline, targetCount: suggestionTargetCount });
 
@@ -65,8 +66,11 @@ export default function NewResultPage() {
     async function loadPreferredDisciplines() {
       const { data: userData } = await supabase.auth.getUser();
       if (!active || !userData.user) return;
-      const { data } = await supabase.from("shooter_profiles").select("my_disciplines").eq("user_id", userData.user.id).maybeSingle<Pick<ShooterProfile, "my_disciplines">>();
-      if (active) setMyDisciplines(normalizeDisciplines(data?.my_disciplines));
+      const { data } = await supabase.from("shooter_profiles").select("country,my_disciplines").eq("user_id", userData.user.id).maybeSingle<Pick<ShooterProfile, "country" | "my_disciplines">>();
+      if (active) {
+        setMyDisciplines(normalizeDisciplines(data?.my_disciplines));
+        setShooterCountry(data?.country || "");
+      }
     }
     loadPreferredDisciplines();
     return () => { active = false; };

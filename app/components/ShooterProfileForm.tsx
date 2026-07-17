@@ -3,7 +3,7 @@
 import Link from "next/link";
 import CountryPicker from "@/app/components/CountryPicker";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
-import { type ShooterProfileFormState } from "@/lib/profile";
+import { prioritizedDisciplineOptions, type ShooterProfileFormState } from "@/lib/profile";
 
 type ShooterProfileFormProps = {
   accountEmail?: string | null;
@@ -40,6 +40,8 @@ export default function ShooterProfileForm({
   validationErrors = {},
   showBackToDashboard = false,
 }: ShooterProfileFormProps) {
+  const disciplineOptions = prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, form.myDisciplines, form.country);
+
   function clearSuccess() {
     setSuccess?.("");
   }
@@ -118,7 +120,7 @@ export default function ShooterProfileForm({
             <p className="small muted">Your selected disciplines will be shown first in quick result and shooting log flows later.</p>
             {validationErrors.myDisciplines && <p className="error compactValidation">{validationErrors.myDisciplines}</p>}
             <div className="disciplineChoiceGrid">
-              {DISCIPLINE_OPTIONS.map((discipline) => (
+              {disciplineOptions.map((discipline) => (
                 <label key={discipline} className="disciplineChoice">
                   <input
                     type="checkbox"
