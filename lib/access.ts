@@ -15,7 +15,12 @@ export type UserAccessProfile = {
   approved_by: string | null;
 };
 
-export type BetaInterestAdminStatus = "new" | "pre_approved" | "approved_existing_user" | "contacted" | "rejected";
+export type BetaInterestAdminStatus =
+  | "new"
+  | "pre_approved"
+  | "approved_existing_user"
+  | "contacted"
+  | "rejected";
 
 export type BetaInterestSubmission = {
   id: string;
@@ -37,6 +42,19 @@ export type BetaInterestSubmission = {
 };
 
 export type BetaFeedbackAdminStatus = "new" | "reviewed" | "resolved";
+
+export type BetaFeedbackAttachment = {
+  id: string;
+  feedback_id: string;
+  user_id: string | null;
+  storage_bucket: string;
+  storage_path: string;
+  original_filename: string | null;
+  content_type: string | null;
+  size_bytes: number | null;
+  created_at: string;
+  signed_url?: string;
+};
 
 export type BetaFeedback = {
   id: string;
@@ -71,8 +89,16 @@ export const OWNER_EMAILS = [
   "noenlunde@hotmail.com",
 ] as const;
 
-export function canManageBetaAccess(profile: Pick<UserAccessProfile, "access_status" | "system_role"> | null | undefined) {
-  return profile?.access_status === "approved" && (profile.system_role === "owner" || profile.system_role === "admin");
+export function canManageBetaAccess(
+  profile:
+    | Pick<UserAccessProfile, "access_status" | "system_role">
+    | null
+    | undefined,
+) {
+  return (
+    profile?.access_status === "approved" &&
+    (profile.system_role === "owner" || profile.system_role === "admin")
+  );
 }
 
 export function normalizeAccessEmail(email: string | null | undefined) {

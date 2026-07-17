@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { AccessStatus, BetaAccessListEntry, BetaFeedback, BetaFeedbackAdminStatus, BetaInterestSubmission, SystemRole, UserAccessProfile } from "@/lib/access";
+import type { AccessStatus, BetaAccessListEntry, BetaFeedback, BetaFeedbackAdminStatus, BetaFeedbackAttachment, BetaInterestSubmission, SystemRole, UserAccessProfile } from "@/lib/access";
 import { canManageBetaAccess, isProtectedOwnerEmail, normalizeAccessEmail } from "@/lib/access";
 import { supabase } from "@/lib/supabase/client";
 
@@ -9,6 +9,7 @@ const USER_COLUMNS = "user_id,email,full_name,access_status,system_role,account_
 const ACCESS_LIST_COLUMNS = "id,email,full_name,access_status_to_grant,system_role_to_grant,note,created_at,created_by";
 const INTEREST_COLUMNS = "id,name,email,country,main_discipline,level_comment,instagram_handle,admin_status,handled_at,handled_by,access_list_entry_id,admin_note,approval_email_sent_at,approval_email_error,created_at,updated_at";
 const FEEDBACK_COLUMNS = "id,user_id,email,feedback_type,severity,message,page_path,user_agent,app_context,admin_status,admin_note,created_at,updated_at";
+const FEEDBACK_ATTACHMENT_COLUMNS = "id,feedback_id,user_id,storage_bucket,storage_path,original_filename,content_type,size_bytes,created_at";
 
 type AccessListForm = {
   email: string;
@@ -19,6 +20,11 @@ type AccessListForm = {
 
 function sortByCreatedAtDesc<T extends { created_at: string }>(items: T[]) {
   return [...items].sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+function formatFileSize(bytes: number | null | undefined) {
+  if (!bytes) return "Size unknown";
+  return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
 }
 
 function formatDate(value: string | null | undefined) {
@@ -48,6 +54,7 @@ export default function BetaAdminPage() {
   const [accessList, setAccessList] = useState<BetaAccessListEntry[]>([]);
   const [interestList, setInterestList] = useState<BetaInterestSubmission[]>([]);
   const [feedbackList, setFeedbackList] = useState<BetaFeedback[]>([]);
+  const [feedbackAttachments, setFeedbackAttachments] = useState<Record<string, BetaFeedbackAttachment[]>>({});
   const [form, setForm] = useState<AccessListForm>({ email: "", fullName: "", role: "user", note: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -112,10 +119,37 @@ export default function BetaAdminPage() {
       return;
     }
 
+    const feedbackItems = sortByCreatedAtDesc((feedbackRows ?? []) as BetaFeedback[]);
+    const feedbackIds = feedbackItems.map((item) => item.id);
+    let attachmentsByFeedback: Record<string, BetaFeedbackAttachment[]> = {};
+    if (feedbackIds.length) {
+      const { data: attachmentRows, error: attachmentError } = await supabase
+        .from("beta_feedback_attachments")
+        .select(FEEDBACK_ATTACHMENT_COLUMNS)
+        .in("feedback_id", feedbackIds)
+        .order("created_at", { ascending: true });
+      if (attachmentError) {
+        setError(attachmentError.message);
+        setLoading(false);
+        return;
+      }
+      const rowsWithUrls = await Promise.all(
+        ((attachmentRows ?? []) as BetaFeedbackAttachment[]).map(async (attachment) => {
+          const { data } = await supabase.storage.from(attachment.storage_bucket).createSignedUrl(attachment.storage_path, 60 * 10);
+          return { ...attachment, signed_url: data?.signedUrl };
+        }),
+      );
+      attachmentsByFeedback = rowsWithUrls.reduce<Record<string, BetaFeedbackAttachment[]>>((groups, attachment) => {
+        groups[attachment.feedback_id] = [...(groups[attachment.feedback_id] ?? []), attachment];
+        return groups;
+      }, {});
+    }
+
     setUsers(sortByCreatedAtDesc((userRows ?? []) as UserAccessProfile[]));
     setAccessList(sortByCreatedAtDesc((accessRows ?? []) as BetaAccessListEntry[]));
     setInterestList(sortByCreatedAtDesc((interestRows ?? []) as BetaInterestSubmission[]));
-    setFeedbackList(sortByCreatedAtDesc((feedbackRows ?? []) as BetaFeedback[]));
+    setFeedbackList(feedbackItems);
+    setFeedbackAttachments(attachmentsByFeedback);
     setLoading(false);
   }
 
@@ -352,7 +386,10 @@ export default function BetaAdminPage() {
                       <td>{entry.severity}</td>
                       <td>{entry.email || entry.user_id || "—"}</td>
                       <td>{entry.page_path || "—"}</td>
-                      <td>{entry.message}</td>
+                      <td>
+                        <p>{entry.message}</p>
+                        <FeedbackAttachmentsList attachments={feedbackAttachments[entry.id] ?? []} />
+                      </td>
                       <td>{entry.admin_status}</td>
                       <td>{formatDate(entry.created_at)}</td>
                       <td><div className="tableActions">
@@ -606,5 +643,29 @@ function UserAccessCard({
         ) : null}
       </div>
     </article>
+  );
+}
+
+function FeedbackAttachmentsList({ attachments }: { attachments: BetaFeedbackAttachment[] }) {
+  if (attachments.length === 0) return <p className="small muted">No screenshots attached.</p>;
+
+  return (
+    <div className="subcard">
+      <p className="small muted">{attachments.length} screenshot{attachments.length === 1 ? "" : "s"} attached</p>
+      <ul className="small">
+        {attachments.map((attachment) => (
+          <li key={attachment.id}>
+            {attachment.signed_url ? (
+              <a href={attachment.signed_url} target="_blank" rel="noreferrer">
+                {attachment.original_filename || "Open screenshot"}
+              </a>
+            ) : (
+              <span>{attachment.original_filename || "Screenshot"}</span>
+            )}
+            <span className="muted"> · {attachment.content_type || "unknown type"} · {formatFileSize(attachment.size_bytes)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
