@@ -68,6 +68,8 @@ export type BetaFeedback = {
   app_context: Record<string, unknown>;
   admin_status: BetaFeedbackAdminStatus;
   admin_note: string | null;
+  archived_at: string | null;
+  archived_by: string | null;
   created_at: string;
   updated_at: string;
 };

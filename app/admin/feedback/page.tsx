@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { BetaFeedback, BetaFeedbackAdminStatus, BetaFeedbackAttachment, UserAccessProfile } from "@/lib/access";
 import { canManageBetaAccess } from "@/lib/access";
@@ -14,6 +14,18 @@ function formatDate(value: string | null | undefined) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
+function formatStatus(status: BetaFeedbackAdminStatus) {
+  if (status === "reviewed") return "Reviewed";
+  if (status === "resolved") return "Resolved";
+  return "New";
+}
+
+function statusClassName(status: BetaFeedbackAdminStatus) {
+  if (status === "reviewed") return "badge badgeBlue";
+  if (status === "resolved") return "badge badgeGreen";
+  return "badge badgeGold";
+}
+
 export default function AdminFeedbackPage() {
   const [me, setMe] = useState<UserAccessProfile | null>(null);
   const [feedbackList, setFeedbackList] = useState<BetaFeedback[]>([]);
@@ -24,6 +36,15 @@ export default function AdminFeedbackPage() {
   const [error, setError] = useState("");
 
   useEffect(() => { loadFeedbackData(); }, []);
+
+  const activeFeedback = useMemo(() => feedbackList.filter((entry) => !entry.archived_at), [feedbackList]);
+  const archivedFeedback = useMemo(() => feedbackList.filter((entry) => entry.archived_at), [feedbackList]);
+  const counts = useMemo(() => ({
+    new: activeFeedback.filter((entry) => entry.admin_status === "new").length,
+    reviewed: activeFeedback.filter((entry) => entry.admin_status === "reviewed").length,
+    resolved: activeFeedback.filter((entry) => entry.admin_status === "resolved").length,
+    archived: archivedFeedback.length,
+  }), [activeFeedback, archivedFeedback]);
 
   async function loadFeedbackData() {
     setLoading(true);
@@ -83,6 +104,24 @@ export default function AdminFeedbackPage() {
     await loadFeedbackData();
   }
 
+  async function archiveFeedback(entry: BetaFeedback) {
+    setSaving(true);
+    setError("");
+    setMessage("");
+    const { data: userData } = await supabase.auth.getUser();
+    const { error: updateError } = await supabase
+      .from("beta_feedback")
+      .update({ archived_at: new Date().toISOString(), archived_by: userData.user?.id ?? null })
+      .eq("id", entry.id);
+    setSaving(false);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    setMessage("Feedback archived.");
+    await loadFeedbackData();
+  }
+
   return (
     <main>
       <section className="heroCard">
@@ -103,52 +142,104 @@ export default function AdminFeedbackPage() {
       {message && <div className="success">{message}</div>}
 
       {!loading && canManageBetaAccess(me) && (
-        <section className="card">
-          <div className="sectionHeader">
-            <div>
-              <p className="eyebrow">Newest first</p>
-              <h2>Internal app feedback</h2>
-              <p className="small muted">Screenshot links are private signed URLs and expire after opening this page.</p>
+        <>
+          <section className="card">
+            <div className="sectionHeader feedbackInboxHeader">
+              <div>
+                <p className="eyebrow">Newest first</p>
+                <h2>Internal app feedback</h2>
+                <p className="small muted">Screenshot links are private signed URLs and expire after opening this page.</p>
+              </div>
+              <div className="feedbackCounts" aria-label="Feedback counts">
+                <span className="countPill">New {counts.new}</span>
+                <span className="countPill">Reviewed {counts.reviewed}</span>
+                <span className="countPill">Resolved {counts.resolved}</span>
+                <span className="countPill">Archived {counts.archived}</span>
+              </div>
             </div>
-            <span className="countPill">{feedbackList.length}</span>
-          </div>
-          {feedbackList.length === 0 ? <div className="emptyState">No beta feedback yet.</div> : (
-            <div className="accessTableWrap">
-              <table className="accessTable">
-                <thead><tr><th>Type</th><th>Severity</th><th>Email/user</th><th>Source page</th><th>Message</th><th>Screenshots</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>
-                <tbody>{feedbackList.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>{entry.feedback_type}</td>
-                    <td>{entry.severity}</td>
-                    <td>{entry.email || entry.user_id || "—"}</td>
-                    <td>{entry.page_path || "—"}</td>
-                    <td><p>{entry.message}</p></td>
-                    <td><FeedbackAttachmentsList attachments={feedbackAttachments[entry.id] ?? []} /></td>
-                    <td>{entry.admin_status}</td>
-                    <td>{formatDate(entry.created_at)}</td>
-                    <td><div className="tableActions">
-                      <button type="button" className="smallButton" disabled={saving || entry.admin_status === "reviewed"} onClick={() => updateFeedbackStatus(entry, "reviewed")}>Reviewed</button>
-                      <button type="button" className="secondary smallButton" disabled={saving || entry.admin_status === "resolved"} onClick={() => updateFeedbackStatus(entry, "resolved")}>Resolved</button>
-                    </div></td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            </div>
-          )}
-        </section>
+            {activeFeedback.length === 0 ? <div className="emptyState">No active beta feedback.</div> : (
+              <div className="feedbackCardList">
+                {activeFeedback.map((entry) => <FeedbackCard key={entry.id} entry={entry} attachments={feedbackAttachments[entry.id] ?? []} saving={saving} onStatusChange={updateFeedbackStatus} onArchive={archiveFeedback} />)}
+              </div>
+            )}
+          </section>
+
+          <section className="card">
+            <details className="archivedFeedbackDetails">
+              <summary>
+                <span>Archived feedback</span>
+                <span className="countPill">{archivedFeedback.length}</span>
+              </summary>
+              {archivedFeedback.length === 0 ? <div className="emptyState">No archived beta feedback.</div> : (
+                <div className="feedbackCardList feedbackCardListArchived">
+                  {archivedFeedback.map((entry) => <FeedbackCard key={entry.id} entry={entry} attachments={feedbackAttachments[entry.id] ?? []} saving={saving} onStatusChange={updateFeedbackStatus} onArchive={archiveFeedback} archived />)}
+                </div>
+              )}
+            </details>
+          </section>
+        </>
       )}
     </main>
+  );
+}
+
+function FeedbackCard({ entry, attachments, saving, onStatusChange, onArchive, archived = false }: { entry: BetaFeedback; attachments: BetaFeedbackAttachment[]; saving: boolean; onStatusChange: (entry: BetaFeedback, status: BetaFeedbackAdminStatus) => void; onArchive: (entry: BetaFeedback) => void; archived?: boolean }) {
+  const reporter = entry.email || entry.user_id || "—";
+  const isLegacyFeedbackPath = entry.page_path?.startsWith("/feedback");
+
+  return (
+    <article className="feedbackCard">
+      <header className="feedbackCardTopRow">
+        <div className="feedbackMetaChips">
+          <span className="pill">{entry.feedback_type}</span>
+          <span className="pill">{entry.severity}</span>
+          <span className={statusClassName(entry.admin_status)}>{formatStatus(entry.admin_status)}</span>
+        </div>
+        <time className="small muted" dateTime={entry.created_at}>{formatDate(entry.created_at)}</time>
+      </header>
+
+      <div className="feedbackInfoGrid">
+        <div>
+          <p className="feedbackLabel">Reported from</p>
+          <p className="feedbackValue">{entry.page_path || "—"}</p>
+          {isLegacyFeedbackPath ? <p className="small muted">Submitted before source-page tracking was improved.</p> : null}
+        </div>
+        <div>
+          <p className="feedbackLabel">Reporter</p>
+          <p className="feedbackValue">{reporter}</p>
+        </div>
+      </div>
+
+      <div className="feedbackMessageBlock">
+        <p className="feedbackLabel">Message</p>
+        <p className="feedbackMessage">{entry.message}</p>
+      </div>
+
+      <div>
+        <p className="feedbackLabel">Screenshots</p>
+        <FeedbackAttachmentsList attachments={attachments} />
+      </div>
+
+      <div className="feedbackActions" aria-label="Feedback actions">
+        {entry.admin_status === "new" ? <button type="button" className="smallButton secondary" disabled={saving || archived} onClick={() => onStatusChange(entry, "reviewed")}>Mark reviewed</button> : null}
+        {entry.admin_status !== "resolved" ? <button type="button" className="smallButton" disabled={saving || archived} onClick={() => onStatusChange(entry, "resolved")}>Resolve</button> : null}
+        {!archived ? <button type="button" className="smallButton secondary" disabled={saving} onClick={() => onArchive(entry)}>Archive</button> : null}
+      </div>
+    </article>
   );
 }
 
 function FeedbackAttachmentsList({ attachments }: { attachments: BetaFeedbackAttachment[] }) {
   if (attachments.length === 0) return <p className="small muted">No screenshots attached.</p>;
   return (
-    <ul className="small">
+    <ul className="feedbackAttachmentList">
       {attachments.map((attachment) => (
-        <li key={attachment.id}>
-          {attachment.signed_url ? <a href={attachment.signed_url} target="_blank" rel="noreferrer">{attachment.original_filename || "Open screenshot"}</a> : <span>{attachment.original_filename || "Screenshot"}</span>}
-          <span className="muted"> · {attachment.content_type || "unknown type"} · {formatFeedbackFileSize(attachment.size_bytes)}</span>
+        <li key={attachment.id} className="feedbackAttachmentItem">
+          {attachment.signed_url ? <a className="button secondary smallButton" href={attachment.signed_url} target="_blank" rel="noreferrer">Open screenshot</a> : <span className="badge">Screenshot unavailable</span>}
+          <div className="feedbackAttachmentMeta">
+            <span>{attachment.original_filename || "Screenshot"}</span>
+            <span className="muted">{attachment.content_type || "unknown type"} · {formatFeedbackFileSize(attachment.size_bytes)}</span>
+          </div>
         </li>
       ))}
     </ul>
