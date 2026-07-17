@@ -17,6 +17,17 @@ type AccessListForm = {
   note: string;
 };
 
+type EmailConfigStatus = {
+  configured: boolean;
+  hasResendApiKey: boolean;
+  hasFromAddress: boolean;
+  hasSiteUrl: boolean;
+  fromAddressConfigured: boolean;
+  fromAddress: string | null;
+  siteUrlPreview: string | null;
+  missing: string[];
+};
+
 function sortByCreatedAtDesc<T extends { created_at: string }>(items: T[]) {
   return [...items].sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
@@ -50,6 +61,8 @@ export default function BetaAdminPage() {
   const [form, setForm] = useState<AccessListForm>({ email: "", fullName: "", role: "user", note: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [emailConfig, setEmailConfig] = useState<EmailConfigStatus | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -98,10 +111,11 @@ export default function BetaAdminPage() {
       return;
     }
 
-    const [{ data: userRows, error: usersError }, { data: accessRows, error: accessError }, { data: interestRows, error: interestError }] = await Promise.all([
+    const [{ data: userRows, error: usersError }, { data: accessRows, error: accessError }, { data: interestRows, error: interestError }, emailConfigResult] = await Promise.all([
       supabase.from("user_access_profiles").select(USER_COLUMNS).order("created_at", { ascending: false }),
       supabase.from("beta_access_list").select(ACCESS_LIST_COLUMNS).order("created_at", { ascending: false }),
       supabase.from("beta_interest_submissions").select(INTEREST_COLUMNS).order("created_at", { ascending: false }),
+      fetchEmailConfig(),
     ]);
 
     if (usersError || accessError || interestError) {
@@ -113,7 +127,17 @@ export default function BetaAdminPage() {
     setUsers(sortByCreatedAtDesc((userRows ?? []) as UserAccessProfile[]));
     setAccessList(sortByCreatedAtDesc((accessRows ?? []) as BetaAccessListEntry[]));
     setInterestList(sortByCreatedAtDesc((interestRows ?? []) as BetaInterestSubmission[]));
+    setEmailConfig(emailConfigResult);
     setLoading(false);
+  }
+
+  async function fetchEmailConfig() {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) return null;
+    const response = await fetch("/api/beta-admin/test-approval-email", { headers: { Authorization: `Bearer ${token}` } });
+    const result = await response.json().catch(() => ({}));
+    return response.ok ? (result.config as EmailConfigStatus) : null;
   }
 
   async function updateUserAccess(user: UserAccessProfile, status: AccessStatus, role?: SystemRole) {
@@ -179,6 +203,31 @@ export default function BetaAdminPage() {
     if (result.warning) setError(result.warning);
     setMessage(action === "reject" ? "Interest submission marked rejected / not now." : result.emailStatus === "sent" ? "Access approved and approval email sent." : "Access approved. Approval email needs attention.");
     await loadAdminData();
+  }
+
+  async function sendTestApprovalEmail() {
+    setTestingEmail(true);
+    setError("");
+    setMessage("");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setTestingEmail(false);
+      setError("Please sign in again before sending a test email.");
+      return;
+    }
+    const response = await fetch("/api/beta-admin/test-approval-email", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const result = await response.json().catch(() => ({}));
+    setTestingEmail(false);
+    if (result.config) setEmailConfig(result.config);
+    if (!response.ok) {
+      setError(result.error || "Test approval email failed.");
+      return;
+    }
+    setMessage(result.message || "Test email sent.");
   }
 
   async function addAccessListEntry(event: FormEvent<HTMLFormElement>) {
@@ -258,6 +307,38 @@ export default function BetaAdminPage() {
           <UserSection title="Approved users" users={grouped.approved} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
           <UserSection title="Rejected / revoked users" users={grouped.restricted} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
 
+          <section className="card">
+            <div className="sectionHeader">
+              <div>
+                <p className="eyebrow">Email diagnostics</p>
+                <h2>Approval email</h2>
+                <p className="small muted">Access approval still works even if email fails, but testers will not be notified automatically.</p>
+              </div>
+              <span className={emailConfig?.configured ? "badge badgeBlue" : "badge"}>{emailConfig?.configured ? "Configured" : "Not configured"}</span>
+            </div>
+            {emailConfig ? (
+              <div className="subcard">
+                {emailConfig.missing.length > 0 ? (
+                  <div>
+                    <p className="small muted">Missing variables:</p>
+                    <ul>
+                      {emailConfig.missing.map((name) => <li key={name}>{name} missing</li>)}
+                    </ul>
+                  </div>
+                ) : <p className="small muted">All required approval email variables are present.</p>}
+                <p className="small muted">Sender: {emailConfig.fromAddress || "Not configured"}</p>
+                <p className="small muted">Login link: {emailConfig.siteUrlPreview || "NEXT_PUBLIC_SITE_URL missing"}</p>
+                {emailConfig.hasFromAddress && !emailConfig.missing.includes("BETA_APPROVAL_EMAIL_FROM") ? null : emailConfig.hasFromAddress ? (
+                  <p className="small muted">ADMIN_ALERT_EMAIL_FROM is available as a fallback, but BETA_APPROVAL_EMAIL_FROM is recommended.</p>
+                ) : null}
+              </div>
+            ) : <div className="emptyState">Email configuration status could not be loaded.</div>}
+            <div className="btns">
+              <button type="button" className="secondary" onClick={sendTestApprovalEmail} disabled={saving || testingEmail}>
+                {testingEmail ? "Sending..." : "Send test email to me"}
+              </button>
+            </div>
+          </section>
 
           <section className="card">
             <div className="sectionHeader">
