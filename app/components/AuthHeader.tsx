@@ -208,20 +208,36 @@ export default function AuthHeader() {
               </button>
               {menuOpen && (
                 <div className="globalMenu" id={menuId} role="menu" aria-label="Global menu">
-                  <Link className="mobileMenuItem" role="menuitem" href="/dashboard" onClick={() => closeMenu()}>Dashboard</Link>
-                  <Link className="mobileMenuItem" role="menuitem" href="/stats" onClick={() => closeMenu()}>Performance</Link>
-                  <Link role="menuitem" href="/log-competition" onClick={() => closeMenu()}>Log competition</Link>
-                  <Link role="menuitem" href="/log-training" onClick={() => closeMenu()}>Log training</Link>
-                  <Link role="menuitem" href="/profile" onClick={() => closeMenu()}>Shooter profile</Link>
-                  <Link role="menuitem" href="/equipment" onClick={() => closeMenu()}>Equipment</Link>
-                  <Link role="menuitem" href="/settings" onClick={() => closeMenu()}>Settings</Link>
-                  <button role="menuitem" type="button" onClick={() => { closeMenu({ restoreFocus: true }); openOnboardingHelp(); }}>Help / Getting started</button>
-                  <button role="menuitem" type="button" onClick={() => { closeMenu({ restoreFocus: true }); exportMyData(); }} disabled={exporting}>{exporting ? "Exporting..." : "Export my data"}</button>
-                  {feedbackHref && <Link role="menuitem" href={feedbackHref} onClick={() => closeMenu()}>Send feedback</Link>}
-                  {showBetaAdmin && <Link role="menuitem" href="/beta/admin" onClick={() => closeMenu()}>Beta approvals</Link>}
-                  {showBetaAdmin && <Link role="menuitem" href="/admin/analytics" onClick={() => closeMenu()}>Analytics</Link>}
-                  {showBetaAdmin && <Link role="menuitem" href="/admin/leirdue-health" onClick={() => closeMenu()}>Leirdue health</Link>}
-                  <button role="menuitem" type="button" className="danger" onClick={logout}>Sign out</button>
+                  <div className="globalMenuSection" role="group" aria-label="Main navigation">
+                    <Link className="mobileMenuItem" role="menuitem" href="/dashboard" onClick={() => closeMenu()}>Dashboard</Link>
+                    <Link className="mobileMenuItem" role="menuitem" href="/stats" onClick={() => closeMenu()}>Performance</Link>
+                    <Link role="menuitem" href="/log-competition" onClick={() => closeMenu()}>Log competition</Link>
+                    <Link role="menuitem" href="/log-training" onClick={() => closeMenu()}>Log training</Link>
+                  </div>
+                  <div className="globalMenuSection" role="group" aria-label="Shooter">
+                    <div className="globalMenuSectionLabel">Shooter</div>
+                    <Link role="menuitem" href="/profile" onClick={() => closeMenu()}>Shooter profile</Link>
+                    <Link role="menuitem" href="/equipment" onClick={() => closeMenu()}>Equipment</Link>
+                    <Link role="menuitem" href="/settings" onClick={() => closeMenu()}>Settings</Link>
+                    <button role="menuitem" type="button" onClick={() => { closeMenu({ restoreFocus: true }); exportMyData(); }} disabled={exporting}>{exporting ? "Exporting..." : "Export my data"}</button>
+                  </div>
+                  <div className="globalMenuSection" role="group" aria-label="Support">
+                    <div className="globalMenuSectionLabel">Support</div>
+                    <button role="menuitem" type="button" onClick={() => { closeMenu({ restoreFocus: true }); openOnboardingHelp(); }}>Help / Getting started</button>
+                    {feedbackHref && <Link role="menuitem" href={feedbackHref} onClick={() => closeMenu()}>Send feedback</Link>}
+                    <Link role="menuitem" href="/fitasc" onClick={() => closeMenu()}>FITASC schemes</Link>
+                  </div>
+                  {showBetaAdmin && (
+                    <div className="globalMenuSection globalMenuAdminSection" role="group" aria-label="Admin tools">
+                      <div className="globalMenuSectionLabel">Admin tools</div>
+                      <Link role="menuitem" href="/beta/admin" onClick={() => closeMenu()}>Beta approvals</Link>
+                      <Link role="menuitem" href="/admin/analytics" onClick={() => closeMenu()}>Analytics</Link>
+                      <Link role="menuitem" href="/admin/leirdue-health" onClick={() => closeMenu()}>Leirdue health</Link>
+                    </div>
+                  )}
+                  <div className="globalMenuSection" role="group" aria-label="Account">
+                    <button role="menuitem" type="button" className="danger" onClick={logout}>Sign out</button>
+                  </div>
                 </div>
               )}
               {exportError && <p className="globalMenuStatus small dangerText" role="alert">{exportError}</p>}

@@ -8334,8 +8334,8 @@ select {
   right: 0;
   z-index: 40;
   display: grid;
-  gap: 6px;
-  min-width: min(250px, calc(100vw - 24px));
+  gap: 10px;
+  min-width: min(270px, calc(100vw - 24px));
   max-height: calc(100vh - 88px);
   max-height: min(420px, calc(100dvh - 88px));
   overflow-y: auto;
@@ -8347,6 +8347,38 @@ select {
   border-radius: 16px;
   background: var(--surface-primary);
   box-shadow: var(--shadow-raised);
+}
+
+.globalMenuSection {
+  display: grid;
+  gap: 6px;
+}
+
+.globalMenuSection + .globalMenuSection {
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.globalMenuSectionLabel {
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.globalMenuAdminSection {
+  margin-inline: -2px;
+  padding: 10px 8px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--surface-secondary);
+}
+
+.globalMenuAdminSection + .globalMenuSection {
+  border-top: 0;
+  padding-top: 0;
 }
 
 .globalMenu a,
