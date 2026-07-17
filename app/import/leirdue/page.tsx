@@ -851,8 +851,9 @@ export default function LeirdueImportPage() {
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [disciplines, setDisciplines] = useState<string[]>(DEFAULT_DISCIPLINES);
+  const [profileDisciplines, setProfileDisciplines] = useState<string[]>([]);
   const [shooterCountry, setShooterCountry] = useState("");
-  const disciplineChoices = useMemo(() => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, disciplines, shooterCountry), [disciplines, shooterCountry]);
+  const disciplineChoices = useMemo(() => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, profileDisciplines, shooterCountry), [profileDisciplines, shooterCountry]);
   const [candidates, setCandidates] = useState<EditableCandidate[]>([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -888,8 +889,7 @@ export default function LeirdueImportPage() {
       const profileName = shooterProfileDisplayName(data);
       if (profileName) setShooterName((current) => current || profileName);
       setShooterCountry(data?.country || "");
-      const profileDisciplines = normalizeDisciplines(data?.my_disciplines).filter((discipline) => DISCIPLINE_OPTIONS.includes(discipline));
-      if (profileDisciplines.length > 0) setDisciplines(profileDisciplines);
+      setProfileDisciplines(normalizeDisciplines(data?.my_disciplines).filter((discipline) => DISCIPLINE_OPTIONS.includes(discipline)));
     }
     loadShooterName();
   }, []);

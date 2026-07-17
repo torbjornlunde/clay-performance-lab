@@ -701,8 +701,8 @@ export default function TrainingScoreSheetPage() {
   const [hasUnsyncedLocalDraft, setHasUnsyncedLocalDraft] = useState(false);
   const [copyMessage, setCopyMessage] = useState("");
   const disciplineOptions = useMemo(
-    () => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, myDisciplines.length > 0 ? myDisciplines : [discipline], shooterCountry),
-    [discipline, myDisciplines, shooterCountry],
+    () => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, !isNew && myDisciplines.length === 0 ? [discipline] : myDisciplines, shooterCountry),
+    [discipline, isNew, myDisciplines, shooterCountry],
   );
 
   useEffect(() => {
