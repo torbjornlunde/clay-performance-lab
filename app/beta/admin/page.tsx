@@ -17,6 +17,61 @@ type AccessListForm = {
   note: string;
 };
 
+
+type ApprovalInboxItem = {
+  key: string;
+  normalizedEmail: string;
+  user: UserAccessProfile | null;
+  interest: BetaInterestSubmission | null;
+  accessEntry: BetaAccessListEntry | null;
+  fallbackDate: string;
+};
+
+function statusLabel(status: string) {
+  return status.replace(/_/g, " ");
+}
+
+function latestDate(...values: Array<string | null | undefined>) {
+  return values.filter(Boolean).sort().at(-1) || new Date(0).toISOString();
+}
+
+function buildApprovalInbox(users: UserAccessProfile[], interests: BetaInterestSubmission[], accessList: BetaAccessListEntry[]) {
+  const map = new Map<string, ApprovalInboxItem>();
+  const ensureItem = (key: string, normalizedEmail: string, fallbackDate: string) => {
+    const existing = map.get(key);
+    if (existing) return existing;
+    const item: ApprovalInboxItem = { key, normalizedEmail, user: null, interest: null, accessEntry: null, fallbackDate };
+    map.set(key, item);
+    return item;
+  };
+
+  users.forEach((user) => {
+    const normalizedEmail = normalizeAccessEmail(user.email);
+    const key = normalizedEmail ? `email:${normalizedEmail}` : `user:${user.user_id}`;
+    const item = ensureItem(key, normalizedEmail, user.created_at);
+    item.user = item.user ? [item.user, user].sort((a, b) => a.created_at.localeCompare(b.created_at))[0] : user;
+    item.fallbackDate = latestDate(item.fallbackDate, user.created_at);
+  });
+
+  interests.forEach((interest) => {
+    const normalizedEmail = normalizeAccessEmail(interest.email);
+    const key = normalizedEmail ? `email:${normalizedEmail}` : `interest:${interest.id}`;
+    const item = ensureItem(key, normalizedEmail, interest.created_at);
+    item.interest = item.interest ? [item.interest, interest].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] : interest;
+    item.fallbackDate = latestDate(item.fallbackDate, interest.created_at);
+  });
+
+  accessList.forEach((entry) => {
+    const normalizedEmail = normalizeAccessEmail(entry.email);
+    const key = normalizedEmail ? `email:${normalizedEmail}` : `access:${entry.id}`;
+    const item = ensureItem(key, normalizedEmail, entry.created_at);
+    item.accessEntry = item.accessEntry ? [item.accessEntry, entry].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] : entry;
+    item.fallbackDate = latestDate(item.fallbackDate, entry.created_at);
+  });
+
+  return Array.from(map.values()).sort((a, b) => b.fallbackDate.localeCompare(a.fallbackDate));
+}
+
 type EmailConfigStatus = {
   configured: boolean;
   hasResendApiKey: boolean;
@@ -65,6 +120,8 @@ export default function BetaAdminPage() {
   const [emailConfig, setEmailConfig] = useState<EmailConfigStatus | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const approvalInbox = useMemo(() => buildApprovalInbox(users, interestList, accessList), [users, interestList, accessList]);
 
   const grouped = useMemo(
     () => ({
@@ -177,6 +234,22 @@ export default function BetaAdminPage() {
     await loadAdminData();
   }
 
+
+  async function approveInboxItem(item: ApprovalInboxItem) {
+    if (item.interest) {
+      await runInterestAction(item.interest, "preapprove");
+      return;
+    }
+    if (item.user) await updateUserAccess(item.user, "approved", isProtectedOwnerEmail(item.user.email) ? "owner" : item.user.system_role);
+  }
+
+  async function rejectInboxItem(item: ApprovalInboxItem) {
+    if (item.interest) {
+      await runInterestAction(item.interest, "reject");
+      return;
+    }
+    if (item.user) await updateUserAccess(item.user, "rejected", "user");
+  }
 
   async function runInterestAction(entry: BetaInterestSubmission, action: "preapprove" | "resend_email" | "reject") {
     setSaving(true);
@@ -303,9 +376,7 @@ export default function BetaAdminPage() {
 
       {!loading && canManageBetaAccess(me) && (
         <>
-          <UserSection title="Pending users" users={grouped.pending} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
-          <UserSection title="Approved users" users={grouped.approved} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
-          <UserSection title="Rejected / revoked users" users={grouped.restricted} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
+          <ApprovalInboxSection items={approvalInbox} saving={saving} onApprove={approveInboxItem} onReject={rejectInboxItem} onResend={(interest) => runInterestAction(interest, "resend_email")} />
 
           <section className="card">
             <div className="sectionHeader">
@@ -340,7 +411,17 @@ export default function BetaAdminPage() {
             </div>
           </section>
 
-          <section className="card">
+          <details className="card advancedRawLists">
+            <summary>
+              <span>Advanced / raw lists</span>
+              <span className="small muted">Inspect separate source rows when troubleshooting.</span>
+            </summary>
+
+            <UserSection title="Pending users" users={grouped.pending} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
+            <UserSection title="Approved users" users={grouped.approved} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
+            <UserSection title="Rejected / revoked users" users={grouped.restricted} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
+
+            <section className="subcard">
             <div className="sectionHeader">
               <div>
                 <p className="eyebrow">Interest list</p>
@@ -395,20 +476,8 @@ export default function BetaAdminPage() {
             )}
           </section>
 
-          <section className="card">
-            <div className="sectionHeader">
-              <div>
-                <p className="eyebrow">Beta feedback</p>
-                <h2>Review tester feedback</h2>
-                <p className="small muted">Review bug reports, screenshots and tester comments on the dedicated feedback page.</p>
-              </div>
-            </div>
-            <div className="btns">
-              <Link className="button" href="/admin/feedback">Open feedback</Link>
-            </div>
-          </section>
 
-          <section className="card">
+          <section className="subcard">
             <div className="sectionHeader">
               <div>
                 <p className="eyebrow">Access list</p>
@@ -482,9 +551,137 @@ export default function BetaAdminPage() {
               </div>
             )}
           </section>
+          </details>
+
+          <section className="card">
+            <div className="sectionHeader">
+              <div>
+                <p className="eyebrow">Beta feedback</p>
+                <h2>Review tester feedback</h2>
+                <p className="small muted">Review bug reports, screenshots and tester comments on the dedicated feedback page.</p>
+              </div>
+            </div>
+            <div className="btns">
+              <Link className="button" href="/admin/feedback">Open feedback</Link>
+            </div>
+          </section>
         </>
       )}
     </main>
+  );
+}
+
+
+function ApprovalInboxSection({
+  items,
+  saving,
+  onApprove,
+  onReject,
+  onResend,
+}: {
+  items: ApprovalInboxItem[];
+  saving: boolean;
+  onApprove: (item: ApprovalInboxItem) => Promise<void>;
+  onReject: (item: ApprovalInboxItem) => Promise<void>;
+  onResend: (interest: BetaInterestSubmission) => Promise<void>;
+}) {
+  return (
+    <section className="card betaApprovalInbox">
+      <div className="sectionHeader">
+        <div>
+          <p className="eyebrow">Beta admin</p>
+          <h2>Beta approval inbox</h2>
+          <p className="small muted">One card per person or email. Approval succeeds even if email delivery fails.</p>
+        </div>
+        <span className="countPill">{items.length}</span>
+      </div>
+      {items.length === 0 ? (
+        <div className="emptyState">No beta access records yet.</div>
+      ) : (
+        <div className="approvalInboxGrid">
+          {items.map((item) => (
+            <ApprovalInboxCard key={item.key} item={item} saving={saving} onApprove={onApprove} onReject={onReject} onResend={onResend} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ApprovalInboxCard({
+  item,
+  saving,
+  onApprove,
+  onReject,
+  onResend,
+}: {
+  item: ApprovalInboxItem;
+  saving: boolean;
+  onApprove: (item: ApprovalInboxItem) => Promise<void>;
+  onReject: (item: ApprovalInboxItem) => Promise<void>;
+  onResend: (interest: BetaInterestSubmission) => Promise<void>;
+}) {
+  const { user, interest, accessEntry } = item;
+  const name = user?.full_name || interest?.name || accessEntry?.full_name;
+  const email = user?.email || interest?.email || accessEntry?.email;
+  const interestApproved = interest?.admin_status === "pre_approved" || interest?.admin_status === "approved_existing_user";
+  const approved = user?.access_status === "approved" || interestApproved || Boolean(accessEntry && !user && !interest);
+  const rejected = user?.access_status === "rejected" || user?.access_status === "revoked" || interest?.admin_status === "rejected";
+  const hasBoth = Boolean(user && interest);
+  const canApprove = !approved && !rejected && Boolean(user || interest);
+  const canReject = !approved && !rejected && Boolean(user || interest);
+  const emailFailed = Boolean(interest?.approval_email_error);
+  const emailSent = Boolean(interest?.approval_email_sent_at);
+
+  return (
+    <article className="approvalInboxCard">
+      <div className="approvalInboxCardHeader">
+        <div>
+          <h3>{displayName(name)}</h3>
+          <p className="small muted breakText">{email || "No email on this record"}</p>
+        </div>
+        <div className="approvalBadgeList" aria-label="Beta approval statuses">
+          {user ? <span className="badge badgeBlue">Account created</span> : null}
+          {interest ? <span className="badge badgeBlue">Interest submitted</span> : null}
+          {accessEntry ? <span className="badge badgeGreen">Pre-approved</span> : null}
+          {approved ? <span className="badge badgeGreen">Approved</span> : null}
+          {!approved && !rejected ? <span className="badge">Pending</span> : null}
+          {rejected ? <span className="badge">Rejected</span> : null}
+          {emailFailed ? <span className="badge">Email failed</span> : null}
+          {emailSent && !emailFailed ? <span className="badge badgeGreen">Email sent</span> : null}
+        </div>
+      </div>
+
+      <p className="small muted">
+        {hasBoth
+          ? "This shooter has both created an account and submitted beta interest."
+          : user
+            ? "This shooter has already created an account."
+            : interest
+              ? "This shooter has submitted beta interest but has not created an account yet."
+              : "This shooter is pre-approved but has not created an account yet."}
+      </p>
+
+      <dl className="approvalInboxDetails">
+        {interest?.country ? <div><dt>Country</dt><dd>{interest.country}</dd></div> : null}
+        {interest?.main_discipline ? <div><dt>Main discipline</dt><dd>{interest.main_discipline}</dd></div> : null}
+        {interest?.instagram_handle ? <div><dt>Instagram</dt><dd className="breakText">{interest.instagram_handle}</dd></div> : null}
+        {user ? <div><dt>Account status</dt><dd>{statusLabel(user.access_status)} · {user.system_role}</dd></div> : null}
+        {interest ? <div><dt>Interest status</dt><dd>{statusLabel(interest.admin_status)}</dd></div> : null}
+        {accessEntry ? <div><dt>Preapproval status</dt><dd>Approved · {accessEntry.system_role_to_grant}</dd></div> : null}
+        {interest ? <div><dt>Approval email</dt><dd>{interest.approval_email_error ? `Needs attention: ${interest.approval_email_error}` : interest.approval_email_sent_at ? `Sent ${formatDate(interest.approval_email_sent_at)}` : "Not sent"}</dd></div> : null}
+        <div><dt>Created / submitted</dt><dd>{formatDate(latestDate(user?.created_at, interest?.created_at, accessEntry?.created_at))}</dd></div>
+      </dl>
+
+      {interest?.level_comment ? <p className="approvalNote breakText">{interest.level_comment}</p> : accessEntry?.note ? <p className="approvalNote breakText">{accessEntry.note}</p> : null}
+
+      <div className="approvalInboxActions">
+        {canApprove ? <button type="button" disabled={saving} onClick={() => onApprove(item)}>Approve beta access</button> : null}
+        {approved ? <button type="button" disabled className="secondary">Approved</button> : null}
+        {interest && approved ? <button type="button" className="secondary" disabled={saving} onClick={() => onResend(interest)}>Resend approval email</button> : null}
+        {canReject ? <button type="button" className="secondary" disabled={saving} onClick={() => onReject(item)}>Reject / Not now</button> : null}
+      </div>
+    </article>
   );
 }
 
