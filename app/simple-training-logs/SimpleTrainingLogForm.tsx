@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
@@ -8,6 +8,7 @@ import { EquipmentUsedSelector } from "@/app/components/EquipmentUsedSelector";
 import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { supabase } from "@/lib/supabase/client";
 import { userFacingDeleteError, userFacingSaveError } from "@/lib/userFacingErrors";
+import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 
 export type SimpleTrainingLogFormValues = {
   id?: string;
@@ -55,6 +56,25 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [myDisciplines, setMyDisciplines] = useState<string[]>([]);
+  const [shooterCountry, setShooterCountry] = useState("");
+
+  const disciplineOptions = useMemo(() => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, myDisciplines, shooterCountry), [myDisciplines, shooterCountry]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadProfileDisciplines() {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!active || !userData.user) return;
+      const { data } = await supabase.from("shooter_profiles").select("country,my_disciplines").eq("user_id", userData.user.id).maybeSingle<Pick<ShooterProfile, "country" | "my_disciplines">>();
+      if (active) {
+        setMyDisciplines(normalizeDisciplines(data?.my_disciplines));
+        setShooterCountry(data?.country || "");
+      }
+    }
+    loadProfileDisciplines();
+    return () => { active = false; };
+  }, []);
 
   const previewPercentage = useMemo(() => {
     if (!hits || !targetsFired) return null;
@@ -235,7 +255,7 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
             <label htmlFor="simple-training-discipline">Discipline</label>
             <select id="simple-training-discipline" value={discipline} onChange={(event) => setDiscipline(event.target.value)}>
               <option value="">Not specified</option>
-              {DISCIPLINE_OPTIONS.map((option) => (
+              {disciplineOptions.map((option) => (
                 <option key={option} value={option}>{option}</option>
               ))}
             </select>

@@ -124,8 +124,38 @@ export function isShooterProfileComplete(profile: ShooterProfileBasics) {
   );
 }
 
-export function prioritizedDisciplineOptions(options: string[], preferredDisciplines: string[]) {
-  const preferred = preferredDisciplines.filter((discipline) => options.includes(discipline));
-  const others = options.filter((discipline) => !preferred.includes(discipline));
-  return [...preferred, ...others];
+const INTERNATIONAL_DISCIPLINE_ORDER = [
+  "Compak Sporting",
+  "FITASC Sporting",
+  "Sporting",
+  "English Sporting",
+  "Skeet",
+  "Trap",
+  "Sporttrap",
+  "Leirduesti",
+  "Kompakt leirduesti",
+  "Jegertrap / Nordisk trap",
+  "Other",
+];
+
+function orderDisciplinesForCountry(options: string[], country?: string | null) {
+  const countryCode = normalizeCountryCode(country);
+  if (!countryCode || countryCode === "NO") return options;
+
+  const order = new Map(INTERNATIONAL_DISCIPLINE_ORDER.map((discipline, index) => [discipline, index]));
+  return [...options].sort((a, b) => {
+    if (a === "Other") return 1;
+    if (b === "Other") return -1;
+    const aOrder = order.get(a) ?? Number.MAX_SAFE_INTEGER;
+    const bOrder = order.get(b) ?? Number.MAX_SAFE_INTEGER;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return options.indexOf(a) - options.indexOf(b);
+  });
+}
+
+export function prioritizedDisciplineOptions(options: string[], preferredDisciplines: string[], country?: string | null) {
+  const countryOrderedOptions = orderDisciplinesForCountry(options, country);
+  const preferred = preferredDisciplines.filter((discipline) => discipline !== "Other" && countryOrderedOptions.includes(discipline));
+  const others = countryOrderedOptions.filter((discipline) => !preferred.includes(discipline) && discipline !== "Other");
+  return countryOrderedOptions.includes("Other") ? [...preferred, ...others, "Other"] : [...preferred, ...others];
 }

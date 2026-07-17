@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { generateCourseOrder, serializeQuickScoreNotes, type QuickScoreCourse } from "@/lib/quick-score/metadata";
@@ -8,8 +8,9 @@ import { EquipmentUsedSelector } from "@/app/components/EquipmentUsedSelector";
 import { supabase } from "@/lib/supabase/client";
 import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { userFacingSaveError } from "@/lib/userFacingErrors";
+import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
+import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 
-const disciplines = ["Leirduesti", "Compak Sporting", "FITASC Sporting", "English Sporting", "Other"];
 
 type EntryMode = "hits" | "misses";
 
@@ -36,6 +37,24 @@ export default function QuickCompetitionScorePage() {
   const [saving, setSaving] = useState(false);
   const [equipmentSelection, setEquipmentSelection] = useState<EquipmentSelection>({ weaponId: "", ammunitionId: "", includeChokes: true });
   const [equipmentSnapshot, setEquipmentSnapshot] = useState<any>(null);
+  const [myDisciplines, setMyDisciplines] = useState<string[]>([]);
+  const [shooterCountry, setShooterCountry] = useState("");
+  const disciplineOptions = useMemo(() => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, myDisciplines, shooterCountry), [myDisciplines, shooterCountry]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadProfileDisciplines() {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!active || !userData.user) return;
+      const { data } = await supabase.from("shooter_profiles").select("country,my_disciplines").eq("user_id", userData.user.id).maybeSingle<Pick<ShooterProfile, "country" | "my_disciplines">>();
+      if (active) {
+        setMyDisciplines(normalizeDisciplines(data?.my_disciplines));
+        setShooterCountry(data?.country || "");
+      }
+    }
+    loadProfileDisciplines();
+    return () => { active = false; };
+  }, []);
 
   const targetTotal = Math.max(1, Math.floor(numberValue(totalTargets, 100)));
   const postCount = Math.max(1, Math.floor(numberValue(courseCount, 1)));
@@ -112,7 +131,7 @@ export default function QuickCompetitionScorePage() {
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="NM Leirduesti, Kahn Arms Cup..." required />
         <div className="row">
           <div><label>Date</label><input value={competitionDate} onChange={(e) => setCompetitionDate(e.target.value)} type="date" required /></div>
-          <div><label>Discipline</label><select value={discipline} onChange={(e) => setDiscipline(e.target.value)}>{disciplines.map((item) => <option key={item}>{item}</option>)}</select></div>
+          <div><label>Discipline</label><select value={discipline} onChange={(e) => setDiscipline(e.target.value)}>{disciplineOptions.map((item) => <option key={item}>{item}</option>)}</select></div>
         </div>
         <div className="row">
           <div><label>Total targets</label><input value={totalTargets} onChange={(e) => setTotalTargets(e.target.value)} type="number" min="1" inputMode="numeric" required /></div>

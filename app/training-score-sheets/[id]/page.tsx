@@ -33,6 +33,7 @@ import {
 } from "@/lib/trainingScoreSheets/safety";
 import { TRAINING_SCORE_SHEET_QUICK_START_STEPS } from "@/lib/trainingScoreSheets/feedback";
 import { userFacingDeleteError, userFacingLoadError, userFacingSaveError } from "@/lib/userFacingErrors";
+import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 
 type ShooterDraft = {
   localId: string;
@@ -652,6 +653,8 @@ export default function TrainingScoreSheetPage() {
   const [sessionDate, setSessionDate] = useState(todayValue());
   const [location, setLocation] = useState("");
   const [discipline, setDiscipline] = useState(LEIRDUESTI);
+  const [myDisciplines, setMyDisciplines] = useState<string[]>([]);
+  const [shooterCountry, setShooterCountry] = useState("");
   const [sessionType, setSessionType] = useState("training");
   const [numberOfPosts, setNumberOfPosts] = useState(5);
   const [targetsPerPost, setTargetsPerPost] = useState(10);
@@ -697,6 +700,26 @@ export default function TrainingScoreSheetPage() {
   const [localDraftLoaded, setLocalDraftLoaded] = useState(false);
   const [hasUnsyncedLocalDraft, setHasUnsyncedLocalDraft] = useState(false);
   const [copyMessage, setCopyMessage] = useState("");
+  const disciplineOptions = useMemo(
+    () => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, myDisciplines.length > 0 ? myDisciplines : [discipline], shooterCountry),
+    [discipline, myDisciplines, shooterCountry],
+  );
+
+  useEffect(() => {
+    let active = true;
+    async function loadProfileDisciplines() {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!active || !userData.user) return;
+      const { data } = await supabase.from("shooter_profiles").select("country,my_disciplines").eq("user_id", userData.user.id).maybeSingle<Pick<ShooterProfile, "country" | "my_disciplines">>();
+      if (active) {
+        setMyDisciplines(normalizeDisciplines(data?.my_disciplines));
+        setShooterCountry(data?.country || "");
+      }
+    }
+    loadProfileDisciplines();
+    return () => { active = false; };
+  }, []);
+
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
@@ -2767,13 +2790,7 @@ export default function TrainingScoreSheetPage() {
                 value={discipline}
                 onChange={(event) => updateDiscipline(event.target.value)}
               >
-                {[
-                  LEIRDUESTI,
-                  "Sporting",
-                  ...DISCIPLINE_OPTIONS.filter(
-                    (option) => option !== LEIRDUESTI && option !== "Sporting",
-                  ),
-                ].map((option) => (
+                {disciplineOptions.map((option) => (
                   <option key={option}>{option}</option>
                 ))}
               </select>

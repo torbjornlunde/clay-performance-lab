@@ -2,17 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { COMPAK_SPORTING, DISCIPLINE_OPTIONS, JEGERTRAP_NORDISK_TRAP, KOMPAKT_LEIRDUESTI, LEIRDUESTI, SKEET, TRAP } from "@/lib/disciplines";
+import { COMPAK_SPORTING, DISCIPLINE_OPTIONS, KOMPAKT_LEIRDUESTI, LEIRDUESTI } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
 import { recordAnalyticsEvent } from "@/lib/analytics";
-import { shooterProfileDisplayName, type ShooterProfile } from "@/lib/profile";
+import { normalizeDisciplines, prioritizedDisciplineOptions, shooterProfileDisplayName, type ShooterProfile } from "@/lib/profile";
 import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
 import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 import { ContextualHelpCard } from "@/app/components/OnboardingHelp";
 
 const DEFAULT_DISCIPLINES = [COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI, "Sporting"];
-const OPTIONAL_DISCIPLINES = [JEGERTRAP_NORDISK_TRAP, TRAP, SKEET, "Other"];
-const DISCIPLINE_CHOICES = [...DEFAULT_DISCIPLINES, ...OPTIONAL_DISCIPLINES];
 const BATCH_TIMEOUT_MS = 20_000;
 const AUTO_CONTINUATION_DELAY_MS = 750;
 const MAX_AUTO_CONTINUATION_FAILURES = 2;
@@ -853,6 +851,8 @@ export default function LeirdueImportPage() {
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [disciplines, setDisciplines] = useState<string[]>(DEFAULT_DISCIPLINES);
+  const [shooterCountry, setShooterCountry] = useState("");
+  const disciplineChoices = useMemo(() => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, disciplines, shooterCountry), [disciplines, shooterCountry]);
   const [candidates, setCandidates] = useState<EditableCandidate[]>([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -882,11 +882,14 @@ export default function LeirdueImportPage() {
       if (!userData.user) return;
       const { data } = await supabase
         .from("shooter_profiles")
-        .select("shooter_name,first_name,last_name")
+        .select("shooter_name,first_name,last_name,country,my_disciplines")
         .eq("user_id", userData.user.id)
-        .maybeSingle<Pick<ShooterProfile, "shooter_name" | "first_name" | "last_name">>();
+        .maybeSingle<Pick<ShooterProfile, "shooter_name" | "first_name" | "last_name" | "country" | "my_disciplines">>();
       const profileName = shooterProfileDisplayName(data);
       if (profileName) setShooterName((current) => current || profileName);
+      setShooterCountry(data?.country || "");
+      const profileDisciplines = normalizeDisciplines(data?.my_disciplines).filter((discipline) => DISCIPLINE_OPTIONS.includes(discipline));
+      if (profileDisciplines.length > 0) setDisciplines(profileDisciplines);
     }
     loadShooterName();
   }, []);
@@ -1351,9 +1354,8 @@ export default function LeirdueImportPage() {
           <fieldset className="checkboxGroup">
             <legend>Disciplines</legend>
             <p className="small muted">Select every relevant discipline to search at once.</p>
-            {/* TODO: Later, discipline checkboxes can be preselected from a Shooter profile page where the user chooses which disciplines they shoot. */}
             <div className="checkboxGrid">
-              {DISCIPLINE_CHOICES.map((discipline) => (
+              {disciplineChoices.map((discipline) => (
                 <label key={discipline} className="checkboxLabel">
                   <input type="checkbox" checked={disciplines.includes(discipline)} onChange={() => toggleDiscipline(discipline)} />
                   <span>{discipline === "Other" ? "Other / unknown" : discipline}</span>
