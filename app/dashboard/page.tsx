@@ -682,7 +682,7 @@ export default function DashboardPage() {
         <div className="dashboardPrimaryActions" aria-label="Dashboard product areas">
           <Link href="/log-competition" className="dashboardActionCard secondaryAction">
             <span>Log competition</span>
-            <small>Record competition results, detailed logs, or import from Leirdue.net.</small>
+            <small>Record competition results manually, from scorecards, or from supported result services.</small>
           </Link>
           <Link href="/log-training" className="dashboardActionCard secondaryAction">
             <span>Log training</span>
@@ -695,10 +695,6 @@ export default function DashboardPage() {
           <Link href="/coach-report" className="dashboardActionCard secondaryAction">
             <span>Coach report</span>
             <small>Select sessions from a date range and copy a private coach-ready summary.</small>
-          </Link>
-          <Link href="/fitasc" className="dashboardActionCard secondaryAction">
-            <span>FITASC schemes</span>
-            <small>Open FITASC/Compak scheme references.</small>
           </Link>
         </div>
       </div>
@@ -717,7 +713,7 @@ export default function DashboardPage() {
           <p>Loading...</p>
         ) : results.length === 0 ? (
           <div className="emptyState compactEmptyState">
-            <p>Import from Leirdue.net or add a result to start tracking performance.</p>
+            <p>Add or import a competition result to start tracking performance.</p>
             <div className="btns compactEmptyActions">
               <Link href="/log-competition" className="button smallButton">Log competition</Link>
             </div>

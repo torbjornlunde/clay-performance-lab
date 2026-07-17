@@ -69,7 +69,7 @@ export function OnboardingHelpPanel() {
       <p className="eyebrow">Getting started</p>
       <h2 id="getting-started-heading">Start with the workflow you need today</h2>
       <ul className="helpList">
-        <li>Import competition results from Leirdue.net.</li>
+        <li>Import competition results from supported result services.</li>
         <li>Add a result manually when you only need the basics.</li>
         <li>Use scorecard/photo import to review scores from a card.</li>
         <li>Use Training Score Sheet when one person scores several shooters.</li>
