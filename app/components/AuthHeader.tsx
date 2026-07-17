@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { canManageBetaAccess, type UserAccessProfile } from "@/lib/access";
 import { betaFeedbackHref } from "@/lib/betaFeedback";
@@ -47,6 +47,7 @@ function ClayTargetIcon() {
 
 export default function AuthHeader() {
   const router = useRouter();
+  const pathname = usePathname();
   const menuId = useId();
   const menuWrapRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -77,7 +78,7 @@ export default function AuthHeader() {
       } else {
         setShowBetaAdmin(false);
       }
-      setFeedbackHref(betaFeedbackHref("General beta"));
+      setFeedbackHref(betaFeedbackHref("General beta", typeof window === "undefined" ? pathname : `${window.location.pathname}${window.location.search}`));
       setReady(true);
     }
 
@@ -91,7 +92,7 @@ export default function AuthHeader() {
       active = false;
       listener.subscription.unsubscribe();
     };
-  }, []);
+  }, [pathname]);
 
   function getMenuItems() {
     return Array.from(
@@ -231,6 +232,7 @@ export default function AuthHeader() {
                     <div className="globalMenuSection globalMenuAdminSection" role="group" aria-label="Admin tools">
                       <div className="globalMenuSectionLabel">Admin tools</div>
                       <Link role="menuitem" href="/beta/admin" onClick={() => closeMenu()}>Beta approvals</Link>
+                      <Link role="menuitem" href="/admin/feedback" onClick={() => closeMenu()}>Beta feedback</Link>
                       <Link role="menuitem" href="/admin/analytics" onClick={() => closeMenu()}>Analytics</Link>
                       <Link role="menuitem" href="/admin/leirdue-health" onClick={() => closeMenu()}>Leirdue health</Link>
                     </div>

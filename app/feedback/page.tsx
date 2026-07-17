@@ -11,6 +11,7 @@ import {
   BETA_FEEDBACK_SEVERITIES,
   BETA_FEEDBACK_TYPES,
   betaFeedbackContext,
+  safeInternalFeedbackPath,
   type BetaFeedbackSeverity,
   type BetaFeedbackType,
 } from "@/lib/betaFeedback";
@@ -51,13 +52,13 @@ export default function FeedbackPage() {
   const [success, setSuccess] = useState("");
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
-  const pagePath = useMemo(
-    () =>
-      typeof window === "undefined"
-        ? null
-        : window.location.pathname + window.location.search,
-    [],
-  );
+  const pagePath = useMemo(() => {
+    const sourcePath = safeInternalFeedbackPath(searchParams.get("from"));
+    if (sourcePath) return sourcePath;
+    return typeof window === "undefined"
+      ? null
+      : window.location.pathname + window.location.search;
+  }, [searchParams]);
 
   useEffect(() => {
     let active = true;

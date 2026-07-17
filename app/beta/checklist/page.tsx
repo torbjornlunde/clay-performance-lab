@@ -18,7 +18,7 @@ export default function BetaChecklistPage() {
   const [feedbackHref, setFeedbackHref] = useState("");
 
   useEffect(() => {
-    setFeedbackHref(betaFeedbackHref("Beta test checklist"));
+    setFeedbackHref(betaFeedbackHref("Beta test checklist", window.location.pathname + window.location.search));
   }, []);
 
   return (
