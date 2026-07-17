@@ -236,11 +236,20 @@ export default function BetaAdminPage() {
 
 
   async function approveInboxItem(item: ApprovalInboxItem) {
-    if (item.interest) {
-      await runInterestAction(item.interest, "preapprove");
-      return;
+    const userRoleToPreserve = item.user ? (isProtectedOwnerEmail(item.user.email) ? "owner" : item.user.system_role) : undefined;
+    const interestAlreadyHandled = item.interest?.admin_status === "pre_approved" || item.interest?.admin_status === "approved_existing_user";
+
+    if (item.user && item.user.access_status !== "approved") {
+      await updateUserAccess(item.user, "approved", userRoleToPreserve);
     }
-    if (item.user) await updateUserAccess(item.user, "approved", isProtectedOwnerEmail(item.user.email) ? "owner" : item.user.system_role);
+
+    if (item.interest && !interestAlreadyHandled) {
+      await runInterestAction(item.interest, "preapprove");
+    }
+
+    if (item.user && item.interest && userRoleToPreserve && item.user.system_role !== "user") {
+      await updateUserAccess(item.user, "approved", userRoleToPreserve);
+    }
   }
 
   async function rejectInboxItem(item: ApprovalInboxItem) {
@@ -625,10 +634,12 @@ function ApprovalInboxCard({
   const name = user?.full_name || interest?.name || accessEntry?.full_name;
   const email = user?.email || interest?.email || accessEntry?.email;
   const interestApproved = interest?.admin_status === "pre_approved" || interest?.admin_status === "approved_existing_user";
-  const approved = user?.access_status === "approved" || interestApproved || Boolean(accessEntry && !user && !interest);
+  const accountApproved = user ? user.access_status === "approved" : true;
+  const approved = user ? user.access_status === "approved" : interestApproved || Boolean(accessEntry && !interest);
+  const fullyHandled = accountApproved && (!interest || interestApproved || Boolean(accessEntry));
   const rejected = user?.access_status === "rejected" || user?.access_status === "revoked" || interest?.admin_status === "rejected";
   const hasBoth = Boolean(user && interest);
-  const canApprove = !approved && !rejected && Boolean(user || interest);
+  const canApprove = !fullyHandled && !rejected && Boolean(user || interest);
   const canReject = !approved && !rejected && Boolean(user || interest);
   const emailFailed = Boolean(interest?.approval_email_error);
   const emailSent = Boolean(interest?.approval_email_sent_at);
@@ -645,7 +656,7 @@ function ApprovalInboxCard({
           {interest ? <span className="badge badgeBlue">Interest submitted</span> : null}
           {accessEntry ? <span className="badge badgeGreen">Pre-approved</span> : null}
           {approved ? <span className="badge badgeGreen">Approved</span> : null}
-          {!approved && !rejected ? <span className="badge">Pending</span> : null}
+          {!fullyHandled && !rejected ? <span className="badge">Pending</span> : null}
           {rejected ? <span className="badge">Rejected</span> : null}
           {emailFailed ? <span className="badge">Email failed</span> : null}
           {emailSent && !emailFailed ? <span className="badge badgeGreen">Email sent</span> : null}
@@ -677,8 +688,8 @@ function ApprovalInboxCard({
 
       <div className="approvalInboxActions">
         {canApprove ? <button type="button" disabled={saving} onClick={() => onApprove(item)}>Approve beta access</button> : null}
-        {approved ? <button type="button" disabled className="secondary">Approved</button> : null}
-        {interest && approved ? <button type="button" className="secondary" disabled={saving} onClick={() => onResend(interest)}>Resend approval email</button> : null}
+        {fullyHandled ? <button type="button" disabled className="secondary">Approved</button> : null}
+        {interest && interestApproved ? <button type="button" className="secondary" disabled={saving} onClick={() => onResend(interest)}>Resend approval email</button> : null}
         {canReject ? <button type="button" className="secondary" disabled={saving} onClick={() => onReject(item)}>Reject / Not now</button> : null}
       </div>
     </article>
