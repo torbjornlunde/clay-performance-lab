@@ -1,7 +1,7 @@
 import type { BetaFeedback, BetaFeedbackAttachment } from "@/lib/access";
 import { supabase } from "@/lib/supabase/client";
 
-export const FEEDBACK_COLUMNS = "id,user_id,email,feedback_type,severity,message,page_path,user_agent,app_context,admin_status,admin_note,created_at,updated_at";
+export const FEEDBACK_COLUMNS = "id,user_id,email,feedback_type,severity,message,page_path,user_agent,app_context,admin_status,admin_note,archived_at,archived_by,created_at,updated_at";
 export const FEEDBACK_ATTACHMENT_COLUMNS = "id,feedback_id,user_id,storage_bucket,storage_path,original_filename,content_type,size_bytes,created_at";
 
 export function sortByCreatedAtDesc<T extends { created_at: string }>(items: T[]) {

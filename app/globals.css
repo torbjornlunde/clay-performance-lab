@@ -9044,3 +9044,139 @@ select {
     width: 100%;
   }
 }
+
+.feedbackInboxHeader {
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.feedbackCounts,
+.feedbackMetaChips,
+.feedbackActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.feedbackCounts {
+  justify-content: flex-end;
+}
+
+.feedbackCardList {
+  display: grid;
+  gap: 14px;
+}
+
+.feedbackCardListArchived {
+  margin-top: 14px;
+}
+
+.feedbackCard {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  min-width: 0;
+}
+
+.feedbackCardTopRow,
+.archivedFeedbackDetails summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.feedbackCardTopRow time {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.feedbackInfoGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.feedbackLabel {
+  margin: 0 0 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.feedbackValue,
+.feedbackMessage {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.feedbackMessageBlock {
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 12px;
+}
+
+.feedbackMessage {
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.feedbackAttachmentList {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.feedbackAttachmentItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.feedbackAttachmentMeta {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.archivedFeedbackDetails summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 900;
+  list-style-position: outside;
+}
+
+@media (max-width: 640px) {
+  .feedbackInboxHeader,
+  .feedbackCardTopRow,
+  .feedbackAttachmentItem {
+    display: grid;
+  }
+
+  .feedbackCounts,
+  .feedbackActions,
+  .feedbackActions button,
+  .feedbackActions .button {
+    width: 100%;
+  }
+
+  .feedbackInfoGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .feedbackCardTopRow time {
+    text-align: left;
+  }
+}
