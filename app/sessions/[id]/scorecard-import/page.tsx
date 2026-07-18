@@ -293,13 +293,14 @@ export default function Page() {
         profile?.reviewLabel || "Post",
       )
     : null;
-  const postCount = safeSetupResult?.ok
+  const detectedReviewPostCount = grid.length ? Math.max(...grid.map((cell) => cell.postNumber)) : 0;
+  const postCount = detectedReviewPostCount || (safeSetupResult?.ok
     ? safeSetupResult.setup.postCount
-    : Number(session?.post_count || session?.course_count);
+    : Number(session?.post_count || session?.course_count || 0));
   const tpp = safeSetupResult?.ok
     ? safeSetupResult.setup.targetsPerPost
     : Number(session?.targets_per_post || profile?.defaultTargetsPerSeries);
-  const setupOk = Boolean(safeSetupResult?.ok);
+  const setupOk = Boolean(safeSetupResult?.ok) || Boolean(session?.total_targets);
   useEffect(() => {
     if (!grid.length || !postCount) return;
     const normalized = normalizeReviewProgress({ grid, postCount, currentReviewPost: currentPost, reviewedPostNumbers: reviewedPosts, postStatuses: postStatusMap() });
@@ -659,6 +660,27 @@ export default function Page() {
     const safe = Math.max(1, Math.min(postCount || 1, post));
     setCurrentPost(safe);
     persistReview(grid, { currentReviewPost: safe, reviewedPostNumbers: reviewedPosts });
+  }
+
+
+  function editPostCount(nextPostCount: number) {
+    const safeCount = Math.max(1, Math.min(100, Math.trunc(nextPostCount || 1)));
+    const nextGrid = grid.filter((cell) => cell.postNumber <= safeCount);
+    const maxExistingPost = nextGrid.length ? Math.max(...nextGrid.map((cell) => cell.postNumber)) : 0;
+    for (let post = maxExistingPost + 1; post <= safeCount; post++) {
+      nextGrid.push({ postNumber: post, targetNumber: 1, result: "unknown", cellState: "active_blank", rawMark: null, observedMarkCategory: "blank", confidence: "low", warning: "Added during review setup correction.", reviewed: false });
+    }
+    persistReview(nextGrid.sort((a, b) => a.postNumber - b.postNumber || a.targetNumber - b.targetNumber), { currentReviewPost: Math.min(currentPost, safeCount), reviewedPostNumbers: reviewedPosts.filter((post) => post <= safeCount) });
+  }
+  function editExpectedTargets(postNumber: number, nextCount: number) {
+    const safeCount = Math.max(1, Math.min(100, Math.trunc(nextCount || 1)));
+    const removed = grid.some((cell) => cell.postNumber === postNumber && cell.targetNumber > safeCount && (cell.result === "hit" || cell.result === "miss"));
+    if (removed && !confirm(`Changing Post ${postNumber} to ${safeCount} targets will remove interpreted cells beyond that target count. Continue?`)) return;
+    const existing = grid.filter((cell) => cell.postNumber === postNumber && cell.targetNumber <= safeCount);
+    const byTarget = new Set(existing.map((cell) => cell.targetNumber));
+    const additions = Array.from({ length: safeCount }, (_, index) => index + 1).filter((targetNumber) => !byTarget.has(targetNumber)).map((targetNumber) => ({ postNumber, targetNumber, result: "unknown" as ScorecardOutcome, cellState: "active_blank" as const, rawMark: null, observedMarkCategory: "blank" as const, confidence: "low" as const, warning: "Added during review setup correction.", reviewed: false }));
+    const nextGrid = [...grid.filter((cell) => cell.postNumber !== postNumber), ...existing, ...additions].sort((a, b) => a.postNumber - b.postNumber || a.targetNumber - b.targetNumber);
+    persistReview(nextGrid, { reviewedPostNumbers: reviewedPosts.filter((post) => post !== postNumber) });
   }
 
   function currentApplyIssues() {
@@ -1120,7 +1142,14 @@ export default function Page() {
               <div className="compactSummary">
                 {Array.from({ length: postCount }, (_, pi) => { const post = pi + 1; const postCells = grid.filter((c) => c.postNumber === post); return <button type="button" className="postSummaryButton" key={`structure-${post}`} onClick={() => navigatePost(post)}>P{post}: {postCells.length}</button>; })}
               </div>
-              <div className="btns"><Link className="button secondary smallButton" href={`/sessions/${id}/targets`}>Edit setup</Link></div>
+              <div className="scorecardSetupEditor">
+                <label className="small">Posts
+                  <input type="number" min={1} max={100} value={postCount} onChange={(event) => editPostCount(Number(event.target.value))} />
+                </label>
+                <div className="compactSummary">
+                  {Array.from({ length: postCount }, (_, pi) => { const post = pi + 1; const count = grid.filter((c) => c.postNumber === post).length || 1; return <label className="small" key={`edit-structure-${post}`}>P{post}<input type="number" min={1} max={100} value={count} onChange={(event) => editExpectedTargets(post, Number(event.target.value))} /></label>; })}
+                </div>
+              </div>
               <h3>Review one {profile?.reviewLabel?.toLowerCase() || "post"} at a time</h3>
               <p>
                 {saveStatus === "saving" ? "Saving on device" : saveStatus === "failed" ? "Save failed" : "Saved on this device"} · Score {summary.score}/{summary.totalTargets} · Unknown {summary.unknowns}

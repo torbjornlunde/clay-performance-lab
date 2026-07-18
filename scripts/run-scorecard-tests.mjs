@@ -32,6 +32,19 @@ const mappedUncertain=imported.mapReviewedImportToTrainingScoreSheet(uncertain);
 assert.deepEqual(mappedUncertain.targetResults['imported-shooter'][1],{1:'hit'},'uncertain result is not saved as hit or miss until confirmed');
 const correctedStructure=imported.changeImportedPostExpectedTargets(normalizedImport,8,8);
 assert.equal(correctedStructure.expectedTargetsByPost[7],8); assert.equal(correctedStructure.totalTargets,122,'review correction updates total structure immediately');
+
+const discoveryAnalysis={detectedTitle:'Sokna',detectedDate:null,scorecardConfidence:'high',rawText:'synthetic Sokna 120',warnings:[],shooterRows:[{candidateId:'sokna',displayName:'Sokna shooter',rowLabel:null,confidence:'high',detectedScore:94,posts:soknaCounts.map((count,idx)=>({postNumber:idx+1,expectedTargets:count,detectedPostScore:Math.max(0,count-2),detectedPostScoreConfidence:'high',detectedPostScoreRawText:String(Math.max(0,count-2)),targets:Array.from({length:10},(_,i)=> i<count ? {targetNumber:i+1,cellState:i<6?'active':'active',result:i<6?'hit':'miss',rawMark:i<6?'/':'0',observedMarkCategory:i<6?'diagonal_stroke':'zero',confidence:'high',warning:null} : {targetNumber:i+1,cellState:'inactive',result:'unknown',rawMark:null,observedMarkCategory:null,confidence:'high',warning:null})}))}]};
+const discovered=a.normalizeScorecardAnalysis(discoveryAnalysis,{totalTargets:120,allowStructureDiscovery:true});
+assert.equal(discovered.setupMode,'discovery','minimal Training setup can analyze in structure discovery mode');
+assert.deepEqual(discovered.expectedTargetsByPost,soknaCounts,'discovered variable structure survives normalization');
+assert.equal(discovered.detectedTotalTargets,120,'discovered structure total is preserved');
+assert.equal(discovered.shooterRows[0].grid.filter(c=>c.postNumber===8).length,6,'discovery review grid contains only active Post 8 targets');
+assert.equal(discovered.shooterRows[0].grid.some(c=>c.postNumber===8&&c.targetNumber===7),false,'inactive Post 8 grey cells do not reappear as unknown targets');
+let p8to8=[...discovered.shooterRows[0].grid,{postNumber:8,targetNumber:7,result:'unknown',cellState:'active_blank',rawMark:null,observedMarkCategory:'blank',confidence:'low',warning:'Added during review setup correction.'},{postNumber:8,targetNumber:8,result:'unknown',cellState:'active_blank',rawMark:null,observedMarkCategory:'blank',confidence:'low',warning:'Added during review setup correction.'}];
+assert.equal(p8to8.length,122,'review correction changing P8 from 6 to 8 adds only unscored positions and updates total');
+const partialReliable=imported.normalizeImportedPostStructure({posts:[{postNumber:1,expectedTargets:8,detectedScore:7,confidence:'high',targets:[1,2,3].map(targetNumber=>({targetNumber,cellState:'hit',result:'hit',confidence:'high'}))}]});
+assert.equal(partialReliable.posts[0].scoringMode,'total_only','reliable total plus partial exact positions remains total_only'); assert.match(partialReliable.warnings.join(' '),/exact target positions are incomplete/);
+
 const trainingPayload=imported.mapReviewedImportToTrainingScoreSheet(detailed,'shooter-a');
 assert.equal(trainingPayload.scoreSheet.number_of_posts,1); assert.deepEqual(trainingPayload.scoreSheet.expected_targets_by_post,[8]); assert.deepEqual(trainingPayload.scores,[6]); assert.equal(Object.keys(trainingPayload.targetResults['shooter-a'][1]).length,8,'confirmed Training import maps score sheet, shooter, post scores and target results');
 

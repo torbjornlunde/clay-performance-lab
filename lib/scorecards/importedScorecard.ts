@@ -5,7 +5,7 @@ export type ImportedCellState = "active_blank" | "inactive" | "hit" | "miss" | "
 export type ImportedScorecardTarget = { targetNumber: number; cellState: ImportedCellState; result?: ScorecardOutcome | "uncertain" | null; confidence?: Confidence | null; rawMark?: string | null };
 export type ImportedScorecardPost = { postNumber: number; expectedTargets?: number | null; targets?: ImportedScorecardTarget[]; detectedScore?: number | null; confidence?: Confidence | null };
 export type ImportedScorecardStructure = { sessionType?: "Training" | "Competition" | string | null; discipline?: string | null; shooterName?: string | null; date?: string | null; shootingGround?: string | null; totalTargets?: number | null; totalScore?: number | null; posts: ImportedScorecardPost[]; overallConfidence?: Confidence | null; warnings?: string[] | null };
-export type NormalizedImportedPost = { postNumber: number; expectedTargets: number; targets: ScorecardCell[]; detectedScore: number | null; confidence: Confidence | null; scoringMode: "detailed" | "total_only" | "blank"; warnings: string[] };
+export type NormalizedImportedPost = { postNumber: number; expectedTargets: number; targets: ScorecardCell[]; detectedScore: number | null; confidence: Confidence | null; scoringMode: "detailed" | "total_only" | "partial" | "blank"; warnings: string[] };
 export type NormalizedImportedScorecard = Omit<ImportedScorecardStructure, "posts" | "warnings"> & { posts: NormalizedImportedPost[]; expectedTargetsByPost: number[]; totalTargets: number; totalScore: number | null; warnings: string[] };
 
 const confidenceValues = new Set(["high", "medium", "low"]);
@@ -27,8 +27,11 @@ export function normalizeImportedPostStructure(input: ImportedScorecardStructure
     const expectedTargets = positiveInt(post.expectedTargets) || activeCells.length || Math.max(1, boundedScore(post.detectedScore, 500) || 1);
     const targets = activeCells.filter((cell) => cell.targetNumber <= expectedTargets);
     const detailedCount = targets.filter((cell) => cell.result === "hit" || cell.result === "miss").length;
-    const scoringMode: NormalizedImportedPost["scoringMode"] = detailedCount > 0 ? "detailed" : boundedScore(post.detectedScore, expectedTargets) !== null ? "total_only" : "blank";
-    return { postNumber, expectedTargets, targets, detectedScore: boundedScore(post.detectedScore, expectedTargets), confidence: cleanConfidence(post.confidence), scoringMode, warnings: activeCells.length > expectedTargets ? [`Post ${postNumber} has interpreted cells beyond the expected target count; extra cells were kept out of scoring.`] : [] };
+    const detectedScore = boundedScore(post.detectedScore, expectedTargets);
+    const completeDetailed = detailedCount === expectedTargets && targets.length === expectedTargets;
+    const scoringMode: NormalizedImportedPost["scoringMode"] = completeDetailed ? "detailed" : detectedScore !== null ? "total_only" : detailedCount > 0 ? "partial" : "blank";
+    const modeWarning = scoringMode === "total_only" && detailedCount > 0 ? [`Post ${postNumber} total detected, but exact target positions are incomplete.`] : [];
+    return { postNumber, expectedTargets, targets, detectedScore, confidence: cleanConfidence(post.confidence), scoringMode, warnings: [...(activeCells.length > expectedTargets ? [`Post ${postNumber} has interpreted cells beyond the expected target count; extra cells were kept out of scoring.`] : []), ...modeWarning] };
   });
   const expectedTargetsByPost = posts.map((post) => post.expectedTargets);
   const totalTargets = calculateImportedExpectedTotal(posts);
@@ -57,7 +60,7 @@ export function mapReviewedImportToTrainingScoreSheet(input: NormalizedImportedS
   const expectedTargetsByPost = normalizeExpectedTargetsByPost({ postCount: input.posts.length, targetsPerPost: Math.max(...input.expectedTargetsByPost, 1), expectedTargetsByPost: input.expectedTargetsByPost });
   const targetResults: TargetResultMap = {};
   const scores = input.posts.map((post) => {
-    if (post.scoringMode === "detailed") {
+    if (post.scoringMode === "detailed" || post.scoringMode === "partial") {
       post.targets.forEach((cell) => { if (cell.result === "hit" || cell.result === "miss") { targetResults[shooterLocalId] = targetResults[shooterLocalId] || {}; targetResults[shooterLocalId][post.postNumber] = targetResults[shooterLocalId][post.postNumber] || {}; targetResults[shooterLocalId][post.postNumber][cell.targetNumber] = cell.result; } });
       return displayedPostScore({ localId: shooterLocalId, scores: [] }, post.postNumber - 1, targetResults);
     }

@@ -30,3 +30,12 @@ The required flow remains:
 6. save.
 
 AI/vision calls must remain behind the existing server-side entitlement and paid-cost protection architecture. Closed-beta users approved in `beta_hidden` mode should not see a Pro paywall.
+
+## Structure discovery mode
+
+The image analyzer supports two safe modes:
+
+- **Known setup mode** uses an existing competition/session setup as a constraint when post count and targets per post are already defined.
+- **Structure discovery mode** is used when the user only knows minimal metadata, such as Training and an expected total target count. In this mode the photo interpretation derives post count, per-post target counts and inactive cells from the printed card, then validates the detected total against the optional expected total.
+
+A minimal Training import can start from session type, optional discipline and expected total targets. After review and confirmation, the reviewed interpretation creates a Training Score Sheet and navigates to its detail page. Competition imports continue to use the existing session-based import path.
