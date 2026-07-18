@@ -68,6 +68,23 @@ const editedCountsImport=imported.normalizeImportedPostStructure({...soknaFixtur
 const editedPayload=imported.mapReviewedImportToTrainingScoreSheet(editedCountsImport,'edited-shooter');
 assert.equal(editedPayload.scoreSheet.expected_targets_by_post[7],8,'user-edited P8 target count is used in final saved payload');
 
+
+const uncertainSlash={detectedTitle:null,detectedDate:null,scorecardConfidence:'high',rawText:'uncertain slash',warnings:[],shooterRows:[{candidateId:'u1',displayName:null,rowLabel:null,confidence:'high',detectedScore:1,posts:[{postNumber:1,expectedTargets:1,detectedPostScore:1,detectedPostScoreConfidence:'high',detectedPostScoreRawText:'1',targets:[{targetNumber:1,cellState:'uncertain',result:'unknown',rawMark:'/',observedMarkCategory:'diagonal_stroke',confidence:'low',warning:'ambiguous'}]}]}]};
+let uncertainNormalized=a.normalizeScorecardAnalysis(uncertainSlash,{postCount:1,targetsPerPost:1});
+assert.equal(uncertainNormalized.shooterRows[0].grid[0].result,'unknown','AI-uncertain slash remains unknown despite full-score post total');
+assert.equal(uncertainNormalized.shooterRows[0].grid[0].cellState,'uncertain','AI-uncertain slash remains protected');
+assert.match(uncertainNormalized.shooterRows[0].posts[0].reconciliationWarning,/AI-uncertain target/,'uncertain target requires manual review');
+const uncertainMiss={...uncertainSlash,rawText:'uncertain miss',shooterRows:[{...uncertainSlash.shooterRows[0],posts:[{...uncertainSlash.shooterRows[0].posts[0],detectedPostScore:0,detectedPostScoreRawText:'0',targets:[{targetNumber:1,cellState:'uncertain',result:'unknown',rawMark:'0',observedMarkCategory:'zero',confidence:'low',warning:'ambiguous'}]}]}]};
+uncertainNormalized=a.normalizeScorecardAnalysis(uncertainMiss,{postCount:1,targetsPerPost:1});
+assert.equal(uncertainNormalized.shooterRows[0].grid[0].result,'unknown','AI-uncertain miss mark remains unknown despite miss post total');
+let reviewedHit=a.applyUserCorrection(uncertainNormalized.shooterRows[0].grid,1,1,'hit')[0];
+assert.equal(reviewedHit.result,'hit','manual review can set uncertain target to hit'); assert.equal(reviewedHit.cellState,'active','manual hit unlocks protected uncertain cell'); assert.equal(reviewedHit.reviewed,true,'manual hit remains marked reviewed');
+let reviewedMiss=a.applyUserCorrection(uncertainNormalized.shooterRows[0].grid,1,1,'miss')[0];
+assert.equal(reviewedMiss.result,'miss','manual review can set uncertain target to miss'); assert.equal(reviewedMiss.cellState,'active','manual miss unlocks protected uncertain cell'); assert.equal(reviewedMiss.reviewed,true,'manual miss remains marked reviewed');
+const ordinarySlash={...uncertainSlash,rawText:'ordinary slash',shooterRows:[{...uncertainSlash.shooterRows[0],posts:[{...uncertainSlash.shooterRows[0].posts[0],targets:[{targetNumber:1,cellState:'active',result:'unknown',rawMark:'/',observedMarkCategory:'diagonal_stroke',confidence:'low',warning:null}]}]}]};
+let ordinaryNormalized=a.normalizeScorecardAnalysis(ordinarySlash,{postCount:1,targetsPerPost:1});
+assert.equal(ordinaryNormalized.shooterRows[0].grid[0].result,'hit','ordinary non-uncertain slash still benefits from deterministic reconciliation');
+
 assert.equal(profiles.isScorecardImportDiscipline('Compak Sporting'), true, 'Compak Sporting is allowed in scorecard import');
 assert.equal(profiles.isScorecardImportDiscipline('Sporttrap'), true, 'Sporttrap is allowed in scorecard import');
 assert.equal(profiles.isScorecardImportDiscipline('Kompakt leirduesti'), false, 'Kompakt leirduesti is intentionally excluded from this Compak/Sporttrap import scope');

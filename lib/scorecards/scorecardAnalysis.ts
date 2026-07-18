@@ -413,7 +413,9 @@ export function normalizeScorecardAnalysis(
   };
 }
 
+function isProtectedAiUncertain(cell: ScorecardCell) { return cell.cellState === "uncertain" && !cell.reviewed; }
 export function markEvidenceResult(cell: ScorecardCell): Exclude<ScorecardOutcome, "unknown"> | null {
+  if (isProtectedAiUncertain(cell)) return null;
   const deterministic = classifyObservedMark(cell.rawMark, cell.observedMarkCategory);
   return deterministic.result === "hit" || deterministic.result === "miss" ? deterministic.result : null;
 }
@@ -437,7 +439,9 @@ export function reconcileScorecardPost({ cells, detectedPostScore, detectedPostS
   const fixedMisses = fixed.filter((c) => c.result === "miss").length;
   if (fixedHits > detected || fixedMisses > requiredMisses) return { cells: normalized, detectedPostScore: detected, detectedPostScoreConfidence: totalConfidence, reconciledPostScore: summarizeGrid(normalized).score, reconciliationStatus: "conflict" as ReconciliationStatus, reconciliationWarning: `Fixed high-confidence or reviewed marks conflict with detected post total ${detected}/${expectedTargetCount}.` };
   const current = summarizeGrid(normalized);
+  const protectedUncertain = normalized.filter((cell) => isProtectedAiUncertain(cell) && cell.result === "unknown");
   if (current.unknowns === 0 && current.score === detected) return { cells: normalized, detectedPostScore: detected, detectedPostScoreConfidence: totalConfidence, reconciledPostScore: detected, reconciliationStatus: "matched" as ReconciliationStatus, reconciliationWarning: null };
+  if (protectedUncertain.length) return { cells: normalized, detectedPostScore: detected, detectedPostScoreConfidence: totalConfidence, reconciledPostScore: current.score, reconciliationStatus: "needs_review" as ReconciliationStatus, reconciliationWarning: `${protectedUncertain.length} AI-uncertain target${protectedUncertain.length === 1 ? "" : "s"} must be reviewed manually.` };
   const fixedKeys = new Set(fixed.map((c) => cellKey(c.postNumber, c.targetNumber)));
   const flexible = normalized.filter((c) => !fixedKeys.has(cellKey(c.postNumber, c.targetNumber)));
   const needHits = detected - fixedHits, needMisses = requiredMisses - fixedMisses;
@@ -515,7 +519,7 @@ export function chooseLatestReviewRevision<T extends { localReviewRevision?: num
 export function bulkResolveUnknownsForPost(grid: ScorecardCell[], postNumber: number, result: Exclude<ScorecardOutcome, "unknown">, confirmed: boolean) {
   if (!confirmed) return { grid, changed: 0 };
   let changed = 0;
-  return { grid: grid.map((c) => c.postNumber === postNumber && c.result === "unknown" ? (changed++, { ...c, result, reviewed: true }) : c), changed };
+  return { grid: grid.map((c) => c.postNumber === postNumber && c.result === "unknown" ? (changed++, { ...c, result, cellState: "active" as const, warning: c.cellState === "uncertain" ? null : c.warning, reviewed: true }) : c), changed };
 }
 
 export function applyUserCorrection(
@@ -523,10 +527,10 @@ export function applyUserCorrection(
   postNumber: number,
   targetNumber: number,
   result: ScorecardOutcome,
-) {
+): ScorecardCell[] {
   return grid.map((c) =>
     c.postNumber === postNumber && c.targetNumber === targetNumber
-      ? { ...c, result, reviewed: true }
+      ? { ...c, result, cellState: (result === "unknown" ? "active_blank" : "active") as ScorecardCellState, warning: c.cellState === "uncertain" ? null : c.warning, reviewed: true }
       : c,
   );
 }
@@ -540,7 +544,7 @@ export function bulkResolveUnknowns(
   return {
     grid: grid.map((c) =>
       c.result === "unknown"
-        ? (changed++, { ...c, result, reviewed: true })
+        ? (changed++, { ...c, result, cellState: "active" as const, warning: c.cellState === "uncertain" ? null : c.warning, reviewed: true })
         : c,
     ),
     changed,
