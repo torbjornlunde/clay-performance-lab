@@ -300,7 +300,7 @@ export default function Page() {
   const tpp = safeSetupResult?.ok
     ? safeSetupResult.setup.targetsPerPost
     : Number(session?.targets_per_post || profile?.defaultTargetsPerSeries);
-  const hasEmptyPostSetup = Boolean(profile?.key === "post_based" && !targetDefinitions.length && !session?.post_count && !session?.course_count && !session?.targets_per_post && !session?.total_targets);
+  const hasEmptyPostSetup = Boolean(profile?.key === "post_based" && !targetDefinitions.length && !session?.post_count && !session?.course_count && !session?.targets_per_post);
   const discoveryModeAvailable = Boolean(profile?.key === "post_based" && hasEmptyPostSetup && !targetDefinitionsError);
   const setupOk = Boolean(safeSetupResult?.ok) || Boolean(session?.total_targets) || discoveryModeAvailable;
   useEffect(() => {

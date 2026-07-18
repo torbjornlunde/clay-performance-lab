@@ -185,8 +185,7 @@ export async function POST(
       !targetResult.data?.length &&
       !session.post_count &&
       !session.course_count &&
-      !session.targets_per_post &&
-      !session.total_targets;
+      !session.targets_per_post;
     const discoveryApply = setupMode === "discovery" && !setupResult.ok && hasNoSavedPostSetup;
     if (!setupResult.ok && !discoveryApply) {
       return json({ error: { category: setupMode === "discovery" ? "scorecard_setup_changed" : "setup_required", message: setupMode === "discovery" ? "Competition setup was created or changed after analysis. Analyze the saved image again before continuing." : setupResult.message } }, setupMode === "discovery" ? 409 : 409);

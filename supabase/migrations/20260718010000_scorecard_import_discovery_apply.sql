@@ -11,7 +11,7 @@ create or replace function public.apply_scorecard_import_v2(
   p_use_scorecard_score boolean,
   p_expected_own_score integer,
   p_misses jsonb,
-  p_discovery_mode boolean default false
+  p_discovery_mode boolean
 ) returns jsonb
 language plpgsql
 security definer
@@ -43,10 +43,16 @@ begin
   select * into v_session from public.sessions where id = p_session_id for update;
   if not found or v_session.user_id <> v_user_id then raise exception 'forbidden'; end if;
   if lower(coalesce(v_session.discipline,'')) not in ('leirduesti','sporting','english sporting','engelsk sporting','compak sporting','sporttrap') then raise exception 'unsupported_discipline'; end if;
+
+  select * into v_existing from public.scorecard_imports where session_id = p_session_id and (client_import_id = p_client_import_id or image_fingerprint = lower(p_image_fingerprint)) order by created_at limit 1;
+  if found then
+    return jsonb_build_object('importId', v_existing.id, 'insertedMisses', v_existing.inserted_misses, 'skippedDuplicates', v_existing.skipped_duplicates, 'score', v_existing.reviewed_hits, 'totalTargets', v_existing.reviewed_total_targets, 'ownScoreUpdated', false, 'alreadyImported', true);
+  end if;
+
   if p_post_count < 1 or p_post_count > 100 or array_length(p_targets_per_post_by_post,1) <> p_post_count then raise exception 'dimension_mismatch'; end if;
   if p_discovery_mode then
     if lower(coalesce(v_session.discipline,'')) not in ('leirduesti','sporting','english sporting','engelsk sporting') then raise exception 'unsupported_discovery_discipline'; end if;
-    if v_session.post_count is not null or v_session.course_count is not null or v_session.targets_per_post is not null or v_session.total_targets is not null then raise exception 'setup_created_after_analysis'; end if;
+    if v_session.post_count is not null or v_session.course_count is not null or v_session.targets_per_post is not null then raise exception 'setup_created_after_analysis'; end if;
     if exists(select 1 from public.session_post_targets where session_id = p_session_id) then raise exception 'setup_created_after_analysis'; end if;
   elsif lower(coalesce(v_session.discipline,'')) = 'compak sporting' then
     if coalesce(v_session.course_count, v_session.post_count) <> p_post_count or p_targets_per_post <> 25 then raise exception 'dimension_mismatch'; end if;
@@ -64,10 +70,6 @@ begin
   if v_session.total_targets is not null and v_session.total_targets <> v_total then raise exception 'total_targets_conflict'; end if;
   if p_reviewed_hits < 0 or p_reviewed_misses < 0 or p_reviewed_hits + p_reviewed_misses <> v_total then raise exception 'invalid_counts'; end if;
 
-  select * into v_existing from public.scorecard_imports where session_id = p_session_id and (client_import_id = p_client_import_id or image_fingerprint = lower(p_image_fingerprint)) order by created_at limit 1;
-  if found then
-    return jsonb_build_object('importId', v_existing.id, 'insertedMisses', v_existing.inserted_misses, 'skippedDuplicates', v_existing.skipped_duplicates, 'score', v_existing.reviewed_hits, 'totalTargets', v_existing.reviewed_total_targets, 'ownScoreUpdated', false, 'alreadyImported', true);
-  end if;
   if v_session.own_score is distinct from p_expected_own_score then raise exception 'stale_score'; end if;
   if jsonb_typeof(coalesce(p_reviewed_miss_positions,'null'::jsonb)) <> 'array' or jsonb_typeof(coalesce(p_misses,'null'::jsonb)) <> 'array' then raise exception 'invalid_misses_payload'; end if;
   if jsonb_array_length(p_reviewed_miss_positions) <> p_reviewed_misses then raise exception 'reviewed_miss_count_mismatch'; end if;
@@ -146,8 +148,8 @@ begin
     update public.sessions set post_count = p_post_count, course_count = coalesce(course_count, p_post_count), targets_per_post = p_targets_per_post, total_targets = v_total where id = p_session_id;
     for v_course in 1..p_post_count loop
       for v_position in 1..p_targets_per_post_by_post[v_course] loop
-        insert into public.session_post_targets(session_id, post_number, target_position)
-        values (p_session_id, v_course, v_position);
+        insert into public.session_post_targets(session_id, post_number, target_position, presentation_number, presentation_type, position_in_presentation)
+        values (p_session_id, v_course, v_position, v_position, 'unknown', 1);
       end loop;
     end loop;
   elsif v_session.total_targets is null then update public.sessions set total_targets = v_total where id = p_session_id; end if;

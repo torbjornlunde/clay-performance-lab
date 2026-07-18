@@ -70,26 +70,27 @@ export function existingMissAtoms(
     }
     const rows = targetRowsForPresentation(targets, post, presentation);
     const missed = (m.missed_target || "").toLowerCase();
+    const knownPairRows = rows.filter((r) => {
+      const type = (r.presentation_type || "").toLowerCase();
+      return type && type !== "unknown" && type !== "single";
+    });
     if (missed.includes("both")) {
-      const first = rows.find((r) => r.position_in_presentation === 1);
-      const second = rows.find((r) => r.position_in_presentation === 2);
+      const first = knownPairRows.find((r) => r.position_in_presentation === 1);
+      const second = knownPairRows.find((r) => r.position_in_presentation === 2);
       if (first && second) {
         atoms.add(atom(post, first.target_position));
         atoms.add(atom(post, second.target_position));
       } else ambiguous = true;
     } else if (missed.includes("first")) {
-      const row = rows.find((r) => r.position_in_presentation === 1);
+      const row = knownPairRows.find((r) => r.position_in_presentation === 1);
       if (row) atoms.add(atom(post, row.target_position));
       else ambiguous = true;
     } else if (missed.includes("second")) {
-      const row = rows.find((r) => r.position_in_presentation === 2);
+      const row = knownPairRows.find((r) => r.position_in_presentation === 2);
       if (row) atoms.add(atom(post, row.target_position));
       else ambiguous = true;
     } else if (missed.includes("single")) {
-      const row =
-        rows.length === 1
-          ? rows[0]
-          : rows.find((r) => r.presentation_type === "single");
+      const row = rows.find((r) => (r.presentation_type || "").toLowerCase() === "single");
       if (row) atoms.add(atom(post, row.target_position));
       else ambiguous = true;
     } else ambiguous = true;
