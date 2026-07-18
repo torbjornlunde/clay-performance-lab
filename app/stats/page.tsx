@@ -23,6 +23,8 @@ type SessionRow = {
   winning_score?: number | null;
   calculated_score?: number | null;
   shooting_ground?: string | null;
+  user_shooting_ground_id?: string | null;
+  user_shooting_grounds?: { display_name: string | null } | null;
 };
 
 type MissRow = { session_id: string; missed_target: string | null };
@@ -611,7 +613,7 @@ export default function StatsPage() {
 
     const todayValue = isoDateValue(new Date());
     const [sessionsResult, missesResult, recentTrainingResult, recentScoreSheetsResult, volumeTrainingResult, volumeScoreSheetsResult] = await Promise.all([
-      supabase.from("sessions").select("*").order("created_at", { ascending: false }).returns<SessionRow[]>(),
+      supabase.from("sessions").select("*,user_shooting_grounds(display_name)").order("created_at", { ascending: false }).returns<SessionRow[]>(),
       supabase.from("misses").select("session_id,missed_target").returns<MissRow[]>(),
       supabase
         .from("training_logs")
@@ -699,7 +701,7 @@ export default function StatsPage() {
         winningScore: item.session.winning_score || 0,
         discipline: item.session.discipline,
         leirdueResultUrl: item.session.leirdue_result_url || null,
-        shootingGround: item.session.shooting_ground?.trim() || null,
+        shootingGround: item.session.user_shooting_grounds?.display_name?.trim() || item.session.shooting_ground?.trim() || null,
         x,
         y,
         rollingAverageY,

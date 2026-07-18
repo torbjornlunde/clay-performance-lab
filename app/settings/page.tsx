@@ -1,3 +1,4 @@
+import Link from "next/link";
 import AppearanceControl from "@/app/components/AppearanceControl";
 
 export default function SettingsPage() {
@@ -8,6 +9,11 @@ export default function SettingsPage() {
         <h2>Settings</h2>
         <p className="muted">Manage device-specific app preferences.</p>
       </div>
+      <section className="card">
+        <h3>Data cleanup</h3>
+        <p className="muted">Group duplicate personal shooting ground names without changing original imported or logged text.</p>
+        <Link href="/settings/shooting-grounds" className="button secondary">Clean up shooting grounds</Link>
+      </section>
       <AppearanceControl />
     </main>
   );
