@@ -32,7 +32,7 @@ type LastSignInStatus = {
   unavailable?: boolean;
 };
 
-type InboxFilter = "all" | "needs_action" | "approved" | "interest_only" | "email_issues";
+type InboxFilter = "all" | "needs_action" | "approved" | "interest_only" | "email_issues" | "rejected";
 
 type InboxSortGroup =
   | "needs_approval"
@@ -40,7 +40,8 @@ type InboxSortGroup =
   | "interest_only"
   | "preapproved_no_account"
   | "email_issue"
-  | "fully_approved";
+  | "fully_approved"
+  | "rejected_or_revoked";
 
 function statusLabel(status: string) {
   return status.replace(/_/g, " ");
@@ -54,6 +55,10 @@ function isInterestApproved(interest: BetaInterestSubmission | null) {
   return interest?.admin_status === "pre_approved" || interest?.admin_status === "approved_existing_user";
 }
 
+function isRejectedOrRevoked(item: ApprovalInboxItem) {
+  return item.user?.access_status === "rejected" || item.user?.access_status === "revoked" || item.interest?.admin_status === "rejected";
+}
+
 function hasEmailIssue(item: ApprovalInboxItem) {
   return Boolean(item.interest && (item.interest.approval_email_error || (isInterestApproved(item.interest) && !item.interest.approval_email_sent_at)));
 }
@@ -63,9 +68,10 @@ function getInboxSortGroup(item: ApprovalInboxItem): { group: InboxSortGroup; pr
   const interestSubmitted = Boolean(item.interest);
   const preApproved = Boolean(item.accessEntry) || isInterestApproved(item.interest);
   const accountApproved = item.user?.access_status === "approved";
-  const rejected = item.user?.access_status === "rejected" || item.user?.access_status === "revoked" || item.interest?.admin_status === "rejected";
+  const rejected = isRejectedOrRevoked(item);
   const needsApproval = !rejected && Boolean((item.user && !accountApproved) || (item.interest && !isInterestApproved(item.interest)));
 
+  if (rejected) return { group: "rejected_or_revoked", priority: 6 };
   if (needsApproval && userCreated && interestSubmitted && !accountApproved) return { group: "account_and_interest_pending", priority: 1 };
   if (needsApproval) return { group: "needs_approval", priority: 0 };
   if (interestSubmitted && !userCreated && !preApproved) return { group: "interest_only", priority: 2 };
@@ -75,6 +81,7 @@ function getInboxSortGroup(item: ApprovalInboxItem): { group: InboxSortGroup; pr
 }
 
 function itemNeedsAction(item: ApprovalInboxItem) {
+  if (isRejectedOrRevoked(item)) return false;
   return getInboxSortGroup(item).priority < 4 || hasEmailIssue(item);
 }
 
@@ -688,12 +695,14 @@ function ApprovalInboxSection({
     preApproved: items.filter((item) => Boolean(item.accessEntry) || isInterestApproved(item.interest)).length,
     interestOnly: items.filter((item) => Boolean(item.interest && !item.user)).length,
     emailIssue: items.filter(hasEmailIssue).length,
+    rejected: items.filter(isRejectedOrRevoked).length,
   }), [items]);
   const visibleItems = useMemo(() => items.filter((item) => {
     if (filter === "needs_action" && !itemNeedsAction(item)) return false;
     if (filter === "approved" && getInboxSortGroup(item).group !== "fully_approved") return false;
     if (filter === "interest_only" && !(item.interest && !item.user)) return false;
     if (filter === "email_issues" && !hasEmailIssue(item)) return false;
+    if (filter === "rejected" && !isRejectedOrRevoked(item)) return false;
     if (!normalizedQuery) return true;
     const searchable = [item.user?.full_name, item.interest?.name, item.accessEntry?.full_name, item.user?.email, item.interest?.email, item.accessEntry?.email, item.interest?.instagram_handle, item.interest?.country, item.interest?.main_discipline].filter(Boolean).join(" ").toLowerCase();
     return searchable.includes(normalizedQuery);
@@ -704,6 +713,7 @@ function ApprovalInboxSection({
     { key: "approved", label: "Approved", count: counters.approved },
     { key: "interest_only", label: "Interest only", count: counters.interestOnly },
     { key: "email_issues", label: "Email issues", count: counters.emailIssue },
+    { key: "rejected", label: "Rejected", count: counters.rejected },
   ];
 
   return (
@@ -718,7 +728,7 @@ function ApprovalInboxSection({
       </div>
       <div className="approvalInboxToolbar">
         <div className="approvalInboxCounters" aria-label="Inbox counters">
-          <span className="countPill">Needs action {counters.needsAction}</span><span className="countPill">Approved {counters.approved}</span><span className="countPill">Pre-approved {counters.preApproved}</span><span className="countPill">Interest only {counters.interestOnly}</span><span className="countPill">Email issue {counters.emailIssue}</span>
+          <span className="countPill">Needs action {counters.needsAction}</span><span className="countPill">Approved {counters.approved}</span><span className="countPill">Pre-approved {counters.preApproved}</span><span className="countPill">Interest only {counters.interestOnly}</span><span className="countPill">Email issue {counters.emailIssue}</span><span className="countPill">Rejected {counters.rejected}</span>
         </div>
         <label className="approvalInboxSearch" htmlFor="betaInboxSearch"><span>Search inbox</span><input id="betaInboxSearch" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, email, Instagram, country, discipline" /></label>
         <div className="approvalInboxFilters" aria-label="Inbox filters">{filters.map((option) => <button key={option.key} type="button" className={filter === option.key ? "secondary activeFilter" : "secondary"} onClick={() => setFilter(option.key)}>{option.label} ({option.count})</button>)}</div>
