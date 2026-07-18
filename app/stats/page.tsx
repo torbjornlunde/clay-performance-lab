@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { calculateRollingAverage, calculateRollingStdDev, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
 import { buildCompetitionActivitySummary } from "@/lib/competitionActivity";
 import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
+import { normalizeShootingGroundName, type UserShootingGround } from "@/lib/shootingGrounds/aliases";
 import { supabase } from "@/lib/supabase/client";
 
 type SessionRow = {
@@ -76,6 +77,19 @@ type TrainingVolumeInsights = {
   practiceLogsWithHits: number;
   averagePracticeHitPercentage: number | null;
   insightMessages: string[];
+};
+
+type GroundSummary = {
+  key: string;
+  name: string;
+  canonicalGroundId: string | null;
+  sourceNames: string[];
+  count: number;
+  average: number;
+  best: number;
+  latest: number;
+  latestDate: string;
+  sessions: Array<{ session: SessionRow; score: number; percentage: number }>;
 };
 
 type ChartPoint = {
@@ -250,6 +264,22 @@ function sortOldestFirst(a: { session: SessionRow }, b: { session: SessionRow })
 
 function sortNewestChartPoints(a: ChartPoint, b: ChartPoint) {
   return new Date(b.date).getTime() - new Date(a.date).getTime();
+}
+
+function formatFullDate(value: string | null | undefined) {
+  if (!value) return "No date";
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(value));
+}
+
+function groundKeyForSession(session: SessionRow) {
+  const canonicalId = session.user_shooting_ground_id?.trim();
+  if (canonicalId) return `ground:${canonicalId}`;
+  const normalized = normalizeShootingGroundName(session.shooting_ground || "");
+  return normalized ? `source:${normalized}` : "unknown";
+}
+
+function displayGroundForSession(session: SessionRow) {
+  return session.user_shooting_grounds?.display_name?.trim() || session.shooting_ground?.trim() || "Unknown shooting ground";
 }
 
 function formatConsistency(value: number | null) {
@@ -596,6 +626,14 @@ export default function StatsPage() {
   const [trainingLogs, setTrainingLogs] = useState<SimpleTrainingLog[]>([]);
   const [trainingScoreSheets, setTrainingScoreSheets] = useState<TrainingScoreSheetLog[]>([]);
   const [volumeLogs, setVolumeLogs] = useState<TrainingVolumeLog[]>([]);
+  const [grounds, setGrounds] = useState<UserShootingGround[]>([]);
+  const [selectedGroundKey, setSelectedGroundKey] = useState<string | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [selectedAssignmentGroundId, setSelectedAssignmentGroundId] = useState("");
+  const [newGroundName, setNewGroundName] = useState("");
+  const [savingGroundSessionId, setSavingGroundSessionId] = useState<string | null>(null);
+  const [groundMessage, setGroundMessage] = useState<string | null>(null);
+  const [groundError, setGroundError] = useState<string | null>(null);
   const [trainingLoadError, setTrainingLoadError] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedCompetitionYear, setSelectedCompetitionYear] = useState(() => new Date().getFullYear());
@@ -612,7 +650,7 @@ export default function StatsPage() {
     }
 
     const todayValue = isoDateValue(new Date());
-    const [sessionsResult, missesResult, recentTrainingResult, recentScoreSheetsResult, volumeTrainingResult, volumeScoreSheetsResult] = await Promise.all([
+    const [sessionsResult, missesResult, recentTrainingResult, recentScoreSheetsResult, volumeTrainingResult, volumeScoreSheetsResult, groundsResult] = await Promise.all([
       supabase.from("sessions").select("*,user_shooting_grounds(display_name)").order("created_at", { ascending: false }).returns<SessionRow[]>(),
       supabase.from("misses").select("session_id,missed_target").returns<MissRow[]>(),
       supabase
@@ -643,12 +681,15 @@ export default function StatsPage() {
         .lte("session_date", todayValue)
         .order("session_date", { ascending: true })
         .returns<TrainingScoreSheetLog[]>(),
+      supabase.from("user_shooting_grounds").select("id,display_name,normalized_display_name,country_code,municipality").order("display_name").returns<UserShootingGround[]>(),
     ]);
 
     const counts = countMissesBySession(missesResult.data || []);
 
     setSessions(sessionsResult.data || []);
+    setGrounds(groundsResult.data || []);
     setMissCounts(counts);
+    if (groundsResult.error) setGroundError("Personal shooting grounds could not be loaded right now.");
     if (recentTrainingResult.error || recentScoreSheetsResult.error || volumeTrainingResult.error || volumeScoreSheetsResult.error) {
       setTrainingLoadError("Training history could not be loaded right now.");
       setTrainingLogs([]);
@@ -701,7 +742,7 @@ export default function StatsPage() {
         winningScore: item.session.winning_score || 0,
         discipline: item.session.discipline,
         leirdueResultUrl: item.session.leirdue_result_url || null,
-        shootingGround: item.session.user_shooting_grounds?.display_name?.trim() || item.session.shooting_ground?.trim() || null,
+        shootingGround: displayGroundForSession(item.session),
         x,
         y,
         rollingAverageY,
@@ -725,32 +766,45 @@ export default function StatsPage() {
     };
   }, [chartPoints]);
 
-  const byShootingGround = useMemo(() => {
-    const known = chartPoints.filter((point) => point.shootingGround);
-    const unknown = chartPoints.filter((point) => !point.shootingGround);
-    const pointsForSummary = known.length >= 2 || known.length >= unknown.length ? known : chartPoints;
-    const groups = new Map<string, ChartPoint[]>();
+  const byShootingGround = useMemo<GroundSummary[]>(() => {
+    const scored = sessions
+      .filter((session) => session.session_type === "Competition")
+      .map((session) => ({ session, result: percentageFor(session, missCounts) }))
+      .filter((item): item is { session: SessionRow; result: { score: number; percentage: number } } => item.result !== null);
+    const known = scored.filter((item) => displayGroundForSession(item.session) !== "Unknown shooting ground");
+    const unknown = scored.filter((item) => displayGroundForSession(item.session) === "Unknown shooting ground");
+    const rowsForSummary = known.length >= 2 || known.length >= unknown.length ? known : scored;
+    const groups = new Map<string, Array<{ session: SessionRow; score: number; percentage: number }>>();
 
-    for (const point of pointsForSummary) {
-      const name = point.shootingGround || "Unknown shooting ground";
-      groups.set(name, [...(groups.get(name) || []), point]);
+    for (const item of rowsForSummary) {
+      const key = groundKeyForSession(item.session);
+      groups.set(key, [...(groups.get(key) || []), { session: item.session, score: item.result.score, percentage: item.result.percentage }]);
     }
 
     return Array.from(groups.entries())
-      .map(([name, points]) => {
-        const byDate = points.slice().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        const percentages = points.map((point) => point.percentage);
+      .map(([key, groupSessions]) => {
+        const sortedSessions = groupSessions.slice().sort((a, b) => sortableDate(a.session) - sortableDate(b.session));
+        const percentages = groupSessions.map((item) => item.percentage);
+        const sourceNames = [...new Set(groupSessions.map((item) => item.session.shooting_ground?.trim()).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b));
+        const canonicalGroundId = groupSessions.find((item) => item.session.user_shooting_ground_id)?.session.user_shooting_ground_id || null;
         return {
-          name,
-          count: points.length,
+          key,
+          name: displayGroundForSession(groupSessions[0].session),
+          canonicalGroundId,
+          sourceNames,
+          count: groupSessions.length,
           average: percentages.reduce((sum, value) => sum + value, 0) / percentages.length,
           best: Math.max(...percentages),
-          latest: byDate[byDate.length - 1].percentage,
+          latest: sortedSessions[sortedSessions.length - 1].percentage,
+          latestDate: sortedSessions[sortedSessions.length - 1].session.competition_date || sortedSessions[sortedSessions.length - 1].session.created_at,
+          sessions: sortedSessions.slice().reverse(),
         };
       })
       .filter((group) => group.name !== "Unknown shooting ground" || groups.size >= 2)
       .sort((a, b) => b.count - a.count || b.average - a.average);
-  }, [chartPoints]);
+  }, [sessions, missCounts]);
+
+  const selectedGround = useMemo(() => byShootingGround.find((ground) => ground.key === selectedGroundKey) || null, [byShootingGround, selectedGroundKey]);
 
   const trainingHistoryItems = useMemo<TrainingHistoryItem[]>(() => [
     ...trainingLogs.map((log) => ({
@@ -774,6 +828,31 @@ export default function StatsPage() {
     () => buildCompetitionActivitySummary(sessions, selectedCompetitionYear),
     [sessions, selectedCompetitionYear],
   );
+  async function saveSessionGround(sessionId: string) {
+    const trimmedNewGroundName = newGroundName.trim();
+    if (!selectedAssignmentGroundId && !trimmedNewGroundName) { setGroundError("Choose an existing ground or enter a new ground name."); return; }
+    setSavingGroundSessionId(sessionId); setGroundError(null); setGroundMessage(null);
+    let targetGroundId = selectedAssignmentGroundId;
+    if (trimmedNewGroundName) {
+      const { data, error } = await supabase.rpc("create_user_shooting_ground", { p_display_name: trimmedNewGroundName }) as { data: string | null; error: { message: string } | null };
+      if (error || !data) { setGroundError(error?.message || "Could not create the shooting ground."); setSavingGroundSessionId(null); return; }
+      targetGroundId = data;
+    }
+    const { error } = await supabase.rpc("assign_session_to_user_shooting_ground", { p_session_id: sessionId, p_ground_id: targetGroundId });
+    if (error) { setGroundError(error.message); setSavingGroundSessionId(null); return; }
+    setGroundMessage("Shooting ground changed for this competition only. The original imported ground name was preserved.");
+    setEditingSessionId(null); setSelectedAssignmentGroundId(""); setNewGroundName(""); setSavingGroundSessionId(null); await load();
+  }
+
+  async function unassignSessionGround(sessionId: string) {
+    if (!confirm("Remove the personal shooting ground assignment from this competition? The original imported ground name will be preserved.")) return;
+    setSavingGroundSessionId(sessionId); setGroundError(null); setGroundMessage(null);
+    const { error } = await supabase.rpc("unassign_session_from_user_shooting_ground", { p_session_id: sessionId });
+    if (error) { setGroundError(error.message); setSavingGroundSessionId(null); return; }
+    setGroundMessage("Personal shooting ground assignment removed for this competition only. The original imported ground name was preserved.");
+    setEditingSessionId(null); setSavingGroundSessionId(null); await load();
+  }
+
   const competitionTargetsThisYear = useMemo(() => {
     const yearStart = `${new Date().getFullYear()}-01-01`;
     return sessions
@@ -893,14 +972,79 @@ export default function StatsPage() {
           </div>
           <div className="groundStatsGrid">
             {byShootingGround.map((ground) => (
-              <div className="groundStat" key={ground.name}>
+              <button className="groundStat groundStatButton" key={ground.key} onClick={() => setSelectedGroundKey(ground.key)} type="button">
                 <strong>{ground.name}</strong>
                 <span>{ground.count} competition result{ground.count === 1 ? "" : "s"}</span>
                 <span>Average {ground.average.toFixed(1)}%</span>
                 <span>Best {ground.best.toFixed(1)}%</span>
                 <span>Latest {ground.latest.toFixed(1)}%</span>
-              </div>
+                <span className="groundStatAction">View ground details</span>
+              </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {selectedGround && (
+        <div className="card statsGroundDetailCard">
+          <div className="sectionHeader">
+            <div>
+              <p className="eyebrow">Ground details</p>
+              <h2>{selectedGround.name}</h2>
+              <p className="small muted">Review grouped competition sessions and correct one session at a time. The original imported ground name will be preserved.</p>
+            </div>
+            <button className="button secondary smallButton" type="button" onClick={() => setSelectedGroundKey(null)}>Close</button>
+          </div>
+          {groundError && <p className="errorText">{groundError}</p>}
+          {groundMessage && <p className="successText">{groundMessage}</p>}
+          <div className="groundDetailMetrics">
+            <MetricCard label="Competition sessions" value={formatMetricNumber(selectedGround.count)} />
+            <MetricCard label="Average score" value={`${selectedGround.average.toFixed(1)}%`} />
+            <MetricCard label="Best score" value={`${selectedGround.best.toFixed(1)}%`} />
+            <MetricCard label="Latest result" value={formatFullDate(selectedGround.latestDate)} />
+          </div>
+          <div className="groundSourceNames">
+            <h3>Original source names</h3>
+            {selectedGround.sourceNames.length === 0 ? <p className="muted">No original shooting ground name is saved for these sessions.</p> : <div className="chipList">{selectedGround.sourceNames.map((name) => <span className="metricChip" key={name}>{name}</span>)}</div>}
+          </div>
+          <div className="groundSessionList">
+            {selectedGround.sessions.map(({ session, score, percentage }) => {
+              const isEditing = editingSessionId === session.id;
+              const currentGroundName = session.user_shooting_grounds?.display_name?.trim() || "Not assigned";
+              return (
+                <article className="statListItem groundSessionItem" key={session.id}>
+                  <div>
+                    <strong>{session.name}</strong>
+                    <div className="small muted">{formatFullDate(session.competition_date || session.created_at)} · {session.discipline}</div>
+                    <div className="small muted">Score {score}{session.winning_score ? ` · Winner ${session.winning_score} · Gap ${Math.max(0, session.winning_score - score)}` : ""} · Performance {percentage.toFixed(1)}%</div>
+                    <div className="small muted">Original ground: {session.shooting_ground?.trim() || "No source name"}</div>
+                    <div className="small muted">Current personal ground: {currentGroundName}</div>
+                    <div className="btns">
+                      <Link className="button secondary smallButton" href={`/sessions/${session.id}`}>Open result</Link>
+                      <button className="button secondary smallButton" type="button" onClick={() => { setEditingSessionId(session.id); setSelectedAssignmentGroundId(session.user_shooting_ground_id || ""); setNewGroundName(""); setGroundError(null); setGroundMessage(null); }}>Change shooting ground</button>
+                    </div>
+                    {isEditing && (
+                      <div className="groundAssignmentPanel">
+                        <p className="small muted">The original imported ground name will be preserved.</p>
+                        <label>Choose existing personal shooting ground</label>
+                        <select value={selectedAssignmentGroundId} onChange={(event) => setSelectedAssignmentGroundId(event.target.value)}>
+                          <option value="">Choose a ground</option>
+                          {grounds.map((ground) => <option key={ground.id} value={ground.id}>{ground.display_name}</option>)}
+                        </select>
+                        <label>Or create a new personal shooting ground</label>
+                        <input value={newGroundName} onChange={(event) => setNewGroundName(event.target.value)} placeholder="New shooting ground name" />
+                        <div className="btns">
+                          <button className="button smallButton" type="button" disabled={savingGroundSessionId === session.id} onClick={() => saveSessionGround(session.id)}>{savingGroundSessionId === session.id ? "Saving..." : "Save for this session"}</button>
+                          {session.user_shooting_ground_id && <button className="button secondary smallButton" type="button" disabled={savingGroundSessionId === session.id} onClick={() => unassignSessionGround(session.id)}>Remove assignment</button>}
+                          <button className="button secondary smallButton" type="button" onClick={() => setEditingSessionId(null)}>Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <span className="statPercent">{percentage.toFixed(1)}%</span>
+                </article>
+              );
+            })}
           </div>
         </div>
       )}
