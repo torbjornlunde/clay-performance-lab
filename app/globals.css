@@ -9199,14 +9199,49 @@ select {
 .approvalInboxCard,
 .approvalInboxCardHeader,
 .approvalInboxDetails,
+.approvalInboxSummary,
 .approvalInboxActions,
+.approvalInboxToolbar,
 .advancedRawLists {
   min-width: 0;
 }
 
 .approvalInboxGrid {
   display: grid;
-  gap: 14px;
+  gap: 10px;
+}
+
+.approvalInboxToolbar {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.approvalInboxCounters,
+.approvalInboxFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.approvalInboxFilters button {
+  min-height: 44px;
+  padding: 8px 12px;
+}
+
+.approvalInboxFilters .activeFilter {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.approvalInboxSearch {
+  display: grid;
+  gap: 6px;
+}
+
+.approvalInboxSearch input {
+  min-height: 44px;
+  font-size: 16px;
 }
 
 .approvalInboxCard {
@@ -9216,6 +9251,10 @@ select {
   border: 1px solid var(--line);
   border-radius: 18px;
   background: var(--card-bg);
+}
+
+.approvalInboxCardSecondary {
+  background: rgba(132, 153, 178, 0.06);
 }
 
 .approvalInboxCardHeader {
@@ -9239,20 +9278,27 @@ select {
   white-space: normal;
 }
 
-.approvalInboxDetails {
+.approvalInboxDetails,
+.approvalInboxSummary {
   display: grid;
   gap: 8px;
   margin: 0;
 }
 
-.approvalInboxDetails div {
+.approvalInboxSummary {
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+}
+
+.approvalInboxDetails div,
+.approvalInboxSummary div {
   display: grid;
   gap: 3px;
   padding-top: 8px;
   border-top: 1px solid var(--line);
 }
 
-.approvalInboxDetails dt {
+.approvalInboxDetails dt,
+.approvalInboxSummary dt {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
@@ -9260,7 +9306,8 @@ select {
   text-transform: uppercase;
 }
 
-.approvalInboxDetails dd {
+.approvalInboxDetails dd,
+.approvalInboxSummary dd {
   margin: 0;
   color: var(--text);
   overflow-wrap: anywhere;
@@ -9303,6 +9350,7 @@ select {
 }
 
 @media (max-width: 720px) {
+  .approvalInboxPrimaryActions,
   .approvalInboxActions {
     display: grid;
     grid-template-columns: 1fr;
