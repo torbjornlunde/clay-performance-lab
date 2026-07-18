@@ -3,18 +3,19 @@ returns text
 language sql
 immutable
 as $$
-  select nullif(
-    btrim(
-      regexp_replace(
-        regexp_replace(
-          regexp_replace(lower(coalesce(value, '')), '\bj\s*\.?\s*f\s*\.?\s*f\s*\.?\b', 'jff', 'g'),
-          '[^[:alnum:]åæøäöüéèáàíìóòúùñç]+', ' ', 'g'
-        ),
-        '\b(shooting|ground|clay|target|range|club|association|venue|bane|leirduebane|leirduebanen)\b', ' ', 'g'
-      )
-    ),
-    ''
+  with cleaned as (
+    select regexp_replace(lower(coalesce(value, '')), '[^[:alnum:]åæøäöüéèáàíìóòúùñç]+', ' ', 'g') as text_value
+  ), jff_normalized as (
+    select regexp_replace(text_value, '(^|[[:space:]])j[[:space:]]*f[[:space:]]*f([[:space:]]|$)', '\1jff\2', 'g') as text_value
+    from cleaned
+  ), tokens as (
+    select token, ord
+    from jff_normalized, unnest(regexp_split_to_array(text_value, '[[:space:]]+')) with ordinality as split(token, ord)
   )
+  select nullif(string_agg(token, ' ' order by ord), '')
+  from tokens
+  where token <> ''
+    and token not in ('shooting','ground','clay','target','range','club','association','venue','bane','leirduebane','leirduebanen')
 $$;
 
 create table if not exists public.user_shooting_grounds (

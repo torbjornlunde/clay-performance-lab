@@ -5,9 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { buildDuplicateSuggestions, normalizeShootingGroundName, type DistinctGroundName, type UserShootingGround, type UserShootingGroundAlias } from "@/lib/shootingGrounds/aliases";
 import { supabase } from "@/lib/supabase/client";
 
-type SessionGroundRow = { id: string; shooting_ground: string | null; competition_date: string | null; created_at: string; user_shooting_ground_id: string | null };
-type TrainingLogGroundRow = { id: string; location: string | null; date: string; created_at: string; user_shooting_ground_id: string | null };
-type ScoreSheetGroundRow = { id: string; location: string | null; session_date: string; created_at: string; user_shooting_ground_id: string | null };
+type GroundNameRpcRow = { source: string; alias_name: string | null; normalized_alias: string | null; record_count: number | string; latest_date: string | null; user_shooting_ground_id: string | null };
 
 type MergeDraft = { displayName: string; selected: Set<string> };
 
@@ -46,19 +44,19 @@ export default function ShootingGroundSettingsPage() {
 
   async function load() {
     setLoading(true); setError(null);
-    const [{ data: sessionRows, error: sessionError }, { data: logRows, error: logError }, { data: sheetRows, error: sheetError }, { data: groundRows, error: groundError }, { data: aliasRows, error: aliasError }] = await Promise.all([
-      supabase.from("sessions").select("id,shooting_ground,competition_date,created_at,user_shooting_ground_id").not("shooting_ground", "is", null).returns<SessionGroundRow[]>(),
-      supabase.from("training_logs").select("id,location,date,created_at,user_shooting_ground_id").not("location", "is", null).returns<TrainingLogGroundRow[]>(),
-      supabase.from("training_score_sheets").select("id,location,session_date,created_at,user_shooting_ground_id").not("location", "is", null).returns<ScoreSheetGroundRow[]>(),
+    const [{ data: nameRows, error: namesError }, { data: groundRows, error: groundError }, { data: aliasRows, error: aliasError }] = await Promise.all([
+      supabase.rpc("list_user_shooting_ground_names").returns<GroundNameRpcRow[]>(),
       supabase.from("user_shooting_grounds").select("id,display_name,normalized_display_name,country_code,municipality").order("display_name").returns<UserShootingGround[]>(),
       supabase.from("user_shooting_ground_aliases").select("id,user_shooting_ground_id,alias_name,normalized_alias,source").order("alias_name").returns<UserShootingGroundAlias[]>(),
     ]);
-    const firstError = sessionError || logError || sheetError || groundError || aliasError;
+    const firstError = namesError || groundError || aliasError;
     if (firstError) setError(firstError.message);
-    const rows: DistinctGroundName[] = [];
-    for (const row of sessionRows || []) if (row.shooting_ground?.trim()) rows.push({ name: row.shooting_ground.trim(), normalizedName: normalizeShootingGroundName(row.shooting_ground), source: "sessions", count: 1, latestDate: row.competition_date || row.created_at, assignedGroundId: row.user_shooting_ground_id });
-    for (const row of logRows || []) if (row.location?.trim()) rows.push({ name: row.location.trim(), normalizedName: normalizeShootingGroundName(row.location), source: "training_logs", count: 1, latestDate: row.date || row.created_at, assignedGroundId: row.user_shooting_ground_id });
-    for (const row of sheetRows || []) if (row.location?.trim()) rows.push({ name: row.location.trim(), normalizedName: normalizeShootingGroundName(row.location), source: "training_score_sheets", count: 1, latestDate: row.session_date || row.created_at, assignedGroundId: row.user_shooting_ground_id });
+    const listedNames = Array.isArray(nameRows) ? nameRows as GroundNameRpcRow[] : [];
+    const rows: DistinctGroundName[] = listedNames.flatMap((row: GroundNameRpcRow) => {
+      const name = row.alias_name?.trim();
+      if (!name) return [];
+      return [{ name, normalizedName: row.normalized_alias || normalizeShootingGroundName(name), source: row.source as DistinctGroundName["source"], count: Number(row.record_count) || 0, latestDate: row.latest_date, assignedGroundId: row.user_shooting_ground_id }];
+    });
     const aliasesByGround = new Map<string, UserShootingGroundAlias[]>();
     for (const alias of aliasRows || []) aliasesByGround.set(alias.user_shooting_ground_id, [...(aliasesByGround.get(alias.user_shooting_ground_id) || []), alias]);
     setGroundNames(summarizeGroundRows(rows));
@@ -81,16 +79,13 @@ export default function ShootingGroundSettingsPage() {
   async function mergeSelected() {
     if (!canMerge) { setError("Choose at least one name and a main name before merging."); return; }
     setSaving(true); setError(null); setMessage(null);
-    const user = (await supabase.auth.getUser()).data.user;
-    if (!user) { setError("Log in to clean up shooting grounds."); setSaving(false); return; }
-    const normalized = normalizeShootingGroundName(draft.displayName);
-    const { data: ground, error: groundError } = await supabase.from("user_shooting_grounds").upsert({ user_id: user.id, display_name: draft.displayName.trim(), normalized_display_name: normalized }, { onConflict: "user_id,normalized_display_name" }).select("id").single();
-    if (groundError || !ground) { setError(groundError?.message || "Could not create the shooting ground."); setSaving(false); return; }
+    const { data: groundId, error: groundError } = await supabase.rpc("create_user_shooting_ground", { p_display_name: draft.displayName.trim() }).returns<string>();
+    if (groundError || !groundId) { setError(groundError?.message || "Could not create the shooting ground."); setSaving(false); return; }
     for (const item of selectedItems) {
-      await supabase.from("user_shooting_ground_aliases").upsert({ user_id: user.id, user_shooting_ground_id: ground.id, alias_name: item.name, normalized_alias: item.normalizedName, source: item.source }, { onConflict: "user_id,normalized_alias,source" });
-      if (item.source === "sessions") await supabase.from("sessions").update({ user_shooting_ground_id: ground.id }).eq("shooting_ground", item.name);
-      if (item.source === "training_logs") await supabase.from("training_logs").update({ user_shooting_ground_id: ground.id }).eq("location", item.name);
-      if (item.source === "training_score_sheets") await supabase.from("training_score_sheets").update({ user_shooting_ground_id: ground.id }).eq("location", item.name);
+      const { error: aliasError } = await supabase.rpc("attach_user_shooting_ground_alias", { p_ground_id: groundId, p_alias_name: item.name, p_source: item.source }).returns<string>();
+      if (aliasError) { setError(`Could not attach alias "${item.name}": ${aliasError.message}`); setSaving(false); return; }
+      const { error: assignError } = await supabase.rpc("assign_user_shooting_ground_alias", { p_ground_id: groundId, p_alias_name: item.name, p_source: item.source }).returns<number>();
+      if (assignError) { setError(`Could not assign records for "${item.name}": ${assignError.message}`); setSaving(false); return; }
     }
     setMessage(`Merged ${selectedItems.length} name${selectedItems.length === 1 ? "" : "s"} into ${draft.displayName.trim()}. Original source names were preserved.`);
     setDraft({ displayName: "", selected: new Set() });
@@ -99,10 +94,8 @@ export default function ShootingGroundSettingsPage() {
   async function removeAlias(alias: UserShootingGroundAlias) {
     if (!confirm(`Remove alias "${alias.alias_name}"? Original records will keep their source names.`)) return;
     setSaving(true); setError(null); setMessage(null);
-    await supabase.from("user_shooting_ground_aliases").delete().eq("id", alias.id);
-    if (alias.source === "sessions") await supabase.from("sessions").update({ user_shooting_ground_id: null }).eq("user_shooting_ground_id", alias.user_shooting_ground_id).eq("shooting_ground", alias.alias_name);
-    if (alias.source === "training_logs") await supabase.from("training_logs").update({ user_shooting_ground_id: null }).eq("user_shooting_ground_id", alias.user_shooting_ground_id).eq("location", alias.alias_name);
-    if (alias.source === "training_score_sheets") await supabase.from("training_score_sheets").update({ user_shooting_ground_id: null }).eq("user_shooting_ground_id", alias.user_shooting_ground_id).eq("location", alias.alias_name);
+    const { error: removeError } = await supabase.rpc("remove_user_shooting_ground_alias", { p_alias_id: alias.id });
+    if (removeError) { setError(`Could not remove alias "${alias.alias_name}": ${removeError.message}`); setSaving(false); return; }
     setMessage("Alias removed. Original records were not renamed or deleted."); setSaving(false); await load();
   }
 
