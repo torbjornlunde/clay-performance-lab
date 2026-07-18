@@ -1021,6 +1021,7 @@ export default function StatsPage() {
                     <div className="small muted">Current personal ground: {currentGroundName}</div>
                     <div className="btns">
                       <Link className="button secondary smallButton" href={`/sessions/${session.id}`}>Open result</Link>
+                      {session.leirdue_result_url && <a className="button secondary smallButton" href={session.leirdue_result_url} target="_blank" rel="noreferrer">Open Leirdue result</a>}
                       <button className="button secondary smallButton" type="button" onClick={() => { setEditingSessionId(session.id); setSelectedAssignmentGroundId(session.user_shooting_ground_id || ""); setNewGroundName(""); setGroundError(null); setGroundMessage(null); }}>Change shooting ground</button>
                     </div>
                     {isEditing && (
