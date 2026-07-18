@@ -55,7 +55,7 @@ Clay Performance Lab skal behandles som et AI-native performance-produkt, ikke b
 - Mobiltilpasset livevisning for bruk ute på banen.
 - En arrangør kan føre resultatene for hele gruppen.
 
-Dette betyr at target-by-target-føring allerede er implementert. Det skal ikke stå som en fremtidig oppgave.
+Dette betyr at target-by-target-føring allerede er implementert. Det skal ikke stå som en fremtidig oppgave. Se også `docs/TRAINING_SCORE_SHEETS.md` for current live target-by-target behavior, source-of-truth rules, legacy total-only support, and future boundaries.
 
 ### Bomregistrering og analysegrunnlag
 

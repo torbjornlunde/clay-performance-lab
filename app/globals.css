@@ -9505,3 +9505,66 @@ select {
     grid-template-columns: 1fr;
   }
 }
+
+.postScorecardPanel {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--field-border-subtle);
+  border-radius: 18px;
+  background: var(--field-surface);
+}
+
+.postScorecardNav,
+.postScorecardShooterHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.postScorecardRows {
+  display: grid;
+  gap: 12px;
+}
+
+.postScorecardRow {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--field-border-subtle);
+  border-radius: 14px;
+  background: var(--field-surface-inset);
+}
+
+.postScorecardTargets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
+  gap: 8px;
+}
+
+.postScorecardTargets .targetCorrectionButton {
+  min-height: 52px;
+  min-width: 48px;
+}
+
+.postScorecardRow.legacyTotalOnly .postScorecardTargets {
+  opacity: 0.65;
+}
+
+.legacyTotalOnlyNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px;
+  border: 1px dashed var(--field-border-subtle);
+  border-radius: 12px;
+  background: var(--field-surface);
+}
+
+.legacyTotalOnlyNotice p {
+  margin: 0;
+}

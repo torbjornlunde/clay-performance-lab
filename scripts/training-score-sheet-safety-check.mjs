@@ -41,6 +41,46 @@ function displayedPostScore(shooter, postIndex, targetResults) {
     : shooter.scores[postIndex] || 0;
 }
 
+function postScoringMode(targetResults, shooter, postNumber) {
+  if (hasTargetResults(targetResults, shooter.localId, postNumber)) return "detailed";
+  return (shooter.scores[postNumber - 1] || 0) > 0 ? "legacy_total_only" : "blank";
+}
+function canToggleTargetResult(targetResults, shooter, postNumber) {
+  return postScoringMode(targetResults, shooter, postNumber) !== "legacy_total_only";
+}
+
+function nextTargetResultValue(current) {
+  if (!current) return "hit";
+  if (current === "hit") return "miss";
+  return null;
+}
+function setTargetResult(current, shooterId, postNumber, targetNumber, result) {
+  const next = { ...current, [shooterId]: { ...(current[shooterId] || {}) } };
+  next[shooterId][postNumber] = { ...(next[shooterId][postNumber] || {}) };
+  if (result) next[shooterId][postNumber][targetNumber] = result;
+  else delete next[shooterId][postNumber][targetNumber];
+  if (Object.keys(next[shooterId][postNumber]).length === 0) delete next[shooterId][postNumber];
+  if (Object.keys(next[shooterId]).length === 0) delete next[shooterId];
+  return next;
+}
+function toggleTargetResult(current, shooterId, postNumber, targetNumber) {
+  return setTargetResult(current, shooterId, postNumber, targetNumber, nextTargetResultValue(current[shooterId]?.[postNumber]?.[targetNumber]));
+}
+function totalFor(shooter, targetResults) {
+  return shooter.scores.reduce((sum, _score, postIndex) => sum + displayedPostScore(shooter, postIndex, targetResults), 0);
+}
+function targetStatsForPost(targetResults, shooterId, postNumber) {
+  const results = Object.values(targetResults[shooterId]?.[postNumber] || {});
+  return { scored: results.length, hits: results.filter((result) => result === "hit").length, misses: results.filter((result) => result === "miss").length };
+}
+function postCompletionStatus(targetResults, shooterIds, postNumber, expectedTargets) {
+  const expectedEntries = Math.max(0, shooterIds.length * expectedTargets);
+  const scoredEntries = shooterIds.reduce((sum, shooterId) => sum + targetStatsForPost(targetResults, shooterId, postNumber).scored, 0);
+  return { expectedEntries, scoredEntries, remainingEntries: Math.max(expectedEntries - scoredEntries, 0), complete: expectedEntries > 0 && scoredEntries >= expectedEntries };
+}
+function targetResultUpsertKey(scoreSheetId, shooterId, postNumber, targetNumber) {
+  return `${scoreSheetId}:${shooterId}:${postNumber}:${targetNumber}`;
+}
 
 function normalizeExpectedTargetsByPost(setup) {
   const postCount = Math.max(0, Math.trunc(Number(setup.postCount) || 0));
@@ -166,10 +206,43 @@ let loadedCustomDraft = { numberOfPosts: "3", targetsPerPost: "10", customTarget
 loadedCustomDraft = updateSetupDraft(loadedCustomDraft, "targetsPerPost", "8");
 assert.deepEqual(appliedSetupFromDraft(loadedCustomDraft), { postCount: 3, targetsPerPost: 8, expectedTargetsByPost: [8, 10, 6], total: 24 }, "loaded persisted expectedTargetsByPost keeps custom mode active when default changes");
 assert.deepEqual(appliedSetupFromDraft({ numberOfPosts: "5", targetsPerPost: "10", customTargetsByPost: customTargetDraftValues(5, 10, null), customTargetsActive: false }), { postCount: 5, targetsPerPost: 10, expectedTargetsByPost: null, total: 50 }, "simple fixed setup remains unchanged");
+
+
+const legacyPost = { localId: "legacy", scores: [8] };
+assert.equal(displayedPostScore(legacyPost, 0, {}), 8, "legacy 8/10 with no target results evaluates as 8");
+assert.equal(postScoringMode({}, legacyPost, 1), "legacy_total_only", "legacy post with a saved total is identified separately from blank scoring");
+assert.equal(canToggleTargetResult({}, legacyPost, 1), false, "first target interaction cannot silently replace a legacy total without explicit conversion");
+assert.equal(postScoringMode({}, { localId: "blank", scores: [0] }, 1), "blank", "blank 0/10 post can start detailed scoring immediately");
+assert.equal(canToggleTargetResult({}, { localId: "blank", scores: [0] }, 1), true, "blank 0/10 post does not require conversion confirmation");
+assert.equal(postScoringMode({ detailed: { 1: { 1: "miss" } } }, { localId: "detailed", scores: [8] }, 1), "detailed", "detailed post continues to use target results as source of truth");
+assert.equal(displayedPostScore({ localId: "detailed", scores: [8] }, 0, { detailed: { 1: { 1: "miss", 2: "hit" } } }), 1, "target results override legacy manual total only after detailed scoring exists");
+
+let cycle = {};
+cycle = toggleTargetResult(cycle, "shooter-1", 1, 1);
+assert.equal(cycle["shooter-1"][1][1], "hit", "first target tap records a hit");
+cycle = toggleTargetResult(cycle, "shooter-1", 1, 1);
+assert.equal(cycle["shooter-1"][1][1], "miss", "second target tap corrects hit to miss");
+cycle = toggleTargetResult(cycle, "shooter-1", 1, 1);
+assert.equal(cycle["shooter-1"]?.[1]?.[1], undefined, "third target tap clears the target");
+const detailed = { "shooter-1": { 1: { 1: "hit", 2: "miss", 3: "hit" }, 2: { 1: "hit" } } };
+assert.equal(scoreFromTargetResults(detailed, "shooter-1", 1), 2, "automatic post totals count hits only");
+assert.equal(totalFor({ localId: "shooter-1", scores: [0, 0] }, detailed), 3, "automatic shooter total is derived from detailed target hits");
+assert.deepEqual(postCompletionStatus(detailed, ["shooter-1", "shooter-2"], 1, 3), { expectedEntries: 6, scoredEntries: 3, remainingEntries: 3, complete: false }, "post remains incomplete until every shooter target is scored");
+assert.deepEqual(postCompletionStatus({ a: { 1: { 1: "hit", 2: "miss" } }, b: { 1: { 1: "miss", 2: "hit" } } }, ["a", "b"], 1, 2), { expectedEntries: 4, scoredEntries: 4, remainingEntries: 0, complete: true }, "post is complete when every expected entry is hit or miss");
+assert.equal(displayedPostScore({ localId: "legacy", scores: [8] }, 0, {}), 8, "legacy total-only score sheets keep manual post totals");
+assert.equal(targetResultUpsertKey("sheet", "shooter", 2, 4), targetResultUpsertKey("sheet", "shooter", 2, 4), "target-result upsert keys are stable and duplicate-safe");
+assert.deepEqual(setTargetResult(detailed, "shooter-1", 1, 2, "hit")["shooter-1"][1], { 1: "hit", 2: "hit", 3: "hit" }, "corrections update existing target results immediately");
+
 const pageSource = readFileSync("app/training-score-sheets/[id]/page.tsx", "utf8");
 assert.match(pageSource, /Custom targets per post/, "setup UI exposes custom targets per post section");
 assert.match(pageSource, /expected_targets_by_post: expectedTargetsByPost/, "save payload preserves expectedTargetsByPost");
 assert.match(pageSource, /expectedTargetsByPost,/, "local draft includes expectedTargetsByPost");
+assert.match(pageSource, /Detailed target results were not recorded for this post\./, "legacy total-only posts explain missing target details");
+assert.match(pageSource, /Start detailed scoring/, "legacy total-only posts require an explicit conversion action");
+assert.match(pageSource, /Starting detailed scoring will replace the saved post total/, "legacy conversion warns before replacing totals");
+assert.match(pageSource, /disabled=\{legacyTotalOnly\}/, "legacy total-only target buttons are disabled before conversion");
+assert.match(pageSource, /Tap each target: Hit → Miss → Clear/, "live scorecard explains the fast target cycle");
+assert.match(pageSource, /postCompletionStatus/, "live scorecard shows post completion status");
 assert.match(pageSource, /Clear custom counts/, "custom counts can be cleared back to fixed behavior");
 
 console.log("Training score sheet safety checks passed.");
