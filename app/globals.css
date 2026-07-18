@@ -9671,3 +9671,126 @@ select {
     align-items: center;
   }
 }
+
+.performancePage {
+  display: grid;
+  gap: 12px;
+}
+
+.statsPageHeader,
+.performancePage .card {
+  max-width: 860px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+.statsPageHeader {
+  padding: 4px clamp(2px, 1vw, 6px) 0;
+}
+
+.statsPageHeader h1 {
+  font-size: clamp(28px, 8vw, 42px);
+  line-height: 1.05;
+  margin: 0;
+}
+
+.statsPageHeader p {
+  color: var(--text-muted);
+  margin: 6px 0 0;
+}
+
+.performancePage .card {
+  padding: clamp(12px, 3vw, 18px);
+}
+
+.compactStatsFilterCard {
+  padding: 10px;
+}
+
+.compactSectionHeader {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.compactSectionHeader h2 {
+  margin: 0;
+}
+
+.subtleLink {
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.subtleLink:hover {
+  text-decoration: underline;
+}
+
+.summarySupportText,
+.winnerContextLine,
+.recentFormCompactLine,
+.trainingVolumeCompactList p,
+.trainingVolumeCompactInsight {
+  margin: 8px 0 0;
+}
+
+.winnerContextLine,
+.recentFormCompactLine,
+.trainingVolumeCompactList {
+  background: var(--surface-cell);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.trainingVolumeCompactList {
+  display: grid;
+  gap: 4px;
+}
+
+.trainingVolumeCompactList p {
+  margin: 0;
+}
+
+.compactStatsChartCard .chartLegend {
+  gap: 6px 10px;
+  margin-top: 6px;
+}
+
+@media (max-width: 760px) {
+  .performancePage {
+    gap: 9px;
+  }
+
+  .performanceFilterGrid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .performanceFilterGrid label:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .performanceFilterGrid select {
+    min-height: 42px;
+    padding: 8px 10px;
+  }
+
+  .performanceSummaryGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .compactSectionHeader {
+    align-items: flex-start;
+  }
+
+  .groundStatsGrid {
+    grid-template-columns: 1fr;
+  }
+}

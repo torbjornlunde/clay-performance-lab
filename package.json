@@ -36,7 +36,8 @@
     "test:coach-report-leirdue-context": "node scripts/run-coach-report-leirdue-context-tests.mjs",
     "test:entitlements": "node scripts/run-entitlement-tests.mjs",
     "test:performance-summary": "node scripts/run-performance-summary-tests.mjs",
-    "test:pwa": "node scripts/run-pwa-tests.mjs"
+    "test:pwa": "node scripts/run-pwa-tests.mjs",
+    "test:stats-page": "node scripts/run-stats-page-presentation-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { calculateRollingAverage, calculateRollingStdDev, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
-import { buildCompetitionActivitySummary } from "@/lib/competitionActivity";
 import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
 import { calculatePerformanceSummary, calculateWinnerContext, filterPerformanceResults, type PerformanceDataType, type PerformancePeriod, type PerformanceResult } from "@/lib/performance/summary";
 import { normalizeShootingGroundName, type UserShootingGround } from "@/lib/shootingGrounds/aliases";
@@ -330,98 +329,20 @@ function MetricCard({ label, value, helper }: { label: string; value: string; he
   );
 }
 
-function CompetitionActivityCard({
-  summary,
-  selectedYear,
-  onSelectedYearChange,
-  loading,
-}: {
-  summary: ReturnType<typeof buildCompetitionActivitySummary>;
-  selectedYear: number;
-  onSelectedYearChange: (year: number) => void;
-  loading: boolean;
-}) {
-  const historyYears = summary.years.includes(selectedYear) ? summary.years : [selectedYear, ...summary.years];
-
-  return (
-    <section className="card statsCompetitionActivityCard" aria-labelledby="competition-activity-heading">
-      <div className="sectionHeader listSectionHeader">
-        <div>
-          <p className="eyebrow">Competition only</p>
-          <h2 id="competition-activity-heading">Competition activity</h2>
-        </div>
-        <label className="competitionYearSelector">
-          <span>Year</span>
-          <select
-            value={selectedYear}
-            onChange={(event) => onSelectedYearChange(Number(event.target.value))}
-            disabled={loading || historyYears.length === 0}
-            aria-label="Competition activity year"
-          >
-            {historyYears.map((year) => (
-              <option key={year} value={year}>{year}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      {loading ? (
-        <p>Loading...</p>
-      ) : summary.allTimeCompetitionCount === 0 ? (
-        <div className="emptyState compactEmptyState">
-          <p>No saved competitions yet. Log a competition result or import one from Leirdue.net to see your activity here.</p>
-          <div className="btns compactEmptyActions">
-            <Link href="/log-competition" className="button smallButton">Log competition</Link>
-            <Link href="/import/leirdue" className="button secondary smallButton">Import from Leirdue.net</Link>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="competitionActivityGrid">
-            <MetricCard label="All-time competitions" value={formatMetricNumber(summary.allTimeCompetitionCount)} />
-            <MetricCard
-              label="All-time competition targets"
-              value={formatMetricNumber(summary.allTimeCompetitionTargetCount)}
-              helper={summary.hasUnknownAllTimeTargets ? "Known targets only; some competitions have no target count" : undefined}
-            />
-            <MetricCard label={`${selectedYear} competitions`} value={formatMetricNumber(summary.selectedYearCompetitionCount)} />
-            <MetricCard
-              label={`${selectedYear} competition targets`}
-              value={formatMetricNumber(summary.selectedYearCompetitionTargetCount)}
-              helper={summary.hasUnknownSelectedYearTargets ? "Known targets only; some competitions have no target count" : undefined}
-            />
-          </div>
-          {summary.selectedYearCompetitionCount === 0 && (
-            <p className="small muted competitionActivityNote">No saved competitions in {selectedYear}. Choose another year from your competition history to review activity.</p>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
-
 function TrainingVolumeInsightsCard({
   insights,
-  competitionTargetsThisYear,
   loading,
   error,
 }: {
   insights: TrainingVolumeInsights;
-  competitionTargetsThisYear: number | null;
   loading: boolean;
   error: string;
 }) {
-  const totalTargetsThisYear =
-    competitionTargetsThisYear === null ? null : insights.trainingTargetsThisYear + competitionTargetsThisYear;
-
   return (
     <section className="card statsTrainingVolumeCard trainingVolumeInsights" aria-labelledby="training-volume-heading">
-      <div className="sectionHeader listSectionHeader">
-        <div>
-          <p className="eyebrow">Training volume</p>
-          <h2 id="training-volume-heading">Training volume insights</h2>
-        </div>
-        <Link href="/log-training" className="button secondary smallButton">Log training</Link>
+      <div className="compactSectionHeader">
+        <h2 id="training-volume-heading">Training volume</h2>
+        <Link href="/training-score-sheets" className="subtleLink">View training →</Link>
       </div>
 
       {loading ? (
@@ -430,139 +351,13 @@ function TrainingVolumeInsightsCard({
         <div className="error">{error}</div>
       ) : (
         <>
-          <div className="trainingVolumeMetricGrid compactTrainingVolumeGrid">
-            <MetricCard label="Training targets this year" value={formatMetricNumber(insights.trainingTargetsThisYear)} />
-            <MetricCard label="Training sessions/logs this year" value={formatMetricNumber(insights.trainingSessionsThisYear)} />
-            <MetricCard
-              label="Average targets per session"
-              value={formatMetricNumber(insights.averageTargetsPerSessionThisYear)}
-              helper="This calendar year"
-            />
-            <MetricCard label="Training targets last 30 days" value={formatMetricNumber(insights.trainingTargetsLast30Days)} />
-            <MetricCard label="Training sessions/logs last 30 days" value={formatMetricNumber(insights.trainingSessionsLast30Days)} />
-            <MetricCard
-              label="Average days between sessions"
-              value={formatMetricNumber(insights.averageDaysBetweenSessions)}
-              helper={insights.averageDaysBetweenSessions === null ? "Add another log to calculate this" : undefined}
-            />
-            <MetricCard
-              label="Days since last training"
-              value={formatMetricNumber(insights.daysSinceLastTrainingSession)}
-              helper={insights.daysSinceLastTrainingSession === null ? "No logged sessions yet" : undefined}
-            />
-            <MetricCard
-              label="Average practice hit rate"
-              value={formatMetricPercentage(insights.averagePracticeHitPercentage)}
-              helper={insights.practiceLogsWithHits === 0 ? "Add hits to practice logs to calculate this" : `${insights.practiceLogsWithHits} practice log${insights.practiceLogsWithHits === 1 ? "" : "s"} with hits`}
-            />
-            {competitionTargetsThisYear !== null && (
-              <MetricCard label="Competition targets this year" value={formatMetricNumber(competitionTargetsThisYear)} />
-            )}
-            {totalTargetsThisYear !== null && (
-              <MetricCard label="Training + competition targets this year" value={formatMetricNumber(totalTargetsThisYear)} />
-            )}
+          <div className="trainingVolumeCompactList">
+            <p><strong>This year:</strong> {formatMetricNumber(insights.trainingTargetsThisYear)} targets · {formatMetricNumber(insights.trainingSessionsThisYear)} sessions</p>
+            <p><strong>Last 30 days:</strong> {formatMetricNumber(insights.trainingTargetsLast30Days)} targets · {formatMetricNumber(insights.trainingSessionsLast30Days)} sessions</p>
+            <p><strong>Average:</strong> {formatMetricNumber(insights.averageTargetsPerSessionThisYear)} targets/session</p>
           </div>
-
-          <div className="trainingInsightList" aria-label="Training volume insight text">
-            {insights.insightMessages.map((message) => (
-              <p key={message}>{message}</p>
-            ))}
-          </div>
+          {insights.insightMessages[0] && <p className="small muted trainingVolumeCompactInsight">{insights.insightMessages[0]}</p>}
         </>
-      )}
-    </section>
-  );
-}
-
-function TrainingHistoryCard({
-  logs,
-  loading,
-  error,
-}: {
-  logs: TrainingHistoryItem[];
-  loading: boolean;
-  error: string;
-}) {
-  return (
-    <section className="card statsTrainingHistoryCard" aria-labelledby="training-history-heading">
-      <div className="sectionHeader listSectionHeader">
-        <div>
-          <p className="eyebrow">Training history</p>
-          <h2 id="training-history-heading">Recent training logs</h2>
-        </div>
-        <Link href="/simple-training-logs/new" className="button smallButton">Add training log</Link>
-      </div>
-
-      {loading ? (
-        <p>Loading...</p>
-      ) : error ? (
-        <div className="error">{error}</div>
-      ) : logs.length === 0 ? (
-        <div className="emptyState compactEmptyState">
-          <p>No training history yet. Add a practice log or training score sheet to start tracking practice volume.</p>
-          <div className="btns compactEmptyActions">
-            <Link href="/simple-training-logs/new" className="button smallButton">Add training log</Link>
-          </div>
-        </div>
-      ) : (
-        <div className="trainingHistoryList">
-          {logs.map((item) => {
-            if (item.kind === "training_score_sheet") {
-              const { sheet } = item;
-              return (
-                <article className="sessionItem dashboardListItem" key={`sheet-${sheet.id}`}>
-                  <div className="sessionContent">
-                    <div className="sessionTopline compactTopline">
-                      <strong>{sheet.title}</strong>
-                      <span className="badge badgeGreen">Training score sheet</span>
-                    </div>
-                    <div className="small muted sessionMeta compactMeta">
-                      <span>{formatTrainingDate(sheet.session_date)}</span>
-                      <span>{sheet.total_targets} targets</span>
-                      <span>{sheet.discipline}</span>
-                      {sheet.location && <span>{sheet.location}</span>}
-                    </div>
-                  </div>
-                  <div className="sessionActions simpleTrainingListActions">
-                    <Link href={`/training-score-sheets/${sheet.id}`} className="button secondary smallButton">
-                      Open
-                    </Link>
-                  </div>
-                </article>
-              );
-            }
-
-            const { log } = item;
-            const percentage = hitPercentage(log);
-            const isMinimumLog = isMinimumSimpleLog(log);
-            return (
-              <article className="sessionItem dashboardListItem" key={`practice-${log.id}`}>
-                <div className="sessionContent">
-                  <div className="sessionTopline compactTopline">
-                    <strong>{log.discipline || "Practice log"}</strong>
-                    <span className="badge badgeGreen">Practice log</span>
-                  </div>
-                  <div className="small muted sessionMeta compactMeta">
-                    <span>{formatTrainingDate(log.date)}</span>
-                    <span>{log.targets_fired} targets</span>
-                    {log.hits !== null && <span>{log.hits} hits</span>}
-                    {percentage !== null && <span>{percentage.toFixed(0)}%</span>}
-                    {log.location && <span>{log.location}</span>}
-                  </div>
-                  {log.notes && <p className="small muted simpleTrainingNotes">{log.notes}</p>}
-                  {isMinimumLog && (
-                    <p className="small muted simpleTrainingNotes">Add hits, discipline or notes when you are ready.</p>
-                  )}
-                </div>
-                <div className="sessionActions simpleTrainingListActions">
-                  <Link href={`/simple-training-logs/${log.id}/edit`} className="button secondary smallButton">
-                    {isMinimumLog ? "Add details" : "Edit"}
-                  </Link>
-                </div>
-              </article>
-            );
-          })}
-        </div>
       )}
     </section>
   );
@@ -650,9 +445,7 @@ export default function StatsPage() {
   const searchParams = useSearchParams();
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [missCounts, setMissCounts] = useState<Record<string, number>>({});
-  const [trainingLogs, setTrainingLogs] = useState<SimpleTrainingLog[]>([]);
   const [performanceTrainingLogs, setPerformanceTrainingLogs] = useState<PerformanceTrainingLog[]>([]);
-  const [trainingScoreSheets, setTrainingScoreSheets] = useState<TrainingScoreSheetLog[]>([]);
   const [volumeLogs, setVolumeLogs] = useState<TrainingVolumeLog[]>([]);
   const [grounds, setGrounds] = useState<UserShootingGround[]>([]);
   const [selectedGroundKey, setSelectedGroundKey] = useState<string | null>(null);
@@ -664,7 +457,6 @@ export default function StatsPage() {
   const [groundError, setGroundError] = useState<string | null>(null);
   const [trainingLoadError, setTrainingLoadError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [selectedCompetitionYear, setSelectedCompetitionYear] = useState(() => new Date().getFullYear());
   const [selectedDiscipline, setSelectedDiscipline] = useState(() => searchParams.get("discipline") || "");
   const [selectedPeriod, setSelectedPeriod] = useState<PerformancePeriod>(() => {
     const value = searchParams.get("period");
@@ -695,24 +487,9 @@ export default function StatsPage() {
     }
 
     const todayValue = isoDateValue(new Date());
-    const [sessionsResult, missesResult, recentTrainingResult, recentScoreSheetsResult, performanceTrainingResult, volumeTrainingResult, volumeScoreSheetsResult, groundsResult] = await Promise.all([
+    const [sessionsResult, missesResult, performanceTrainingResult, volumeTrainingResult, volumeScoreSheetsResult, groundsResult] = await Promise.all([
       supabase.from("sessions").select("*,user_shooting_grounds(display_name)").order("created_at", { ascending: false }).returns<SessionRow[]>(),
       supabase.from("misses").select("session_id,missed_target").returns<MissRow[]>(),
-      supabase
-        .from("training_logs")
-        .select("id,date,targets_fired,hits,discipline,location,notes,source_type,created_at")
-        .eq("source_type", "simple_training")
-        .order("date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(10)
-        .returns<SimpleTrainingLog[]>(),
-      supabase
-        .from("training_score_sheets")
-        .select("id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,created_at")
-        .order("session_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(10)
-        .returns<TrainingScoreSheetLog[]>(),
       supabase
         .from("training_logs")
         .select("id,date,discipline,targets_fired,hits,source_type")
@@ -744,16 +521,12 @@ export default function StatsPage() {
     setGrounds(groundsResult.data || []);
     setMissCounts(counts);
     if (groundsResult.error) setGroundError("Personal shooting grounds could not be loaded right now.");
-    if (recentTrainingResult.error || recentScoreSheetsResult.error || performanceTrainingResult.error || volumeTrainingResult.error || volumeScoreSheetsResult.error) {
+    if (performanceTrainingResult.error || volumeTrainingResult.error || volumeScoreSheetsResult.error) {
       setTrainingLoadError("Training history could not be loaded right now.");
-      setTrainingLogs([]);
-      setTrainingScoreSheets([]);
       setPerformanceTrainingLogs([]);
       setVolumeLogs([]);
     } else {
       setTrainingLoadError("");
-      setTrainingLogs(recentTrainingResult.data || []);
-      setTrainingScoreSheets(recentScoreSheetsResult.data || []);
       setPerformanceTrainingLogs(performanceTrainingResult.data || []);
       setVolumeLogs([
         ...(volumeTrainingResult.data || []).map(simpleLogToVolumeLog),
@@ -896,28 +669,7 @@ export default function StatsPage() {
 
   const selectedGround = useMemo(() => byShootingGround.find((ground) => ground.key === selectedGroundKey) || null, [byShootingGround, selectedGroundKey]);
 
-  const trainingHistoryItems = useMemo<TrainingHistoryItem[]>(() => [
-    ...trainingLogs.map((log) => ({
-      kind: "practice_log" as const,
-      id: log.id,
-      date: log.date,
-      createdAt: log.created_at,
-      log,
-    })),
-    ...trainingScoreSheets.map((sheet) => ({
-      kind: "training_score_sheet" as const,
-      id: sheet.id,
-      date: sheet.session_date,
-      createdAt: sheet.created_at,
-      sheet,
-    })),
-  ].sort(sortTrainingHistoryItems).slice(0, 5), [trainingLogs, trainingScoreSheets]);
-
   const volumeInsights = useMemo(() => buildTrainingVolumeInsights(volumeLogs), [volumeLogs]);
-  const competitionActivity = useMemo(
-    () => buildCompetitionActivitySummary(sessions, selectedCompetitionYear),
-    [sessions, selectedCompetitionYear],
-  );
   async function saveSessionGround(sessionId: string) {
     const trimmedNewGroundName = newGroundName.trim();
     if (!selectedAssignmentGroundId && !trimmedNewGroundName) { setGroundError("Choose an existing ground or enter a new ground name."); return; }
@@ -943,52 +695,17 @@ export default function StatsPage() {
     setEditingSessionId(null); setSavingGroundSessionId(null); await load();
   }
 
-  const competitionTargetsThisYear = useMemo(() => {
-    const yearStart = `${new Date().getFullYear()}-01-01`;
-    return sessions
-      .filter((session) => session.session_type === "Competition")
-      .filter((session) => (session.competition_date || session.created_at) >= yearStart)
-      .reduce((sum, session) => sum + (session.total_targets || 0), 0);
-  }, [sessions]);
+
 
   return (
-    <main>
-      <div className="heroCard">
-        <div>
-          <p className="eyebrow">Performance</p>
-          <h2>Performance</h2>
-          <p>Review competition trends and training volume in one place.</p>
-        </div>
-        <div className="btns heroActions">
-          <Link href="/dashboard" className="button secondary">
-            Dashboard
-          </Link>
-          <Link href="/results" className="button secondary">
-            Manage results
-          </Link>
-          <Link href="/log-competition" className="button">
-            Log competition
-          </Link>
-          <Link href="/log-training" className="button secondary">
-            Log training
-          </Link>
-        </div>
-      </div>
+    <main className="performancePage">
+      <header className="statsPageHeader">
+        <h1>Performance</h1>
+        <p>Track form, trends and key performance patterns.</p>
+      </header>
 
-      <CompetitionActivityCard
-        summary={competitionActivity}
-        selectedYear={selectedCompetitionYear}
-        onSelectedYearChange={setSelectedCompetitionYear}
-        loading={loading}
-      />
-
-      <section className="card statsFilterCard" aria-labelledby="performance-filters-heading">
-        <div className="sectionHeader">
-          <div>
-            <p className="eyebrow">Filters</p>
-            <h2 id="performance-filters-heading">Performance filters</h2>
-          </div>
-        </div>
+      <section className="card statsFilterCard compactStatsFilterCard" aria-labelledby="performance-filters-heading">
+        <h2 id="performance-filters-heading" className="srOnly">Performance filters</h2>
         <div className="performanceFilterGrid">
           <label>
             <span>Discipline</span>
@@ -1016,7 +733,6 @@ export default function StatsPage() {
       <div className="card statsSummaryCard">
         <div className="sectionHeader">
           <div>
-            <p className="eyebrow">Filtered results</p>
             <h2>Performance summary</h2>
           </div>
         </div>
@@ -1033,117 +749,78 @@ export default function StatsPage() {
         ) : (
           <>
             <div className="summaryGrid compactSummaryGrid performanceSummaryGrid">
-              <div className="summaryStat"><span>Recent average</span><strong>{formatMetricPercentage(performanceSummary.recentAverage)}</strong></div>
-              <div className="summaryStat"><span>Best result</span><strong>{formatMetricPercentage(performanceSummary.best)}</strong></div>
+              <div className="summaryStat"><span>Recent</span><strong>{formatMetricPercentage(performanceSummary.recentAverage)}</strong></div>
+              <div className="summaryStat"><span>Best</span><strong>{formatMetricPercentage(performanceSummary.best)}</strong></div>
               <div className="summaryStat"><span>Trend</span><strong>{performanceSummary.trend.label}</strong><p className="small muted">{formatSignedPercentagePoints(performanceSummary.trend.difference)}</p></div>
-              <div className="summaryStat"><span>Results counted</span><strong>{performanceSummary.count}</strong><p className="small muted">Filtered scored results</p></div>
-              <div className="summaryStat"><span>Data confidence</span><strong>{performanceSummary.confidence}</strong><p className="small muted">Confidence reflects sample size, not result quality.</p></div>
+              <div className="summaryStat"><span>Confidence</span><strong>{performanceSummary.confidence}</strong></div>
             </div>
-            {selectedType === "competition" && (
-              <div className="winnerContextPanel">
-                <h3>Competition winner context</h3>
-                {winnerContext.averageGap === null ? <p className="small muted">Not enough winner data yet.</p> : (
-                  <div className="trainingVolumeMetricGrid compactTrainingVolumeGrid">
-                    <MetricCard label="Average gap to winner" value={formatGap(winnerContext.averageGap)} helper={`${winnerContext.count} competition results with winner scores`} />
-                    <MetricCard label="Best gap to winner" value={formatGap(winnerContext.bestGap)} />
-                    <MetricCard label="Latest gap to winner" value={formatGap(winnerContext.latestGap)} />
-                  </div>
-                )}
-              </div>
+            <p className="small muted summarySupportText">Based on {performanceSummary.count} result{performanceSummary.count === 1 ? "" : "s"}. Confidence reflects sample size.</p>
+            {selectedType === "competition" && winnerContext.averageGap !== null && (
+              <p className="winnerContextLine"><strong>Winner gap</strong> Average {formatGap(winnerContext.averageGap)} · Best {formatGap(winnerContext.bestGap)} · Latest {formatGap(winnerContext.latestGap)}</p>
             )}
           </>
         )}
       </div>
 
-      <TrainingVolumeInsightsCard
-        insights={volumeInsights}
-        competitionTargetsThisYear={competitionTargetsThisYear}
-        loading={loading}
-        error={trainingLoadError}
-      />
-
-      <TrainingHistoryCard logs={trainingHistoryItems} loading={loading} error={trainingLoadError} />
-
-      <div className="card statsRecentFormCard">
+      {!loading && chartPoints.length > 0 && (
+        <div className="card statsChartCard compactStatsChartCard">
         <div className="sectionHeader">
           <div>
-            <p className="eyebrow">Recent form</p>
-            <h2>Latest filtered results</h2>
+            <h2>Trend</h2>
           </div>
         </div>
-        {loading ? <p>Loading...</p> : filteredPerformanceResults.length === 0 ? (
-          <div className="emptyState compactEmptyState"><p>No recent form results match these filters.</p></div>
-        ) : (
-          <div className="recentFormList">
-            {filteredPerformanceResults.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((result) => {
-              const session = result.dataType === "competition" ? sessions.find((item) => item.id === result.id) : null;
-              const percentage = result.dataType === "competition" && result.winningScore ? (result.score / result.winningScore) * 100 : result.maxScore ? (result.score / result.maxScore) * 100 : null;
-              return (
-                <article className="statListItem" key={`${result.dataType}-${result.id}`}>
-                  <div>
-                    <strong>{session?.name || result.discipline || "Training result"}</strong>
-                    <div className="small muted">{formatFullDate(result.date)} · {result.discipline || "No discipline"} · {result.dataType === "competition" ? "Competition" : "Training"}</div>
-                    <div className="small muted">
-                      Score {result.score}{result.winningScore ? ` · Winning score ${result.winningScore} · Gap ${Math.max(0, result.winningScore - result.score)} · Performance vs winning score ${percentage?.toFixed(1)}%` : result.maxScore ? ` / ${result.maxScore} · Hit rate ${percentage?.toFixed(1)}%` : ""}
-                      {session && ` · Shooting ground: ${displayGroundForSession(session)}`}
-                    </div>
-                    {session && <div className="btns"><Link className="button secondary smallButton" href={`/sessions/${session.id}`}>Open result</Link>{session.leirdue_result_url && <a className="button secondary smallButton" href={session.leirdue_result_url} target="_blank" rel="noreferrer">Open Leirdue result</a>}</div>}
-                  </div>
-                  {percentage !== null && <span className="statPercent">{percentage.toFixed(1)}%</span>}
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="card statsChartCard">
-        <div className="sectionHeader">
-          <div>
-            <p className="eyebrow">Trend</p>
-            <h2>Competition chart</h2>
-          </div>
-        </div>
-        {loading ? (
-          <p>Loading...</p>
-        ) : chartPoints.length === 0 ? (
-          <div className="emptyState compactEmptyState">
-            <p>{selectedType === "training" ? "The competition chart is competition-only and does not include training results." : "Chart appears after you add filtered competition results with winning score."}</p>
-            <div className="btns compactEmptyActions">
-              <Link href="/log-competition" className="button smallButton">Log competition</Link>
-            </div>
-          </div>
-        ) : (
           <PerformanceChart points={chartPoints} onPointClick={(id) => router.push(`/sessions/${id}`)} />
-        )}
-      </div>
+        </div>
+      )}
 
-      {!loading && (
-        <div className="card statsGroundCard">
+
+      {!loading && filteredPerformanceResults.length > 0 && (
+        <section className="card statsRecentFormCard compactRecentFormCard">
+          <div className="compactSectionHeader">
+            <h2>Recent form</h2>
+            <Link href="/results" className="subtleLink">View all results →</Link>
+          </div>
+          <p className="recentFormCompactLine">
+            {filteredPerformanceResults
+              .slice()
+              .sort((a, b) => b.date.localeCompare(a.date))
+              .slice(0, 5)
+              .map((result) => {
+                const percentage = result.dataType === "competition" && result.winningScore ? (result.score / result.winningScore) * 100 : result.maxScore ? (result.score / result.maxScore) * 100 : null;
+                return percentage === null ? null : `${percentage.toFixed(0)}%`;
+              })
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        </section>
+      )}
+
+
+
+
+      {!loading && selectedType === "training" && (
+        <TrainingVolumeInsightsCard
+          insights={volumeInsights}
+          loading={loading}
+          error={trainingLoadError}
+        />
+      )}
+      {!loading && selectedType !== "training" && byShootingGround.length >= 2 && (
+        <div className="card statsGroundCard compactGroundCard">
           <div className="sectionHeader">
             <div>
               <p className="eyebrow">Shooting ground</p>
               <h2>By shooting ground</h2>
             </div>
           </div>
-          {selectedType === "training" ? (
-            <div className="emptyState compactEmptyState"><p>By shooting ground is competition-based and does not mix training venue data.</p></div>
-          ) : byShootingGround.length < 2 ? (
-            <div className="emptyState compactEmptyState"><p>Not enough filtered competition shooting ground data yet.</p></div>
-          ) : (
-            <div className="groundStatsGrid">
+          <div className="groundStatsGrid">
               {byShootingGround.map((ground) => (
               <button className="groundStat groundStatButton" key={ground.key} onClick={() => setSelectedGroundKey(ground.key)} type="button">
                 <strong>{ground.name}</strong>
-                <span>{ground.count} competition result{ground.count === 1 ? "" : "s"}</span>
-                <span>Average {ground.average.toFixed(1)}%</span>
-                <span>Best {ground.best.toFixed(1)}%</span>
-                <span>Latest {ground.latest.toFixed(1)}%</span>
-                <span className="groundStatAction">View ground details</span>
+                <span>{ground.count} result{ground.count === 1 ? "" : "s"} · Avg {ground.average.toFixed(1)}% · Best {ground.best.toFixed(1)}%</span>
               </button>
               ))}
             </div>
-          )}
         </div>
       )}
 
@@ -1170,7 +847,7 @@ export default function StatsPage() {
             {selectedGround.sourceNames.length === 0 ? <p className="muted">No original shooting ground name is saved for these sessions.</p> : <div className="chipList">{selectedGround.sourceNames.map((name) => <span className="metricChip" key={name}>{name}</span>)}</div>}
           </div>
           <div className="groundSessionList">
-            {selectedGround.sessions.map(({ session, score, percentage }) => {
+            {selectedGround.sessions.slice(0, 5).map(({ session, score, percentage }) => {
               const isEditing = editingSessionId === session.id;
               const currentGroundName = session.user_shooting_grounds?.display_name?.trim() || "Not assigned";
               return (
@@ -1208,46 +885,12 @@ export default function StatsPage() {
                 </article>
               );
             })}
+          <Link href="/results" className="subtleLink">View all results →</Link>
           </div>
         </div>
       )}
 
-      <div className="card statsListCard">
-        <div className="sectionHeader">
-          <div>
-            <p className="eyebrow">Result list</p>
-            <h2>Scored results</h2>
-          </div>
-        </div>
-        {loading ? (
-          <p>Loading...</p>
-        ) : chartPoints.length === 0 ? (
-          <div className="emptyState compactEmptyState">
-            <p>{selectedType === "training" ? "This scored result list is competition-only. Use Recent form above for filtered training results." : "Add filtered competition scoring data to populate this list."}</p>
-            <div className="btns compactEmptyActions">
-              <Link href="/log-competition" className="button smallButton">Log competition</Link>
-            </div>
-          </div>
-        ) : (
-          chartPoints
-            .slice()
-            .sort(sortNewestChartPoints)
-            .map((point) => (
-              <div className="statListItem" key={point.id}>
-                <div>
-                  <strong>{point.name}</strong>
-                  <div className="small muted">{formatDate(point.date)}{point.shootingGround ? ` · Shooting ground: ${point.shootingGround}` : ""} · {point.discipline}</div>
-                  <div className="small muted">Score used {point.score} · Winning score {point.winningScore} · Performance vs winning score {point.percentage.toFixed(1)}% · Rolling average {point.rollingAveragePercentage.toFixed(1)}%</div>
-                  <div className="btns">
-                    <Link className="button secondary smallButton" href={`/sessions/${point.id}`}>Open</Link>
-                    {point.leirdueResultUrl && <a className="button secondary smallButton" href={point.leirdueResultUrl} target="_blank" rel="noreferrer">Open Leirdue result</a>}
-                  </div>
-                </div>
-                <span className="statPercent">{point.percentage.toFixed(1)}%</span>
-              </div>
-            ))
-        )}
-      </div>
+
     </main>
   );
 }
