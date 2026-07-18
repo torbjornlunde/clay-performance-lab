@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AppearanceControl from "@/app/components/AppearanceControl";
+import InstallAppCard from "@/app/components/InstallAppCard";
 
 export default function SettingsPage() {
   return (
@@ -14,6 +15,7 @@ export default function SettingsPage() {
         <p className="muted">Group duplicate personal shooting ground names without changing original imported or logged text.</p>
         <Link href="/settings/shooting-grounds" className="button secondary">Clean up shooting grounds</Link>
       </section>
+      <InstallAppCard />
       <AppearanceControl />
     </main>
   );
