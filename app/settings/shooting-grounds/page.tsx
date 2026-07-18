@@ -65,8 +65,10 @@ export default function ShootingGroundSettingsPage() {
   }
 
   useEffect(() => { load(); }, []);
-  const suggestions = useMemo(() => buildDuplicateSuggestions(groundNames), [groundNames]);
-  const selectedItems = groundNames.filter((item) => draft.selected.has(keyFor(item)));
+  const unmergedGroundNames = useMemo(() => groundNames.filter((item) => !item.assignedGroundId), [groundNames]);
+  const mergedSourceNames = useMemo(() => groundNames.filter((item) => item.assignedGroundId), [groundNames]);
+  const suggestions = useMemo(() => buildDuplicateSuggestions(unmergedGroundNames), [unmergedGroundNames]);
+  const selectedItems = unmergedGroundNames.filter((item) => draft.selected.has(keyFor(item)));
   const canMerge = draft.displayName.trim().length > 0 && selectedItems.length > 0 && !saving;
 
   function selectGroup(group: DistinctGroundName[]) {
@@ -105,11 +107,19 @@ export default function ShootingGroundSettingsPage() {
     {error && <p className="errorText">{error}</p>}{message && <p className="successText">{message}</p>}
     <section className="card"><h3>Merge shooting grounds</h3><label>Main name</label><input value={draft.displayName} onChange={(e) => setDraft((current) => ({ ...current, displayName: e.target.value }))} placeholder="Enter or choose the canonical display name" /> <button className="button" disabled={!canMerge} onClick={mergeSelected}>{saving ? "Saving..." : "Merge selected"}</button><p className="small muted">Selected names: {selectedItems.length || "none"}. Every merge is personal to your account.</p></section>
     <section className="card"><h3>Suggested duplicates</h3>{loading ? <p>Loading shooting ground names...</p> : suggestions.length === 0 ? <p className="muted">No duplicate suggestions found yet.</p> : suggestions.map((group, index) => <div className="groundGroup" key={index}><div><strong>{group[0].name}</strong><p className="small muted">{group.length} similar names · {group.reduce((sum, item) => sum + item.count, 0)} records</p></div><button className="button secondary" onClick={() => selectGroup(group)}>Use this as main name</button><details><summary>Show details</summary>{group.map((item) => <GroundCheckbox key={keyFor(item)} item={item} checked={draft.selected.has(keyFor(item))} onChange={toggle} />)}</details></div>)}</section>
-    <section className="card"><h3>All shooting ground names</h3>{groundNames.length === 0 ? <p className="muted">No shooting ground names found in your sessions or training logs.</p> : groundNames.map((item) => <GroundCheckbox key={keyFor(item)} item={item} checked={draft.selected.has(keyFor(item))} onChange={toggle} />)}</section>
+    <section className="card"><h3>Unmerged shooting ground names</h3>{loading ? <p>Loading shooting ground names...</p> : unmergedGroundNames.length === 0 ? <p className="muted">No unmerged shooting ground names found in your sessions or training logs.</p> : unmergedGroundNames.map((item) => <GroundCheckbox key={keyFor(item)} item={item} checked={draft.selected.has(keyFor(item))} onChange={toggle} />)}{mergedSourceNames.length > 0 && <details className="mergedSourceNames"><summary>Show merged source names</summary><p className="small muted">These names are already attached to a merged shooting ground and are not selectable cleanup candidates.</p>{mergedSourceNames.map((item) => <GroundNameSummary key={keyFor(item)} item={item} />)}</details>}</section>
     <section className="card"><h3>Merged shooting grounds</h3>{grounds.length === 0 ? <p className="muted">No merged shooting grounds yet.</p> : grounds.map((ground) => <div className="groundGroup" key={ground.id}><strong>{ground.display_name}</strong><p className="small muted">Aliases</p>{ground.aliases?.length ? ground.aliases.map((alias) => <div className="aliasRow" key={alias.id}><span>{alias.alias_name} <small className="muted">· {sourceLabel(alias.source || "")}</small></span><button className="button secondary smallButton" disabled={saving} onClick={() => removeAlias(alias)}>Remove alias</button></div>) : <p className="muted">No aliases saved yet.</p>}</div>)}</section>
   </main>;
 }
 
 function GroundCheckbox({ item, checked, onChange }: { item: DistinctGroundName; checked: boolean; onChange: (item: DistinctGroundName, checked: boolean) => void }) {
-  return <label className="groundNameOption"><input type="checkbox" checked={checked} onChange={(event) => onChange(item, event.target.checked)} /><span><strong>{item.name}</strong><small>{item.count} record{item.count === 1 ? "" : "s"} · {sourceLabel(item.source)} · latest {formatDate(item.latestDate)}{item.assignedGroundId ? " · already merged" : ""}</small></span></label>;
+  return <label className="groundNameOption"><input type="checkbox" checked={checked} onChange={(event) => onChange(item, event.target.checked)} /><GroundNameText item={item} /></label>;
+}
+
+function GroundNameSummary({ item }: { item: DistinctGroundName }) {
+  return <div className="groundNameOption readOnly"><GroundNameText item={item} /></div>;
+}
+
+function GroundNameText({ item }: { item: DistinctGroundName }) {
+  return <span><strong>{item.name}</strong><small>{item.count} record{item.count === 1 ? "" : "s"} · {sourceLabel(item.source)} · latest {formatDate(item.latestDate)}{item.assignedGroundId ? " · already merged" : ""}</small></span>;
 }
