@@ -1,0 +1,38 @@
+import type { FeatureDefinition, FeatureKey } from "./types";
+
+export const FEATURE_CATALOG = {
+  "results.manual_log": { key: "results.manual_log", tier: "free", title: "Manual result logging", description: "Log clay shooting results manually.", costSensitive: false, visibleInBeta: true, allowTrial: false },
+  "results.basic_history": { key: "results.basic_history", tier: "free", title: "Basic result history", description: "Review recent result history and scores.", costSensitive: false, visibleInBeta: true, allowTrial: false },
+  "training.basic_log": { key: "training.basic_log", tier: "free", title: "Basic training logs", description: "Log simple training sessions.", costSensitive: false, visibleInBeta: true, allowTrial: false },
+  "performance.basic_summary": { key: "performance.basic_summary", tier: "free", title: "Basic performance summary", description: "See basic progress and score summaries.", costSensitive: false, visibleInBeta: true, allowTrial: false },
+  "performance.basic_result_vs_winner": { key: "performance.basic_result_vs_winner", tier: "free", title: "Basic result vs winner", description: "Compare your result against the winning score where available.", costSensitive: false, visibleInBeta: true, allowTrial: false },
+  "import.leirdue_current_season": { key: "import.leirdue_current_season", tier: "free", title: "Current-season Leirdue import", description: "Import current-season Leirdue results.", costSensitive: false, visibleInBeta: true, allowTrial: false },
+  "offline.basic_logging": { key: "offline.basic_logging", tier: "free", title: "Basic offline logging", description: "Keep lightweight logging usable with poor range connectivity.", costSensitive: false, visibleInBeta: true, allowTrial: false },
+  "shooting_grounds.basic_cleanup": { key: "shooting_grounds.basic_cleanup", tier: "free", title: "Basic shooting ground cleanup", description: "Clean up personal shooting ground names and aliases.", costSensitive: false, visibleInBeta: true, allowTrial: false },
+  "data.compliance_access": { key: "data.compliance_access", tier: "compliance_access", title: "Raw data compliance access", description: "Access to a user's own raw personal data for account compliance is handled separately from product exports.", costSensitive: false, visibleInBeta: true, allowTrial: false },
+  "import.leirdue_full_history": { key: "import.leirdue_full_history", tier: "pro", title: "Full historical Leirdue import", description: "Import deeper Leirdue history beyond the current season.", costSensitive: false, visibleInBeta: false, allowTrial: true, defaultFreeTrialLimit: 1 },
+  "performance.advanced_trends": { key: "performance.advanced_trends", tier: "pro", title: "Advanced performance trends", description: "Unlock deeper progress trends and interpretation.", costSensitive: false, visibleInBeta: false, allowTrial: true },
+  "performance.ground_trends": { key: "performance.ground_trends", tier: "pro", title: "Ground trends", description: "Compare performance across shooting grounds.", costSensitive: false, visibleInBeta: false, allowTrial: true },
+  "performance.miss_patterns": { key: "performance.miss_patterns", tier: "pro", title: "Miss-pattern analysis", description: "Analyze recurring misses and likely training priorities.", costSensitive: false, visibleInBeta: false, allowTrial: true },
+  "performance.target_type_analysis": { key: "performance.target_type_analysis", tier: "pro", title: "Target-type analysis", description: "Understand performance by target presentation and type.", costSensitive: false, visibleInBeta: false, allowTrial: true },
+  "performance.equipment_comparison": { key: "performance.equipment_comparison", tier: "pro", title: "Equipment comparison", description: "Compare results by weapon, choke and ammunition setup.", costSensitive: false, visibleInBeta: false, allowTrial: true },
+  "training.shared_score_sheets": { key: "training.shared_score_sheets", tier: "pro", title: "Shared score sheets", description: "Use shared or multi-shooter training score sheets.", costSensitive: false, visibleInBeta: false, allowTrial: true },
+  "training.organizer_mode": { key: "training.organizer_mode", tier: "pro", title: "Organizer mode", description: "Coordinate structured training for multiple shooters.", costSensitive: false, visibleInBeta: false, allowTrial: true },
+  "offline.shared_score_sheets": { key: "offline.shared_score_sheets", tier: "pro", title: "Offline shared score sheets", description: "Prepare shared score sheets for weak connectivity.", costSensitive: false, visibleInBeta: false, allowTrial: true },
+  "coach_report.generate": { key: "coach_report.generate", tier: "pro", title: "Coach Report", description: "Generate coach-ready evidence reports.", costSensitive: false, visibleInBeta: false, allowTrial: true, defaultFreeTrialLimit: 1 },
+  "coach_report.export": { key: "coach_report.export", tier: "pro", title: "Coach Report export", description: "Export coach-ready report packages.", costSensitive: false, visibleInBeta: false, allowTrial: true },
+  "export.product_data.shared_score_sheets": { key: "export.product_data.shared_score_sheets", tier: "pro", title: "Shared score sheet product export", description: "Export packaged shared score sheet data.", costSensitive: false, visibleInBeta: false, allowTrial: true },
+  "export.product_data": { key: "export.product_data", tier: "pro", title: "Product data export", description: "Export packaged product data for coaching and analysis.", costSensitive: false, visibleInBeta: false, allowTrial: true },
+  "export.coach_report_pdf": { key: "export.coach_report_pdf", tier: "pro", title: "Coach Report PDF", description: "Export coach reports as polished PDFs.", costSensitive: false, visibleInBeta: false, allowTrial: true },
+  "export.advanced_csv": { key: "export.advanced_csv", tier: "pro", title: "Advanced CSV export", description: "Export advanced analysis CSV files.", costSensitive: false, visibleInBeta: false, allowTrial: true },
+  "ai.coach_report_summary": { key: "ai.coach_report_summary", tier: "ai_pro", title: "AI Coach Report summary", description: "Generate AI-powered coach report interpretation.", costSensitive: true, visibleInBeta: false, allowTrial: true, defaultFreeTrialLimit: 1 },
+  "ai.performance_summary": { key: "ai.performance_summary", tier: "ai_pro", title: "AI performance summary", description: "Use AI to summarize performance patterns.", costSensitive: true, visibleInBeta: false, allowTrial: true, defaultFreeTrialLimit: 1 },
+  "ai.training_recommendations": { key: "ai.training_recommendations", tier: "ai_pro", title: "AI training recommendations", description: "Get AI-powered training recommendations.", costSensitive: true, visibleInBeta: false, allowTrial: true, defaultFreeTrialLimit: 1 },
+  "ai.app_copilot": { key: "ai.app_copilot", tier: "ai_pro", title: "AI app copilot", description: "Ask an AI copilot for help interpreting your data.", costSensitive: true, visibleInBeta: false, allowTrial: false },
+  "ai.miss_pattern_interpretation": { key: "ai.miss_pattern_interpretation", tier: "ai_pro", title: "AI miss-pattern interpretation", description: "Use AI to interpret miss patterns and next steps.", costSensitive: true, visibleInBeta: false, allowTrial: true, defaultFreeTrialLimit: 1 },
+} as const satisfies Record<FeatureKey, FeatureDefinition>;
+
+export const FEATURES: Record<FeatureKey, FeatureDefinition> = FEATURE_CATALOG;
+
+export const FEATURE_KEYS = Object.keys(FEATURE_CATALOG) as FeatureKey[];
+export function getFeatureDefinition(featureKey: FeatureKey): FeatureDefinition { return FEATURES[featureKey]; }

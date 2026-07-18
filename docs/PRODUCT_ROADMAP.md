@@ -362,3 +362,7 @@ Når en PR merges:
 - behold viktige beslutninger som fortsatt gjelder
 
 Ved uenighet mellom eldre samtaler og dette dokumentet skal denne roadmapen brukes som utgangspunkt, men faktisk kode og produksjonsstatus har alltid siste ord.
+
+## Hidden Free/Pro entitlement foundation
+
+The product is preparing for a future Free/Pro split while keeping the closed beta non-commercial by default. Free covers lightweight logging and basic progress understanding. Pro will cover advanced interpretation, coaching workflows, packaged exports and all AI-powered features. The beta remains hidden from public pricing, checkout, upgrade buttons and visible paywalls unless billing visibility is explicitly enabled later.
