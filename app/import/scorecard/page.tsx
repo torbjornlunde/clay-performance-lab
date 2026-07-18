@@ -16,15 +16,16 @@ export default function ImportScorecardPage() {
   const library = useRef<HTMLInputElement>(null);
   const [sessionType, setSessionType] = useState<"Training" | "Competition">("Training");
   const [discipline, setDiscipline] = useState("");
-  const [totalTargets, setTotalTargets] = useState("120");
+  const [totalTargets, setTotalTargets] = useState("");
   const [shootingGround, setShootingGround] = useState("");
   const [shooterName, setShooterName] = useState("");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [file, setFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<NormalizedScorecardAnalysis | null>(null);
   const [grid, setGrid] = useState<ScorecardCell[]>([]);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const canSaveTraining = sessionType === "Training" && Boolean(analysis) && grid.length > 0 && discipline.trim().length > 0 && date.trim().length > 0;
   const summary = useMemo(() => summarizeGrid(grid), [grid]);
   const postCount = grid.length ? Math.max(...grid.map((cell) => cell.postNumber)) : analysis?.postCount || 0;
 
@@ -72,6 +73,8 @@ export default function ImportScorecardPage() {
   }
   async function saveTraining() {
     if (!analysis) return;
+    if (!discipline.trim()) { setError("Select a discipline before creating the Training Score Sheet."); return; }
+    if (!date.trim()) { setError("Choose a date before creating the Training Score Sheet."); return; }
     setStatus("Saving Training Score Sheet...");
     const { data: auth } = await supabase.auth.getSession();
     const response = await fetch("/api/scorecard/training/apply", { method: "POST", headers: { "Content-Type": "application/json", ...(auth.session?.access_token ? { Authorization: `Bearer ${auth.session.access_token}` } : {}) }, body: JSON.stringify({ sessionType, discipline, totalTargets, shootingGround, shooterName, date, analysis, grid, selectedShooterCandidateId: analysis.shooterRows[0]?.candidateId }) });
@@ -86,8 +89,8 @@ export default function ImportScorecardPage() {
       <h2>Import scorecard photo</h2>
       <p className="muted">Start with minimal Training metadata, upload a paper scorecard, review the detected structure and targets, then confirm before saving.</p>
       <label>Session type<select value={sessionType} onChange={(event) => setSessionType(event.target.value as "Training" | "Competition")}><option>Training</option><option>Competition</option></select></label>
-      <label>Discipline<input value={discipline} onChange={(event) => setDiscipline(event.target.value)} placeholder="Optional" /></label>
-      <label>Expected total targets<input type="number" min={1} value={totalTargets} onChange={(event) => setTotalTargets(event.target.value)} /></label>
+      <label>Discipline<input value={discipline} onChange={(event) => setDiscipline(event.target.value)} placeholder="Required before saving" /></label>
+      <label>Expected total targets<input type="number" min={1} value={totalTargets} onChange={(event) => setTotalTargets(event.target.value)} placeholder="Optional" /></label>
       <label>Shooting ground<input value={shootingGround} onChange={(event) => setShootingGround(event.target.value)} placeholder="Optional" /></label>
       <label>Shooter name<input value={shooterName} onChange={(event) => setShooterName(event.target.value)} placeholder="Optional" /></label>
       <label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
@@ -102,7 +105,7 @@ export default function ImportScorecardPage() {
       <label className="small">Posts<input type="number" min={1} max={100} value={postCount} onChange={(event) => editPostCount(Number(event.target.value))} /></label>
       <div className="compactSummary">{Array.from({ length: postCount }, (_, index) => { const post = index + 1; const count = grid.filter((cell) => cell.postNumber === post).length || 1; return <label className="small" key={post}>P{post}<input type="number" min={1} max={100} value={count} onChange={(event) => editTargets(post, Number(event.target.value))} /></label>; })}</div>
       {Array.from({ length: postCount }, (_, index) => { const post = index + 1; const cells = grid.filter((cell) => cell.postNumber === post); const ps = summarizeGrid(cells); return <div className="subcard" key={post}><h4>Post {post} · {ps.score}/{cells.length}</h4><div className="scorecardGrid">{cells.map((cell) => <button type="button" key={`${cell.postNumber}:${cell.targetNumber}`} className={`scorecardCell ${cell.result}`} onClick={() => setCell(cell, cell.result === "hit" ? "miss" : cell.result === "miss" ? "unknown" : "hit")}><strong>{cell.targetNumber}</strong><span>{cell.result === "unknown" ? "Uncertain" : cell.result}</span></button>)}</div></div>; })}
-      {sessionType === "Training" ? <button className="button" type="button" onClick={saveTraining}>Confirm and create Training Score Sheet</button> : <p className="warning small">Competition imports should use an existing competition session so the reviewed scorecard can be applied to that session.</p>}
+      {sessionType === "Training" ? <><button className="button" type="button" disabled={!canSaveTraining} onClick={saveTraining}>Confirm and create Training Score Sheet</button>{!discipline.trim() && <p className="error small">Select a discipline before creating the Training Score Sheet.</p>}{!date.trim() && <p className="error small">Choose a date before creating the Training Score Sheet.</p>}</> : <p className="warning small">Competition imports should use an existing competition session so the reviewed scorecard can be applied to that session.</p>}
     </div>}
   </main>;
 }

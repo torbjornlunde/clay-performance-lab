@@ -48,6 +48,26 @@ assert.equal(partialReliable.posts[0].scoringMode,'total_only','reliable total p
 const trainingPayload=imported.mapReviewedImportToTrainingScoreSheet(detailed,'shooter-a');
 assert.equal(trainingPayload.scoreSheet.number_of_posts,1); assert.deepEqual(trainingPayload.scoreSheet.expected_targets_by_post,[8]); assert.deepEqual(trainingPayload.scores,[6]); assert.equal(Object.keys(trainingPayload.targetResults['shooter-a'][1]).length,8,'confirmed Training import maps score sheet, shooter, post scores and target results');
 
+
+const trainingApplySource = readFileSync('app/api/scorecard/training/apply/route.ts','utf8');
+assert.match(trainingApplySource,/shooter_name:\s*payload\.shooter\.name/,'Training import shooter insert uses shooter_name');
+assert.match(trainingApplySource,/total_score:\s*totalScore/,'Training import shooter insert writes total_score');
+assert.match(trainingApplySource,/missing_discipline/,'blank discipline is blocked by save API');
+assert.match(trainingApplySource,/missing_date/,'blank date is blocked by save API');
+assert.match(trainingApplySource,/cleanupCreatedSheet/,'failed child insert cleans up newly created sheet');
+assert.doesNotMatch(trainingApplySource,/analysis\.detectedTitle \|\| null/,'location does not fall back to detected title');
+assert.match(trainingApplySource,/expectedTargets:\s*reviewedCells\.length/,'reviewed grid target counts drive saved expectedTargets');
+const minimalImportPageSource = readFileSync('app/import/scorecard/page.tsx','utf8');
+assert.match(minimalImportPageSource,/useState\(""\)/,'expected total targets can be blank by default');
+assert.doesNotMatch(minimalImportPageSource,/useState\("120"\)/,'expected total targets does not default to Sokna example');
+assert.match(minimalImportPageSource,/new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/,'date defaults to today in UI');
+assert.match(minimalImportPageSource,/Select a discipline before creating the Training Score Sheet/,'blank discipline has clear validation text');
+const trainingArchiveSource = readFileSync('app/training-score-sheets/page.tsx','utf8');
+assert.match(trainingArchiveSource,/href="\/import\/scorecard"/,'Training Score Sheets page links to scorecard photo import');
+const editedCountsImport=imported.normalizeImportedPostStructure({...soknaFixture,posts:soknaFixture.posts.map((post,idx)=>idx===7?{...post,expectedTargets:8,targets:Array.from({length:8},(_,i)=>({targetNumber:i+1,cellState:i<6?'hit':'uncertain',result:i<6?'hit':'uncertain',confidence:i<6?'high':'low'}))}:post)});
+const editedPayload=imported.mapReviewedImportToTrainingScoreSheet(editedCountsImport,'edited-shooter');
+assert.equal(editedPayload.scoreSheet.expected_targets_by_post[7],8,'user-edited P8 target count is used in final saved payload');
+
 assert.equal(profiles.isScorecardImportDiscipline('Compak Sporting'), true, 'Compak Sporting is allowed in scorecard import');
 assert.equal(profiles.isScorecardImportDiscipline('Sporttrap'), true, 'Sporttrap is allowed in scorecard import');
 assert.equal(profiles.isScorecardImportDiscipline('Kompakt leirduesti'), false, 'Kompakt leirduesti is intentionally excluded from this Compak/Sporttrap import scope');

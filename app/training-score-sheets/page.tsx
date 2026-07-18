@@ -458,6 +458,7 @@ export default function TrainingScoreSheetsPage() {
           </div>
           <div className="quickStartPresetActions">
             <Link href="/training-score-sheets/new" className="button primaryAction">New training score sheet</Link>
+            <Link href="/import/scorecard" className="button secondary smallButton">Import scorecard photo</Link>
             <a href="#existing-score-sheets" className="button secondary smallButton">Existing score sheets</a>
             <button type="button" className="button secondary smallButton" onClick={() => setFilter("drafts")}>Drafts / incomplete</button>
           </div>
