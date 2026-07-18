@@ -27,7 +27,10 @@ assert.match(provider, /setPromptEvent\(event as BeforeInstallPromptEvent\)/, 'g
 assert.match(installCard, /usePwaInstallPrompt\(\)/, 'Settings install card consumes the globally captured prompt');
 assert.doesNotMatch(installCard, /addEventListener\("beforeinstallprompt"/, 'Settings install card does not wait to capture beforeinstallprompt itself');
 assert.match(installCard, /clearPromptEvent\(\);[\s\S]*setStatus\(choice\.outcome === "accepted" \? "Install started\." : "Install was dismissed\."\)/, 'consumed prompt is cleared after accepted or dismissed choices');
-assert.match(installCard, /if \(standalone \|\| dismissed \|\| \(!promptEvent && !appleMobile && !status\)\) return null;/, 'install UI is hidden in standalone mode while preserving post-dismiss status');
+assert.doesNotMatch(installCard, /promptEvent\)[\s\S]{0,160}setDismissed\(false\)/, 'new prompt availability does not override a persisted dismissal');
+assert.doesNotMatch(installCard, /setDismissed\(false\)/, 'install card never clears persisted dismissal automatically');
+assert.match(installCard, /localStorage\.getItem\(DISMISSED_KEY\) === "1"/, 'install card reads persisted dismissal from local storage');
+assert.match(installCard, /if \(standalone \|\| dismissed \|\| \(!promptEvent && !appleMobile && !status\)\) return null;/, 'install UI is hidden in standalone mode and when the user dismissed it');
 assert.match(installCard, /\{promptEvent \? <button type="button" onClick=\{install\}>Install app<\/button> : null\}/, 'install action is hidden when no fresh prompt is available');
 assert.match(installCard, /Open the Share menu in Safari and choose Add to Home Screen\./, 'iOS install guidance is present');
 

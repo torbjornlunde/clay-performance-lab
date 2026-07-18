@@ -25,7 +25,6 @@ export default function InstallAppCard() {
 
   useEffect(() => {
     if (!promptEvent) return;
-    setDismissed(false);
     setStatus("");
   }, [promptEvent]);
 
