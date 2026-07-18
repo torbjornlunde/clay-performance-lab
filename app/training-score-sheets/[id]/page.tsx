@@ -25,6 +25,8 @@ import {
   makeScores,
   resizeShootersForSetup,
   scoreFromTargetResults,
+  toggleTargetResult,
+  postCompletionStatus,
   setupReductionWouldTrimData,
   totalFor,
   trimTargetResults,
@@ -1883,6 +1885,25 @@ export default function TrainingScoreSheetPage() {
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
+  function cycleScorecardTarget(
+    shooterId: string,
+    postNumber: number,
+    targetNumber: number,
+  ) {
+    const previousResult = targetResults[shooterId]?.[postNumber]?.[targetNumber] || null;
+    const nextTargetResults = toggleTargetResult(targetResults, shooterId, postNumber, targetNumber);
+    setPostComplete(null);
+    setTargetResults(nextTargetResults);
+    syncShooterPostScore(shooterId, postNumber, nextTargetResults);
+    setInputHistory((current) => [
+      ...current,
+      { shooterId, postNumber, targetNumber, previousResult },
+    ]);
+    setCurrentShooterId(shooterId);
+    setCurrentPost(postNumber);
+    setCurrentTarget(targetNumber);
+  }
+
   function correctTarget(
     shooterId: string,
     postNumber: number,
@@ -3436,6 +3457,63 @@ export default function TrainingScoreSheetPage() {
                   })}
                 </ol>
               </div>
+              {!isCompak && (
+                <div className="postScorecardPanel" aria-label={`Post ${activePostNumber} live target scorecard`}>
+                  <div className="compactPanelHeader">
+                    <h4>Post {activePostNumber} live scorecard</h4>
+                    <span className="small muted">Tap each target: Hit → Miss → Clear.</span>
+                  </div>
+                  <div className="postScorecardNav" aria-label="Post navigation">
+                    <button type="button" className="secondary smallButton" onClick={() => setPostAndStartingShooter(currentPost - 1)} disabled={currentPost <= 1}>Previous post</button>
+                    <span className="badge">Post {currentPost} of {numberOfPosts}</span>
+                    <button type="button" className="secondary smallButton" onClick={() => setPostAndStartingShooter(currentPost + 1)} disabled={currentPost >= numberOfPosts}>Next post</button>
+                  </div>
+                  {(() => {
+                    const status = postCompletionStatus(
+                      targetResults,
+                      validShooters.map((shooter) => shooter.localId),
+                      activePostNumber,
+                      getExpectedTargetsForPost(expectedTargetSetup, activePostNumber),
+                    );
+                    return (
+                      <p className="small muted" role="status">
+                        {status.complete ? "Complete" : `${status.remainingEntries} entries remaining`} · {status.scoredEntries} of {status.expectedEntries} target entries scored.
+                      </p>
+                    );
+                  })()}
+                  <div className="postScorecardRows" role="list">
+                    {currentPostShooters.map((shooter) => {
+                      const postScore = scoreFromTargetResults(targetResults, shooter.localId, activePostNumber);
+                      const expected = getExpectedTargetsForPost(expectedTargetSetup, activePostNumber);
+                      return (
+                        <article className="postScorecardRow" role="listitem" key={shooter.localId}>
+                          <div className="postScorecardShooterHeader">
+                            <strong>{shooter.displayName}</strong>
+                            <span>{postScore}/{expected}</span>
+                          </div>
+                          <div className="postScorecardTargets" aria-label={`${shooter.displayName} post ${activePostNumber} targets`}>
+                            {Array.from({ length: expected }, (_, index) => index + 1).map((targetNumber) => {
+                              const result = targetResults[shooter.localId]?.[activePostNumber]?.[targetNumber];
+                              return (
+                                <button
+                                  key={targetNumber}
+                                  type="button"
+                                  className={`targetCorrectionButton compactTargetButton ${result || "empty"}`}
+                                  onClick={() => cycleScorecardTarget(shooter.localId, activePostNumber, targetNumber)}
+                                  aria-label={`${shooter.displayName} post ${activePostNumber} target ${targetNumber}: ${result || "not scored"}. Tap to cycle hit, miss, clear.`}
+                                >
+                                  <span>{targetNumber}</span>
+                                  <strong>{result === "hit" ? "✓" : result === "miss" ? "✕" : "○"}</strong>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="liveScoringSelectors compactSelectors">
                 <label>
                   {isCompak ? "Scheme sequence" : "Post"}

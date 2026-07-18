@@ -55,6 +55,82 @@ export function hasTargetResults(
   return Object.keys(targetResults[shooterId]?.[postNumber] || {}).length > 0;
 }
 
+export function nextTargetResultValue(current: TargetResultValue | null | undefined): TargetResultValue | null {
+  if (!current) return "hit";
+  if (current === "hit") return "miss";
+  return null;
+}
+
+export function setTargetResult(
+  current: TargetResultMap,
+  shooterId: string,
+  postNumber: number,
+  targetNumber: number,
+  result: TargetResultValue | null,
+) {
+  const next: TargetResultMap = {
+    ...current,
+    [shooterId]: { ...(current[shooterId] || {}) },
+  };
+  next[shooterId][postNumber] = {
+    ...(next[shooterId][postNumber] || {}),
+  };
+  if (result) next[shooterId][postNumber][targetNumber] = result;
+  else delete next[shooterId][postNumber][targetNumber];
+  if (Object.keys(next[shooterId][postNumber]).length === 0) delete next[shooterId][postNumber];
+  if (Object.keys(next[shooterId]).length === 0) delete next[shooterId];
+  return next;
+}
+
+export function toggleTargetResult(
+  current: TargetResultMap,
+  shooterId: string,
+  postNumber: number,
+  targetNumber: number,
+) {
+  return setTargetResult(
+    current,
+    shooterId,
+    postNumber,
+    targetNumber,
+    nextTargetResultValue(current[shooterId]?.[postNumber]?.[targetNumber]),
+  );
+}
+
+export function targetStatsForPost(
+  targetResults: TargetResultMap,
+  shooterId: string,
+  postNumber: number,
+) {
+  const results = Object.values(targetResults[shooterId]?.[postNumber] || {});
+  const hits = results.filter((result) => result === "hit").length;
+  const misses = results.filter((result) => result === "miss").length;
+  return { scored: results.length, hits, misses };
+}
+
+export function postCompletionStatus(
+  targetResults: TargetResultMap,
+  shooterIds: string[],
+  postNumber: number,
+  expectedTargets: number,
+) {
+  const expectedEntries = Math.max(0, shooterIds.length * expectedTargets);
+  const scoredEntries = shooterIds.reduce(
+    (sum, shooterId) => sum + targetStatsForPost(targetResults, shooterId, postNumber).scored,
+    0,
+  );
+  return { expectedEntries, scoredEntries, remainingEntries: Math.max(expectedEntries - scoredEntries, 0), complete: expectedEntries > 0 && scoredEntries >= expectedEntries };
+}
+
+export function targetResultUpsertKey(
+  scoreSheetId: string,
+  shooterId: string,
+  postNumber: number,
+  targetNumber: number,
+) {
+  return `${scoreSheetId}:${shooterId}:${postNumber}:${targetNumber}`;
+}
+
 export function scoreFromTargetResults(
   targetResults: TargetResultMap,
   shooterId: string,
