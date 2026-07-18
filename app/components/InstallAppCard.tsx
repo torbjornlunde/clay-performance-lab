@@ -25,7 +25,7 @@ export default function InstallAppCard() {
     );
   }
 
-  if (hintDismissed && !promptEvent && !iosDevice) return null;
+  if (hintDismissed) return null;
 
   function dismissHint() {
     localStorage.setItem(DISMISSED_KEY, "1");

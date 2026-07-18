@@ -31,6 +31,8 @@ assert.match(authHeader, /usePwaInstallPrompt\(\)/, 'authenticated global menu c
 assert.match(authHeader, />Install app<\/button>/, 'authenticated browser-mode user can discover Install app directly from the global menu');
 assert.match(authHeader, /\{installAvailable \? <button role="menuitem"/, 'global Install app menu item is hidden when installation is unavailable, including standalone mode');
 assert.match(installCard, /localStorage\.getItem\(DISMISSED_KEY\) === "1"/, 'Settings promotional hint reads persisted dismissal from local storage');
+assert.match(installCard, /if \(hintDismissed\) return null;/, 'stored promotional-hint dismissal suppresses the Settings promotional card on iOS and every other platform');
+assert.doesNotMatch(installCard, /hintDismissed && !promptEvent && !iosDevice/, 'Settings hint dismissal is not dependent on iOS or prompt availability');
 assert.doesNotMatch(authHeader, /cpl-install-hint-dismissed|DISMISSED_KEY|hintDismissed/, 'stored promotional-hint dismissal does not hide the explicit global Install app action');
 assert.match(provider, /await promptEvent\.prompt\(\)/, 'Android with a valid deferred prompt can invoke prompt() from the explicit install action');
 assert.match(provider, /const choice = await promptEvent\.userChoice;[\s\S]*clearPromptEvent\(\);/, 'consumed deferred prompt is cleared after userChoice');
