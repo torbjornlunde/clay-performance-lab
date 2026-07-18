@@ -9371,3 +9371,66 @@ select {
 .aliasRow { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 48px; padding: 0.55rem 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .aliasRow span { min-width: 0; }
 @media (max-width: 560px) { .aliasRow { align-items: stretch; flex-direction: column; } .shootingGroundsPage .button { width: 100%; } }
+
+.groundStatButton {
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.groundStatButton:hover,
+.groundStatButton:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.groundStatAction {
+  color: var(--accent) !important;
+  font-weight: 700;
+}
+
+.statsGroundDetailCard {
+  max-width: 860px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.groundDetailMetrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 9px;
+  margin: 12px 0 18px;
+}
+
+.groundSourceNames,
+.groundSessionList,
+.groundAssignmentPanel {
+  display: grid;
+  gap: 10px;
+}
+
+.groundSourceNames {
+  margin-bottom: 18px;
+}
+
+.groundAssignmentPanel {
+  background: var(--surface-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.groundAssignmentPanel select,
+.groundAssignmentPanel input {
+  min-height: 44px;
+  font-size: 16px;
+  width: 100%;
+}
+
+@media (max-width: 560px) {
+  .statsGroundDetailCard .button,
+  .groundAssignmentPanel .button {
+    width: 100%;
+  }
+}
