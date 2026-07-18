@@ -1,12 +1,37 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import AuthHeader from "./components/AuthHeader";
 import ProfileGate from "./components/ProfileGate";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { OnboardingHelpPanel } from "./components/OnboardingHelp";
+import ServiceWorkerRegistration from "./components/ServiceWorkerRegistration";
 import "./globals.css";
 import "./beta-admin-theme.css";
 
-export const metadata: Metadata = { title: "Clay Performance Lab", description: "Performance analysis for clay target shooters." };
+export const metadata: Metadata = {
+  title: "Clay Performance Lab",
+  applicationName: "Clay Performance Lab",
+  description: "Performance analysis and training tools for clay target shooters.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Clay Performance Lab",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: [
+      { url: "/pwa-icons/192", sizes: "192x192", type: "image/png" },
+      { url: "/pwa-icons/512", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/pwa-icons/apple", sizes: "180x180", type: "image/png" }],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#070a0f",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -16,6 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <ThemeProvider>
+          <ServiceWorkerRegistration />
           <AuthHeader />
           <OnboardingHelpPanel />
           <ProfileGate>{children}</ProfileGate>

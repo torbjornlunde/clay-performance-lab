@@ -39,6 +39,15 @@ Clay Performance Lab skal behandles som et AI-native performance-produkt, ikke b
 
 ## 2. Ferdig i produksjon
 
+### Mobile PWA foundation
+
+- Installable mobile PWA foundation for home-screen launch.
+- Dedicated Clay Performance Lab app icon and manifest metadata.
+- Standalone-mode support with safe-area handling for modern iPhone and Android display cutouts.
+- Lightweight service worker foundation that avoids caching authenticated API, Supabase, AI, and dynamic user data.
+
+Full offline synchronization remains a separate roadmap item.
+
 ### Registrering og sessioner
 
 - Opprette konkurranse og trening.
