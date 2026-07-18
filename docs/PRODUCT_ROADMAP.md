@@ -1,377 +1,810 @@
-# Clay Performance Lab – produktplan
+# Clay Performance Lab – master product roadmap
 
-Sist oppdatert: 16. juli 2026
+Sist oppdatert: 19. juli 2026
 
-Dette dokumentet er prosjektets hovedkilde for produktstatus, prioriteringer og avgrensninger. Det skal oppdateres når en funksjon endrer status, når en viktig beslutning tas, eller når en PR flytter noe fra plan til produksjon.
+Dette dokumentet er prosjektets **autoritative hovedkilde** for produktstatus, prioriteringer, beslutninger og idéregister.
 
-Konkrete innspill fra betatestere føres i [TESTER_FEEDBACK.md](./TESTER_FEEDBACK.md).
+Detaljerte roadmap-dokumenter kan utdype et område, men ved konflikt gjelder denne rekkefølgen:
 
-## Statusregler
+1. faktisk produksjonsstatus og database
+2. dette dokumentet
+3. spesialiserte roadmap-dokumenter
+4. eldre samtaler og enkeltstående idénotater
+
+Målet med denne roadmapen er at ingen viktige produktidéer skal bli liggende bare i en chat.
+
+Konkrete betatesterinnspill føres også i [TESTER_FEEDBACK.md](./TESTER_FEEDBACK.md).
+
+---
+
+## 1. Statusregler
 
 Alle større funksjoner skal ligge i én av disse kategoriene:
 
 - **Ferdig i produksjon** – kode er merget, nødvendig databaseendring er kjørt, og hovedflyten er kontrollert.
-- **Pågår** – aktivt arbeid i en åpen gren eller PR.
+- **Under stabilisering** – funksjonen finnes i produksjon, men reell bruk har avdekket friksjon eller feil som må løses før den regnes som moden.
 - **Neste** – prioritert arbeid som skal tas før øvrige idéer.
-- **Senere** – ønskelig, men ikke prioritert nå.
-- **Utsatt eller avvist** – bevisst ikke del av nærmeste plan.
+- **Planlagt** – viktig del av produktretningen, men ikke neste aktive arbeid.
+- **Senere** – ønskelig, men avhengig av mer moden kjerne eller mer data.
+- **Parkert** – bevisst ikke prioritert nå.
 
 En funksjon skal ikke beskrives som ferdig bare fordi deler av den finnes i kode eller fordi den har vært diskutert.
 
 ---
 
-## 1. Produktmål
+## 2. Produktmål
 
 Clay Performance Lab skal gjøre det enklere for leirdueskyttere å:
 
 1. registrere konkurranser og trening uten unødvendig friksjon
 2. forstå hvilke duer de bommer på og hvorfor
-3. se utvikling over tid
-4. dele og gjenbruke bane-, post- og dueoppsett trygt
-5. gi en trener et bedre og mer strukturert beslutningsgrunnlag
-6. bruke avansert AI på strukturert skytterdata for å gjøre resultatdata om til praktisk treningsfokus
+3. se utvikling og mønstre over tid
+4. bruke resultat-, bom-, due-, bane-, utstyrs- og kontekstdata samlet
+5. dele og gjenbruke bane-, post- og dueoppsett trygt
+6. få praktiske treningsprioriteringer basert på egne data
+7. gi en trener et bedre og mer strukturert beslutningsgrunnlag
+8. bruke avansert AI på ekte strukturert skytterdata uten å skjule usikkerhet
 
-Appen skal fungere både for enkel resultatregistrering og for detaljert prestasjonsanalyse. Avanserte funksjoner skal ikke gjøre den grunnleggende flyten tung.
+Appen skal fungere både for enkel resultatregistrering og for svært detaljert prestasjonsanalyse. Avanserte funksjoner skal ikke gjøre den grunnleggende flyten tung.
 
-Clay Performance Lab skal behandles som et AI-native performance-produkt, ikke bare en scoreføringsapp med AI-tekst på toppen. Se [ROADMAP_AI_NATIVE_PRODUCT_STRATEGY.md](./ROADMAP_AI_NATIVE_PRODUCT_STRATEGY.md).
-
----
-
-## 2. Ferdig i produksjon
-
-### Mobile PWA foundation
-
-- Installable mobile PWA foundation for home-screen launch.
-- Dedicated Clay Performance Lab app icon and manifest metadata.
-- Standalone-mode support with safe-area handling for modern iPhone and Android display cutouts.
-- Lightweight service worker foundation that avoids caching authenticated API, Supabase, AI, and dynamic user data.
-
-Full offline synchronization remains a separate roadmap item.
-
-### Registrering og sessioner
-
-- Opprette konkurranse og trening.
-- Enkel result-only-registrering.
-- Redigere sentrale sessionopplysninger i etterkant.
-- Skille mellom trening og konkurranse i datagrunnlaget.
-- Valgfri registrering av våpen, ammunisjon og relevant utstyr.
-
-### Training Score Sheet
-
-- Opprette delt treningsscorekort for flere skyttere.
-- Live registrering av **treff og bom for hver enkelt due**.
-- Automatisk summering per skytter og post.
-- Mobiltilpasset livevisning for bruk ute på banen.
-- En arrangør kan føre resultatene for hele gruppen.
-
-Dette betyr at target-by-target-føring allerede er implementert. Det skal ikke stå som en fremtidig oppgave. Se også `docs/TRAINING_SCORE_SHEETS.md` for current live target-by-target behavior, source-of-truth rules, legacy total-only support, and future boundaries.
-
-### Bomregistrering og analysegrunnlag
-
-- Registrere bom på riktig due eller presentasjon.
-- Egne bomårsaker for flere bom i samme par.
-- Redigere lagrede bommer.
-- Fortsette registreringen uten unødvendig tilbakenavigasjon.
-- Strukturert dueinformasjon for sportingdisipliner, blant annet type, retning, vinkel, fart, avstand, vanskelighetsgrad og notat.
-
-### Disipliner og oppsett
-
-- Leirduesti og andre post-/standbaserte sportingflyter.
-- Compak Sporting med FITASC-programmer og A–F-struktur.
-- Sporttrap.
-- English Sporting med standbasert oppsett.
-- Discipline-correct struktur for relevante skjemaer og presentasjoner.
-
-### Fotoimport og kontroll
-
-- Import av post-/standskilt fra bilde med manuell kontroll før lagring.
-- Lokal kø for bilder som tas uten dekning og senere kan analyseres.
-- Scorecard-import fra bilde for støttede disipliner.
-- Review før data skrives.
-- Beskyttelse mot dobbeltimport og overskriving.
-- Kontroll av at session-oppsettet ikke har endret seg mellom analyse og apply.
-- Støtte for varierende antall duer per post/stand der disiplinen krever det.
-
-### Leirdue.net-import
-
-- Import av resultater fra Leirdue.net med manuell gjennomgang.
-- Normalisering av relevante disiplinvarianter.
-- Beskyttelse mot duplikater.
-
-### Delte konkurranseoppsett
-
-- En bruker kan publisere et konkurranseoppsett eksplisitt.
-- Oppsett kan være privat, tilgjengelig via lenke eller søkbart.
-- Andre brukere kan forhåndsvise og kopiere oppsettet uten å få med resultater, bommer, deltakere, utstyr eller private notater.
-- Søkbart oppsett kan foreslås ved opprettelse av vanlig konkurranse og result-only.
-- Forslag bruker disiplin, dato, navn, skytebane, antall duer og kompletthet.
-- Treff på dato innen pluss/minus én dag støttes.
-- Brukeren må selv velge og bekrefte oppsettet.
-- Oppsettet legges på samme session; det opprettes ikke en skjult ekstrasession.
-
-Delte oppsett støttes foreløpig ikke i scorecard-import eller Leirdue.net-import.
-
-### Data og sikkerhet
-
-- Eksport av egne data.
-- Godkjent bruker kreves for beskyttede funksjoner.
-- Databasefunksjoner for delte oppsett er begrenset til innloggede brukere.
-- Serveren kontrollerer eierskap, disiplin og om en session er tom før delt oppsett kan legges til.
+Clay Performance Lab skal bygges som et **AI-native performance-produkt**, ikke som en generell scoreføringsapp med AI-tekst lagt på toppen.
 
 ---
 
-## 3. Pågående arbeid
-
-Ingen større produktfunksjon er registrert som aktiv etter merge av PR #129.
-
-Før nytt hovedarbeid starter skal denne delen oppdateres med:
-
-- PR-nummer
-- konkret mål
-- avgrensning
-- testansvar
-- hva som må være godkjent før merge
-
-Det skal normalt bare være én større produktfunksjon under aktiv utvikling om gangen.
-
----
-
-## 4. Neste prioriterte arbeid
-
-### Prioritet 1: Stabilisering og reell brukertest av de nyeste flytene
-
-**Problem:** Flere store funksjoner er nylig levert tett etter hverandre. Nye feil eller friksjon må oppdages før enda mer bygges oppå dem.
-
-**Omfang:**
-
-- Test vanlig konkurranse med delt oppsett.
-- Test result-only med delt oppsett.
-- Test scorecard-import i støttede disipliner.
-- Test Training Score Sheet med flere skyttere over en full økt.
-- Registrer konkrete feil, ekstra trykk og uklare tekster.
-
-**Ikke del av dette arbeidet:** Nye analysefunksjoner eller større redesign.
-
-**Ferdig når:** Kjente kritiske feil er rettet, og minst én reell økt eller konkurranse er gjennomført uten datatap eller blokkering.
-
-### Prioritet 2: Raske forbedringer fra betatestere
-
-**Problem:** Testere må oppleve at konkrete og nyttige tilbakemeldinger blir registrert, prioritert og synlige i appen. Ellers faller motivasjonen for videre testing raskt.
-
-**Første godkjente innspill fra Simon:**
-
-1. **Konkurranseaktivitet:** Vis totalt antall konkurranser, totalt antall konkurranseduer/skudd, antall konkurranser i inneværende år og mulighet til å velge et annet år.
-2. **Eget navn på våpenoppsett:** La brukeren gi hvert våpen eller løpsoppsett et valgfritt navn, slik at flere like modeller og forskjellige løpssett kan skilles fra hverandre.
-
-**Minste nyttige versjon:**
-
-- konkurranseoversikten skiller tydelig mellom trening og konkurranse
-- importerte og manuelt registrerte resultater skal ikke dobbelttelles
-- våpennavn er valgfritt og ødelegger ikke eksisterende utstyrsdata
-- det egendefinerte navnet vises ved valg av utstyr, i historikk og i senere sammenligninger
-
-**Ferdig når:** Begge forbedringene er testet av minst én betatester og tilbakemeldingen er markert som Released i [TESTER_FEEDBACK.md](./TESTER_FEEDBACK.md).
-
-### Prioritet 3: Deltakerkobling og personlig etterarbeid for Training Score Sheet
-
-**Problem:** Arrangøren kan føre hele treningen, men deltakerne bør senere kunne finne sin egen registrering og berike den med personlige vurderinger.
-
-**Minste nyttige versjon:**
-
-- Arrangøren legger til skyttere med navn og eventuelt land/profilkontekst.
-- Søk og forslag reduserer skrivefeil og dobbeltprofiler.
-- En innlogget bruker kan se en mulig treningsregistrering der vedkommende er oppført.
-- Brukeren kan bekrefte eller overta sin egen del av resultatet.
-- Etter overtakelse kan brukeren legge inn egne bomårsaker, antakelser og notater uten å endre de andre deltakernes data.
-
-**Ikke i første versjon:**
-
-- klubbfelt
-- full automatisk matching uten bekreftelse
-- avanserte roller eller coach-tilganger
-- varsling i alle kanaler
-
-**Hvorfor dette er neste større produktfunksjon:** Training Score Sheet er allerede brukbart live. Den største mangelen er nå eierskap og verdi for hver enkelt deltaker etter økten.
-
-### Prioritet 4: Offline-kjerne for logging
-
-**Problem:** Enkelte skytebaner mangler mobildekning. Kritisk registrering må ikke være avhengig av nett.
-
-**Minste nyttige versjon:**
-
-- Opprette eller åpne en relevant session uten dekning.
-- Føre treff, bom og enkle korrigeringer lokalt.
-- Tydelig status for lokalt lagret, venter på synk og synkronisert.
-- Sikker synk når nettet kommer tilbake.
-- Beskyttelse mot duplikater og enkle konflikter.
-
-**Første avgrensning:** Start med Training Score Sheet og enkel bomregistrering. Ikke forsøk å gjøre alle appfunksjoner offline samtidig.
-
-### Prioritet 5: Performance Report v1 og coach-ready rapportgrunnlag
-
-**Problem:** Data finnes, men den må bli en engasjerende, AI-støttet prestasjonsanalyse som hjelper skytteren videre – ikke bare en liste med tall.
-
-**Minste nyttige versjon:**
-
-- Shooter-facing **Performance Report** med én tydelig hovedprioritet for neste trening.
-- Egen seksjon for konkurranse og trening.
-- Kombinert oversikt uten å blande datatypene ukritisk.
-- Treffprosent og bommønstre etter tilgjengelig dueinformasjon.
-- Ekte AI-syntese over strukturert data, med regler/statistikk som beskytter analysen.
-- Tydelig markering av lite datagrunnlag og usikkerhet.
-- Disiplinspesifikk visuell visning der datagrunnlaget støtter det.
-- Forhåndsvisning før Coach Report deles.
-
-**Ikke i første versjon:** Egen coach-konto, løpende chat, automatiske treningsprogrammer, skjult deling eller betalt coach-marketplace.
-
-**Detaljer:** Se [ROADMAP_PERFORMANCE_REPORT_AND_COACH_REPORT.md](./ROADMAP_PERFORMANCE_REPORT_AND_COACH_REPORT.md) og [ROADMAP_DISCIPLINE_SPECIFIC_VISUALS.md](./ROADMAP_DISCIPLINE_SPECIFIC_VISUALS.md).
-
-### Prioritet 6: Våpentesting og enkel sammenligning
-
-**Problem:** Skyttere, blant annet Simon, tester nye våpen og ønsker å kunne sammenligne uten misvisende konklusjoner.
-
-**Minste nyttige versjon:**
-
-- Tagg våpen per session eller runde.
-- Sammenlign med brukerens vanlige våpen.
-- Skill trening fra konkurranse.
-- Vis antall sessioner og antall duer bak sammenligningen.
-- Advar ved små utvalg eller tydelig ulik vanskelighetsgrad.
-
-**Ikke i første versjon:** Påstand om at et våpen er objektivt bedre, avansert statistisk modell eller automatisk kjøpsanbefaling.
-
----
-
-## 5. Senere idébank
-
-Disse punktene er ønskelige, men skal ikke behandles som neste oppgave uten at prioriteringen endres eksplisitt.
-
-### AI-native analyse og assistenter
-
-- Clay Performance Lab skal bygges som et AI-native performance-produkt, ikke bare scoreføring med AI-tekst på toppen.
-- AI skal brukes til å tolke strukturert skytterdata, forklare mønstre og foreslå praktisk treningsfokus.
-- AI Shooting Assistant Chat skal senere kunne svare på spørsmål om skytterens data, rapporter, trening og hagleskyting innenfor trygge grenser.
-- AI App Copilot skal senere kunne hjelpe brukeren å opprette økter, rapporter, søk og treningsplaner ved tekst eller tale, men alltid med forhåndsvisning og bekreftelse før viktige handlinger.
-- Detaljer: [ROADMAP_AI_NATIVE_PRODUCT_STRATEGY.md](./ROADMAP_AI_NATIVE_PRODUCT_STRATEGY.md), [ROADMAP_AI_SHOOTING_ASSISTANT_CHAT.md](./ROADMAP_AI_SHOOTING_ASSISTANT_CHAT.md), [ROADMAP_AI_APP_COPILOT.md](./ROADMAP_AI_APP_COPILOT.md).
-
-### Trening og læring
-
-- Tips basert på bommønstre.
-- Lenker til relevante videoer fra Ed Solomons eller andre godkjente kilder.
-- Personlige treningsprioriteter.
-- Planlagte treningsøkter basert på tidligere mønstre.
-
-### Skyteglass
-
-- Kamera- og værbasert anbefaling av det beste glasset blant glassene brukeren faktisk eier.
-- Detaljert konsept, MVP, datagrunnlag og avgrensninger: [ROADMAP_SHOOTING_GLASSES.md](./ROADMAP_SHOOTING_GLASSES.md).
-
-### Choke- og ammunisjonsvelger
-
-- Anbefaling av choke og ammunisjon basert på avstand, vinkel, synlig dueflate, hastighet, duetype og forventet skuddrekkefølge.
-- Ved flere duer skal appen beregne beste samlede kompromiss og eventuelt anbefale forskjellige choker i øvre og nedre løp.
-- Detaljert konsept, MVP, beregningsgrunnlag og avgrensninger: [ROADMAP_CHOKE_SELECTOR.md](./ROADMAP_CHOKE_SELECTOR.md).
-
-### Tilgangsnivåer og brukerroller
-
-- Skill mellom produktnivå og rolle.
-- Støtt blant annet skytter, coach, arrangør og skytebaneorganisasjoner med konkrete tillatelser.
-- Dette er nødvendig arkitekturgrunnlag før betaling og større coach- eller skytebanefunksjoner lanseres.
-- Detaljert konsept: [ROADMAP_ACCESS_LEVELS_AND_ROLES.md](./ROADMAP_ACCESS_LEVELS_AND_ROLES.md).
-
-### Coach og samarbeid
-
-- Sende rapport direkte til trener.
-- Coach-kontoer og tilgangsstyring.
-- Kommentarer fra trener på utvalgte sessioner eller duer.
-- Delte treningsmål.
-
-### Deling og gjenbruk
-
-- Delte treningsbaneoppsett.
-- Felles bibliotek for dueoppsett med review før import.
-- Forslag til konkurranseoppsett også i scorecard-import og Leirdue.net-import når det kan gjøres sikkert.
-- Varsling når en bruker er lagt til i et delt treningsscorekort.
-
-### Bilder og video
-
-- ShotKam-video knyttet til en registrert due eller bom.
-- Referansebilder av vanskelige duer.
-- Enklere visuell sammenligning av lignende presentasjoner.
-
-### Statistikk og profil
-
-- Mer fleksible periodefiltre.
-- Resultatutvikling mot vinnerscore.
-- Statistikk per bane, duekategori og presentasjonstype.
-- Valgfri skytterprofil med aliaser, standardvåpen, ammunisjon og linser.
-- Pro-funksjoner og betaling først når onboarding, import og logging er stabile.
-
-### Konkurrentposisjonering og lansering
-
-- Smoke'em / Smoke 'Em Claysports og BestShot følges som relevante referanser.
-- Clay Performance Lab bør bevege seg raskere mot riktige offentlige kanaler, men ikke på bekostning av datakvalitet og tillit.
-- Sosial feed, trophies, leaderboards og full club premium er senere muligheter, ikke første lanseringsblokker.
-- Detaljer: [ROADMAP_COMPETITOR_POSITIONING_AND_LAUNCH_WINDOW.md](./ROADMAP_COMPETITOR_POSITIONING_AND_LAUNCH_WINDOW.md).
-
----
-
-## 6. Låste beslutninger og avgrensninger
+## 3. Låste produktprinsipper
 
 Disse beslutningene skal ikke åpnes på nytt uten en tydelig ny begrunnelse.
 
-1. **Training Score Sheet har allerede live treff/bom per due.** Dette er ikke en fremtidig oppgave.
-2. **Trening og konkurranse skal være tydelig adskilt** i statistikk og Coach Report.
-3. **Klubb skal ikke være et obligatorisk matchingfelt** i første versjon av deltakerkobling. Navn og land/profilkontekst er enklere og gir mindre friksjon.
-4. **Utstyr er valgfritt.** Våpen, ammunisjon og linser skal ikke blokkere rask registrering.
-5. **Enkel og avansert bruk skal kunne eksistere side om side.** Brukeren skal kunne lagre bare resultat uten å fylle inn detaljert dueinformasjon.
-6. **Ingen automatisk overskriving fra fotoimport.** Brukeren skal se og godkjenne data før de skrives.
-7. **Delte oppsett skal aldri inneholde personlige prestasjonsdata.** Resultater, bommer, deltakere, utstyr, e-post, interne ID-er og private notater skal holdes utenfor.
-8. **FITASC Sporting er foreløpig ikke støttet i delbare konkurranseoppsett.**
-9. **Scorecard-import og Leirdue.net-import bruker ikke automatisk delte konkurranseoppsett ennå.**
-10. **Offline skal bygges smalt og sikkert.** Kritisk logging prioriteres før full offline-støtte i hele appen.
-11. **Performance Report kommer før full Coach Report.** Shooter-facing analyse skal hjelpe brukeren selv først; Coach Report er den mer datarike delings-/eksportversjonen for ekte coach.
-12. **Sammenligning av våpen skal vise usikkerhet.** Små utvalg og forskjell mellom trening og konkurranse skal ikke skjules.
-13. **En funksjon er først ferdig når kode, database og faktisk brukerflyt er kontrollert.**
-14. **Nye store funksjoner skal kobles til denne roadmapen.** PR-beskrivelsen skal si hvilket roadmap-punkt den gjennomfører eller endrer.
-15. **Skyteglass-anbefalingen skal i første versjon velge blant brukerens egne registrerte glass.** Den skal forklare usikkerhet og være beslutningsstøtte, ikke en sikker fasit eller et skjult kjøpsforslag.
-16. **Choke- og ammunisjonsvelgeren skal i første versjon prioritere brukerens egne registrerte choker og patroner.** Den skal vise usikkerhet, bruke egne mønstringstester når de finnes og aldri fremstille anbefalingen som en garanti for treff.
-17. **Brukerrolle og produktnivå er separate systemer.** Betaling gir aldri automatisk tilgang til andres data.
-18. **Konkrete innspill fra aktive betatestere skal registreres og vurderes før nye spekulative funksjoner.** Små forbedringer med høy nytte og lav risiko kan trekkes foran større roadmap-punkter.
-19. **Clay Performance Lab skal være AI-native.** AI skal bruke strukturert skytterdata til analyse, forklaring og treningsfokus, ikke bare generere generisk tekst.
-20. **AI må være datagrunnlagt og ærlig om usikkerhet.** AI skal ikke finne på årsaker, skjule lavt datagrunnlag eller presentere tekniske diagnoser som fakta uten støtte.
-21. **AI App Copilot skal ikke endre viktig data i skjul.** Den kan lage forslag, drafts og prefill, men viktige handlinger må forhåndsvises og bekreftes av brukeren.
+1. **Trening og konkurranse er forskjellige datatyper.** De skal kunne analyseres samlet der det er meningsfullt, men aldri blandes slik at prosent eller kontekst blir misvisende.
+2. **Enkel og avansert bruk skal eksistere side om side.** En bruker skal kunne lagre bare et resultat, mens en avansert bruker kan logge bommer, duer, poster, utstyr og kontekst.
+3. **Utstyr er valgfritt.** Våpen, ammunisjon, choke, linser og annet utstyr skal ikke blokkere rask registrering.
+4. **Foto- og AI-import skal alltid ha review før lagring.** Ingen automatisk overskriving av brukerdata.
+5. **Brukeren skal kunne korrigere AI.** En feil AI-tolkning skal aldri låse brukeren ute fra å fullføre importen.
+6. **Offline skal bygges smalt og sikkert først.** Kritisk logging prioriteres før hele appen forsøkes gjort fullt offline.
+7. **Delte oppsett skal aldri inneholde personlige prestasjonsdata.** Resultater, bommer, deltakere, utstyr, e-post, interne ID-er og private notater holdes utenfor.
+8. **FITASC Sporting er foreløpig ikke del av delbare konkurranseoppsett.**
+9. **Training Score Sheet har allerede live treff/bom per due.** Dette er ikke en fremtidig idé.
+10. **Deltakerkobling i Training Score Sheet skal ikke kreve klubb i første versjon.** Navn + land/profilkontekst er enklere og gir mindre friksjon.
+11. **Performance Report kommer før full Coach Report.** Skytteren skal få verdi selv før coach-samarbeid bygges ut.
+12. **Våpen- og utstyrssammenligning skal vise usikkerhet.** Små utvalg og ulik vanskelighetsgrad skal ikke skjules.
+13. **AI må være datagrunnlagt og ærlig.** Den skal ikke finne på årsaker eller presentere spekulasjon som fakta.
+14. **AI App Copilot skal ikke endre viktig data i skjul.** Viktige handlinger må forhåndsvises og bekreftes.
+15. **Betaling og roller er separate systemer.** Pro gir ikke automatisk tilgang til andres data.
+16. **Closed beta skal ikke ha synlige paywalls.** Godkjente beta-/adminbrukere skal i praksis ha Pro-lignende tilgang mens billing er skjult.
+17. **Betalte AI-kall skal gates server-side.** Frontend alene er ikke sikkerhet.
+18. **Kjernefriksjon fra ekte bruk går foran spekulative funksjoner.**
+19. **En funksjon er først ferdig når kode, database og faktisk brukerflyt er kontrollert.**
+20. **Store PR-er skal kobles til denne roadmapen.**
+21. **PWA-en skal oppføre seg som en app.** Innlogget bruker skal ikke møte en falsk login-/forsideflyt ved oppstart.
+22. **Pushvarsler skal være opt-in og nyttige.** Ikke bygg masete engagement-varsler som standard.
+23. **Én konkurranse kan bruke flere utstyrsoppsett underveis.** Datamodellen skal ikke anta ett fast choke- eller ammunisjonsoppsett for hele konkurransen.
+24. **Choke lagres per løp når relevant.** Ammunisjon skal kunne variere mellom første og andre skudd.
+25. **Utstyrsendringer bør kunne gjelde fra en bestemt post/stand og videre** til neste endring, slik at brukeren ikke må gjenta samme valg.
+26. **Samme event-modell bør senere kunne støtte våpenbytte underveis.**
+27. **PWA-appikonet skal bruke den faktiske Clay Performance Lab-logoen.** Det nåværende kodegenererte CP/LAB-ikonet er en teknisk midlertidig løsning, ikke sluttresultatet.
 
 ---
 
-## 7. Arbeidsmåte fremover
+## 4. Ferdig i produksjon – nåværende baseline
+
+### 4.1 Beta, tilgang og drift
+
+- Closed beta-tilgang og godkjenningsflyt.
+- Adminvisning for beta approvals.
+- Feedback-innsending med admintriage og skjermbildevedlegg.
+- Export my data.
+- Hidden Free/Pro entitlement foundation.
+- Billing modes som kan holde betaen uten priser, checkout og paywalls.
+- Server-side entitlement guard for betalte AI-funksjoner som Coach Report.
+
+### 4.2 PWA / installert app
+
+- Installerbar PWA på mobil.
+- Manifest, Apple web app-metadata, safe-area-støtte og service worker.
+- Offline fallback uten caching av autentiserte API-/Supabase-data.
+- `Install app` direkte i global meny.
+- Android native install prompt der nettleseren tilbyr det.
+- iPhone/iPad-veiledning for Safari → Share → Add to Home Screen → Open as Web App → Add.
+
+**Ikke ferdig:** korrekt oppstarts-/auth-routing, ekte tilbakeflyt, swipe-back og endelig merkevareikon.
+
+### 4.3 Konkurranse og resultater
+
+- Opprette Competition-session.
+- Result-only / rask resultatregistrering.
+- Redigere sentrale sessionopplysninger.
+- Leirdue.net-kilde-URL lagres og kan åpnes igjen.
+- Competition og Training holdes separate i datagrunnlaget.
+- Resultater kan eksistere uten detaljert bom- eller dueinformasjon.
+
+### 4.4 Training Score Sheet
+
+- Flere skyttere i samme treningsskjema.
+- Arrangør fører for hele gruppen.
+- Live target-by-target hit/miss per post.
+- Automatisk totalsummering.
+- Variable targets per post.
+- Legacy total-only-data bevares trygt.
+- Lokal draft for liveføring.
+
+### 4.5 Bomregistrering
+
+- Registrere bom på relevant post/presentasjon/due.
+- Egen bomårsak for flere bom i et par.
+- Redigere eksisterende bom.
+- Strukturerte bomårsaker og target read.
+- Fortsette logging uten unødvendig tilbakenavigasjon.
+
+### 4.6 Duer, poster og oppsett
+
+- Discipline-correct struktur for flere sportingdisipliner.
+- Compak Sporting med FITASC-programmer og A–F-struktur.
+- Sporttrap.
+- English Sporting / postbasert sporting.
+- Strukturert target definition med type, retning, vinkel, fart, avstand, vanskelighetsgrad og notat.
+- Delte konkurranseoppsett med eksplisitt publisering og review før kopi.
+- Private, lenkebaserte og søkbare delte oppsett.
+
+### 4.7 Scorecard photo import
+
+- AI-analyse av scorecardfoto.
+- Review før apply.
+- Hit/miss/unknown-celler.
+- Strukturdiscovery.
+- Variable targets per post.
+- Zero-setup Competition-import for støttede postbaserte disipliner.
+- Detektert struktur kan lagres atomisk sammen med score og miss positions.
+- Eksisterende kjent setup beskyttes med fingerprint.
+- Duplicate/import-retry-beskyttelse.
+- Lokal bilde-/review-persistens.
+
+### 4.8 Leirdue.net-import
+
+- Import fra Leirdue.net med review.
+- Disiplinnormalisering.
+- Deduplication.
+- Kildelenke på session.
+
+### 4.9 Performance
+
+- URL-baserte filtre for disiplin, periode og datatype.
+- Recent, Best, Trend og Confidence.
+- Winner context.
+- Competition trend chart med rolling average.
+- Shooting-ground analyse.
+- Personal shooting ground alias/canonical grouping.
+- Session reassignment uten å ødelegge original source ground.
+- Performance-siden er komprimert og skal ikke lenger være en ekstra Results-/Training-historikkside.
+
+---
+
+## 5. Under stabilisering – feil og friksjon avdekket i ekte bruk
+
+Dette er høyeste prioritet før større nye funksjoner.
+
+### STAB-01: Scorecard review må bygges om
+
+**Problem:** Dagens review flyt gjør det for tungt å sammenligne AI-tolkningen med originalbildet. Feiltolket hit/miss kan gi reconciliation conflict som blokkerer videre fremdrift. Poststruktur tar for mye plass.
+
+**Mål:** Review skal handle om å kontrollere bildet, ikke om å administrere en lang setup-form.
+
+**Krav til neste versjon:**
+
+- Originalbildet skal være lett tilgjengelig under hele reviewen.
+- Sticky/minimert bilde eller tilsvarende, med trykk for fullskjerm og zoom.
+- Brukeren skal kunne endre hver due direkte mellom `Hit`, `Miss` og `Unknown`.
+- AI-detected score skal være et forslag, ikke en lås.
+- En brukerbekreftet korrigering skal kunne løse konflikten og tillate apply.
+- Konflikttekst skal forklare hva som er feil uten å blokkere en gyldig manuell overstyring.
+- Struktur vises kompakt: `16 posts · 120 targets`.
+- Standard + avvik foretrekkes fremfor 16 store inputs, eksempel: `Default 8 · Exceptions P8 6 · P11 6 · P13 6 · P14 6`.
+- Full strukturredigering åpnes bare ved behov.
+- Review skal ikke kreve lang scrolling mellom bilde og cellene som kontrolleres.
+- På mobil bør aktiv post og relevant del av bildet kunne sammenlignes tett.
+
+### STAB-02: PWA auth/startup-flow
+
+**Problem:** En bruker som allerede har gyldig Supabase-session kan starte installert app og møte offentlig forside/login, samtidig som Dashboard kan åpnes fordi brukeren faktisk allerede er innlogget.
+
+**Mål:** Ingen falsk login-opplevelse.
+
+**Krav:**
+
+- Gyldig innlogget session → åpne Dashboard/app direkte.
+- Ikke innlogget → login/offentlig inngang.
+- Innlogget bruker som åpner `/login` → redirect til Dashboard.
+- Beskyttede sider må fortsatt avvise faktisk utloggede brukere.
+- Auth state må ikke blinke mellom offentlig og innlogget UI mer enn nødvendig.
+
+### STAB-03: Mobil appnavigasjon
+
+- Synlig tilbakeknapp på underliggende appskjermer.
+- Swipe fra venstre kant for å gå tilbake der det kan gjøres trygt.
+- Ikke fange swipe i komponenter der horisontal bevegelse brukes til noe annet.
+- Oppførselen skal føles naturlig i standalone PWA.
+
+### STAB-04: Endelig appikon og merkevare
+
+- Erstatt kodegenerert CP/LAB-placeholder med faktisk CPL-monogram/logo.
+- Bruk logo uten lang tekst som appikon.
+- Lag korrekte størrelser/maskable/Apple-varianter uten å miste lesbarheten.
+
+### STAB-05: Generell mobil tetthet
+
+- Fortsett å redusere unødvendig vertikal plass der ekte bruk viser mye scrolling.
+- Ikke globalt krympe touch targets.
+- Valgfrie avanserte detaljer skal være collapsed/accordion som standard.
+
+---
+
+## 6. Neste prioriterte kø
+
+Rekkefølgen under er standardrekkefølgen. Den kan endres dersom ekte betabruk avdekker en alvorlig feil.
+
+### Prioritet 1 – Scorecard review v2
+
+Gjennomfør STAB-01 før mer avansert scorecard-AI bygges.
+
+### Prioritet 2 – PWA auth/startup
+
+Gjennomfør STAB-02 som en liten, isolert auth-/routing-retting.
+
+### Prioritet 3 – Varslingsfundament
+
+Start med adminnytte og en generell arkitektur som også kan brukes av vanlige brukere senere.
+
+**Første nyttige versjon:**
+
+- In-app notification center / bjelle.
+- Ulest-status.
+- Push subscription per enhet.
+- Pushvarsel til admin ved ny beta access request.
+- Pushvarsel til admin ved ny beta feedback.
+- Trykk på varsel åpner riktig adminside.
+- App-badge der plattformen støtter det.
+- Tydelig brukeropt-in for push.
+
+**Senere bruker-varsler:**
+
+- lagt til i delt Training Score Sheet
+- mulig resultat klart til claim/review
+- coach-/samarbeidshendelser
+- brukerdefinerte treningspåminnelser
+- viktig uferdig handling der brukeren faktisk forventer oppfølging
+
+**Ikke mål:** tilfeldige engagement-varsler som `You have not trained for 7 days` uten at brukeren har bedt om dem.
+
+### Prioritet 4 – Mobil appnavigasjon og endelig ikon
+
+Gjennomfør STAB-03 og STAB-04.
+
+### Prioritet 5 – Offline-kjerne
+
+Se eget workstream under.
+
+### Prioritet 6 – Deltakerkobling og personlig etterarbeid i Training Score Sheet
+
+Se eget workstream under.
+
+### Prioritet 7 – Performance Report v1
+
+Shooter-facing analyse før full Coach Report.
+
+---
+
+## 7. Fullt produkt- og idéregister
+
+Dette er masterlisten. Punkter skal ikke fjernes bare fordi de ikke er neste prioritet.
+
+### 7.1 Scorecard, foto og review
+
+**Ferdig / baseline:**
+
+- scorecard photo import
+- AI structure discovery
+- known-setup verification
+- variable targets per post
+- review-before-save
+- duplicate protection
+- zero-setup Competition apply
+
+**Neste / planlagt:**
+
+- SCORE-01: scorecard review v2 med bilde tett på review
+- SCORE-02: direkte Hit/Miss/Unknown-korrigering uten AI-lås
+- SCORE-03: kompakt struktur med standard + exceptions
+- SCORE-04: bedre crop/zoom/fullscreen under review
+- SCORE-05: robust håndtering av store mobilbilder før upload
+- SCORE-06: bedre kandidatvalg for scorecards med flere skyttere/blokker
+- SCORE-07: sterkere local persistence og trygg retry
+- SCORE-08: tydeligere server-side input hardening
+- SCORE-09: kunne oppgradere result-only/importerte resultater med detaljert scorecard senere
+
+### 7.2 Competition logging
+
+**Planlagt:**
+
+- COMP-01: personlig live Competition scorecard.
+- Tre inngangsnivåer:
+  - Quick result
+  - Detailed result by course/post
+  - Live target-by-target
+- Første liveversjon støtter én innlogget skytter.
+- Offisiell resultatkilde og personlig detaljlogging skal kunne eksistere samtidig.
+- Offisiell import må ikke slette brukerens egne target-/missdetaljer.
+- Pair/double-semantikk skal være discipline-correct.
+- Fravær av registrert bom skal ikke automatisk tolkes som komplett hit-data uten eksplisitt completeness.
+
+### 7.3 Training Score Sheet og delt trening
+
+**Ferdig:**
+
+- arrangør fører flere skyttere
+- live target-by-target
+- variable targets per post
+
+**Planlagt:**
+
+- TRAIN-01: live navnesøk/autocomplete når arrangør legger til skytter.
+- TRAIN-02: forslag til mulig profilmatch for å redusere skrivefeil.
+- TRAIN-03: navn + land/profilkontekst, ikke obligatorisk klubb.
+- TRAIN-04: bruker kan finne en logg der vedkommende er lagt til.
+- TRAIN-05: bruker kan claim/bekrefte sin egen del.
+- TRAIN-06: hver deltaker kan etterpå legge til egne bomårsaker, antakelser og kommentarer uten å endre de andres data.
+- TRAIN-07: delt treningsscore skal bruke korrekt skjema per disiplin.
+- TRAIN-08: shared course/target details synlig for alle deltakere.
+- TRAIN-09: Compak-course skal kunne inneholde brukt A–F-program og pair structure.
+- TRAIN-10: Training-resultater skal inn i Coach Report, tydelig separert fra Competition.
+- TRAIN-11: varsling når en bruker er lagt til eller har et resultat å reviewe/claime.
+
+### 7.4 Offline
+
+**Høy prioritet, smal første versjon:**
+
+- OFFLINE-01: åpne eksisterende relevante sessions uten dekning.
+- OFFLINE-02: opprette enkel Training/Competition-session uten dekning der det er trygt.
+- OFFLINE-03: logge hit/miss og korrigere lokalt.
+- OFFLINE-04: local device storage med tydelig status:
+  - local
+  - waiting to sync
+  - synced
+  - conflict
+- OFFLINE-05: trygg synk når dekning kommer tilbake.
+- OFFLINE-06: duplicate protection.
+- OFFLINE-07: enkel konfliktløsning.
+- OFFLINE-08: AI-jobber køes og fortsetter når nett er tilbake.
+
+**Første avgrensning:** Training Score Sheet, enkel miss logging og nødvendige session-data. Ikke full offline for hele appen samtidig.
+
+### 7.5 Resultatimport
+
+**Leirdue.net:**
+
+- eksisterende import videreutvikles
+- profilbasert importforslag senere
+- aliaser/navnematching
+- free: mulig begrensning til inneværende sesong
+- Pro: eldre historikk/full historikk senere
+- deduplication
+- fortsatt tydelig source URL
+
+**ClayArena:**
+
+- IMPORT-CA-01: bruker limer inn offentlig ClayArena-URL.
+- Parse resultatside, velg skytterrad, review, bekreft.
+- Lagre source system + URL.
+- Start med HTML, PDF som senere fallback.
+- Ingen bakgrunnscrawling i v1.
+- Result-only hvis kilden ikke har target-level data.
+
+Detaljer: [ROADMAP_CLAYARENA_IMPORT.md](./ROADMAP_CLAYARENA_IMPORT.md).
+
+### 7.6 Due-, bane- og programdata
+
+**Ferdig baseline:** strukturerte target details og flere discipline-correct oppsett.
+
+**Planlagt / senere:**
+
+- TARGET-01: overhead som egen target type der det er relevant.
+- TARGET-02: copy/reuse av target definitions mellom runder.
+- TARGET-03: competition target definitions kan deles med andre brukere med review før import.
+- TARGET-04: shared target/course library med eksplisitt review.
+- TARGET-05: structured profile + free text for vanskelige presentasjoner.
+- TARGET-06: `uncertain/complex` tag.
+- TARGET-07: course/program overrides uten å ødelegge base-skjema:
+  - endre pair type
+  - report/simo/on report
+  - reverse order
+  - andre discipline-correct overrides
+- TARGET-08: bilde/video som valgfri dokumentasjon av presentasjon.
+- TARGET-09: ShotKam-kobling til due/bom senere.
+
+### 7.7 Performance dashboard og statistikk
+
+**Ferdig baseline:** kompakt Performance-side, filtre, summary, trend, winner context, ground analysis.
+
+**Planlagt:**
+
+- PERF-01: deterministic focus areas fra bom-/targetmønstre.
+- Maks få tydelige fokusområder, ikke lange generiske lister.
+- Krev tilstrekkelig datagrunnlag før konklusjon.
+- PERF-02: flere discipline-specific visualiseringer.
+- PERF-03: target type / presentation / ground-analyse der datagrunnlaget støtter det.
+- PERF-04: Trap/Jegertrap/Nordisk trap-analyse etter ground/target type når kildedata finnes.
+- PERF-05: bedre sammenligning mot winning score over tid.
+- PERF-06: kompakte drilldowns uten å gjøre Performance til en historikkside.
+- PERF-07: tydelig `Needs cleanup` for importerte ground names uten personlig assignment der det er nyttig.
+
+### 7.8 Performance Report og Coach Report
+
+**Performance Report v1:**
+
+- shooter-facing
+- velg periode / siste X sessions
+- Competition og Training separat
+- kombinert syntese uten å blande målene feil
+- én tydelig hovedprioritet for neste trening
+- styrker, svakheter og utvikling
+- sample size og confidence
+- ekte AI-syntese over ferdig strukturert/analysert data
+- råfunn skal kunne spores tilbake til sessions
+
+**Coach Report senere:**
+
+- mer datarik rapport
+- valgt tidsrom eller siste X sessions
+- Competition og Training i egne seksjoner
+- preview før deling
+- `Send report to coach`
+- senere coach accounts og permissions
+- kommentarer/feedback fra coach
+- delte treningsmål
+
+Detaljer: [ROADMAP_PERFORMANCE_REPORT_AND_COACH_REPORT.md](./ROADMAP_PERFORMANCE_REPORT_AND_COACH_REPORT.md).
+
+### 7.9 AI-native lag
+
+**Strategisk prinsipp:** strukturert data → deterministic validation → statistiske funn → discipline rules → AI-syntese → confidence/limitations.
+
+**Planlagt / senere:**
+
+- AI-01: Performance Report.
+- AI-02: Coach Report-syntese.
+- AI-03: AI Shooting Assistant Chat som kan svare på spørsmål om brukerens egne data og hagleskyting.
+- AI-04: AI App Copilot som kan hjelpe med:
+  - opprette økter
+  - fylle inn data
+  - finne sessions
+  - lage rapporter
+  - foreslå oppsett
+  - tekst/tale
+- Viktige Copilot-handlinger skal alltid previewes og bekreftes.
+- AI-05: target/sign/scorecard import med multimodal AI.
+- AI-06: treningstips koblet til faktiske bommønstre.
+- AI-07: eventuelle lenker til relevante Ed Solomons-videoer eller andre godkjente kilder.
+- AI-08: foreslå hva brukeren bør logge mer av for å forbedre analysen.
+
+Detaljer:
+
+- [ROADMAP_AI_NATIVE_PRODUCT_STRATEGY.md](./ROADMAP_AI_NATIVE_PRODUCT_STRATEGY.md)
+- [ROADMAP_AI_SHOOTING_ASSISTANT_CHAT.md](./ROADMAP_AI_SHOOTING_ASSISTANT_CHAT.md)
+- [ROADMAP_AI_APP_COPILOT.md](./ROADMAP_AI_APP_COPILOT.md)
+
+### 7.10 Utstyr, våpen, choke og ammunisjon
+
+**Ferdig baseline:** valgfritt våpen-/utstyrsgrunnlag og egne display names for våpenoppsett.
+
+**Planlagt:**
+
+- EQUIP-01: tagg våpen per session/runde.
+- EQUIP-02: sammenlign våpen mot vanlig/default våpen med tydelig sample size.
+- EQUIP-03: skill Training og Competition i sammenligning.
+- EQUIP-04: varsle om ulik vanskelighetsgrad og lite datagrunnlag.
+- EQUIP-05: session equipment timeline / change events.
+
+**Session equipment timeline skal støtte:**
+
+- standard våpen ved start
+- standard choke i hvert løp
+- standard ammunisjon
+- `Change equipment from here` på bestemt post/stand/round
+- chokeendring i ett eller begge løp
+- forskjellig patron for første og andre skudd
+- flere ammunisjonstyper i samme konkurranse
+- senere våpenbytte underveis
+- endringen gjelder til neste endring
+
+**Analysekrav:**
+
+- Ikke tilskriv hele konkurransen ett choke-/ammo-oppsett hvis flere ble brukt.
+- Sammenlign bare de delene der oppsettet faktisk var aktivt.
+- Vis små samples tydelig.
+- Ikke konkluder med objektivt bedre utstyr uten tilstrekkelig grunnlag.
+
+### 7.11 Choke- og ammunisjonsvelger
+
+Senere beslutningsstøtte:
+
+- brukerens egne registrerte choker og patroner prioriteres
+- target distance, angle, visible target area, speed, target type og shot order kan inngå
+- forskjellige choker per løp ved behov
+- mønstringstester kan inngå når de finnes
+- forklar usikkerhet
+- aldri garanti for treff
+
+Detaljer: [ROADMAP_CHOKE_SELECTOR.md](./ROADMAP_CHOKE_SELECTOR.md).
+
+### 7.12 Shooter profile
+
+**Planlagt:**
+
+- navn og aliases
+- land
+- valgte disipliner
+- default gun/barrel setup
+- default ammo
+- default lenses
+- preferanser som kan forenkle import og defaults
+- alt valgfritt utover det som faktisk trengs
+- ingen unødvendig friksjon i onboarding
+
+### 7.13 Shooting glasses
+
+**Senere:**
+
+- registrere egne linser/glass
+- anbefale blant brukerens egne glass
+- bruke kamera-/lys-/værkontekst der det kan gjøres pålitelig
+- forklare usikkerhet
+- ikke skjult kjøpsanbefaling
+
+Detaljer: [ROADMAP_SHOOTING_GLASSES.md](./ROADMAP_SHOOTING_GLASSES.md).
+
+### 7.14 Mental performance
+
+**Strategisk konsept:** praktisk, shooting-specific og valgfritt, ikke terapi.
+
+**Første nyttige versjon senere:**
+
+- rask pre-session check-in:
+  - energy
+  - focus
+  - nerves/pressure
+  - confidence
+  - main intention
+- rask post-session reflection:
+  - mental performance
+  - pressure handling
+  - routine consistency
+  - reset after miss
+  - what worked
+  - what to improve
+- valgfrie miss-level tags:
+  - rushed shot
+  - no clear plan
+  - lost focus
+  - overthinking
+  - hesitation
+  - pressure/nerves
+  - frustration after previous miss
+  - fatigue
+  - unknown
+- senere analyse av mønstre uten å hevde kausalitet
+- enkle rutiner som reset after miss og competition preparation
+
+Detaljer: [ROADMAP_MENTAL_PERFORMANCE.md](./ROADMAP_MENTAL_PERFORMANCE.md).
+
+### 7.15 Varslinger og påminnelser
+
+**Planlagt:**
+
+- NOTIF-01: in-app notification center.
+- NOTIF-02: Web Push subscription.
+- NOTIF-03: admin – ny beta request.
+- NOTIF-04: admin – ny beta feedback.
+- NOTIF-05: delt Training Score Sheet.
+- NOTIF-06: resultat klart til claim/review.
+- NOTIF-07: brukerdefinerte påminnelser.
+- NOTIF-08: app badge når støttet.
+
+**Prinsipp:** nyttig hendelse eller eksplisitt valgt påminnelse, ikke tilfeldig engagement-mas.
+
+### 7.16 PWA og app-opplevelse
+
+**Planlagt / under stabilisering:**
+
+- APP-01: riktig auth-aware start route.
+- APP-02: tilbakeknapp.
+- APP-03: edge swipe-back.
+- APP-04: ekte CPL-logo som ikon.
+- APP-05: fortsatt mobile density cleanup.
+- APP-06: tydelig standalone behavior og ingen irrelevante install prompts når appen allerede er installert.
+- APP-07: senere vurdering av native wrapper/App Store kun hvis PWA-begrensninger faktisk krever det.
+
+### 7.17 Roller, tilgang og samarbeid
+
+**Planlagt senere:**
+
+- shooter
+- coach
+- organizer
+- shooting ground organization
+- eventuelle andre roller med eksplisitte permissions
+
+Produktnivå og rolle holdes separat.
+
+Detaljer: [ROADMAP_ACCESS_LEVELS_AND_ROLES.md](./ROADMAP_ACCESS_LEVELS_AND_ROLES.md).
+
+### 7.18 Free / Pro og betaling
+
+**Ferdig foundation:** hidden entitlements.
+
+**Fremtidig retning:**
+
+- Free: enkel logging, grunnleggende oversikt og begrenset import/history.
+- Pro: avansert analyse, AI, Coach workflows, packaged reports og mer historikk.
+- Beta forblir uten synlige paywalls til onboarding, import, logging og stabilitet er god nok.
+- Alle betalte AI-funksjoner gates server-side.
+
+Detaljer:
+
+- [FREE_VS_PRO.md](./FREE_VS_PRO.md)
+- [ENTITLEMENTS.md](./ENTITLEMENTS.md)
+
+### 7.19 Bilder, video og multimodal dokumentasjon
+
+**Senere:**
+
+- ShotKam-video knyttet til session/due/bom.
+- Referansebilder av vanskelige presentasjoner.
+- Device screenshots fra andre systemer som optional evidence.
+- Sammenligne lignende presentasjoner visuelt.
+- AI kan tolke materialet, men review og confidence beholdes.
+
+### 7.20 Læring og treningsinnhold
+
+**Senere:**
+
+- tips koblet til reelle miss patterns
+- relevante videoressurser
+- personal training priorities
+- foreslått drill/session structure
+- planlagte treningsøkter
+- mental routines
+
+Dette skal være nyttig også uten Pro, men avansert personlig AI-syntese kan høre til Pro senere.
+
+### 7.21 Konkurrentposisjonering og lansering
+
+- Smoke'em / Smoke 'Em Claysports og BestShot følges som relevante referanser.
+- Clay Performance Lab bør bevege seg mot riktige offentlige kanaler når kjerneflytene er pålitelige.
+- Ikke ofre datakvalitet og tillit for å lansere for tidlig.
+- Social feed, trophies, leaderboards og full club premium er ikke tidlige lanseringsblokker.
+- Closed beta og kontrollert testergruppe prioriteres nå.
+
+Detaljer: [ROADMAP_COMPETITOR_POSITIONING_AND_LAUNCH_WINDOW.md](./ROADMAP_COMPETITOR_POSITIONING_AND_LAUNCH_WINDOW.md).
+
+---
+
+## 8. Avhengighetsrekkefølge
+
+Denne rekkefølgen skal beskytte mot å bygge avansert funksjonalitet på ustabil grunn.
+
+### Først: kjernefriksjon og datakvalitet
+
+1. Scorecard review v2.
+2. Auth-aware PWA startup.
+3. Appnavigasjon/branding.
+4. Varslingsfundament.
+5. Offline-kjerne.
+
+### Deretter: bedre datainnsamling og samarbeid
+
+6. Training participant matching/claiming.
+7. Competition live target-by-target.
+8. Mer robust equipment timeline.
+9. Shared target/course reuse.
+
+### Deretter: analyseproduktet
+
+10. Deterministic focus areas.
+11. Performance Report v1.
+12. Coach-ready report.
+13. AI Shooting Assistant.
+14. AI App Copilot.
+
+### Senere: utvidelser
+
+15. ClayArena.
+16. Mental performance.
+17. Shooting glasses.
+18. Choke/ammo recommendation.
+19. ShotKam/video.
+20. Bredere roller/organisasjoner og kommersialisering.
+
+---
+
+## 9. Spesialiserte roadmap-dokumenter
+
+Disse dokumentene utdyper hovedroadmapen og skal ikke være parallelle kilder til prioritet:
+
+- [ROADMAP_AI_NATIVE_PRODUCT_STRATEGY.md](./ROADMAP_AI_NATIVE_PRODUCT_STRATEGY.md)
+- [ROADMAP_AI_SHOOTING_ASSISTANT_CHAT.md](./ROADMAP_AI_SHOOTING_ASSISTANT_CHAT.md)
+- [ROADMAP_AI_APP_COPILOT.md](./ROADMAP_AI_APP_COPILOT.md)
+- [ROADMAP_PERFORMANCE_REPORT_AND_COACH_REPORT.md](./ROADMAP_PERFORMANCE_REPORT_AND_COACH_REPORT.md)
+- [ROADMAP_DISCIPLINE_SPECIFIC_VISUALS.md](./ROADMAP_DISCIPLINE_SPECIFIC_VISUALS.md)
+- [ROADMAP_VISUAL_TARGET_BUILDER.md](./ROADMAP_VISUAL_TARGET_BUILDER.md)
+- [ROADMAP_MENTAL_PERFORMANCE.md](./ROADMAP_MENTAL_PERFORMANCE.md)
+- [ROADMAP_CLAYARENA_IMPORT.md](./ROADMAP_CLAYARENA_IMPORT.md)
+- [ROADMAP_SHOOTING_GLASSES.md](./ROADMAP_SHOOTING_GLASSES.md)
+- [ROADMAP_CHOKE_SELECTOR.md](./ROADMAP_CHOKE_SELECTOR.md)
+- [ROADMAP_ACCESS_LEVELS_AND_ROLES.md](./ROADMAP_ACCESS_LEVELS_AND_ROLES.md)
+- [ROADMAP_COMPETITOR_POSITIONING_AND_LAUNCH_WINDOW.md](./ROADMAP_COMPETITOR_POSITIONING_AND_LAUNCH_WINDOW.md)
+- [FREE_VS_PRO.md](./FREE_VS_PRO.md)
+- [ENTITLEMENTS.md](./ENTITLEMENTS.md)
+- [PWA_INSTALLATION.md](./PWA_INSTALLATION.md)
+- [SCORECARD_PHOTO_IMPORT.md](./SCORECARD_PHOTO_IMPORT.md)
+- [TRAINING_SCORE_SHEETS.md](./TRAINING_SCORE_SHEETS.md)
+
+---
+
+## 10. Arbeidsmåte fremover
 
 Når en ny idé kommer opp:
 
-1. Plasser den i Ferdig, Pågår, Neste, Senere eller Utsatt.
-2. Beskriv problemet før løsningen.
-3. Definer minste nyttige versjon.
-4. Skriv hva som uttrykkelig ikke inngår.
-5. Flytt ikke punktet til Ferdig før produksjonsstatus er bekreftet.
+1. Legg den inn i denne roadmapen eller et detaljdokument samme dag som den blir en reell produktbeslutning.
+2. Gi den et workstream-/feature-ID der det er nyttig.
+3. Plasser den som Ferdig, Under stabilisering, Neste, Planlagt, Senere eller Parkert.
+4. Beskriv problemet før løsningen.
+5. Definer minste nyttige versjon.
+6. Skriv hva som uttrykkelig ikke inngår.
+7. Koble større PR-er til roadmap-punktet.
+8. Flytt ikke punktet til Ferdig før produksjonsstatus er bekreftet.
 
 Når tilbakemelding kommer fra en betatester:
 
 1. Registrer innspillet i [TESTER_FEEDBACK.md](./TESTER_FEEDBACK.md).
 2. Gi det en synlig status og kort begrunnelse.
 3. Prioriter feil og friksjon i kjerneflyter først.
-4. Trekk frem små, tydelige forbedringer med stor bruker-verdi.
-5. Gi beskjed til testeren eller betagruppen når innspillet er lansert.
+4. Trekk frem små, tydelige forbedringer med høy bruker-verdi.
+5. Gi beskjed når innspillet er lansert.
 
 Når en PR merges:
 
-- oppdater relevant status i dette dokumentet
-- legg inn PR-nummer ved større endringer
-- oppdater testerinnspill som er levert
+- oppdater relevant status i dette dokumentet ved større produktendringer
+- legg inn ny beslutning dersom PR-en endrer produktretningen
+- oppdater testerfeedback som er levert
 - fjern utdaterte begrensninger
 - behold viktige beslutninger som fortsatt gjelder
 
+---
+
+## 11. Audit-status 19. juli 2026
+
+Denne versjonen samler og gjør eksplisitt de viktigste beslutningene og idéene som tidligere var fordelt mellom:
+
+- hovedroadmapen
+- spesialiserte roadmap-dokumenter
+- beta- og testerfeedback
+- nylige produksjonsendringer
+- diskusjoner om scorecard, PWA, notifications, offline, AI, Performance, Coach, equipment og shared training
+
+Særlig disse nylige idéene er nå eksplisitt sikret i masterroadmapen:
+
+- scorecard review med fri manuell korrigering
+- originalbildet tilgjengelig under review
+- kompakt poststruktur med default + exceptions
+- auth-aware PWA startup
+- admin pushvarsler for beta requests og feedback
+- in-app notification center
+- nyttige brukerpushvarsler senere
+- tilbakeknapp og swipe-back
+- faktisk CPL-logo som appikon
+- flere ammunisjonstyper i samme konkurranse
+- chokeendringer under konkurransen
+- choke per løp
+- forskjellig ammunisjon på første og andre skudd
+- `Change equipment from here`-modell
+- senere våpenbytte underveis
+
 Ved uenighet mellom eldre samtaler og dette dokumentet skal denne roadmapen brukes som utgangspunkt, men faktisk kode og produksjonsstatus har alltid siste ord.
-
-## Hidden Free/Pro entitlement foundation
-
-The product is preparing for a future Free/Pro split while keeping the closed beta non-commercial by default. Free covers lightweight logging and basic progress understanding. Pro will cover advanced interpretation, coaching workflows, packaged exports and all AI-powered features. The beta remains hidden from public pricing, checkout, upgrade buttons and visible paywalls unless billing visibility is explicitly enabled later.
