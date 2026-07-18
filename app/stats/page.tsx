@@ -43,6 +43,8 @@ type SimpleTrainingLog = {
   created_at: string;
 };
 
+type PerformanceTrainingLog = Pick<SimpleTrainingLog, "id" | "date" | "targets_fired" | "hits" | "discipline" | "source_type">;
+
 type TrainingScoreSheetLog = {
   id: string;
   title: string;
@@ -649,6 +651,7 @@ export default function StatsPage() {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [missCounts, setMissCounts] = useState<Record<string, number>>({});
   const [trainingLogs, setTrainingLogs] = useState<SimpleTrainingLog[]>([]);
+  const [performanceTrainingLogs, setPerformanceTrainingLogs] = useState<PerformanceTrainingLog[]>([]);
   const [trainingScoreSheets, setTrainingScoreSheets] = useState<TrainingScoreSheetLog[]>([]);
   const [volumeLogs, setVolumeLogs] = useState<TrainingVolumeLog[]>([]);
   const [grounds, setGrounds] = useState<UserShootingGround[]>([]);
@@ -692,7 +695,7 @@ export default function StatsPage() {
     }
 
     const todayValue = isoDateValue(new Date());
-    const [sessionsResult, missesResult, recentTrainingResult, recentScoreSheetsResult, volumeTrainingResult, volumeScoreSheetsResult, groundsResult] = await Promise.all([
+    const [sessionsResult, missesResult, recentTrainingResult, recentScoreSheetsResult, performanceTrainingResult, volumeTrainingResult, volumeScoreSheetsResult, groundsResult] = await Promise.all([
       supabase.from("sessions").select("*,user_shooting_grounds(display_name)").order("created_at", { ascending: false }).returns<SessionRow[]>(),
       supabase.from("misses").select("session_id,missed_target").returns<MissRow[]>(),
       supabase
@@ -710,6 +713,15 @@ export default function StatsPage() {
         .order("created_at", { ascending: false })
         .limit(10)
         .returns<TrainingScoreSheetLog[]>(),
+      supabase
+        .from("training_logs")
+        .select("id,date,discipline,targets_fired,hits,source_type")
+        .eq("source_type", "simple_training")
+        .not("hits", "is", null)
+        .gt("targets_fired", 0)
+        .lte("date", todayValue)
+        .order("date", { ascending: true })
+        .returns<PerformanceTrainingLog[]>(),
       supabase
         .from("training_logs")
         .select("date,targets_fired,hits")
@@ -732,15 +744,17 @@ export default function StatsPage() {
     setGrounds(groundsResult.data || []);
     setMissCounts(counts);
     if (groundsResult.error) setGroundError("Personal shooting grounds could not be loaded right now.");
-    if (recentTrainingResult.error || recentScoreSheetsResult.error || volumeTrainingResult.error || volumeScoreSheetsResult.error) {
+    if (recentTrainingResult.error || recentScoreSheetsResult.error || performanceTrainingResult.error || volumeTrainingResult.error || volumeScoreSheetsResult.error) {
       setTrainingLoadError("Training history could not be loaded right now.");
       setTrainingLogs([]);
       setTrainingScoreSheets([]);
+      setPerformanceTrainingLogs([]);
       setVolumeLogs([]);
     } else {
       setTrainingLoadError("");
       setTrainingLogs(recentTrainingResult.data || []);
       setTrainingScoreSheets(recentScoreSheetsResult.data || []);
+      setPerformanceTrainingLogs(performanceTrainingResult.data || []);
       setVolumeLogs([
         ...(volumeTrainingResult.data || []).map(simpleLogToVolumeLog),
         ...(volumeScoreSheetsResult.data || []).map(scoreSheetToVolumeLog),
@@ -765,17 +779,17 @@ export default function StatsPage() {
         maxScore: session.total_targets || null,
       }];
     });
-    const simpleTrainingResults = trainingLogs
+    const simpleTrainingResults = performanceTrainingLogs
       .filter((log) => log.hits !== null && log.targets_fired > 0)
       .map((log) => ({ id: log.id, date: log.date, discipline: log.discipline, dataType: "training" as const, score: log.hits || 0, maxScore: log.targets_fired }));
     return [...competitionResults, ...simpleTrainingResults];
-  }, [sessions, missCounts, trainingLogs]);
+  }, [sessions, missCounts, performanceTrainingLogs]);
 
   const disciplineOptions = useMemo(() => [...new Set(performanceResults.map((result) => result.discipline).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b)), [performanceResults]);
 
   const filteredPerformanceResults = useMemo(() => filterPerformanceResults(performanceResults, { discipline: selectedDiscipline || undefined, period: selectedPeriod, type: selectedType }), [performanceResults, selectedDiscipline, selectedPeriod, selectedType]);
 
-  const performanceSummary = useMemo(() => calculatePerformanceSummary(performanceResults, filteredPerformanceResults, { period: selectedPeriod }), [performanceResults, filteredPerformanceResults, selectedPeriod]);
+  const performanceSummary = useMemo(() => calculatePerformanceSummary(performanceResults, filteredPerformanceResults, { discipline: selectedDiscipline || undefined, period: selectedPeriod, type: selectedType }), [performanceResults, filteredPerformanceResults, selectedDiscipline, selectedPeriod, selectedType]);
 
   const winnerContext = useMemo(() => calculateWinnerContext(filteredPerformanceResults), [filteredPerformanceResults]);
 
@@ -1094,7 +1108,7 @@ export default function StatsPage() {
           <p>Loading...</p>
         ) : chartPoints.length === 0 ? (
           <div className="emptyState compactEmptyState">
-            <p>Chart appears after you add competition results with winning score.</p>
+            <p>{selectedType === "training" ? "The competition chart is competition-only and does not include training results." : "Chart appears after you add filtered competition results with winning score."}</p>
             <div className="btns compactEmptyActions">
               <Link href="/log-competition" className="button smallButton">Log competition</Link>
             </div>
@@ -1209,7 +1223,7 @@ export default function StatsPage() {
           <p>Loading...</p>
         ) : chartPoints.length === 0 ? (
           <div className="emptyState compactEmptyState">
-            <p>Add competition scoring data to populate this list.</p>
+            <p>{selectedType === "training" ? "This scored result list is competition-only. Use Recent form above for filtered training results." : "Add filtered competition scoring data to populate this list."}</p>
             <div className="btns compactEmptyActions">
               <Link href="/log-competition" className="button smallButton">Log competition</Link>
             </div>

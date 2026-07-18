@@ -88,7 +88,7 @@ export function calculateDataConfidence(count: number): DataConfidenceLabel {
   return "Strong";
 }
 
-export function calculatePerformanceSummary(allResults: PerformanceResult[], filteredResults: PerformanceResult[], filters: { period: PerformancePeriod; today?: Date }) {
+export function calculatePerformanceSummary(allResults: PerformanceResult[], filteredResults: PerformanceResult[], filters: { discipline?: string; period: PerformancePeriod; type: PerformanceDataType; today?: Date }) {
   const count = filteredResults.length;
   const currentAverage = averageScorePercentage(filteredResults);
   const best = filteredResults.reduce<number | null>((bestValue, result) => {
@@ -105,7 +105,14 @@ export function calculatePerformanceSummary(allResults: PerformanceResult[], fil
     }
   }
   const previous = getPreviousPeriodBounds(filters.period, filters.today || new Date());
-  const previousAverage = previous ? averageScorePercentage(allResults.filter((result) => dateOnly(result.date) >= previous.start! && dateOnly(result.date) <= previous.end!)) : null;
+  const previousAverage = previous
+    ? averageScorePercentage(allResults.filter((result) => {
+      const date = dateOnly(result.date);
+      if (filters.type !== "all" && result.dataType !== filters.type) return false;
+      if (filters.discipline && result.discipline !== filters.discipline) return false;
+      return date >= previous.start! && date <= previous.end!;
+    }))
+    : null;
   return { recentAverage: currentAverage, best, count, confidence: calculateDataConfidence(count), trend: calculateTrend(currentAverage, previousAverage) };
 }
 

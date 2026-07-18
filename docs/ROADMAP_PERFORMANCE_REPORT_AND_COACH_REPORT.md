@@ -318,3 +318,5 @@ The current Performance page now includes the deterministic first layer needed f
 - Shooting ground analysis remains competition-based and respects the selected period and discipline instead of mixing training venue data.
 
 Data confidence is based on sample size only. Training and competition remain separated, and mixed views warn that the results may not be directly comparable. Future AI interpretation remains roadmap work and should build on these deterministic facts rather than replace them.
+
+Follow-up correctness note: Training and All Performance filters use the full lightweight simple-training-log scoring dataset rather than the limited Recent training logs query. Training score sheets are not included in Performance percentages yet because the current page data does not expose reliable shooter-specific hit/score totals; they should be added only when that score source is explicit and testable.
