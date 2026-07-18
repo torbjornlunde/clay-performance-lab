@@ -163,6 +163,34 @@ export async function POST(
       );
     }
 
+    const existingImportResult = await supabase
+      .from("scorecard_imports")
+      .select("id,inserted_misses,skipped_duplicates,reviewed_hits,reviewed_total_targets")
+      .eq("session_id", id)
+      .or(`client_import_id.eq.${body.clientImportId},image_fingerprint.eq.${String(body.imageFingerprint).toLowerCase()}`)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (existingImportResult.error) {
+      return json(
+        { error: { category: "analysis_failed", message: "Could not check whether this scorecard was already applied." } },
+        500,
+      );
+    }
+    if (existingImportResult.data) {
+      return json({
+        result: {
+          importId: existingImportResult.data.id,
+          insertedMisses: existingImportResult.data.inserted_misses || 0,
+          skippedDuplicates: existingImportResult.data.skipped_duplicates || 0,
+          score: existingImportResult.data.reviewed_hits,
+          totalTargets: existingImportResult.data.reviewed_total_targets,
+          ownScoreUpdated: false,
+          alreadyImported: true,
+        },
+      });
+    }
+
     const targetResult = await supabase
       .from("session_post_targets")
       .select(
