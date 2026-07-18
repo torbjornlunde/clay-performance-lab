@@ -1,0 +1,122 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { buildDuplicateSuggestions, normalizeShootingGroundName, type DistinctGroundName, type UserShootingGround, type UserShootingGroundAlias } from "@/lib/shootingGrounds/aliases";
+import { supabase } from "@/lib/supabase/client";
+
+type SessionGroundRow = { id: string; shooting_ground: string | null; competition_date: string | null; created_at: string; user_shooting_ground_id: string | null };
+type TrainingLogGroundRow = { id: string; location: string | null; date: string; created_at: string; user_shooting_ground_id: string | null };
+type ScoreSheetGroundRow = { id: string; location: string | null; session_date: string; created_at: string; user_shooting_ground_id: string | null };
+
+type MergeDraft = { displayName: string; selected: Set<string> };
+
+function keyFor(item: DistinctGroundName) { return `${item.source}::${item.name}`; }
+function sourceLabel(source: string) {
+  if (source === "sessions") return "Competition sessions";
+  if (source === "training_logs") return "Practice logs";
+  if (source === "training_score_sheets") return "Training score sheets";
+  return source;
+}
+function formatDate(value: string | null) { return value ? new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(value)) : "No date"; }
+
+function summarizeGroundRows(rows: DistinctGroundName[]) {
+  const map = new Map<string, DistinctGroundName>();
+  for (const row of rows) {
+    const key = keyFor(row);
+    const current = map.get(key);
+    if (!current) map.set(key, row);
+    else {
+      current.count += row.count;
+      if ((row.latestDate || "") > (current.latestDate || "")) current.latestDate = row.latestDate;
+      current.assignedGroundId ||= row.assignedGroundId;
+    }
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export default function ShootingGroundSettingsPage() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [groundNames, setGroundNames] = useState<DistinctGroundName[]>([]);
+  const [grounds, setGrounds] = useState<UserShootingGround[]>([]);
+  const [draft, setDraft] = useState<MergeDraft>({ displayName: "", selected: new Set() });
+
+  async function load() {
+    setLoading(true); setError(null);
+    const [{ data: sessionRows, error: sessionError }, { data: logRows, error: logError }, { data: sheetRows, error: sheetError }, { data: groundRows, error: groundError }, { data: aliasRows, error: aliasError }] = await Promise.all([
+      supabase.from("sessions").select("id,shooting_ground,competition_date,created_at,user_shooting_ground_id").not("shooting_ground", "is", null).returns<SessionGroundRow[]>(),
+      supabase.from("training_logs").select("id,location,date,created_at,user_shooting_ground_id").not("location", "is", null).returns<TrainingLogGroundRow[]>(),
+      supabase.from("training_score_sheets").select("id,location,session_date,created_at,user_shooting_ground_id").not("location", "is", null).returns<ScoreSheetGroundRow[]>(),
+      supabase.from("user_shooting_grounds").select("id,display_name,normalized_display_name,country_code,municipality").order("display_name").returns<UserShootingGround[]>(),
+      supabase.from("user_shooting_ground_aliases").select("id,user_shooting_ground_id,alias_name,normalized_alias,source").order("alias_name").returns<UserShootingGroundAlias[]>(),
+    ]);
+    const firstError = sessionError || logError || sheetError || groundError || aliasError;
+    if (firstError) setError(firstError.message);
+    const rows: DistinctGroundName[] = [];
+    for (const row of sessionRows || []) if (row.shooting_ground?.trim()) rows.push({ name: row.shooting_ground.trim(), normalizedName: normalizeShootingGroundName(row.shooting_ground), source: "sessions", count: 1, latestDate: row.competition_date || row.created_at, assignedGroundId: row.user_shooting_ground_id });
+    for (const row of logRows || []) if (row.location?.trim()) rows.push({ name: row.location.trim(), normalizedName: normalizeShootingGroundName(row.location), source: "training_logs", count: 1, latestDate: row.date || row.created_at, assignedGroundId: row.user_shooting_ground_id });
+    for (const row of sheetRows || []) if (row.location?.trim()) rows.push({ name: row.location.trim(), normalizedName: normalizeShootingGroundName(row.location), source: "training_score_sheets", count: 1, latestDate: row.session_date || row.created_at, assignedGroundId: row.user_shooting_ground_id });
+    const aliasesByGround = new Map<string, UserShootingGroundAlias[]>();
+    for (const alias of aliasRows || []) aliasesByGround.set(alias.user_shooting_ground_id, [...(aliasesByGround.get(alias.user_shooting_ground_id) || []), alias]);
+    setGroundNames(summarizeGroundRows(rows));
+    setGrounds((groundRows || []).map((ground) => ({ ...ground, aliases: aliasesByGround.get(ground.id) || [] })));
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, []);
+  const suggestions = useMemo(() => buildDuplicateSuggestions(groundNames), [groundNames]);
+  const selectedItems = groundNames.filter((item) => draft.selected.has(keyFor(item)));
+  const canMerge = draft.displayName.trim().length > 0 && selectedItems.length > 0 && !saving;
+
+  function selectGroup(group: DistinctGroundName[]) {
+    setDraft({ displayName: group[0]?.name || "", selected: new Set(group.map(keyFor)) });
+    setMessage(null); setError(null);
+  }
+  function toggle(item: DistinctGroundName, checked: boolean) {
+    setDraft((current) => { const selected = new Set(current.selected); checked ? selected.add(keyFor(item)) : selected.delete(keyFor(item)); return { ...current, displayName: current.displayName || item.name, selected }; });
+  }
+  async function mergeSelected() {
+    if (!canMerge) { setError("Choose at least one name and a main name before merging."); return; }
+    setSaving(true); setError(null); setMessage(null);
+    const user = (await supabase.auth.getUser()).data.user;
+    if (!user) { setError("Log in to clean up shooting grounds."); setSaving(false); return; }
+    const normalized = normalizeShootingGroundName(draft.displayName);
+    const { data: ground, error: groundError } = await supabase.from("user_shooting_grounds").upsert({ user_id: user.id, display_name: draft.displayName.trim(), normalized_display_name: normalized }, { onConflict: "user_id,normalized_display_name" }).select("id").single();
+    if (groundError || !ground) { setError(groundError?.message || "Could not create the shooting ground."); setSaving(false); return; }
+    for (const item of selectedItems) {
+      await supabase.from("user_shooting_ground_aliases").upsert({ user_id: user.id, user_shooting_ground_id: ground.id, alias_name: item.name, normalized_alias: item.normalizedName, source: item.source }, { onConflict: "user_id,normalized_alias,source" });
+      if (item.source === "sessions") await supabase.from("sessions").update({ user_shooting_ground_id: ground.id }).eq("shooting_ground", item.name);
+      if (item.source === "training_logs") await supabase.from("training_logs").update({ user_shooting_ground_id: ground.id }).eq("location", item.name);
+      if (item.source === "training_score_sheets") await supabase.from("training_score_sheets").update({ user_shooting_ground_id: ground.id }).eq("location", item.name);
+    }
+    setMessage(`Merged ${selectedItems.length} name${selectedItems.length === 1 ? "" : "s"} into ${draft.displayName.trim()}. Original source names were preserved.`);
+    setDraft({ displayName: "", selected: new Set() });
+    setSaving(false); await load();
+  }
+  async function removeAlias(alias: UserShootingGroundAlias) {
+    if (!confirm(`Remove alias "${alias.alias_name}"? Original records will keep their source names.`)) return;
+    setSaving(true); setError(null); setMessage(null);
+    await supabase.from("user_shooting_ground_aliases").delete().eq("id", alias.id);
+    if (alias.source === "sessions") await supabase.from("sessions").update({ user_shooting_ground_id: null }).eq("user_shooting_ground_id", alias.user_shooting_ground_id).eq("shooting_ground", alias.alias_name);
+    if (alias.source === "training_logs") await supabase.from("training_logs").update({ user_shooting_ground_id: null }).eq("user_shooting_ground_id", alias.user_shooting_ground_id).eq("location", alias.alias_name);
+    if (alias.source === "training_score_sheets") await supabase.from("training_score_sheets").update({ user_shooting_ground_id: null }).eq("user_shooting_ground_id", alias.user_shooting_ground_id).eq("location", alias.alias_name);
+    setMessage("Alias removed. Original records were not renamed or deleted."); setSaving(false); await load();
+  }
+
+  return <main className="settingsMain shootingGroundsPage">
+    <Link href="/settings" className="button secondary smallButton">Back to settings</Link>
+    <div className="settingsIntro"><p className="eyebrow">Personal data cleanup</p><h2>Clean up shooting grounds</h2><p className="muted">Merge different names that refer to the same shooting ground. Original names from imports are preserved.</p></div>
+    {error && <p className="errorText">{error}</p>}{message && <p className="successText">{message}</p>}
+    <section className="card"><h3>Merge shooting grounds</h3><label>Main name</label><input value={draft.displayName} onChange={(e) => setDraft((current) => ({ ...current, displayName: e.target.value }))} placeholder="Enter or choose the canonical display name" /> <button className="button" disabled={!canMerge} onClick={mergeSelected}>{saving ? "Saving..." : "Merge selected"}</button><p className="small muted">Selected names: {selectedItems.length || "none"}. Every merge is personal to your account.</p></section>
+    <section className="card"><h3>Suggested duplicates</h3>{loading ? <p>Loading shooting ground names...</p> : suggestions.length === 0 ? <p className="muted">No duplicate suggestions found yet.</p> : suggestions.map((group, index) => <div className="groundGroup" key={index}><div><strong>{group[0].name}</strong><p className="small muted">{group.length} similar names · {group.reduce((sum, item) => sum + item.count, 0)} records</p></div><button className="button secondary" onClick={() => selectGroup(group)}>Use this as main name</button><details><summary>Show details</summary>{group.map((item) => <GroundCheckbox key={keyFor(item)} item={item} checked={draft.selected.has(keyFor(item))} onChange={toggle} />)}</details></div>)}</section>
+    <section className="card"><h3>All shooting ground names</h3>{groundNames.length === 0 ? <p className="muted">No shooting ground names found in your sessions or training logs.</p> : groundNames.map((item) => <GroundCheckbox key={keyFor(item)} item={item} checked={draft.selected.has(keyFor(item))} onChange={toggle} />)}</section>
+    <section className="card"><h3>Merged shooting grounds</h3>{grounds.length === 0 ? <p className="muted">No merged shooting grounds yet.</p> : grounds.map((ground) => <div className="groundGroup" key={ground.id}><strong>{ground.display_name}</strong><p className="small muted">Aliases</p>{ground.aliases?.length ? ground.aliases.map((alias) => <div className="aliasRow" key={alias.id}><span>{alias.alias_name} <small className="muted">· {sourceLabel(alias.source || "")}</small></span><button className="button secondary smallButton" disabled={saving} onClick={() => removeAlias(alias)}>Remove alias</button></div>) : <p className="muted">No aliases saved yet.</p>}</div>)}</section>
+  </main>;
+}
+
+function GroundCheckbox({ item, checked, onChange }: { item: DistinctGroundName; checked: boolean; onChange: (item: DistinctGroundName, checked: boolean) => void }) {
+  return <label className="groundNameOption"><input type="checkbox" checked={checked} onChange={(event) => onChange(item, event.target.checked)} /><span><strong>{item.name}</strong><small>{item.count} record{item.count === 1 ? "" : "s"} · {sourceLabel(item.source)} · latest {formatDate(item.latestDate)}{item.assignedGroundId ? " · already merged" : ""}</small></span></label>;
+}
