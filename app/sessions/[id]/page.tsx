@@ -1342,10 +1342,13 @@ export default function Page() {
             <div className="detailRowsGrid singleColumnRows">
               <ResultRow label="Source">Leirdue.net</ResultRow>
               {sourceUrl && (
-                <ResultRow label="Source URL">
-                  <a href={sourceUrl} target="_blank" rel="noreferrer">
-                    Open Leirdue.net result
-                  </a>
+                <ResultRow label="Original imported source">
+                  <div>
+                    <a href={sourceUrl} target="_blank" rel="noreferrer">
+                      Open Leirdue result
+                    </a>
+                    <div className="small muted">Original imported source</div>
+                  </div>
                 </ResultRow>
               )}
               {importedAt && (
