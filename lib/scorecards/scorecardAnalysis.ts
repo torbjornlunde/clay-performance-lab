@@ -1,4 +1,5 @@
 export type ScorecardOutcome = "hit" | "miss" | "unknown";
+export type ScorecardCellState = "active" | "inactive" | "active_blank" | "uncertain";
 export type ObservedMarkCategory = "diagonal_stroke" | "vertical_stroke" | "check_mark" | "circle" | "zero" | "horizontal_dash" | "cross" | "blank" | "other" | "unreadable";
 export type ReconciliationStatus = "matched" | "safely_resolved" | "needs_review" | "conflict";
 export type Confidence = "high" | "medium" | "low";
@@ -6,6 +7,7 @@ export type ScorecardCell = {
   postNumber: number;
   targetNumber: number;
   result: ScorecardOutcome;
+  cellState?: ScorecardCellState | null;
   rawMark: string | null;
   observedMarkCategory?: ObservedMarkCategory | null;
   confidence: Confidence;
@@ -45,6 +47,10 @@ export type NormalizedScorecardAnalysis = {
   postCount: number;
   targetsPerPost: number;
   targetsPerPostByPost: number[];
+  detectedPostCount: number;
+  expectedTargetsByPost: number[];
+  detectedTotalTargets: number;
+  setupMode: "known" | "discovery";
   totalTargets: number;
 };
 export const SCORECARD_MAX_TOTAL_TARGETS = 500;
@@ -91,9 +97,10 @@ export const scorecardAnalysisJsonSchema = {
             items: {
               type: "object",
               additionalProperties: false,
-              required: ["postNumber", "detectedPostScore", "detectedPostScoreConfidence", "detectedPostScoreRawText", "targets"],
+              required: ["postNumber", "expectedTargets", "detectedPostScore", "detectedPostScoreConfidence", "detectedPostScoreRawText", "targets"],
               properties: {
                 postNumber: { type: "integer" },
+                expectedTargets: { type: ["integer", "null"] },
                 detectedPostScore: { type: ["integer", "null"] },
                 detectedPostScoreConfidence: { enum: ["high", "medium", "low", null] },
                 detectedPostScoreRawText: { type: ["string", "null"] },
@@ -105,6 +112,7 @@ export const scorecardAnalysisJsonSchema = {
                     additionalProperties: false,
                     required: [
                       "targetNumber",
+                      "cellState",
                       "result",
                       "rawMark",
                       "observedMarkCategory",
@@ -113,6 +121,7 @@ export const scorecardAnalysisJsonSchema = {
                     ],
                     properties: {
                       targetNumber: { type: "integer" },
+                      cellState: { enum: ["active", "inactive", "active_blank", "uncertain", null] },
                       result: { enum: ["hit", "miss", "unknown"] },
                       rawMark: { type: ["string", "null"] },
                       observedMarkCategory: { enum: ["diagonal_stroke", "vertical_stroke", "check_mark", "circle", "zero", "horizontal_dash", "cross", "blank", "other", "unreadable", null] },
@@ -223,15 +232,27 @@ export function summarizeGrid(grid: ScorecardCell[]) {
 }
 export function normalizeScorecardAnalysis(
   input: any,
-  setup: { postCount: number; targetsPerPost: number; targetsPerPostByPost?: number[] },
+  setup: { postCount?: number | null; targetsPerPost?: number | null; targetsPerPostByPost?: number[]; totalTargets?: number | null; allowStructureDiscovery?: boolean },
 ): NormalizedScorecardAnalysis {
   if (!input || typeof input !== "object")
     throw new Error("Malformed scorecard analysis.");
-  const postCount = setup.postCount,
-    targetsPerPost = setup.targetsPerPost;
-  const targetsPerPostByPost = Array.isArray(setup.targetsPerPostByPost) && setup.targetsPerPostByPost.length === postCount
-    ? setup.targetsPerPostByPost.map(Number)
-    : Array.from({ length: postCount }, () => targetsPerPost);
+  const rawRows = Array.isArray(input.shooterRows) ? input.shooterRows : [];
+  const setupPostCount = Number(setup.postCount || 0);
+  const setupTargetsPerPost = Number(setup.targetsPerPost || 0);
+  const setupMode: "known" | "discovery" = setup.allowStructureDiscovery || !Number.isInteger(setupPostCount) || setupPostCount < 1 || !Number.isInteger(setupTargetsPerPost) || setupTargetsPerPost < 1 ? "discovery" : "known";
+  const detectedPostCount = Math.max(0, ...rawRows.flatMap((row: any) => (Array.isArray(row?.posts) ? row.posts : []).map((post: any) => Number(post?.postNumber)).filter((n: number) => Number.isInteger(n) && n > 0)));
+  const postCount = setupMode === "known" ? setupPostCount : detectedPostCount;
+  const detectedCounts = Array.from({ length: postCount }, (_, index) => {
+    const postNumber = index + 1;
+    const matchingPosts = rawRows.flatMap((row: any) => Array.isArray(row?.posts) ? row.posts.filter((post: any) => Number(post?.postNumber) === postNumber) : []);
+    const declared = matchingPosts.map((post: any) => Number(post?.expectedTargets)).find((count: number) => Number.isInteger(count) && count > 0);
+    const activeMax = Math.max(0, ...matchingPosts.flatMap((post: any) => Array.isArray(post?.targets) ? post.targets.filter((target: any) => target?.cellState !== "inactive").map((target: any) => Number(target?.targetNumber)).filter((n: number) => Number.isInteger(n) && n > 0) : []));
+    return declared || activeMax || setupTargetsPerPost || 0;
+  });
+  const targetsPerPost = setupMode === "known" ? setupTargetsPerPost : Math.max(1, ...detectedCounts);
+  const targetsPerPostByPost = setupMode === "known"
+    ? (Array.isArray(setup.targetsPerPostByPost) && setup.targetsPerPostByPost.length === postCount ? setup.targetsPerPostByPost.map(Number) : Array.from({ length: postCount }, () => targetsPerPost))
+    : detectedCounts;
   const totalTargets = targetsPerPostByPost.reduce((sum, count) => sum + count, 0);
   if (
     !Number.isInteger(postCount) ||
@@ -246,7 +267,7 @@ export function normalizeScorecardAnalysis(
     .slice(0, 20)
     .map((w: any) => cleanString(w, 180))
     .filter(Boolean) as string[];
-  const repairedInput = repairPhysicalPostRows(input, postCount, targetsPerPostByPost);
+  const repairedInput = setupMode === "known" ? repairPhysicalPostRows(input, postCount, targetsPerPostByPost) : input;
   const repairedWarnings = repairedInput === input ? globalWarnings : (Array.isArray(repairedInput.warnings) ? repairedInput.warnings : [])
     .slice(0, 20)
     .map((w: any) => cleanString(w, 180))
@@ -265,12 +286,15 @@ export function normalizeScorecardAnalysis(
           warnings.push(`Ignored out-of-range post ${post.postNumber}.`);
           continue;
         }
+        const expectedForPost = Number.isInteger(post.expectedTargets) && Number(post.expectedTargets) > 0 ? Math.min(Number(post.expectedTargets), targetsPerPostByPost[p - 1] || targetsPerPost) : (targetsPerPostByPost[p - 1] || targetsPerPost);
         for (const target of (Array.isArray(post.targets)
           ? post.targets
           : []
-        ).slice(0, (targetsPerPostByPost[p - 1] || targetsPerPost) + 20)) {
+        ).slice(0, expectedForPost + 20)) {
           const t = Number(target.targetNumber);
-          if (!Number.isInteger(t) || t < 1 || t > targetsPerPostByPost[p - 1]) {
+          if (target.cellState === "inactive") continue;
+          if (setupMode === "known" && Number.isInteger(post.expectedTargets) && Number(post.expectedTargets) !== targetsPerPostByPost[p - 1]) warnings.push(`Detected Post ${p} has ${post.expectedTargets} active targets, but saved setup expects ${targetsPerPostByPost[p - 1]}. Review setup before applying.`);
+          if (!Number.isInteger(t) || t < 1 || t > expectedForPost) {
             warnings.push(
               `Ignored out-of-range target ${target.targetNumber} on post ${p}.`,
             );
@@ -300,7 +324,8 @@ export function normalizeScorecardAnalysis(
           const next: ScorecardCell = {
             postNumber: p,
             targetNumber: t,
-            result,
+            result: target.cellState === "active_blank" || target.cellState === "uncertain" ? "unknown" : result,
+            cellState: target.cellState || "active",
             rawMark,
             observedMarkCategory,
             confidence,
@@ -329,6 +354,7 @@ export function normalizeScorecardAnalysis(
               postNumber: p,
               targetNumber: t,
               result: "unknown",
+              cellState: "active_blank",
               rawMark: null,
               observedMarkCategory: "blank",
               confidence: "low",
@@ -379,11 +405,17 @@ export function normalizeScorecardAnalysis(
     postCount,
     targetsPerPost,
     targetsPerPostByPost,
+    detectedPostCount: postCount,
+    expectedTargetsByPost: targetsPerPostByPost,
+    detectedTotalTargets: totalTargets,
+    setupMode,
     totalTargets,
   };
 }
 
+function isProtectedAiUncertain(cell: ScorecardCell) { return cell.cellState === "uncertain" && !cell.reviewed; }
 export function markEvidenceResult(cell: ScorecardCell): Exclude<ScorecardOutcome, "unknown"> | null {
+  if (isProtectedAiUncertain(cell)) return null;
   const deterministic = classifyObservedMark(cell.rawMark, cell.observedMarkCategory);
   return deterministic.result === "hit" || deterministic.result === "miss" ? deterministic.result : null;
 }
@@ -407,7 +439,9 @@ export function reconcileScorecardPost({ cells, detectedPostScore, detectedPostS
   const fixedMisses = fixed.filter((c) => c.result === "miss").length;
   if (fixedHits > detected || fixedMisses > requiredMisses) return { cells: normalized, detectedPostScore: detected, detectedPostScoreConfidence: totalConfidence, reconciledPostScore: summarizeGrid(normalized).score, reconciliationStatus: "conflict" as ReconciliationStatus, reconciliationWarning: `Fixed high-confidence or reviewed marks conflict with detected post total ${detected}/${expectedTargetCount}.` };
   const current = summarizeGrid(normalized);
+  const protectedUncertain = normalized.filter((cell) => isProtectedAiUncertain(cell) && cell.result === "unknown");
   if (current.unknowns === 0 && current.score === detected) return { cells: normalized, detectedPostScore: detected, detectedPostScoreConfidence: totalConfidence, reconciledPostScore: detected, reconciliationStatus: "matched" as ReconciliationStatus, reconciliationWarning: null };
+  if (protectedUncertain.length) return { cells: normalized, detectedPostScore: detected, detectedPostScoreConfidence: totalConfidence, reconciledPostScore: current.score, reconciliationStatus: "needs_review" as ReconciliationStatus, reconciliationWarning: `${protectedUncertain.length} AI-uncertain target${protectedUncertain.length === 1 ? "" : "s"} must be reviewed manually.` };
   const fixedKeys = new Set(fixed.map((c) => cellKey(c.postNumber, c.targetNumber)));
   const flexible = normalized.filter((c) => !fixedKeys.has(cellKey(c.postNumber, c.targetNumber)));
   const needHits = detected - fixedHits, needMisses = requiredMisses - fixedMisses;
@@ -485,7 +519,7 @@ export function chooseLatestReviewRevision<T extends { localReviewRevision?: num
 export function bulkResolveUnknownsForPost(grid: ScorecardCell[], postNumber: number, result: Exclude<ScorecardOutcome, "unknown">, confirmed: boolean) {
   if (!confirmed) return { grid, changed: 0 };
   let changed = 0;
-  return { grid: grid.map((c) => c.postNumber === postNumber && c.result === "unknown" ? (changed++, { ...c, result, reviewed: true }) : c), changed };
+  return { grid: grid.map((c) => c.postNumber === postNumber && c.result === "unknown" ? (changed++, { ...c, result, cellState: "active" as const, warning: c.cellState === "uncertain" ? null : c.warning, reviewed: true }) : c), changed };
 }
 
 export function applyUserCorrection(
@@ -493,10 +527,10 @@ export function applyUserCorrection(
   postNumber: number,
   targetNumber: number,
   result: ScorecardOutcome,
-) {
+): ScorecardCell[] {
   return grid.map((c) =>
     c.postNumber === postNumber && c.targetNumber === targetNumber
-      ? { ...c, result, reviewed: true }
+      ? { ...c, result, cellState: (result === "unknown" ? "active_blank" : "active") as ScorecardCellState, warning: c.cellState === "uncertain" ? null : c.warning, reviewed: true }
       : c,
   );
 }
@@ -510,7 +544,7 @@ export function bulkResolveUnknowns(
   return {
     grid: grid.map((c) =>
       c.result === "unknown"
-        ? (changed++, { ...c, result, reviewed: true })
+        ? (changed++, { ...c, result, cellState: "active" as const, warning: c.cellState === "uncertain" ? null : c.warning, reviewed: true })
         : c,
     ),
     changed,
