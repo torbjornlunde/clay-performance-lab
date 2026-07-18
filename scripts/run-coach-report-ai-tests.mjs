@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 
-writeFileSync('.coach-report-ai-test-tsconfig.json', JSON.stringify({ compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', target: 'ES2022', jsx: 'react-jsx', lib: ['ES2022','DOM'], outDir: '.coach-report-ai-test-build', skipLibCheck: true, rootDir: '.', baseUrl: '.', ignoreDeprecations: '6.0', paths: { '@/*': ['./*'] } }, include: ['lib/ai/coachReportPrompt.ts', 'app/api/coach-report/generate/route.ts'] }));
-execSync('rm -rf .coach-report-ai-test-build && npx tsc -p .coach-report-ai-test-tsconfig.json && mkdir -p .coach-report-ai-test-build/node_modules/@/lib/ai && cp .coach-report-ai-test-build/lib/ai/coachReportPrompt.js .coach-report-ai-test-build/node_modules/@/lib/ai/coachReportPrompt.js', { stdio: 'inherit' });
+writeFileSync('.coach-report-ai-test-tsconfig.json', JSON.stringify({ compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', target: 'ES2022', jsx: 'react-jsx', lib: ['ES2022','DOM'], outDir: '.coach-report-ai-test-build', skipLibCheck: true, rootDir: '.', baseUrl: '.', ignoreDeprecations: '6.0', paths: { '@/*': ['./*'] } }, include: ['lib/ai/coachReportPrompt.ts', 'lib/entitlements/**/*.ts', 'app/api/coach-report/generate/route.ts'] }));
+execSync('rm -rf .coach-report-ai-test-build && npx tsc -p .coach-report-ai-test-tsconfig.json && mkdir -p .coach-report-ai-test-build/node_modules/@/lib && cp -R .coach-report-ai-test-build/lib/ai .coach-report-ai-test-build/node_modules/@/lib/ai && cp -R .coach-report-ai-test-build/lib/entitlements .coach-report-ai-test-build/node_modules/@/lib/entitlements', { stdio: 'inherit' });
 const { buildCoachReportPrompt, COACH_REPORT_AI_SECTIONS } = await import('../.coach-report-ai-test-build/lib/ai/coachReportPrompt.js');
 const { handleCoachReportGenerate, __test } = await import('../.coach-report-ai-test-build/app/api/coach-report/generate/route.js');
 
@@ -15,7 +15,7 @@ assert.equal(COACH_REPORT_AI_SECTIONS.length, 6, 'AI route exposes required sect
 function deps({ user = { id: 'u1' }, openAiText = 'Coach summary\n- Good', capture = {} } = {}) {
   return {
     env: { NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon', OPENAI_API_KEY: 'openai' },
-    createSupabaseClient: (_url, _key, options) => { capture.supabaseOptions = options; return { auth: { getUser: async () => ({ data: { user } }) } }; },
+    createSupabaseClient: (_url, _key, options) => { capture.supabaseOptions = options; return { auth: { getUser: async () => ({ data: { user } }) }, from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }), insert: async () => ({ error: null }) }) }; },
     openAiFetch: async (_url, init) => { capture.openAiBody = JSON.parse(init.body); return new Response(JSON.stringify({ output_text: openAiText }), { status: 200 }); },
   };
 }

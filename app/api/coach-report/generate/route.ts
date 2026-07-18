@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildCoachReportPrompt, COACH_REPORT_AI_SECTIONS } from "@/lib/ai/coachReportPrompt";
+import { getBillingMode } from "@/lib/entitlements/check";
+import { createEntitlementUserContext } from "@/lib/entitlements/userContext";
+import { FeatureAccessError, recordFeatureUsage, requirePaidCostAccess } from "@/lib/entitlements/server";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +36,7 @@ async function requireUser(request: Request, deps: CoachReportGenerateDeps = {})
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData.user?.id;
   if (!userId) return { ok: false as const, status: 401, error: "You must be signed in." };
-  return { ok: true as const, userId };
+  return { ok: true as const, userId, supabase };
 }
 
 function byteSize(value: string) { return new TextEncoder().encode(value).length; }
@@ -81,6 +84,11 @@ function textFromResponse(json: any) {
 export async function handleCoachReportGenerate(request: Request, deps: CoachReportGenerateDeps = {}) {
   const auth = await requireUser(request, deps);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const profileResult = await auth.supabase.from("user_access_profiles").select("user_id,access_status,system_role").eq("user_id", auth.userId).maybeSingle();
+  const entitlementResult = await auth.supabase.from("user_entitlements").select("plan,status,valid_until").eq("user_id", auth.userId).maybeSingle();
+  const billingMode = getBillingMode(deps.env || process.env);
+  const userContext = createEntitlementUserContext({ userId: auth.userId, accessProfile: profileResult.data || (billingMode === "beta_hidden" ? { user_id: auth.userId, access_status: "approved", system_role: "user" } : null), entitlement: entitlementResult.data || null, billingMode });
+  try { requirePaidCostAccess("ai.coach_report_summary", userContext); } catch (error) { if (error instanceof FeatureAccessError) return NextResponse.json({ error: error.message }, { status: error.status }); throw error; }
   const packet = await evidencePacketFromRequest(request);
   if (!packet.ok) return NextResponse.json({ error: packet.error }, { status: packet.status });
   try {
@@ -92,6 +100,7 @@ export async function handleCoachReportGenerate(request: Request, deps: CoachRep
     if (!response.ok) return NextResponse.json({ error: "AI coach report failed. The deterministic evidence preview is still available." }, { status: 502 });
     const reportText = textFromResponse(await response.json());
     if (!reportText) return NextResponse.json({ error: "AI coach report returned an empty response." }, { status: 502 });
+    await recordFeatureUsage(auth.supabase, "ai.coach_report_summary", auth.userId, { route: "/api/coach-report/generate" });
     return NextResponse.json({ reportText, sections: COACH_REPORT_AI_SECTIONS });
   } catch {
     return NextResponse.json({ error: "AI coach report failed. The deterministic evidence preview is still available." }, { status: 500 });
