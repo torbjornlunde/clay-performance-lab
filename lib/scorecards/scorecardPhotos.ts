@@ -29,7 +29,7 @@ export type PendingScorecardPhoto = {
   status: ScorecardPhotoStatus;
   analysis?: NormalizedScorecardAnalysis;
   setupFingerprint?: string | null;
-  resolvedSetup?: { postCount: number; targetsPerPostByPost: number[]; totalTargets: number } | null;
+  resolvedSetup?: { postCount: number; targetsPerPostByPost: number[]; totalTargets: number; setupMode?: "known" | "discovery" } | null;
   selectedShooterCandidateId?: string | null;
   currentReviewPost?: number;
   reviewedPostNumbers?: number[];

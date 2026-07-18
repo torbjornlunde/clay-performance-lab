@@ -300,7 +300,9 @@ export default function Page() {
   const tpp = safeSetupResult?.ok
     ? safeSetupResult.setup.targetsPerPost
     : Number(session?.targets_per_post || profile?.defaultTargetsPerSeries);
-  const setupOk = Boolean(safeSetupResult?.ok) || Boolean(session?.total_targets);
+  const hasEmptyPostSetup = Boolean(profile?.key === "post_based" && !targetDefinitions.length && !session?.post_count && !session?.course_count && !session?.targets_per_post && !session?.total_targets);
+  const discoveryModeAvailable = Boolean(profile?.key === "post_based" && hasEmptyPostSetup && !targetDefinitionsError);
+  const setupOk = Boolean(safeSetupResult?.ok) || Boolean(session?.total_targets) || discoveryModeAvailable;
   useEffect(() => {
     if (!grid.length || !postCount) return;
     const normalized = normalizeReviewProgress({ grid, postCount, currentReviewPost: currentPost, reviewedPostNumbers: reviewedPosts, postStatuses: postStatusMap() });
@@ -331,11 +333,13 @@ export default function Page() {
   const unsupported = session && !profile;
   const conflict = Boolean(
     session &&
+    !discoveryModeAvailable &&
     ((setupResult && !setupResult.ok && profile) || targetDefinitionsError),
   );
   const setupErrorMessage =
     setupResult && !setupResult.ok ? setupResult.message : "";
-  const setupVerificationRequired = Boolean(pending?.analysis && !pending.setupFingerprint);
+  const pendingSetupMode = pending?.resolvedSetup?.setupMode === "discovery" ? "discovery" : "known";
+  const setupVerificationRequired = Boolean(pending?.analysis && pendingSetupMode !== "discovery" && !pending.setupFingerprint);
   const setupMismatch = Boolean(
     pending?.analysis &&
       pending.setupFingerprint &&
@@ -762,6 +766,7 @@ export default function Page() {
               pendingRef.current.imageFingerprint
             : null,
           setupFingerprint: pending.setupFingerprint,
+          setupMode: pending.resolvedSetup?.setupMode === "discovery" ? "discovery" : "known",
           scoreChoice,
         }),
       });
@@ -852,11 +857,13 @@ export default function Page() {
         <p>{session.name}</p>
         <ContextualHelpCard storageKey="scorecard-photo-import">Upload a scorecard photo, crop if needed, review the detected post structure and target results, then apply. Grey or blocked cells are excluded from target counts when visible.</ContextualHelpCard>
         <p className="muted">
-          {setupOk && setupSummary?.compact
-            ? setupSummary.compact
-            : setupOk
-              ? `Total: ${setupSummary?.total}`
-              : "Scorecard setup required"}
+          {discoveryModeAvailable
+            ? "Post structure will be detected from the scorecard."
+            : setupOk && setupSummary?.compact
+              ? setupSummary.compact
+              : setupOk
+                ? `Total: ${setupSummary?.total}`
+                : "Scorecard setup required"}
         </p>
         {setupOk && setupSummary && !setupSummary.compact && (
           <div className="small muted">
@@ -885,7 +892,7 @@ export default function Page() {
           Scorecard photo import is not available for this discipline.
         </div>
       )}
-      {!unsupported && !setupOk && (
+      {!unsupported && !setupOk && !discoveryModeAvailable && (
         <div className="card">
           <p>
             Set up the number of series/lanes and targets before importing a
@@ -909,9 +916,9 @@ export default function Page() {
           <div className="card">
             <h3>Capture card</h3>
             <p className="muted">
-              Existing misses will be preserved and exact duplicates skipped.
-              The image is analyzed but not stored in Supabase Storage or the
-              database.
+              {discoveryModeAvailable
+                ? "Post structure will be detected from the scorecard. Existing misses will be preserved and exact duplicates skipped."
+                : "Existing misses will be preserved and exact duplicates skipped. The image is analyzed but not stored in Supabase Storage or the database."}
             </p>
             <div className="btns">
               <button

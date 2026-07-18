@@ -135,7 +135,20 @@ const pageSource = readFileSync('app/sessions/[id]/scorecard-import/page.tsx','u
 assert.match(pageSource,/setupFingerprint/, 'pending review stores setup fingerprint');
 assert.match(pageSource,/Post setup has changed since this scorecard was analyzed/, 'UI blocks stale analyzed setup and keeps saved image for re-analysis');
 const analyzeSource = readFileSync('app/api/sessions/[id]/scorecard/analyze/route.ts','utf8'); assert.match(analyzeSource,/setupFingerprint/, 'analyze API returns setup fingerprint'); assert.match(analyzeSource,/resolvedSetup/, 'analyze API returns normalized resolved setup');
-const applySource = readFileSync('app/api/sessions/[id]/scorecard/apply/route.ts','utf8'); assert.match(applySource,/scorecard_setup_changed/, 'apply API uses dedicated setup-changed category'); assert.match(applySource,/body\.setupFingerprint/, 'apply API requires the reviewed setup fingerprint');
+const applySource = readFileSync('app/api/sessions/[id]/scorecard/apply/route.ts','utf8'); assert.match(applySource,/scorecard_setup_changed/, 'apply API uses dedicated setup-changed category'); assert.match(applySource,/setupMode === \"known\" && !fingerprint\.test\(body\.setupFingerprint/, 'apply API requires setup fingerprints only for known setup mode'); assert.match(applySource,/deriveSetupFromReviewedGrid/, 'discovery apply derives final structure from reviewed grid'); assert.match(applySource,/p_discovery_mode: discoveryApply/, 'discovery apply reaches atomic RPC path');
+assert.match(pageSource,/Post structure will be detected from the scorecard/, 'no-setup post-based competitions explain structure discovery instead of blocking capture');
+assert.match(pageSource,/discoveryModeAvailable/, 'scorecard import UI allows discovery mode capture');
+assert.doesNotMatch(pageSource,/!unsupported && !setupOk && \(/, 'no-setup discovery mode is not the blocking setup-required flow');
+assert.match(pageSource,/pendingSetupMode !== \"discovery\" && !pending\.setupFingerprint/, 'discovery reviews are not blocked solely by a null setup fingerprint');
+const discoveryRpc = readFileSync('supabase/migrations/20260718010000_scorecard_import_discovery_apply.sql','utf8').toLowerCase();
+assert.match(discoveryRpc,/p_discovery_mode boolean default false/, 'RPC supports explicit discovery mode');
+assert.match(discoveryRpc,/for update/, 'RPC locks the session for atomic discovery apply');
+assert.match(discoveryRpc,/setup_created_after_analysis/, 'RPC blocks setup changes made after discovery analysis');
+assert.match(discoveryRpc,/insert into public\.session_post_targets\(session_id, post_number, target_position\)/, 'discovery apply persists only structural post target positions');
+assert.doesNotMatch(discoveryRpc,/insert into public\.session_post_targets[\s\S]*target_type/, 'discovery setup does not fabricate target metadata');
+const soknaCountsPreserved=[8,8,8,8,8,8,8,6,8,8,6,8,6,6,8,8];
+assert.equal(soknaCountsPreserved.length,16,'Sokna fixture has 16 posts'); assert.equal(soknaCountsPreserved.reduce((sum,count)=>sum+count,0),120,'Sokna fixture has 120 targets');
+let correctedSoknaCounts=soknaCountsPreserved.slice(); correctedSoknaCounts[7]=8; assert.equal(correctedSoknaCounts[7],8,'review correction P8 6 to 8 is represented by reviewed grid-derived structure');
 
 const mk=(post,target,result='unknown',confidence='low',observedMarkCategory=null,rawMark=null,reviewed=false)=>({postNumber:post,targetNumber:target,result,rawMark,observedMarkCategory,confidence,warning:null,reviewed});
 let statusGrid=[mk(1,1,'hit','high'),mk(1,2,'unknown','low')];

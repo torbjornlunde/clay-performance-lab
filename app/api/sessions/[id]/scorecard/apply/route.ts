@@ -14,6 +14,9 @@ const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const fingerprint = /^[a-f0-9]{64}$/i;
 const scoreChoices = new Set(["use_scorecard", "keep_existing"]);
+const MAX_DISCOVERY_POSTS = 100;
+const MAX_DISCOVERY_TARGETS_PER_POST = 100;
+const MAX_DISCOVERY_TOTAL_TARGETS = 500;
 
 function supabaseForRequest(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -77,6 +80,41 @@ function safeRpcError(message?: string) {
   );
 }
 
+function deriveSetupFromReviewedGrid(grid: ScorecardCell[]) {
+  const errors: string[] = [];
+  if (!Array.isArray(grid) || !grid.length) return { ok: false as const, message: "Review grid is missing.", errors };
+  const byPost = new Map<number, Set<number>>();
+  for (const cell of grid) {
+    const post = Number(cell?.postNumber), target = Number(cell?.targetNumber);
+    if (!Number.isInteger(post) || post < 1 || post > MAX_DISCOVERY_POSTS) errors.push(`Invalid post ${cell?.postNumber}.`);
+    if (!Number.isInteger(target) || target < 1 || target > MAX_DISCOVERY_TARGETS_PER_POST) errors.push(`Invalid target ${cell?.targetNumber}.`);
+    if (cell?.result !== "hit" && cell?.result !== "miss") errors.push(`Target ${post}:${target} must be reviewed as hit or miss.`);
+    if (errors.length) continue;
+    const set = byPost.get(post) || new Set<number>();
+    if (set.has(target)) errors.push(`Duplicate target coordinate ${post}:${target}.`);
+    set.add(target); byPost.set(post, set);
+  }
+  const postCount = byPost.size ? Math.max(...byPost.keys()) : 0;
+  if (postCount < 1 || postCount > MAX_DISCOVERY_POSTS) errors.push("Scorecard must have 1–100 posts.");
+  const counts: number[] = [];
+  for (let post = 1; post <= postCount; post++) {
+    const positions = byPost.get(post);
+    if (!positions?.size) { errors.push(`Missing post ${post}.`); counts.push(0); continue; }
+    const max = Math.max(...positions);
+    if (max !== positions.size) errors.push(`Post ${post} target positions must be consecutive from 1.`);
+    for (let target = 1; target <= max; target++) if (!positions.has(target)) errors.push(`Missing target ${post}:${target}.`);
+    counts.push(max);
+  }
+  const totalTargets = counts.reduce((sum, count) => sum + count, 0);
+  if (counts.some((count) => count < 1 || count > MAX_DISCOVERY_TARGETS_PER_POST) || totalTargets < 1 || totalTargets > MAX_DISCOVERY_TOTAL_TARGETS) errors.push("Discovered scorecard structure must be 1–100 targets per post and 500 targets or fewer.");
+  if (errors.length) return { ok: false as const, message: "Reviewed scorecard structure is invalid.", errors };
+  return { ok: true as const, setup: { postCount, targetsPerPost: Math.max(...counts), targetsPerPostByPost: counts, totalTargets } };
+}
+
+function structuralTargetsFromSetup(setup: { postCount: number; targetsPerPostByPost: number[] }) {
+  return setup.targetsPerPostByPost.flatMap((count, index) => Array.from({ length: count }, (_, targetIndex) => ({ post_number: index + 1, target_position: targetIndex + 1, presentation_number: targetIndex + 1, presentation_type: null, position_in_presentation: null, target_label: null, target_type: null })));
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -93,7 +131,8 @@ export async function POST(
     }
 
     const body = await request.json();
-    if (!uuid.test(body.clientImportId) || !fingerprint.test(body.imageFingerprint) || !fingerprint.test(body.setupFingerprint || "")) {
+    const setupMode = body.setupMode === "discovery" ? "discovery" : "known";
+    if (!uuid.test(body.clientImportId) || !fingerprint.test(body.imageFingerprint) || (setupMode === "known" && !fingerprint.test(body.setupFingerprint || ""))) {
       return json(
         { error: { category: "analysis_failed", message: "Invalid import identifiers or setup fingerprint." } },
         400,
@@ -142,24 +181,32 @@ export async function POST(
       totalTargets: session.total_targets,
       targetDefinitions: targetResult.data || [],
     });
-    if (!setupResult.ok) {
-      return json({ error: { category: "setup_required", message: setupResult.message } }, 409);
+    const hasNoSavedPostSetup =
+      !targetResult.data?.length &&
+      !session.post_count &&
+      !session.course_count &&
+      !session.targets_per_post &&
+      !session.total_targets;
+    const discoveryApply = setupMode === "discovery" && !setupResult.ok && hasNoSavedPostSetup;
+    if (!setupResult.ok && !discoveryApply) {
+      return json({ error: { category: setupMode === "discovery" ? "scorecard_setup_changed" : "setup_required", message: setupMode === "discovery" ? "Competition setup was created or changed after analysis. Analyze the saved image again before continuing." : setupResult.message } }, setupMode === "discovery" ? 409 : 409);
     }
-    const setup = setupResult.setup;
-    const fingerprintResult = await resolvedDisciplineScorecardSetupFingerprint({ discipline: session.discipline, setup });
-    if (!fingerprintResult || fingerprintResult.setupFingerprint !== body.setupFingerprint) {
-      return json(
-        {
-          error: {
-            category: "scorecard_setup_changed",
-            message: "Post setup has changed since this scorecard was analyzed. Analyze the saved image again before continuing.",
-          },
-        },
-        409,
-      );
+    if (setupMode === "discovery" && setupResult.ok) {
+      return json({ error: { category: "scorecard_setup_changed", message: "Competition setup was created or changed after analysis. Analyze the saved image again before continuing." } }, 409);
+    }
+    const setup = discoveryApply
+      ? deriveSetupFromReviewedGrid(body.grid as ScorecardCell[])
+      : ({ ok: true as const, setup: (setupResult as Extract<typeof setupResult, { ok: true }>).setup, errors: [] as string[] });
+    if (!setup.ok) return json({ error: { category: "analysis_failed", message: setup.message, details: setup.errors?.slice(0, 10) } }, 400);
+    const resolvedSetup = setup.setup;
+    if (!discoveryApply) {
+      const fingerprintResult = await resolvedDisciplineScorecardSetupFingerprint({ discipline: session.discipline, setup: resolvedSetup });
+      if (!fingerprintResult || fingerprintResult.setupFingerprint !== body.setupFingerprint) {
+        return json({ error: { category: "scorecard_setup_changed", message: "Post setup has changed since this scorecard was analyzed. Analyze the saved image again before continuing." } }, 409);
+      }
     }
 
-    const canonical = canonicalizeReviewedGrid(body.grid as ScorecardCell[], setup);
+    const canonical = canonicalizeReviewedGrid(body.grid as ScorecardCell[], resolvedSetup);
     if (!canonical.ok) {
       return json(
         {
@@ -202,7 +249,7 @@ export async function POST(
 
     const mapped = mapReviewedMisses(
       clean,
-      targetResult.data || [],
+      discoveryApply ? structuralTargetsFromSetup(resolvedSetup) : targetResult.data || [],
       missResult.data || [],
     );
     if (mapped.ambiguousExisting && !body.acknowledgeAmbiguousExisting) {
@@ -237,15 +284,16 @@ export async function POST(
         p_session_id: id,
         p_client_import_id: body.clientImportId,
         p_image_fingerprint: body.imageFingerprint,
-        p_post_count: setup.postCount,
-        p_targets_per_post: setup.targetsPerPost,
-        p_targets_per_post_by_post: setup.targetsPerPostByPost,
+        p_post_count: resolvedSetup.postCount,
+        p_targets_per_post: resolvedSetup.targetsPerPost,
+        p_targets_per_post_by_post: resolvedSetup.targetsPerPostByPost,
         p_reviewed_hits: summary.hits,
         p_reviewed_misses: summary.misses,
         p_reviewed_miss_positions: reviewedMissPositions,
         p_use_scorecard_score: useScorecardScore,
         p_expected_own_score: session.own_score,
         p_misses: mapped.rows,
+        p_discovery_mode: discoveryApply,
       },
     );
     if (rpcError) return safeRpcError(rpcError.message);
