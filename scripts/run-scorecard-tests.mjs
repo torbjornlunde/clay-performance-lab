@@ -1,13 +1,39 @@
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-execSync('rm -rf .scorecard-test-build && npx tsc lib/scorecards/scorecardAnalysis.ts lib/scorecards/orderedPendingPersistence.ts lib/scorecards/scorecardMissMapping.ts lib/scorecards/scorecardPhotos.ts lib/scorecards/scorecardSetup.ts lib/scorecards/scorecardProfiles.ts lib/disciplines.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM --outDir .scorecard-test-build --skipLibCheck', {stdio:'inherit'});
+execSync('rm -rf .scorecard-test-build && npx tsc lib/scorecards/scorecardAnalysis.ts lib/scorecards/orderedPendingPersistence.ts lib/scorecards/scorecardMissMapping.ts lib/scorecards/scorecardPhotos.ts lib/scorecards/scorecardSetup.ts lib/scorecards/scorecardProfiles.ts lib/scorecards/importedScorecard.ts lib/trainingScoreSheets/safety.ts lib/disciplines.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM --outDir .scorecard-test-build --skipLibCheck', {stdio:'inherit'});
 const a = await import('../.scorecard-test-build/scorecards/scorecardAnalysis.js');
 const op = await import('../.scorecard-test-build/scorecards/orderedPendingPersistence.js');
 const m = await import('../.scorecard-test-build/scorecards/scorecardMissMapping.js');
 const q = await import('../.scorecard-test-build/scorecards/scorecardPhotos.js');
 const setup = await import('../.scorecard-test-build/scorecards/scorecardSetup.js');
 const profiles = await import('../.scorecard-test-build/scorecards/scorecardProfiles.js');
+const imported = await import('../.scorecard-test-build/scorecards/importedScorecard.js');
+
+
+
+const soknaCounts=[8,8,8,8,8,8,8,6,8,8,6,8,6,6,8,8];
+const soknaFixture={sessionType:'Training',discipline:'Leirduesti',shooterName:'Sokna shooter',shootingGround:'Sokna',totalTargets:120,totalScore:94,posts:soknaCounts.map((count,idx)=>({postNumber:idx+1,expectedTargets:count,detectedScore:idx===2?7:Math.max(0,count-2),confidence:'high',targets:Array.from({length:10},(_,i)=> i<count ? {targetNumber:i+1,cellState:i<6?'hit':i<count?'miss':'active_blank',result:i<6?'hit':'miss',confidence:'high',rawMark:i<6?'/':'0'} : {targetNumber:i+1,cellState:'inactive',result:'unknown',confidence:'high',rawMark:null})}))};
+let normalizedImport=imported.normalizeImportedPostStructure(soknaFixture);
+assert.deepEqual(normalizedImport.expectedTargetsByPost,soknaCounts,'Sokna-style variable post structure is preserved');
+assert.equal(imported.calculateImportedExpectedTotal(normalizedImport.posts),120,'Sokna-style variable post structure totals 120');
+assert.equal(normalizedImport.posts[7].targets.length,6,'inactive grey cells are not active targets');
+assert.equal(normalizedImport.posts[7].targets.filter(c=>c.result==='miss').length,0,'inactive cells are not treated as misses');
+const detailed=imported.normalizeImportedPostStructure({posts:[{postNumber:1,expectedTargets:8,targets:[1,2,3,4,5,6].map(targetNumber=>({targetNumber,cellState:'hit',result:'hit',confidence:'high'})).concat([7,8].map(targetNumber=>({targetNumber,cellState:'miss',result:'miss',confidence:'high'})))}]});
+assert.equal(detailed.posts[0].scoringMode,'detailed'); assert.equal(detailed.posts[0].targets.filter(c=>c.result==='hit').length,6,'detailed post maps 6 hits'); assert.equal(detailed.posts[0].targets.filter(c=>c.result==='miss').length,2,'detailed post maps 2 misses');
+const totalOnly=imported.normalizeImportedPostStructure({posts:[{postNumber:1,expectedTargets:8,detectedScore:7,confidence:'high',targets:[]}]});
+assert.equal(totalOnly.posts[0].scoringMode,'total_only','post total without target positions uses total-only fallback'); assert.equal(totalOnly.posts[0].targets.length,0,'total-only fallback does not fabricate hit/miss positions');
+const mixed=imported.normalizeImportedPostStructure({posts:[detailed.posts[0],{postNumber:2,expectedTargets:8,detectedScore:7,confidence:'high',targets:[]}]});
+assert.equal(mixed.posts[0].scoringMode,'detailed'); assert.equal(mixed.posts[1].scoringMode,'total_only','mixed import supports detailed and total-only posts');
+const mismatch=imported.validateImportedScorecardStructure(imported.normalizeImportedPostStructure({...soknaFixture,posts:soknaFixture.posts.slice(0,15)}),120);
+assert.equal(mismatch.detectedTotalTargets,112); assert.match(mismatch.warnings.join(' '),/expected total is 120/,'target total mismatch produces review warning');
+const uncertain=imported.normalizeImportedPostStructure({posts:[{postNumber:1,expectedTargets:2,targets:[{targetNumber:1,cellState:'hit',result:'hit',confidence:'high'},{targetNumber:2,cellState:'uncertain',result:'uncertain',confidence:'low'}]}]});
+const mappedUncertain=imported.mapReviewedImportToTrainingScoreSheet(uncertain);
+assert.deepEqual(mappedUncertain.targetResults['imported-shooter'][1],{1:'hit'},'uncertain result is not saved as hit or miss until confirmed');
+const correctedStructure=imported.changeImportedPostExpectedTargets(normalizedImport,8,8);
+assert.equal(correctedStructure.expectedTargetsByPost[7],8); assert.equal(correctedStructure.totalTargets,122,'review correction updates total structure immediately');
+const trainingPayload=imported.mapReviewedImportToTrainingScoreSheet(detailed,'shooter-a');
+assert.equal(trainingPayload.scoreSheet.number_of_posts,1); assert.deepEqual(trainingPayload.scoreSheet.expected_targets_by_post,[8]); assert.deepEqual(trainingPayload.scores,[6]); assert.equal(Object.keys(trainingPayload.targetResults['shooter-a'][1]).length,8,'confirmed Training import maps score sheet, shooter, post scores and target results');
 
 assert.equal(profiles.isScorecardImportDiscipline('Compak Sporting'), true, 'Compak Sporting is allowed in scorecard import');
 assert.equal(profiles.isScorecardImportDiscipline('Sporttrap'), true, 'Sporttrap is allowed in scorecard import');

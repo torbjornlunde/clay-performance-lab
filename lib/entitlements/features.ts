@@ -29,6 +29,7 @@ export const FEATURE_CATALOG = {
   "ai.performance_summary": { key: "ai.performance_summary", tier: "ai_pro", title: "AI performance summary", description: "Use AI to summarize performance patterns.", costSensitive: true, visibleInBeta: false, allowTrial: true, defaultFreeTrialLimit: 1 },
   "ai.training_recommendations": { key: "ai.training_recommendations", tier: "ai_pro", title: "AI training recommendations", description: "Get AI-powered training recommendations.", costSensitive: true, visibleInBeta: false, allowTrial: true, defaultFreeTrialLimit: 1 },
   "ai.app_copilot": { key: "ai.app_copilot", tier: "ai_pro", title: "AI app copilot", description: "Ask an AI copilot for help interpreting your data.", costSensitive: true, visibleInBeta: false, allowTrial: false },
+  "ai.scorecard_photo_import": { key: "ai.scorecard_photo_import", tier: "ai_pro", title: "AI scorecard photo import", description: "Read scorecard photos for review-first imports.", costSensitive: true, visibleInBeta: false, allowTrial: true, defaultFreeTrialLimit: 3 },
   "ai.miss_pattern_interpretation": { key: "ai.miss_pattern_interpretation", tier: "ai_pro", title: "AI miss-pattern interpretation", description: "Use AI to interpret miss patterns and next steps.", costSensitive: true, visibleInBeta: false, allowTrial: true, defaultFreeTrialLimit: 1 },
 } as const satisfies Record<FeatureKey, FeatureDefinition>;
 

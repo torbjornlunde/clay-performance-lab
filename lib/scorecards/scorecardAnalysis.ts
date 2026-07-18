@@ -1,4 +1,5 @@
 export type ScorecardOutcome = "hit" | "miss" | "unknown";
+export type ScorecardCellState = "active" | "inactive" | "active_blank" | "uncertain";
 export type ObservedMarkCategory = "diagonal_stroke" | "vertical_stroke" | "check_mark" | "circle" | "zero" | "horizontal_dash" | "cross" | "blank" | "other" | "unreadable";
 export type ReconciliationStatus = "matched" | "safely_resolved" | "needs_review" | "conflict";
 export type Confidence = "high" | "medium" | "low";
@@ -6,6 +7,7 @@ export type ScorecardCell = {
   postNumber: number;
   targetNumber: number;
   result: ScorecardOutcome;
+  cellState?: ScorecardCellState | null;
   rawMark: string | null;
   observedMarkCategory?: ObservedMarkCategory | null;
   confidence: Confidence;
@@ -91,9 +93,10 @@ export const scorecardAnalysisJsonSchema = {
             items: {
               type: "object",
               additionalProperties: false,
-              required: ["postNumber", "detectedPostScore", "detectedPostScoreConfidence", "detectedPostScoreRawText", "targets"],
+              required: ["postNumber", "expectedTargets", "detectedPostScore", "detectedPostScoreConfidence", "detectedPostScoreRawText", "targets"],
               properties: {
                 postNumber: { type: "integer" },
+                expectedTargets: { type: ["integer", "null"] },
                 detectedPostScore: { type: ["integer", "null"] },
                 detectedPostScoreConfidence: { enum: ["high", "medium", "low", null] },
                 detectedPostScoreRawText: { type: ["string", "null"] },
@@ -105,6 +108,7 @@ export const scorecardAnalysisJsonSchema = {
                     additionalProperties: false,
                     required: [
                       "targetNumber",
+                      "cellState",
                       "result",
                       "rawMark",
                       "observedMarkCategory",
@@ -113,6 +117,7 @@ export const scorecardAnalysisJsonSchema = {
                     ],
                     properties: {
                       targetNumber: { type: "integer" },
+                      cellState: { enum: ["active", "inactive", "active_blank", "uncertain", null] },
                       result: { enum: ["hit", "miss", "unknown"] },
                       rawMark: { type: ["string", "null"] },
                       observedMarkCategory: { enum: ["diagonal_stroke", "vertical_stroke", "check_mark", "circle", "zero", "horizontal_dash", "cross", "blank", "other", "unreadable", null] },
@@ -265,12 +270,14 @@ export function normalizeScorecardAnalysis(
           warnings.push(`Ignored out-of-range post ${post.postNumber}.`);
           continue;
         }
+        const expectedForPost = Number.isInteger(post.expectedTargets) && Number(post.expectedTargets) > 0 ? Math.min(Number(post.expectedTargets), targetsPerPostByPost[p - 1] || targetsPerPost) : (targetsPerPostByPost[p - 1] || targetsPerPost);
         for (const target of (Array.isArray(post.targets)
           ? post.targets
           : []
-        ).slice(0, (targetsPerPostByPost[p - 1] || targetsPerPost) + 20)) {
+        ).slice(0, expectedForPost + 20)) {
           const t = Number(target.targetNumber);
-          if (!Number.isInteger(t) || t < 1 || t > targetsPerPostByPost[p - 1]) {
+          if (target.cellState === "inactive") continue;
+          if (!Number.isInteger(t) || t < 1 || t > expectedForPost) {
             warnings.push(
               `Ignored out-of-range target ${target.targetNumber} on post ${p}.`,
             );
@@ -300,7 +307,8 @@ export function normalizeScorecardAnalysis(
           const next: ScorecardCell = {
             postNumber: p,
             targetNumber: t,
-            result,
+            result: target.cellState === "active_blank" || target.cellState === "uncertain" ? "unknown" : result,
+            cellState: target.cellState || "active",
             rawMark,
             observedMarkCategory,
             confidence,
@@ -329,6 +337,7 @@ export function normalizeScorecardAnalysis(
               postNumber: p,
               targetNumber: t,
               result: "unknown",
+              cellState: "active_blank",
               rawMark: null,
               observedMarkCategory: "blank",
               confidence: "low",

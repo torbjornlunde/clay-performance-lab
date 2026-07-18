@@ -828,7 +828,7 @@ export default function Page() {
         <p className="eyebrow">Import scorecard</p>
         <h2>Import scorecard</h2>
         <p>{session.name}</p>
-        <ContextualHelpCard storageKey="scorecard-photo-import">Upload a scorecard photo, crop if needed, review the detected scores, then apply.</ContextualHelpCard>
+        <ContextualHelpCard storageKey="scorecard-photo-import">Upload a scorecard photo, crop if needed, review the detected post structure and target results, then apply. Grey or blocked cells are excluded from target counts when visible.</ContextualHelpCard>
         <p className="muted">
           {setupOk && setupSummary?.compact
             ? setupSummary.compact
@@ -1115,6 +1115,12 @@ export default function Page() {
                   />
                 </div>
               )}
+              <h3>Detected scorecard</h3>
+              <p className="small muted">{postCount} {profile?.reviewLabel?.toLowerCase() || "post"}{postCount === 1 ? "" : "s"} · {summary.totalTargets} targets. Review the setup first, then review each score cell. Use post setup if the target counts need correction.</p>
+              <div className="compactSummary">
+                {Array.from({ length: postCount }, (_, pi) => { const post = pi + 1; const postCells = grid.filter((c) => c.postNumber === post); return <button type="button" className="postSummaryButton" key={`structure-${post}`} onClick={() => navigatePost(post)}>P{post}: {postCells.length}</button>; })}
+              </div>
+              <div className="btns"><Link className="button secondary smallButton" href={`/sessions/${id}/targets`}>Edit setup</Link></div>
               <h3>Review one {profile?.reviewLabel?.toLowerCase() || "post"} at a time</h3>
               <p>
                 {saveStatus === "saving" ? "Saving on device" : saveStatus === "failed" ? "Save failed" : "Saved on this device"} · Score {summary.score}/{summary.totalTargets} · Unknown {summary.unknowns}
@@ -1154,7 +1160,7 @@ export default function Page() {
                         onClick={() => setCell(c, c.result === "hit" ? "miss" : c.result === "miss" ? "unknown" : "hit")}
                       >
                         <strong>{c.targetNumber}</strong>
-                        <span>{c.result}</span>
+                        <span>{c.result === "unknown" ? "Uncertain" : c.result}</span>
                         {c.observedMarkCategory && <small>{c.observedMarkCategory.replace("_", " ")}</small>}
                         {c.confidence !== "high" && <small>{c.confidence}</small>}
                       </button>
@@ -1167,8 +1173,8 @@ export default function Page() {
                     <button type="button" className="button" onClick={savePostAndNext}>Save post and next</button>
                   </div>
                   <div className="btns">
-                    <button type="button" className="button secondary smallButton" disabled={!unknownCount} onClick={() => persistReview(bulkResolveUnknownsForPost(grid, currentPost, "hit", confirm(`Mark ${unknownCount} unknown targets in ${profile?.reviewLabel || "Post"} ${currentPost} as hit?`)).grid)}>Mark unknowns in {profile?.reviewLabel || "Post"} {currentPost} as hit</button>
-                    <button type="button" className="button secondary smallButton" disabled={!unknownCount} onClick={() => persistReview(bulkResolveUnknownsForPost(grid, currentPost, "miss", confirm(`Mark ${unknownCount} unknown targets in ${profile?.reviewLabel || "Post"} ${currentPost} as miss?`)).grid)}>Mark unknowns in {profile?.reviewLabel || "Post"} {currentPost} as miss</button>
+                    <button type="button" className="button secondary smallButton" disabled={!unknownCount} onClick={() => persistReview(bulkResolveUnknownsForPost(grid, currentPost, "hit", confirm(`Mark ${unknownCount} unknown targets in ${profile?.reviewLabel || "Post"} ${currentPost} as hit?`)).grid)}>Mark uncertain targets in {profile?.reviewLabel || "Post"} {currentPost} as hit</button>
+                    <button type="button" className="button secondary smallButton" disabled={!unknownCount} onClick={() => persistReview(bulkResolveUnknownsForPost(grid, currentPost, "miss", confirm(`Mark ${unknownCount} unknown targets in ${profile?.reviewLabel || "Post"} ${currentPost} as miss?`)).grid)}>Mark uncertain targets in {profile?.reviewLabel || "Post"} {currentPost} as miss</button>
                   </div>
                 </div>;
               })()}
