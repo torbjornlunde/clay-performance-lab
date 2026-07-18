@@ -85,9 +85,10 @@ export async function handleCoachReportGenerate(request: Request, deps: CoachRep
   const auth = await requireUser(request, deps);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const profileResult = await auth.supabase.from("user_access_profiles").select("user_id,access_status,system_role").eq("user_id", auth.userId).maybeSingle();
+  if (profileResult.error) return NextResponse.json({ error: "AI coach report access could not be verified." }, { status: 403 });
   const entitlementResult = await auth.supabase.from("user_entitlements").select("plan,status,valid_until").eq("user_id", auth.userId).maybeSingle();
   const billingMode = getBillingMode(deps.env || process.env);
-  const userContext = createEntitlementUserContext({ userId: auth.userId, accessProfile: profileResult.data || (billingMode === "beta_hidden" ? { user_id: auth.userId, access_status: "approved", system_role: "user" } : null), entitlement: entitlementResult.data || null, billingMode });
+  const userContext = createEntitlementUserContext({ userId: auth.userId, accessProfile: profileResult.data || null, entitlement: entitlementResult.error ? null : entitlementResult.data || null, billingMode });
   try { requirePaidCostAccess("ai.coach_report_summary", userContext); } catch (error) { if (error instanceof FeatureAccessError) return NextResponse.json({ error: error.message }, { status: error.status }); throw error; }
   const packet = await evidencePacketFromRequest(request);
   if (!packet.ok) return NextResponse.json({ error: packet.error }, { status: packet.status });

@@ -12,10 +12,19 @@ for (const heading of ['Coach summary','Performance context','Main findings','Di
 for (const guardrail of ['The data suggests','This should be tested, not assumed','Compared with the field level','Do not compare only against the winning score']) assert(prompt.includes(guardrail), `${guardrail} guardrail exists`);
 assert.equal(COACH_REPORT_AI_SECTIONS.length, 6, 'AI route exposes required sections');
 
-function deps({ user = { id: 'u1' }, openAiText = 'Coach summary\n- Good', capture = {} } = {}) {
+function deps({ user = { id: 'u1' }, openAiText = 'Coach summary\n- Good', capture = {}, profile = { user_id: 'u1', access_status: 'approved', system_role: 'user' }, profileError = null, entitlement = null, entitlementError = null, billingMode = 'beta_hidden' } = {}) {
   return {
-    env: { NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon', OPENAI_API_KEY: 'openai' },
-    createSupabaseClient: (_url, _key, options) => { capture.supabaseOptions = options; return { auth: { getUser: async () => ({ data: { user } }) }, from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }), insert: async () => ({ error: null }) }) }; },
+    env: { NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon', OPENAI_API_KEY: 'openai', BILLING_MODE: billingMode },
+    createSupabaseClient: (_url, _key, options) => {
+      capture.supabaseOptions = options;
+      return {
+        auth: { getUser: async () => ({ data: { user } }) },
+        from: (table) => ({
+          select: () => ({ eq: () => ({ maybeSingle: async () => table === 'user_access_profiles' ? { data: profile, error: profileError } : { data: entitlement, error: entitlementError } }) }),
+          insert: async () => ({ error: null }),
+        }),
+      };
+    },
     openAiFetch: async (_url, init) => { capture.openAiBody = JSON.parse(init.body); return new Response(JSON.stringify({ output_text: openAiText }), { status: 200 }); },
   };
 }
@@ -26,11 +35,26 @@ assert.equal(response.status, 401, 'unauthenticated API request returns 401');
 
 const capture = {};
 response = await handleCoachReportGenerate(req({ selectedSessions: [], notesThemes: ['fatigue'] }, { authorization: 'Bearer token' }), deps({ capture }));
-assert.equal(response.status, 200, 'authenticated request can generate report');
+assert.equal(response.status, 200, 'approved beta user can generate report in beta_hidden');
 assert.equal((await response.json()).reportText, 'Coach summary\n- Good', 'authenticated request returns generated report');
 assert.equal(capture.supabaseOptions.global.headers.Authorization, 'Bearer token', 'request auth header is forwarded to Supabase auth');
 assert(!JSON.stringify(capture.openAiBody).includes('RAW PRIVATE NOTE'), 'raw private note body is not forwarded to OpenAI');
 assert(JSON.stringify(capture.openAiBody).includes('notesThemes'), 'safe summarized note context reaches OpenAI packet');
+
+response = await handleCoachReportGenerate(req({ selectedSessions: [] }), deps({ profile: null }));
+assert.equal(response.status, 403, 'authenticated user without approved beta access cannot generate AI in beta_hidden');
+
+response = await handleCoachReportGenerate(req({ selectedSessions: [] }), deps({ profile: null, profileError: { message: 'database unavailable' } }));
+assert.equal(response.status, 403, 'failed access profile lookup does not grant AI access');
+
+response = await handleCoachReportGenerate(req({ selectedSessions: [] }), deps({ billingMode: 'enabled', profile: null, entitlement: { plan: 'pro', status: 'active', valid_until: null } }));
+assert.equal(response.status, 200, 'Pro user can generate report when billing is enabled');
+
+response = await handleCoachReportGenerate(req({ selectedSessions: [] }), deps({ billingMode: 'enabled', profile: null, entitlement: null }));
+assert.equal(response.status, 402, 'free user cannot generate AI report when billing is enabled');
+
+response = await handleCoachReportGenerate(req({ selectedSessions: [] }), deps({ billingMode: 'enabled', profile: null, entitlementError: { message: 'database unavailable' } }));
+assert.equal(response.status, 402, 'failed entitlement lookup does not grant Pro AI access');
 
 response = await handleCoachReportGenerate(new Request('https://app.test/api/coach-report/generate', { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': String(__test.MAX_EVIDENCE_PACKET_BYTES + 1) }, body: '{}' }), deps());
 assert.equal(response.status, 413, 'oversized evidence packet is rejected');
