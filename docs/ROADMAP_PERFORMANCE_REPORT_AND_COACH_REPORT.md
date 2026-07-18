@@ -305,3 +305,16 @@ Performance Report should come before a full Coach Report because it helps every
 5. A future coach marketplace can be a revenue stream, but paid placement must be transparent and must not undermine trust.
 6. Performance Report must include a real AI analysis layer over structured shooting data, not only fixed rule-based text.
 7. Rules and statistics should prepare and protect the analysis; AI should synthesize the findings, explain them and suggest the next action.
+
+## 2026 deterministic Performance page improvements
+
+The current Performance page now includes the deterministic first layer needed for a more useful Performance Report without making any AI calls:
+
+- Filters for discipline, period and data type, defaulting to Competition and This season.
+- A top-level filtered summary with recent average, best result, cautious trend direction, results counted and data confidence.
+- Period comparison for fixed windows, this season and all-time recent-vs-previous splits.
+- A compact Recent form section showing the latest filtered scored results.
+- Competition-only winner context with average, best and latest gap to winner when valid winning scores exist.
+- Shooting ground analysis remains competition-based and respects the selected period and discipline instead of mixing training venue data.
+
+Data confidence is based on sample size only. Training and competition remain separated, and mixed views warn that the results may not be directly comparable. Future AI interpretation remains roadmap work and should build on these deterministic facts rather than replace them.

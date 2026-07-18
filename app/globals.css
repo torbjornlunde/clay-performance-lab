@@ -9436,3 +9436,72 @@ select {
 }
 
 .proBadge{display:inline-flex;align-items:center;min-height:28px;padding:4px 10px;border-radius:999px;background:#111827;color:#fff;font-size:.85rem;font-weight:700;line-height:1}.lockedFeatureCard{border-style:dashed}.lockedFeatureCard h2{margin:.5rem 0}.lockedFeatureCard p{overflow-wrap:anywhere}
+
+.statsFilterCard,
+.statsRecentFormCard {
+  max-width: 860px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.performanceFilterGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.performanceFilterGrid label {
+  display: grid;
+  gap: 6px;
+}
+
+.performanceFilterGrid span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.performanceFilterGrid select {
+  appearance: none;
+  background: var(--surface-cell);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  min-height: 44px;
+  min-width: 0;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+.filterHelper {
+  margin: 10px 0 0;
+}
+
+.performanceSummaryGrid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.winnerContextPanel {
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.winnerContextPanel h3 {
+  margin: 0 0 8px;
+}
+
+.recentFormList {
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 760px) {
+  .performanceFilterGrid,
+  .performanceSummaryGrid {
+    grid-template-columns: 1fr;
+  }
+}

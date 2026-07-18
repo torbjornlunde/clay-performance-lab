@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { calculateRollingAverage, calculateRollingStdDev, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
 import { buildCompetitionActivitySummary } from "@/lib/competitionActivity";
 import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
+import { calculatePerformanceSummary, calculateWinnerContext, filterPerformanceResults, type PerformanceDataType, type PerformancePeriod, type PerformanceResult } from "@/lib/performance/summary";
 import { normalizeShootingGroundName, type UserShootingGround } from "@/lib/shootingGrounds/aliases";
 import { supabase } from "@/lib/supabase/client";
 
@@ -150,6 +151,16 @@ function formatMetricNumber(value: number | null) {
 function formatMetricPercentage(value: number | null) {
   if (value === null) return "—";
   return `${value.toFixed(0)}%`;
+}
+
+function formatSignedPercentagePoints(value: number | null) {
+  if (value === null) return "Not enough previous-period data yet";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)} percentage points vs previous period`;
+}
+
+function formatGap(value: number | null) {
+  if (value === null) return "—";
+  return `${value.toFixed(1)} target${Math.abs(value - 1) < 0.05 ? "" : "s"}`;
 }
 
 function hitPercentage(log: SimpleTrainingLog) {
@@ -619,8 +630,22 @@ function PerformanceChart({ points, onPointClick }: { points: ChartPoint[]; onPo
   );
 }
 
+const PERIOD_OPTIONS: Array<{ value: PerformancePeriod; label: string }> = [
+  { value: "30d", label: "Last 30 days" },
+  { value: "90d", label: "Last 90 days" },
+  { value: "season", label: "This season" },
+  { value: "12m", label: "Last 12 months" },
+  { value: "all", label: "All time" },
+];
+const TYPE_OPTIONS: Array<{ value: PerformanceDataType; label: string }> = [
+  { value: "competition", label: "Competition" },
+  { value: "training", label: "Training" },
+  { value: "all", label: "All" },
+];
+
 export default function StatsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [missCounts, setMissCounts] = useState<Record<string, number>>({});
   const [trainingLogs, setTrainingLogs] = useState<SimpleTrainingLog[]>([]);
@@ -637,10 +662,27 @@ export default function StatsPage() {
   const [trainingLoadError, setTrainingLoadError] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedCompetitionYear, setSelectedCompetitionYear] = useState(() => new Date().getFullYear());
+  const [selectedDiscipline, setSelectedDiscipline] = useState(() => searchParams.get("discipline") || "");
+  const [selectedPeriod, setSelectedPeriod] = useState<PerformancePeriod>(() => {
+    const value = searchParams.get("period");
+    return value === "30d" || value === "90d" || value === "season" || value === "12m" || value === "all" ? value : "season";
+  });
+  const [selectedType, setSelectedType] = useState<PerformanceDataType>(() => {
+    const value = searchParams.get("type");
+    return value === "training" || value === "all" || value === "competition" ? value : "competition";
+  });
 
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (selectedDiscipline) params.set("discipline", selectedDiscipline);
+    params.set("period", selectedPeriod);
+    params.set("type", selectedType);
+    router.replace(`/stats?${params.toString()}`, { scroll: false });
+  }, [router, selectedDiscipline, selectedPeriod, selectedType]);
 
   async function load() {
     const { data: u } = await supabase.auth.getUser();
@@ -707,9 +749,44 @@ export default function StatsPage() {
     setLoading(false);
   }
 
+
+  const performanceResults = useMemo<PerformanceResult[]>(() => {
+    const competitionResults = sessions.flatMap((session): PerformanceResult[] => {
+      if (session.session_type !== "Competition") return [];
+      const score = scoreUsed(session, missCounts);
+      if (!isUsableNumber(score)) return [];
+      return [{
+        id: session.id,
+        date: session.competition_date || session.created_at,
+        discipline: session.discipline || null,
+        dataType: "competition",
+        score,
+        winningScore: session.winning_score || null,
+        maxScore: session.total_targets || null,
+      }];
+    });
+    const simpleTrainingResults = trainingLogs
+      .filter((log) => log.hits !== null && log.targets_fired > 0)
+      .map((log) => ({ id: log.id, date: log.date, discipline: log.discipline, dataType: "training" as const, score: log.hits || 0, maxScore: log.targets_fired }));
+    return [...competitionResults, ...simpleTrainingResults];
+  }, [sessions, missCounts, trainingLogs]);
+
+  const disciplineOptions = useMemo(() => [...new Set(performanceResults.map((result) => result.discipline).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b)), [performanceResults]);
+
+  const filteredPerformanceResults = useMemo(() => filterPerformanceResults(performanceResults, { discipline: selectedDiscipline || undefined, period: selectedPeriod, type: selectedType }), [performanceResults, selectedDiscipline, selectedPeriod, selectedType]);
+
+  const performanceSummary = useMemo(() => calculatePerformanceSummary(performanceResults, filteredPerformanceResults, { period: selectedPeriod }), [performanceResults, filteredPerformanceResults, selectedPeriod]);
+
+  const winnerContext = useMemo(() => calculateWinnerContext(filteredPerformanceResults), [filteredPerformanceResults]);
+
+  const filteredCompetitionSessions = useMemo(() => {
+    const allowedIds = new Set(filteredPerformanceResults.filter((result) => result.dataType === "competition").map((result) => result.id));
+    return sessions.filter((session) => allowedIds.has(session.id));
+  }, [sessions, filteredPerformanceResults]);
+
   const chartPoints = useMemo<ChartPoint[]>(() => {
-    const scored = sessions
-      .filter((session) => session.session_type === "Competition" && isUsableNumber(session.winning_score) && session.winning_score > 0)
+    const scored = filteredCompetitionSessions
+      .filter((session) => isUsableNumber(session.winning_score) && session.winning_score > 0)
       .map((session) => ({ session, result: percentageFor(session, missCounts) }))
       .filter((item): item is { session: SessionRow; result: { score: number; percentage: number } } => item.result !== null)
       .sort(sortOldestFirst);
@@ -748,7 +825,7 @@ export default function StatsPage() {
         rollingAverageY,
       };
     });
-  }, [sessions, missCounts]);
+  }, [filteredCompetitionSessions, missCounts]);
 
   const summary = useMemo(() => {
     if (chartPoints.length === 0) return null;
@@ -767,8 +844,7 @@ export default function StatsPage() {
   }, [chartPoints]);
 
   const byShootingGround = useMemo<GroundSummary[]>(() => {
-    const scored = sessions
-      .filter((session) => session.session_type === "Competition")
+    const scored = filteredCompetitionSessions
       .map((session) => ({ session, result: percentageFor(session, missCounts) }))
       .filter((item): item is { session: SessionRow; result: { score: number; percentage: number } } => item.result !== null);
     const known = scored.filter((item) => displayGroundForSession(item.session) !== "Unknown shooting ground");
@@ -802,7 +878,7 @@ export default function StatsPage() {
       })
       .filter((group) => group.name !== "Unknown shooting ground" || groups.size >= 2)
       .sort((a, b) => b.count - a.count || b.average - a.average);
-  }, [sessions, missCounts]);
+  }, [filteredCompetitionSessions, missCounts]);
 
   const selectedGround = useMemo(() => byShootingGround.find((ground) => ground.key === selectedGroundKey) || null, [byShootingGround, selectedGroundKey]);
 
@@ -892,44 +968,77 @@ export default function StatsPage() {
         loading={loading}
       />
 
+      <section className="card statsFilterCard" aria-labelledby="performance-filters-heading">
+        <div className="sectionHeader">
+          <div>
+            <p className="eyebrow">Filters</p>
+            <h2 id="performance-filters-heading">Performance filters</h2>
+          </div>
+        </div>
+        <div className="performanceFilterGrid">
+          <label>
+            <span>Discipline</span>
+            <select value={selectedDiscipline} onChange={(event) => setSelectedDiscipline(event.target.value)}>
+              <option value="">All disciplines</option>
+              {disciplineOptions.map((discipline) => <option key={discipline} value={discipline}>{discipline}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Period</span>
+            <select value={selectedPeriod} onChange={(event) => setSelectedPeriod(event.target.value as PerformancePeriod)}>
+              {PERIOD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Data type</span>
+            <select value={selectedType} onChange={(event) => setSelectedType(event.target.value as PerformanceDataType)}>
+              {TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+        </div>
+        {selectedType === "all" && <p className="small muted filterHelper">Training and competition results may not be directly comparable.</p>}
+      </section>
+
       <div className="card statsSummaryCard">
         <div className="sectionHeader">
           <div>
-            <p className="eyebrow">Winning score = 100%</p>
-            <h2>Summary</h2>
+            <p className="eyebrow">Filtered results</p>
+            <h2>Performance summary</h2>
           </div>
         </div>
         {loading ? (
           <p>Loading...</p>
-        ) : chartPoints.length === 0 ? (
+        ) : performanceSummary.count === 0 ? (
           <div className="emptyState compactEmptyState">
-            <p>No performance stats yet. Add a competition result with your score and the winning score to build the chart.</p>
+            <p>No scored results match these filters. Change the filters or add a result with enough scoring data.</p>
             <div className="btns compactEmptyActions">
               <Link href="/log-competition" className="button smallButton">Log competition</Link>
               <Link href="/log-training" className="button secondary smallButton">Log training</Link>
             </div>
           </div>
-        ) : summary ? (
-          <div className="summaryGrid compactSummaryGrid">
-            <div className="summaryStat">
-              <span>Latest</span>
-              <strong>{summary.latest.toFixed(1)}%</strong>
+        ) : (
+          <>
+            <div className="summaryGrid compactSummaryGrid performanceSummaryGrid">
+              <div className="summaryStat"><span>Recent average</span><strong>{formatMetricPercentage(performanceSummary.recentAverage)}</strong></div>
+              <div className="summaryStat"><span>Best result</span><strong>{formatMetricPercentage(performanceSummary.best)}</strong></div>
+              <div className="summaryStat"><span>Trend</span><strong>{performanceSummary.trend.label}</strong><p className="small muted">{formatSignedPercentagePoints(performanceSummary.trend.difference)}</p></div>
+              <div className="summaryStat"><span>Results counted</span><strong>{performanceSummary.count}</strong><p className="small muted">Filtered scored results</p></div>
+              <div className="summaryStat"><span>Data confidence</span><strong>{performanceSummary.confidence}</strong><p className="small muted">Confidence reflects sample size, not result quality.</p></div>
             </div>
-            <div className="summaryStat">
-              <span>Average</span>
-              <strong>{summary.average.toFixed(1)}%</strong>
-            </div>
-            <div className="summaryStat">
-              <span>Best</span>
-              <strong>{summary.best.toFixed(1)}%</strong>
-            </div>
-            <div className="summaryStat consistencyStat">
-              <span>Consistency</span>
-              <strong>{formatConsistency(summary.latestConsistency)}</strong>
-              <p className="small muted">Lower is better</p>
-            </div>
-          </div>
-        ) : null}
+            {selectedType === "competition" && (
+              <div className="winnerContextPanel">
+                <h3>Competition winner context</h3>
+                {winnerContext.averageGap === null ? <p className="small muted">Not enough winner data yet.</p> : (
+                  <div className="trainingVolumeMetricGrid compactTrainingVolumeGrid">
+                    <MetricCard label="Average gap to winner" value={formatGap(winnerContext.averageGap)} helper={`${winnerContext.count} competition results with winner scores`} />
+                    <MetricCard label="Best gap to winner" value={formatGap(winnerContext.bestGap)} />
+                    <MetricCard label="Latest gap to winner" value={formatGap(winnerContext.latestGap)} />
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <TrainingVolumeInsightsCard
@@ -940,6 +1049,39 @@ export default function StatsPage() {
       />
 
       <TrainingHistoryCard logs={trainingHistoryItems} loading={loading} error={trainingLoadError} />
+
+      <div className="card statsRecentFormCard">
+        <div className="sectionHeader">
+          <div>
+            <p className="eyebrow">Recent form</p>
+            <h2>Latest filtered results</h2>
+          </div>
+        </div>
+        {loading ? <p>Loading...</p> : filteredPerformanceResults.length === 0 ? (
+          <div className="emptyState compactEmptyState"><p>No recent form results match these filters.</p></div>
+        ) : (
+          <div className="recentFormList">
+            {filteredPerformanceResults.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((result) => {
+              const session = result.dataType === "competition" ? sessions.find((item) => item.id === result.id) : null;
+              const percentage = result.dataType === "competition" && result.winningScore ? (result.score / result.winningScore) * 100 : result.maxScore ? (result.score / result.maxScore) * 100 : null;
+              return (
+                <article className="statListItem" key={`${result.dataType}-${result.id}`}>
+                  <div>
+                    <strong>{session?.name || result.discipline || "Training result"}</strong>
+                    <div className="small muted">{formatFullDate(result.date)} · {result.discipline || "No discipline"} · {result.dataType === "competition" ? "Competition" : "Training"}</div>
+                    <div className="small muted">
+                      Score {result.score}{result.winningScore ? ` · Winning score ${result.winningScore} · Gap ${Math.max(0, result.winningScore - result.score)} · Performance vs winning score ${percentage?.toFixed(1)}%` : result.maxScore ? ` / ${result.maxScore} · Hit rate ${percentage?.toFixed(1)}%` : ""}
+                      {session && ` · Shooting ground: ${displayGroundForSession(session)}`}
+                    </div>
+                    {session && <div className="btns"><Link className="button secondary smallButton" href={`/sessions/${session.id}`}>Open result</Link>{session.leirdue_result_url && <a className="button secondary smallButton" href={session.leirdue_result_url} target="_blank" rel="noreferrer">Open Leirdue result</a>}</div>}
+                  </div>
+                  {percentage !== null && <span className="statPercent">{percentage.toFixed(1)}%</span>}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       <div className="card statsChartCard">
         <div className="sectionHeader">
@@ -962,7 +1104,7 @@ export default function StatsPage() {
         )}
       </div>
 
-      {!loading && byShootingGround.length >= 2 && (
+      {!loading && (
         <div className="card statsGroundCard">
           <div className="sectionHeader">
             <div>
@@ -970,8 +1112,13 @@ export default function StatsPage() {
               <h2>By shooting ground</h2>
             </div>
           </div>
-          <div className="groundStatsGrid">
-            {byShootingGround.map((ground) => (
+          {selectedType === "training" ? (
+            <div className="emptyState compactEmptyState"><p>By shooting ground is competition-based and does not mix training venue data.</p></div>
+          ) : byShootingGround.length < 2 ? (
+            <div className="emptyState compactEmptyState"><p>Not enough filtered competition shooting ground data yet.</p></div>
+          ) : (
+            <div className="groundStatsGrid">
+              {byShootingGround.map((ground) => (
               <button className="groundStat groundStatButton" key={ground.key} onClick={() => setSelectedGroundKey(ground.key)} type="button">
                 <strong>{ground.name}</strong>
                 <span>{ground.count} competition result{ground.count === 1 ? "" : "s"}</span>
@@ -980,8 +1127,9 @@ export default function StatsPage() {
                 <span>Latest {ground.latest.toFixed(1)}%</span>
                 <span className="groundStatAction">View ground details</span>
               </button>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
