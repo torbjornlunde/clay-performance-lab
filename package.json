@@ -34,7 +34,8 @@
     "test:coach-report-evidence": "node scripts/run-coach-report-evidence-tests.mjs",
     "test:coach-report-ai": "node scripts/run-coach-report-ai-tests.mjs",
     "test:coach-report-leirdue-context": "node scripts/run-coach-report-leirdue-context-tests.mjs",
-    "test:entitlements": "node scripts/run-entitlement-tests.mjs"
+    "test:entitlements": "node scripts/run-entitlement-tests.mjs",
+    "test:performance-summary": "node scripts/run-performance-summary-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",
