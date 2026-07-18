@@ -55,6 +55,26 @@ export function hasTargetResults(
   return Object.keys(targetResults[shooterId]?.[postNumber] || {}).length > 0;
 }
 
+
+export type PostScoringMode = "detailed" | "blank" | "legacy_total_only";
+
+export function postScoringMode(
+  targetResults: TargetResultMap,
+  shooter: ShooterScores,
+  postNumber: number,
+): PostScoringMode {
+  if (hasTargetResults(targetResults, shooter.localId, postNumber)) return "detailed";
+  return (shooter.scores[postNumber - 1] || 0) > 0 ? "legacy_total_only" : "blank";
+}
+
+export function canToggleTargetResult(
+  targetResults: TargetResultMap,
+  shooter: ShooterScores,
+  postNumber: number,
+) {
+  return postScoringMode(targetResults, shooter, postNumber) !== "legacy_total_only";
+}
+
 export function nextTargetResultValue(current: TargetResultValue | null | undefined): TargetResultValue | null {
   if (!current) return "hit";
   if (current === "hit") return "miss";

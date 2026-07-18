@@ -27,6 +27,8 @@ import {
   scoreFromTargetResults,
   toggleTargetResult,
   postCompletionStatus,
+  postScoringMode,
+  canToggleTargetResult,
   setupReductionWouldTrimData,
   totalFor,
   trimTargetResults,
@@ -1885,11 +1887,38 @@ export default function TrainingScoreSheetPage() {
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
+  function isLegacyTotalOnlyPost(shooter: ShooterDraft, postNumber: number) {
+    return postScoringMode(targetResults, shooter, postNumber) === "legacy_total_only";
+  }
+
+  function startDetailedScoring(shooterId: string, postNumber: number) {
+    const shooter = shooters.find((item) => item.localId === shooterId);
+    if (!shooter || !isLegacyTotalOnlyPost(shooter, postNumber)) return;
+    const confirmed = window.confirm(
+      "Starting detailed scoring will replace the saved post total with scores calculated from individual target results. The existing total cannot be converted into exact hit/miss positions.",
+    );
+    if (!confirmed) return;
+    setShooters((current) =>
+      current.map((item) => {
+        if (item.localId !== shooterId) return item;
+        const scores = [...item.scores];
+        scores[postNumber - 1] = 0;
+        return { ...item, scores };
+      }),
+    );
+    setPostComplete(null);
+    setCurrentShooterId(shooterId);
+    setCurrentPost(postNumber);
+    setCurrentTarget(1);
+  }
+
   function cycleScorecardTarget(
     shooterId: string,
     postNumber: number,
     targetNumber: number,
   ) {
+    const shooter = shooters.find((item) => item.localId === shooterId);
+    if (shooter && !canToggleTargetResult(targetResults, shooter, postNumber)) return;
     const previousResult = targetResults[shooterId]?.[postNumber]?.[targetNumber] || null;
     const nextTargetResults = toggleTargetResult(targetResults, shooterId, postNumber, targetNumber);
     setPostComplete(null);
@@ -3469,6 +3498,16 @@ export default function TrainingScoreSheetPage() {
                     <button type="button" className="secondary smallButton" onClick={() => setPostAndStartingShooter(currentPost + 1)} disabled={currentPost >= numberOfPosts}>Next post</button>
                   </div>
                   {(() => {
+                    const legacyTotalOnlyCount = validShooters.filter((shooter) =>
+                      isLegacyTotalOnlyPost(shooter, activePostNumber),
+                    ).length;
+                    if (legacyTotalOnlyCount > 0) {
+                      return (
+                        <p className="small muted" role="status">
+                          Detailed target results not recorded for {legacyTotalOnlyCount} saved total-only {legacyTotalOnlyCount === 1 ? "post" : "posts"}.
+                        </p>
+                      );
+                    }
                     const status = postCompletionStatus(
                       targetResults,
                       validShooters.map((shooter) => shooter.localId),
@@ -3483,14 +3522,31 @@ export default function TrainingScoreSheetPage() {
                   })()}
                   <div className="postScorecardRows" role="list">
                     {currentPostShooters.map((shooter) => {
-                      const postScore = scoreFromTargetResults(targetResults, shooter.localId, activePostNumber);
                       const expected = getExpectedTargetsForPost(expectedTargetSetup, activePostNumber);
+                      const postScore = displayedPostScore(
+                        shooter,
+                        activePostNumber - 1,
+                        targetResults,
+                      );
+                      const legacyTotalOnly = isLegacyTotalOnlyPost(shooter, activePostNumber);
                       return (
-                        <article className="postScorecardRow" role="listitem" key={shooter.localId}>
+                        <article className={`postScorecardRow${legacyTotalOnly ? " legacyTotalOnly" : ""}`} role="listitem" key={shooter.localId}>
                           <div className="postScorecardShooterHeader">
                             <strong>{shooter.displayName}</strong>
                             <span>{postScore}/{expected}</span>
                           </div>
+                          {legacyTotalOnly && (
+                            <div className="legacyTotalOnlyNotice">
+                              <p className="small muted">Detailed target results were not recorded for this post.</p>
+                              <button
+                                type="button"
+                                className="secondary smallButton"
+                                onClick={() => startDetailedScoring(shooter.localId, activePostNumber)}
+                              >
+                                Start detailed scoring
+                              </button>
+                            </div>
+                          )}
                           <div className="postScorecardTargets" aria-label={`${shooter.displayName} post ${activePostNumber} targets`}>
                             {Array.from({ length: expected }, (_, index) => index + 1).map((targetNumber) => {
                               const result = targetResults[shooter.localId]?.[activePostNumber]?.[targetNumber];
@@ -3500,7 +3556,10 @@ export default function TrainingScoreSheetPage() {
                                   type="button"
                                   className={`targetCorrectionButton compactTargetButton ${result || "empty"}`}
                                   onClick={() => cycleScorecardTarget(shooter.localId, activePostNumber, targetNumber)}
-                                  aria-label={`${shooter.displayName} post ${activePostNumber} target ${targetNumber}: ${result || "not scored"}. Tap to cycle hit, miss, clear.`}
+                                  disabled={legacyTotalOnly}
+                                  aria-label={legacyTotalOnly
+                                    ? `${shooter.displayName} post ${activePostNumber} target ${targetNumber}: detailed target results were not recorded. Start detailed scoring before editing target positions.`
+                                    : `${shooter.displayName} post ${activePostNumber} target ${targetNumber}: ${result || "not scored"}. Tap to cycle hit, miss, clear.`}
                                 >
                                   <span>{targetNumber}</span>
                                   <strong>{result === "hit" ? "✓" : result === "miss" ? "✕" : "○"}</strong>

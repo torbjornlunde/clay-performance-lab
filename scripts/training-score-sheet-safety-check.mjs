@@ -41,6 +41,14 @@ function displayedPostScore(shooter, postIndex, targetResults) {
     : shooter.scores[postIndex] || 0;
 }
 
+function postScoringMode(targetResults, shooter, postNumber) {
+  if (hasTargetResults(targetResults, shooter.localId, postNumber)) return "detailed";
+  return (shooter.scores[postNumber - 1] || 0) > 0 ? "legacy_total_only" : "blank";
+}
+function canToggleTargetResult(targetResults, shooter, postNumber) {
+  return postScoringMode(targetResults, shooter, postNumber) !== "legacy_total_only";
+}
+
 function nextTargetResultValue(current) {
   if (!current) return "hit";
   if (current === "hit") return "miss";
@@ -199,6 +207,16 @@ loadedCustomDraft = updateSetupDraft(loadedCustomDraft, "targetsPerPost", "8");
 assert.deepEqual(appliedSetupFromDraft(loadedCustomDraft), { postCount: 3, targetsPerPost: 8, expectedTargetsByPost: [8, 10, 6], total: 24 }, "loaded persisted expectedTargetsByPost keeps custom mode active when default changes");
 assert.deepEqual(appliedSetupFromDraft({ numberOfPosts: "5", targetsPerPost: "10", customTargetsByPost: customTargetDraftValues(5, 10, null), customTargetsActive: false }), { postCount: 5, targetsPerPost: 10, expectedTargetsByPost: null, total: 50 }, "simple fixed setup remains unchanged");
 
+
+const legacyPost = { localId: "legacy", scores: [8] };
+assert.equal(displayedPostScore(legacyPost, 0, {}), 8, "legacy 8/10 with no target results evaluates as 8");
+assert.equal(postScoringMode({}, legacyPost, 1), "legacy_total_only", "legacy post with a saved total is identified separately from blank scoring");
+assert.equal(canToggleTargetResult({}, legacyPost, 1), false, "first target interaction cannot silently replace a legacy total without explicit conversion");
+assert.equal(postScoringMode({}, { localId: "blank", scores: [0] }, 1), "blank", "blank 0/10 post can start detailed scoring immediately");
+assert.equal(canToggleTargetResult({}, { localId: "blank", scores: [0] }, 1), true, "blank 0/10 post does not require conversion confirmation");
+assert.equal(postScoringMode({ detailed: { 1: { 1: "miss" } } }, { localId: "detailed", scores: [8] }, 1), "detailed", "detailed post continues to use target results as source of truth");
+assert.equal(displayedPostScore({ localId: "detailed", scores: [8] }, 0, { detailed: { 1: { 1: "miss", 2: "hit" } } }), 1, "target results override legacy manual total only after detailed scoring exists");
+
 let cycle = {};
 cycle = toggleTargetResult(cycle, "shooter-1", 1, 1);
 assert.equal(cycle["shooter-1"][1][1], "hit", "first target tap records a hit");
@@ -219,6 +237,10 @@ const pageSource = readFileSync("app/training-score-sheets/[id]/page.tsx", "utf8
 assert.match(pageSource, /Custom targets per post/, "setup UI exposes custom targets per post section");
 assert.match(pageSource, /expected_targets_by_post: expectedTargetsByPost/, "save payload preserves expectedTargetsByPost");
 assert.match(pageSource, /expectedTargetsByPost,/, "local draft includes expectedTargetsByPost");
+assert.match(pageSource, /Detailed target results were not recorded for this post\./, "legacy total-only posts explain missing target details");
+assert.match(pageSource, /Start detailed scoring/, "legacy total-only posts require an explicit conversion action");
+assert.match(pageSource, /Starting detailed scoring will replace the saved post total/, "legacy conversion warns before replacing totals");
+assert.match(pageSource, /disabled=\{legacyTotalOnly\}/, "legacy total-only target buttons are disabled before conversion");
 assert.match(pageSource, /Tap each target: Hit → Miss → Clear/, "live scorecard explains the fast target cycle");
 assert.match(pageSource, /postCompletionStatus/, "live scorecard shows post completion status");
 assert.match(pageSource, /Clear custom counts/, "custom counts can be cleared back to fixed behavior");

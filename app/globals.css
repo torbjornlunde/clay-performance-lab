@@ -9548,3 +9548,23 @@ select {
   min-height: 52px;
   min-width: 48px;
 }
+
+.postScorecardRow.legacyTotalOnly .postScorecardTargets {
+  opacity: 0.65;
+}
+
+.legacyTotalOnlyNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px;
+  border: 1px dashed var(--field-border-subtle);
+  border-radius: 12px;
+  background: var(--field-surface);
+}
+
+.legacyTotalOnlyNotice p {
+  margin: 0;
+}
