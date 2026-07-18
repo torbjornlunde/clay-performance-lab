@@ -1,12 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePwaInstallPrompt } from "@/app/components/PwaInstallProvider";
 import { useStandaloneMode } from "@/lib/pwa/useStandaloneMode";
-
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
-};
 
 const DISMISSED_KEY = "cpl-install-hint-dismissed";
 
@@ -17,7 +13,7 @@ function isAppleMobile() {
 
 export default function InstallAppCard() {
   const standalone = useStandaloneMode();
-  const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const { promptEvent, clearPromptEvent } = usePwaInstallPrompt();
   const [appleMobile, setAppleMobile] = useState(false);
   const [dismissed, setDismissed] = useState(true);
   const [status, setStatus] = useState("");
@@ -25,22 +21,21 @@ export default function InstallAppCard() {
   useEffect(() => {
     setAppleMobile(isAppleMobile());
     setDismissed(localStorage.getItem(DISMISSED_KEY) === "1");
-    function capturePrompt(event: Event) {
-      event.preventDefault();
-      setPromptEvent(event as BeforeInstallPromptEvent);
-      setDismissed(false);
-    }
-    window.addEventListener("beforeinstallprompt", capturePrompt);
-    return () => window.removeEventListener("beforeinstallprompt", capturePrompt);
   }, []);
 
-  if (standalone || dismissed || (!promptEvent && !appleMobile)) return null;
+  useEffect(() => {
+    if (!promptEvent) return;
+    setDismissed(false);
+    setStatus("");
+  }, [promptEvent]);
+
+  if (standalone || dismissed || (!promptEvent && !appleMobile && !status)) return null;
 
   async function install() {
     if (!promptEvent) return;
     await promptEvent.prompt();
     const choice = await promptEvent.userChoice;
-    if (choice.outcome === "accepted") setPromptEvent(null);
+    clearPromptEvent();
     setStatus(choice.outcome === "accepted" ? "Install started." : "Install was dismissed.");
   }
 

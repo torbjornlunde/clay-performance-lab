@@ -4,6 +4,7 @@ import ProfileGate from "./components/ProfileGate";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { OnboardingHelpPanel } from "./components/OnboardingHelp";
 import ServiceWorkerRegistration from "./components/ServiceWorkerRegistration";
+import { PwaInstallProvider } from "./components/PwaInstallProvider";
 import "./globals.css";
 import "./beta-admin-theme.css";
 
@@ -41,10 +42,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <ThemeProvider>
-          <ServiceWorkerRegistration />
-          <AuthHeader />
-          <OnboardingHelpPanel />
-          <ProfileGate>{children}</ProfileGate>
+          <PwaInstallProvider>
+            <ServiceWorkerRegistration />
+            <AuthHeader />
+            <OnboardingHelpPanel />
+            <ProfileGate>{children}</ProfileGate>
+          </PwaInstallProvider>
         </ThemeProvider>
       </body>
     </html>

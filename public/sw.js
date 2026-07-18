@@ -1,20 +1,32 @@
-const CACHE_VERSION = "cpl-pwa-v1";
-const STATIC_CACHE = `${CACHE_VERSION}-static`;
-const STATIC_ASSETS = [
-  "/offline.html",
+const CACHE_PREFIX = "cpl-pwa-";
+const CACHE_VERSION = "v1";
+const STATIC_CACHE = `${CACHE_PREFIX}${CACHE_VERSION}-static`;
+const REQUIRED_STATIC_ASSETS = ["/offline.html"];
+const OPTIONAL_STATIC_ASSETS = [
   "/pwa-icons/192",
   "/pwa-icons/512",
   "/pwa-icons/maskable",
   "/pwa-icons/apple",
 ];
+const STATIC_ASSETS = [...REQUIRED_STATIC_ASSETS, ...OPTIONAL_STATIC_ASSETS];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS)));
+  event.waitUntil(
+    caches.open(STATIC_CACHE).then(async (cache) => {
+      await cache.addAll(REQUIRED_STATIC_ASSETS);
+      await Promise.allSettled(OPTIONAL_STATIC_ASSETS.map((asset) => cache.add(asset)));
+    }),
+  );
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => !key.startsWith(CACHE_VERSION)).map((key) => caches.delete(key)))));
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(keys
+      .filter((key) => key.startsWith(CACHE_PREFIX) && key !== STATIC_CACHE)
+      .map((key) => caches.delete(key)),
+    )),
+  );
   self.clients.claim();
 });
 
