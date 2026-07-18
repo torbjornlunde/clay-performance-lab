@@ -39,3 +39,13 @@ The image analyzer supports two safe modes:
 - **Structure discovery mode** is used when the user only knows minimal metadata, such as Training and an expected total target count. In this mode the photo interpretation derives post count, per-post target counts and inactive cells from the printed card, then validates the detected total against the optional expected total.
 
 A minimal Training import can start from session type, optional discipline and expected total targets. After review and confirmation, the reviewed interpretation creates a Training Score Sheet and navigates to its detail page. Competition imports continue to use the existing session-based import path.
+
+## Zero-setup Competition discovery import
+
+For supported post-based Competition disciplines, an empty Competition setup no longer blocks scorecard photo capture. The import page explains that post structure will be detected from the scorecard, then lets the shooter take a photo or choose one from the library.
+
+Discovery mode is only used when the Competition has no usable saved structural setup: no `session_post_targets`, no `post_count`, no `course_count` and no `targets_per_post`. A saved `total_targets` value alone is allowed and acts as a validation constraint during apply. Existing valid or partial structural setups remain known/conflict imports and keep setup fingerprint protection. If a setup is created or changed after discovery analysis but before apply, apply returns a safe conflict and the user must re-analyze/review instead of silently overwriting that setup.
+
+During final apply, the server derives the saved structure from the current reviewed grid, not from stale AI detections. Variable post target counts are persisted through `session_post_targets` using structural placeholder rows only: `post_number`, `target_position`, `presentation_number = target_position`, `presentation_type = 'unknown'` and `position_in_presentation = 1`. The photo import does not invent target direction, speed, distance, presentation type, labels, target type, difficulty, notes, or clay descriptions; downstream miss matching treats `presentation_type = 'unknown'` as ambiguous rather than as a real pair/single presentation.
+
+Migration required before merge: `supabase/migrations/20260718010000_scorecard_import_discovery_apply.sql` updates `public.apply_scorecard_import_v2` with an explicit atomic discovery mode that saves the Competition structure, reviewed score, and reviewed miss positions in one transaction.
