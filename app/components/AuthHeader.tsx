@@ -8,6 +8,7 @@ import { betaFeedbackHref } from "@/lib/betaFeedback";
 import { supabase } from "@/lib/supabase/client";
 import { exportMyDataForCurrentUser } from "@/lib/export/exportMyDataClient";
 import { openOnboardingHelp } from "@/app/components/OnboardingHelp";
+import { usePwaInstallPrompt } from "@/app/components/PwaInstallProvider";
 
 function ClayTargetIcon() {
   return (
@@ -59,6 +60,7 @@ export default function AuthHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const { installAvailable, openInstallExperience } = usePwaInstallPrompt();
 
   useEffect(() => {
     let active = true;
@@ -220,6 +222,7 @@ export default function AuthHeader() {
                     <Link role="menuitem" href="/profile" onClick={() => closeMenu()}>Shooter profile</Link>
                     <Link role="menuitem" href="/equipment" onClick={() => closeMenu()}>Equipment</Link>
                     <Link role="menuitem" href="/settings" onClick={() => closeMenu()}>Settings</Link>
+                    {installAvailable ? <button role="menuitem" type="button" onClick={() => { closeMenu({ restoreFocus: true }); void openInstallExperience(); }}>Install app</button> : null}
                     <button role="menuitem" type="button" onClick={() => { closeMenu({ restoreFocus: true }); exportMyData(); }} disabled={exporting}>{exporting ? "Exporting..." : "Export my data"}</button>
                   </div>
                   <div className="globalMenuSection" role="group" aria-label="Support">
