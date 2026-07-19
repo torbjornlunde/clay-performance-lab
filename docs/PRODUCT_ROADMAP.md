@@ -184,6 +184,8 @@ Dette er høyeste prioritet før større nye funksjoner.
 
 ### STAB-01: Scorecard review må bygges om
 
+**Status 19. juli 2026:** Review-stabilisering er implementert i en fokusert PR, men funksjonen skal fortsatt stå som **Under stabilisering** til ekte iPhone/PWA-felttesting bekrefter flyten.
+
 **Problem:** Dagens review flyt gjør det for tungt å sammenligne AI-tolkningen med originalbildet. Feiltolket hit/miss kan gi reconciliation conflict som blokkerer videre fremdrift. Poststruktur tar for mye plass.
 
 **Mål:** Review skal handle om å kontrollere bildet, ikke om å administrere en lang setup-form.
@@ -191,14 +193,14 @@ Dette er høyeste prioritet før større nye funksjoner.
 **Krav til neste versjon:**
 
 - Originalbildet skal være lett tilgjengelig under hele reviewen.
-- Sticky/minimert bilde eller tilsvarende, med trykk for fullskjerm og zoom.
-- Brukeren skal kunne endre hver due direkte mellom `Hit`, `Miss` og `Unknown`.
-- AI-detected score skal være et forslag, ikke en lås.
-- En brukerbekreftet korrigering skal kunne løse konflikten og tillate apply.
-- Konflikttekst skal forklare hva som er feil uten å blokkere en gyldig manuell overstyring.
-- Struktur vises kompakt: `16 posts · 120 targets`.
-- Standard + avvik foretrekkes fremfor 16 store inputs, eksempel: `Default 8 · Exceptions P8 6 · P11 6 · P13 6 · P14 6`.
-- Full strukturredigering åpnes bare ved behov.
+- Sticky/minimert bilde eller tilsvarende, med trykk for fullskjerm og zoom. **Implementert, trenger felttest.**
+- Brukeren skal kunne endre hver due direkte mellom `Hit`, `Miss` og `Unknown`. **Implementert.**
+- AI-detected score skal være et forslag, ikke en lås. **Implementert i review-reconciliation.**
+- En brukerbekreftet korrigering skal kunne løse konflikten og tillate apply. **Implementert for komplett review-grid.**
+- Konflikttekst skal forklare hva som er feil uten å blokkere en gyldig manuell overstyring. **Implementert.**
+- Struktur vises kompakt: `16 posts · 120 targets`. **Implementert.**
+- Standard + avvik foretrekkes fremfor 16 store inputs, eksempel: `Default 8 · Exceptions P8 6 · P11 6 · P13 6 · P14 6`. **Implementert.**
+- Full strukturredigering åpnes bare ved behov. **Implementert.**
 - Review skal ikke kreve lang scrolling mellom bilde og cellene som kontrolleres.
 - På mobil bør aktiv post og relevant del av bildet kunne sammenlignes tett.
 

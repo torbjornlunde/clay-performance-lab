@@ -116,6 +116,7 @@ export default function Page() {
   const [elapsed, setElapsed] = useState(0);
   const [crop, setCrop] = useState<NormalizedCrop>(fullImageCrop);
   const [viewer, setViewer] = useState<"analyzed" | "original" | null>(null);
+  const [structureDetailsOpen, setStructureDetailsOpen] = useState(false);
   const pendingRef = useRef<PendingScorecardPhoto | null>(null);
   const persistenceRef = useRef<ReturnType<typeof createOrderedPendingPersistence<PendingScorecardPhoto>> | null>(null);
   function rememberPending(next: PendingScorecardPhoto | null) {
@@ -1144,19 +1145,22 @@ export default function Page() {
                   />
                 </div>
               )}
-              <h3>Detected scorecard</h3>
-              <p className="small muted">{postCount} {profile?.reviewLabel?.toLowerCase() || "post"}{postCount === 1 ? "" : "s"} · {summary.totalTargets} targets. Review the setup first, then review each score cell. Use post setup if the target counts need correction.</p>
-              <div className="compactSummary">
-                {Array.from({ length: postCount }, (_, pi) => { const post = pi + 1; const postCells = grid.filter((c) => c.postNumber === post); return <button type="button" className="postSummaryButton" key={`structure-${post}`} onClick={() => navigatePost(post)}>P{post}: {postCells.length}</button>; })}
+              <h3>Review scorecard</h3>
+              <p className="small muted">Compare the photo with the reviewed cells. AI totals are reference only; your reviewed Hit, Miss and Unknown choices are authoritative.</p>
+              <div className="compactSummary structureSummary">
+                <strong>{postCount} {profile?.reviewLabel?.toLowerCase() || "post"}{postCount === 1 ? "" : "s"} · {summary.totalTargets} targets</strong>
+                <span>{structureExceptionsSummary(grid, profile?.reviewLabel || "Post")}</span>
+                <span>{pending?.analysis?.setupMode === "discovery" ? "Structure detected from scorecard" : "Structure from saved setup"}</span>
+                <button type="button" className="button secondary smallButton" onClick={() => setStructureDetailsOpen((open) => !open)}>{structureDetailsOpen ? "Done editing structure" : "Edit structure"}</button>
               </div>
-              <div className="scorecardSetupEditor">
+              {structureDetailsOpen && <div className="scorecardSetupEditor">
                 <label className="small">Posts
                   <input type="number" min={1} max={100} value={postCount} onChange={(event) => editPostCount(Number(event.target.value))} />
                 </label>
-                <div className="compactSummary">
+                <div className="compactSummary structureEditGrid">
                   {Array.from({ length: postCount }, (_, pi) => { const post = pi + 1; const count = grid.filter((c) => c.postNumber === post).length || 1; return <label className="small" key={`edit-structure-${post}`}>P{post}<input type="number" min={1} max={100} value={count} onChange={(event) => editExpectedTargets(post, Number(event.target.value))} /></label>; })}
                 </div>
-              </div>
+              </div>}
               <h3>Review one {profile?.reviewLabel?.toLowerCase() || "post"} at a time</h3>
               <p>
                 {saveStatus === "saving" ? "Saving on device" : saveStatus === "failed" ? "Save failed" : "Saved on this device"} · Score {summary.score}/{summary.totalTargets} · Unknown {summary.unknowns}
@@ -1189,17 +1193,19 @@ export default function Page() {
                   {currentRec.reconciliationWarning && <div className="warning small">{currentRec.reconciliationWarning}</div>}
                   <div className="scorecardGrid">
                     {postCells.map((c) => (
-                      <button
-                        type="button"
-                        key={`${c.postNumber}-${c.targetNumber}`}
-                        className={`scorecardCell ${c.result}`}
-                        onClick={() => setCell(c, c.result === "hit" ? "miss" : c.result === "miss" ? "unknown" : "hit")}
-                      >
-                        <strong>{c.targetNumber}</strong>
-                        <span>{c.result === "unknown" ? "Uncertain" : c.result}</span>
+                      <div key={`${c.postNumber}-${c.targetNumber}`} className={`scorecardCell ${c.result}`}>
+                        <strong>Target {c.targetNumber}</strong>
+                        <span>{c.result === "unknown" ? "Unknown" : c.result === "hit" ? "Hit" : "Miss"}</span>
+                        <div className="scorecardCellChoices" aria-label={`Set target ${c.targetNumber}`}>
+                          {(["hit", "miss", "unknown"] as ScorecardOutcome[]).map((choice) => (
+                            <button type="button" key={choice} className={`scorecardCellChoice ${c.result === choice ? "selected" : ""}`} aria-pressed={c.result === choice} onClick={() => setCell(c, choice)}>
+                              {choice === "unknown" ? "?" : choice === "hit" ? "Hit" : "Miss"}
+                            </button>
+                          ))}
+                        </div>
                         {c.observedMarkCategory && <small>{c.observedMarkCategory.replace("_", " ")}</small>}
                         {c.confidence !== "high" && <small>{c.confidence}</small>}
-                      </button>
+                      </div>
                     ))}
                   </div>
                   {reviewMessage && <div className={saveStatus === "failed" ? "error small" : "notice small"}>{reviewMessage}</div>}
@@ -1346,6 +1352,17 @@ export default function Page() {
       )}
     </main>
   );
+}
+
+function structureExceptionsSummary(grid: ScorecardCell[], label: string) {
+  const counts = Array.from(new Set(grid.map((cell) => cell.postNumber))).sort((a, b) => a - b).map((post) => ({ post, count: grid.filter((cell) => cell.postNumber === post).length }));
+  if (!counts.length) return "No active targets detected.";
+  const frequencies = new Map<number, number>();
+  counts.forEach(({ count }) => frequencies.set(count, (frequencies.get(count) || 0) + 1));
+  const defaultCount = [...frequencies.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0] || counts[0].count;
+  const exceptions = counts.filter(({ count }) => count !== defaultCount);
+  if (!exceptions.length) return `Default: ${defaultCount} targets per ${label.toLowerCase()}.`;
+  return `Default: ${defaultCount} targets · Exceptions: ${exceptions.map(({ post, count }) => `${label} ${post} · ${count}`).join("; ")}`;
 }
 
 function unresolvedTargetsText(grid: ScorecardCell[]) {

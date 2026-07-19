@@ -474,8 +474,8 @@ export function deriveCurrentPostReconciliation({ currentCells, detectedPostScor
   const summary = summarizeGrid(currentCells);
   if (summary.unknowns > 0) return { reconciliationStatus: "needs_review" as ReconciliationStatus, reconciliationWarning: originalWarning || null, reviewedScore: summary.score };
   const detected = Number.isInteger(detectedPostScore) ? Number(detectedPostScore) : null;
-  if (detected !== null && detectedPostScoreConfidence === "high" && summary.score !== detected) return { reconciliationStatus: "conflict" as ReconciliationStatus, reconciliationWarning: `Reviewed score ${summary.score}/${expectedTargetCount} conflicts with detected total ${detected}/${expectedTargetCount}.`, reviewedScore: summary.score };
   if (detected !== null && summary.score === detected) return { reconciliationStatus: "matched" as ReconciliationStatus, reconciliationWarning: originalWarning || null, reviewedScore: summary.score };
+  if (detected !== null && summary.score !== detected) return { reconciliationStatus: "needs_review" as ReconciliationStatus, reconciliationWarning: `Reviewed score ${summary.score}/${expectedTargetCount} differs from AI-detected total ${detected}/${expectedTargetCount}. The reviewed cells will be used if you mark this post reviewed.`, reviewedScore: summary.score };
   return { reconciliationStatus: originalStatus === "conflict" ? "needs_review" as ReconciliationStatus : (originalStatus || "needs_review" as ReconciliationStatus), reconciliationWarning: originalWarning || null, reviewedScore: summary.score };
 }
 export type PostReviewStatus = "Conflict" | "Needs review" | "Reviewed" | "Ready";
