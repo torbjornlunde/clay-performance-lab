@@ -11,6 +11,13 @@ Detaljerte roadmap-dokumenter kan utdype et område, men ved konflikt gjelder de
 3. spesialiserte roadmap-dokumenter
 4. eldre samtaler og enkeltstående idénotater
 
+Authoritative near-term priority order, updated after issue #222:
+
+1. Confirmed new data, safety and blocking regressions always come first.
+2. Performance regression / issue #222: restore progressive-disclosure depth without recreating raw Results or Training archives.
+3. Simple weapon `Last serviced` tracking / issue #224.
+4. Then continue the broader roadmap queue.
+
 Målet med denne roadmapen er at ingen viktige produktidéer skal bli liggende bare i en chat.
 
 Konkrete betatesterinnspill føres også i [TESTER_FEEDBACK.md](./TESTER_FEEDBACK.md).
@@ -810,3 +817,12 @@ Særlig disse nylige idéene er nå eksplisitt sikret i masterroadmapen:
 - senere våpenbytte underveis
 
 Ved uenighet mellom eldre samtaler og dette dokumentet skal denne roadmapen brukes som utgangspunkt, men faktisk kode og produksjonsstatus har alltid siste ord.
+
+
+## Near-term Equipment note: Last serviced
+
+Issue #224 is accepted as a near-term Equipment item after issue #222. The intended first version is an optional `Last serviced` date per weapon, editable from Equipment. It must not add friction to quick Competition or Training logging. Full service history, service reminders and maintenance analytics remain follow-up work, not part of the Performance regression fix.
+
+## Stabilization note: Scorecard review
+
+Scorecard review remains under stabilization until real iPhone/PWA field testing confirms the PR #223 flow in the field.

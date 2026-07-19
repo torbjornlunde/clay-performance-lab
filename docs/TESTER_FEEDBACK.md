@@ -84,7 +84,7 @@ When a tester suggestion is released, the tester or beta group should be told th
 
 **Why prioritized:** It gives immediate value from existing data, is easy for users to understand and came directly from an active tester.
 
-**Implemented:** Results now shows a compact competition-only activity summary with all-time competitions, all-time competition targets, selected-year competitions and selected-year targets. Training sessions are excluded, imported/manual competition sessions are included, and exact duplicate Leirdue.net result URLs are counted once.
+**Implemented:** Results shows a compact competition-only activity summary with all-time competitions, all-time competition targets, selected-year competitions and selected-year targets. Issue #222 also restores this activity context inside Performance in compact form, while preserving Results as the full session archive. Training sessions are excluded, imported/manual competition sessions are included, and exact duplicate Leirdue.net result URLs are counted once.
 
 ### Custom name for guns and barrel setups
 

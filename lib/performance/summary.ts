@@ -88,9 +88,25 @@ export function calculateDataConfidence(count: number): DataConfidenceLabel {
   return "Strong";
 }
 
+function semanticDataTypes(results: PerformanceResult[]) {
+  return new Set(results.filter((result) => averageScorePercentage([result]) !== null).map((result) => result.dataType));
+}
+
+function averageForSemanticallyComparableResults(results: PerformanceResult[]) {
+  const types = semanticDataTypes(results);
+  return types.size > 1 ? null : averageScorePercentage(results);
+}
+
+function areComparableDataTypes(currentResults: PerformanceResult[], previousResults: PerformanceResult[]) {
+  const currentTypes = semanticDataTypes(currentResults);
+  const previousTypes = semanticDataTypes(previousResults);
+  if (currentTypes.size !== 1 || previousTypes.size !== 1) return false;
+  return currentTypes.values().next().value === previousTypes.values().next().value;
+}
+
 export function calculatePerformanceSummary(allResults: PerformanceResult[], filteredResults: PerformanceResult[], filters: { discipline?: string; period: PerformancePeriod; type: PerformanceDataType; today?: Date }) {
   const count = filteredResults.length;
-  const currentAverage = averageScorePercentage(filteredResults);
+  const currentAverage = filters.type === "all" ? averageForSemanticallyComparableResults(filteredResults) : averageScorePercentage(filteredResults);
   const best = filteredResults.reduce<number | null>((bestValue, result) => {
     const value = averageScorePercentage([result]);
     return value === null ? bestValue : bestValue === null ? value : Math.max(bestValue, value);
@@ -99,21 +115,69 @@ export function calculatePerformanceSummary(allResults: PerformanceResult[], fil
     const sorted = filteredResults.slice().sort((a, b) => a.date.localeCompare(b.date));
     if (sorted.length >= 4) {
       const half = Math.floor(sorted.length / 2);
-      const previousAverage = averageScorePercentage(sorted.slice(0, half));
-      const latestAverage = averageScorePercentage(sorted.slice(half));
+      const previousRows = sorted.slice(0, half);
+      const latestRows = sorted.slice(half);
+      if (filters.type === "all" && !areComparableDataTypes(latestRows, previousRows)) {
+        return { recentAverage: averageForSemanticallyComparableResults(latestRows), best, count, confidence: calculateDataConfidence(count), trend: calculateTrend(null, null) };
+      }
+      const previousAverage = filters.type === "all" ? averageForSemanticallyComparableResults(previousRows) : averageScorePercentage(previousRows);
+      const latestAverage = filters.type === "all" ? averageForSemanticallyComparableResults(latestRows) : averageScorePercentage(latestRows);
       return { recentAverage: latestAverage, best, count, confidence: calculateDataConfidence(count), trend: calculateTrend(latestAverage, previousAverage) };
     }
   }
   const previous = getPreviousPeriodBounds(filters.period, filters.today || new Date());
-  const previousAverage = previous
-    ? averageScorePercentage(allResults.filter((result) => {
+  const previousRows = previous
+    ? allResults.filter((result) => {
       const date = dateOnly(result.date);
       if (filters.type !== "all" && result.dataType !== filters.type) return false;
       if (filters.discipline && result.discipline !== filters.discipline) return false;
       return date >= previous.start! && date <= previous.end!;
-    }))
+    })
+    : [];
+  const previousAverage = previous
+    ? filters.type === "all"
+      ? areComparableDataTypes(filteredResults, previousRows) ? averageForSemanticallyComparableResults(previousRows) : null
+      : averageScorePercentage(previousRows)
     : null;
   return { recentAverage: currentAverage, best, count, confidence: calculateDataConfidence(count), trend: calculateTrend(currentAverage, previousAverage) };
+}
+
+export type DisciplinePerformanceBreakdown = {
+  discipline: string;
+  competitionCount: number;
+  competitionAverage: number | null;
+  competitionRecent: number | null;
+  competitionBest: number | null;
+  averageWinnerGap: number | null;
+  trainingCount: number;
+  trainingHitAverage: number | null;
+};
+
+function average(values: number[]) {
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+export function calculateDisciplineBreakdown(results: PerformanceResult[]): DisciplinePerformanceBreakdown[] {
+  const names = [...new Set(results.map((result) => result.discipline).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b));
+  return names.map((discipline) => {
+    const comp = results.filter((result) => result.discipline === discipline && result.dataType === "competition").sort((a, b) => b.date.localeCompare(a.date));
+    const train = results.filter((result) => result.discipline === discipline && result.dataType === "training").sort((a, b) => b.date.localeCompare(a.date));
+    const compValues = comp.map((result) => averageScorePercentage([result])).filter((value): value is number => value !== null);
+    const recentCompValues = comp.slice(0, 3).map((result) => averageScorePercentage([result])).filter((value): value is number => value !== null);
+    const trainValues = train.map((result) => averageScorePercentage([result])).filter((value): value is number => value !== null);
+    const gaps = comp.filter((result) => typeof result.winningScore === "number" && result.winningScore > 0).map((result) => Math.max(0, (result.winningScore || 0) - result.score));
+    return {
+      discipline,
+      competitionCount: comp.length,
+      competitionAverage: average(compValues),
+      competitionRecent: average(recentCompValues),
+      competitionBest: compValues.length ? Math.max(...compValues) : null,
+      averageWinnerGap: average(gaps),
+      trainingCount: train.length,
+      trainingHitAverage: average(trainValues),
+    };
+  }).filter((item) => item.competitionCount + item.trainingCount > 0);
 }
 
 export function calculateWinnerContext(results: PerformanceResult[]) {

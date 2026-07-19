@@ -277,3 +277,14 @@ Performance should **look simple at first glance but become progressively more p
 Do not interpret `keep Performance compact` as `remove most statistics`.
 
 The goal is controlled information density through hierarchy and progressive disclosure.
+
+
+## Issue #222 restoration scope
+
+The issue #222 restoration should keep the compact top layer from PR #221, but restore useful depth through controlled lower-page layers:
+
+- Activity & form: compact Competition activity, recent form and separate Training volume.
+- Breakdowns: discipline and shooting-ground analysis without mixing incompatible Competition and Training metrics.
+- Deeper performance data: collapsed benchmark/winner details and data coverage.
+
+Competition winner-relative percentages and Training hit percentages must never be averaged into one All-view Performance number. Results and Training remain the session-by-session archives; Performance summarizes what accumulated data says. Weather, mental performance, equipment timelines, target type and first/second-shot analysis remain future roadmap items unless reliably supported by current stored data.
