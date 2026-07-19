@@ -70,6 +70,7 @@ const pushRoute = readFileSync("app/api/notifications/process-push-queue/route.t
 const betaInterestRoute = readFileSync("app/api/beta-interest/route.ts", "utf8");
 const feedbackPage = readFileSync("app/feedback/page.tsx", "utf8");
 const packageJson = readFileSync("package.json", "utf8");
+const vercelConfig = JSON.parse(readFileSync("vercel.json", "utf8"));
 assert.match(pushMigration, /create table if not exists public\.web_push_subscriptions/, "push subscription table exists");
 assert.match(pushMigration, /references auth\.users\(id\) on delete cascade/, "push subscriptions are user-owned");
 assert.match(pushMigration, /unique index[^;]+web_push_subscriptions_endpoint_unique_idx[\s\S]+endpoint\);/, "push subscriptions dedupe by endpoint");
@@ -84,15 +85,25 @@ assert.match(sw, /self\.addEventListener\("push"/, "service worker handles push 
 assert.match(sw, /self\.addEventListener\("notificationclick"/, "service worker handles notification clicks");
 assert.match(sw, /safeNotificationHref/, "service worker validates notification hrefs");
 assert.match(packageJson, /"web-push": "\^3\.6\.7"/, "standards-compliant maintained Web Push package is declared");
-assert.match(pushRoute, /requireFn\("web-push"\)/, "push route uses maintained web-push implementation instead of hand-written VAPID/encryption");
+assert.match(pushRoute, /require\("web-push"\)/, "push route uses a traceable maintained web-push runtime dependency");
 assert.doesNotMatch(pushRoute, /createSign|X-CPL-Notification|Authorization: `vapid/, "push route does not hand-roll VAPID or send payload in custom headers");
 assert.match(pushRoute, /webPush\.sendNotification[\s\S]+JSON\.stringify\(payload\)/, "encrypted Web Push payload is sent through web-push request body");
-assert.match(pushRoute, /PUSH_DELIVERY_TOKEN \|\| process\.env\.CRON_SECRET/, "push delivery requires trusted server-side bearer token");
+assert.match(pushRoute, /process\.env\.CRON_SECRET[\s\S]+process\.env\.PUSH_DELIVERY_TOKEN/, "push delivery accepts only trusted server-side bearer secrets");
+assert.match(pushRoute, /export async function GET\(request: Request\)/, "push queue exposes the GET handler required by Vercel Cron");
 assert.match(pushRoute, /from\("web_push_delivery_jobs"\)[\s\S]+notification:user_notifications/, "push delivery is tied to queued in-app notifications");
+assert.match(pushRoute, /\.in\("status", \["pending", "failed"\]\)[\s\S]+\.select\("id"\)/, "queue jobs are atomically claimed before delivery");
 assert.match(pushMigration, /web_push_delivery_jobs_notification_unique_idx[\s\S]+notification_id/, "push jobs dedupe by notification id");
 assert.match(pushMigration, /after insert on public\.user_notifications/, "push jobs are created from in-app notification inserts");
 assert.match(pushRoute, /statusCode === 404 \|\| statusCode === 410/, "permanently invalid subscriptions are removed");
 assert.doesNotMatch(betaInterestRoute + feedbackPage, /push-admin-event|process-push-queue/, "normal client flows cannot directly initiate push delivery");
 assert.doesNotMatch(header + page + client + swRegistration, /Notification\.requestPermission/, "no automatic push permission prompt occurs in shell or notification loading");
+assert.ok(
+  vercelConfig.crons.some((cron) => cron.path === "/api/leirdue/refresh-recent"),
+  "existing Leirdue cron remains registered",
+);
+assert.ok(
+  vercelConfig.crons.some((cron) => cron.path === "/api/notifications/process-push-queue" && cron.schedule === "*/5 * * * *"),
+  "production scheduler invokes the push queue every five minutes",
+);
 
 console.log("Notification foundation regression tests passed.");
