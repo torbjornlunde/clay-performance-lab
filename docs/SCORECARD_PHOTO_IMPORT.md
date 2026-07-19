@@ -20,14 +20,17 @@ Training imports with reviewed target-level structure map to Training Score Shee
 
 Competition scorecard import keeps the existing competition/session apply path. Reusing the interpreted structure for dedicated Competition live scoring remains a separate follow-up, not part of this import upgrade.
 
-The required flow remains:
+The required review flow is now:
 
-1. upload image;
-2. interpret;
-3. review structure;
-4. review score cells;
-5. confirm;
-6. save.
+1. keep the original scorecard close at hand;
+2. compare the AI-suggested result with the image;
+3. correct any wrong cell directly as Hit, Miss or Unknown;
+4. confirm or edit structure only when needed;
+5. save the reviewed scorecard.
+
+The AI interpretation is a suggestion. User-reviewed Hit/Miss/Unknown cell values are authoritative for reviewed scores and apply payloads. AI-detected post totals remain useful reference text, but a complete manually reviewed grid can proceed even when it disagrees with the detected total. Reconciliation must not silently rewrite reviewed cells to force an AI total to match.
+
+The review UI keeps a compact sticky scorecard thumbnail near the post review and opens a larger image viewer when tapped. Structure review is compact by default, summarizing total posts/targets and default-plus-exception target counts; full post-count and per-post target controls are available behind explicit **Edit structure**.
 
 AI/vision calls must remain behind the existing server-side entitlement and paid-cost protection architecture. Closed-beta users approved in `beta_hidden` mode should not see a Pro paywall.
 
@@ -48,4 +51,4 @@ Discovery mode is only used when the Competition has no usable saved structural 
 
 During final apply, the server derives the saved structure from the current reviewed grid, not from stale AI detections. Variable post target counts are persisted through `session_post_targets` using structural placeholder rows only: `post_number`, `target_position`, `presentation_number = target_position`, `presentation_type = 'unknown'` and `position_in_presentation = 1`. The photo import does not invent target direction, speed, distance, presentation type, labels, target type, difficulty, notes, or clay descriptions; downstream miss matching treats `presentation_type = 'unknown'` as ambiguous rather than as a real pair/single presentation.
 
-Migration required before merge: `supabase/migrations/20260718010000_scorecard_import_discovery_apply.sql` updates `public.apply_scorecard_import_v2` with an explicit atomic discovery mode that saves the Competition structure, reviewed score, and reviewed miss positions in one transaction.
+Migration already required for discovery support: `supabase/migrations/20260718010000_scorecard_import_discovery_apply.sql` updates `public.apply_scorecard_import_v2` with an explicit atomic discovery mode that saves the Competition structure, reviewed score, and reviewed miss positions in one transaction.
