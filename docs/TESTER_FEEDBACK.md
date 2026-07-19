@@ -105,6 +105,25 @@ When a tester suggestion is released, the tester or beta group should be told th
 
 **Why prioritized:** It removes ambiguity in a core equipment flow and supports the planned gun-comparison feature.
 
+### Last serviced date for guns
+
+**Original need:** Record when each gun was last serviced without turning Equipment into a full maintenance-management system.
+
+**Status:** Implemented in focused PR for issue #224 - pending review
+
+**Priority:** High-value quick win after the Performance regression work.
+
+**Implemented minimum version:**
+
+- optional `Last serviced` date on each Equipment gun
+- visible on the gun card as a recorded date or `Not recorded`
+- editable in the gun editor under Advanced details
+- future dates rejected because the field represents a completed service
+- Competition and Training logging remain unchanged
+- historical equipment snapshots do not include the current service date
+
+**Not implemented yet:** Full service history, service notes, workshops, reminders, service intervals, costs, attachments and maintenance analytics remain follow-up ideas.
+
 ---
 
 ## Samuel – beta feedback

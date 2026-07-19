@@ -15,7 +15,7 @@ Authoritative near-term priority order, updated after issue #222:
 
 1. Confirmed new data, safety and blocking regressions always come first.
 2. Performance regression / issue #222: restore progressive-disclosure depth without recreating raw Results or Training archives.
-3. Simple weapon `Last serviced` tracking / issue #224.
+3. Simple weapon `Last serviced` tracking / issue #224: implemented as a focused Equipment field in this PR.
 4. Then continue the broader roadmap queue.
 
 Målet med denne roadmapen er at ingen viktige produktidéer skal bli liggende bare i en chat.
@@ -821,7 +821,7 @@ Ved uenighet mellom eldre samtaler og dette dokumentet skal denne roadmapen bruk
 
 ## Near-term Equipment note: Last serviced
 
-Issue #224 is accepted as a near-term Equipment item after issue #222. The intended first version is an optional `Last serviced` date per weapon, editable from Equipment. It must not add friction to quick Competition or Training logging. Full service history, service reminders and maintenance analytics remain follow-up work, not part of the Performance regression fix.
+Issue #224 is implemented as the first weapon-maintenance field: an optional date-only `Last serviced` value per weapon, visible on Equipment gun cards and editable from the existing gun editor Advanced details area. It does not add friction to quick Competition or Training logging and is intentionally not written into historical equipment snapshots. Full service history, service reminders and maintenance analytics remain follow-up work.
 
 ## Stabilization note: Scorecard review
 

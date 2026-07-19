@@ -566,6 +566,7 @@ The only material that cannot be guaranteed here is content that is no longer ac
 | EQUIP-027 | Recommend different chokes per barrel where appropriate. | Later | Choke selector roadmap. |
 | EQUIP-028 | Pattern-test/mønstring data may later inform choke/ammunition advice. | Later | Choke selector roadmap. |
 | EQUIP-029 | Choke/ammo recommendations must explain uncertainty and never guarantee a hit. | Later constraint | Choke selector roadmap. |
+| EQUIP-030 | Optional weapon `Last serviced` date, visible and editable in Equipment without affecting logging snapshots. | Implemented | Issue #224; first weapon-maintenance field only. |
 
 ---
 
@@ -871,4 +872,4 @@ These entries now remain in this append-only register even if they are later dep
 | ID | Idea / decision | Status | Historical source / note |
 |---|---|---|---|
 | PERF-222 | Restore Performance depth with progressive disclosure after the over-aggressive PR #221 cleanup. Keep a simple overview at the top, then add compact Activity & Form, breakdowns and collapsed deeper data. | Next / in progress | Issue #222. |
-| EQUIP-224 | Add optional weapon `Last serviced` date, editable from Equipment only. Do not put service tracking into quick Competition/Training logging; full service history/reminders remain later. | Next after PERF-222 | Issue #224. |
+| EQUIP-224 | Add optional weapon `Last serviced` date, editable from Equipment only. Do not put service tracking into quick Competition/Training logging; full service history/reminders remain later. | Implemented first field | Issue #224. |
