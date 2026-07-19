@@ -2,9 +2,9 @@
 
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from "react";
-import { APP_NAV_STACK_KEY, DEFAULT_APP_BACK_FALLBACK, decideSwipeBackGesture, isStandaloneDisplay, resolveAppBackTarget, shouldIgnoreSwipeTarget, updateAppNavigationStack, type AppNavEntry } from "@/lib/appNavigation";
+import { APP_NAV_STACK_KEY, DEFAULT_APP_BACK_FALLBACK, decideSwipeBackGesture, isStandaloneDisplay, reconcilePopstateNavigationStack, resolveAppBackTarget, shouldIgnoreSwipeTarget, updateAppNavigationStack, type AppNavEntry } from "@/lib/appNavigation";
 
-type AppBackContextValue = { goBack: (fallback?: string) => void; backTarget: (fallback?: string) => string };
+type AppBackContextValue = { goBack: (fallback?: string) => boolean; backTarget: (fallback?: string) => string };
 const AppBackContext = createContext<AppBackContextValue | null>(null);
 
 function readStack(): AppNavEntry[] {
@@ -18,6 +18,7 @@ export function AppNavigationProvider({ children }: { children: React.ReactNode 
   const router = useRouter();
   const navigatingRef = useRef(false);
   const replaceRef = useRef(false);
+  const popstateRef = useRef(false);
   const touchRef = useRef<{ x: number; y: number; active: boolean; fired: boolean } | null>(null);
   const path = `${pathname || "/"}${searchParams?.toString() ? `?${searchParams.toString()}` : ""}`;
 
@@ -26,22 +27,35 @@ export function AppNavigationProvider({ children }: { children: React.ReactNode 
     const originalReplace = history.replaceState;
     history.pushState = function patchedPushState(...args) { replaceRef.current = false; return originalPush.apply(this, args); };
     history.replaceState = function patchedReplaceState(...args) { replaceRef.current = true; return originalReplace.apply(this, args); };
-    return () => { history.pushState = originalPush; history.replaceState = originalReplace; };
+    const onPopState = () => { popstateRef.current = true; };
+    window.addEventListener("popstate", onPopState);
+    return () => { history.pushState = originalPush; history.replaceState = originalReplace; window.removeEventListener("popstate", onPopState); };
   }, []);
 
   useEffect(() => {
-    const stack = updateAppNavigationStack({ stack: readStack(), next: { path, origin: window.location.origin }, replace: replaceRef.current });
+    const next = { path, origin: window.location.origin };
+    const stack = popstateRef.current
+      ? reconcilePopstateNavigationStack({ stack: readStack(), next })
+      : updateAppNavigationStack({ stack: readStack(), next, replace: replaceRef.current });
     writeStack(stack);
     replaceRef.current = false;
+    popstateRef.current = false;
     navigatingRef.current = false;
   }, [path]);
 
   const backTarget = useCallback((fallback = DEFAULT_APP_BACK_FALLBACK) => resolveAppBackTarget({ stack: readStack(), origin: window.location.origin, currentPath: path, fallback }).target, [path]);
   const goBack = useCallback((fallback = DEFAULT_APP_BACK_FALLBACK) => {
-    if (navigatingRef.current) return;
+    if (navigatingRef.current) return false;
+    const resolution = resolveAppBackTarget({ stack: readStack(), origin: window.location.origin, currentPath: path, fallback });
+    if (!resolution.canNavigate) {
+      navigatingRef.current = false;
+      return false;
+    }
     navigatingRef.current = true;
-    router.push(backTarget(fallback));
-  }, [backTarget, router]);
+    writeStack(resolution.nextStack);
+    router.push(resolution.target);
+    return true;
+  }, [path, router]);
 
   useEffect(() => {
     if (!isStandaloneDisplay() || !navigator.maxTouchPoints) return;
@@ -56,7 +70,11 @@ export function AppNavigationProvider({ children }: { children: React.ReactNode 
       const touch = event.touches[0];
       const decision = decideSwipeBackGesture({ startX: state.x, startY: state.y, currentX: touch.clientX, currentY: touch.clientY, viewportWidth: window.innerWidth });
       if (decision === "cancel") state.active = false;
-      if (decision === "back") { state.fired = true; event.preventDefault(); goBack(); }
+      if (decision === "back") {
+        const didNavigate = goBack();
+        if (didNavigate) { state.fired = true; event.preventDefault(); }
+        else state.active = false;
+      }
     };
     const onEnd = () => { touchRef.current = null; };
     window.addEventListener("touchstart", onStart, { passive: true });

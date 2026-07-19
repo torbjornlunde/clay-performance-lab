@@ -6,18 +6,48 @@ const source = readFileSync('lib/appNavigation.ts', 'utf8');
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const module = { exports: {} };
 new Function('exports', 'module', js)(module.exports, module);
-const { resolveAppBackTarget, updateAppNavigationStack, decideSwipeBackGesture, isSafeInAppPrevious } = module.exports;
+const { resolveAppBackTarget, updateAppNavigationStack, reconcilePopstateNavigationStack, decideSwipeBackGesture, isSafeInAppPrevious } = module.exports;
 const origin = 'https://app.example.test';
 
 let stack = updateAppNavigationStack({ stack: [], next: { path: '/dashboard', origin } });
 stack = updateAppNavigationStack({ stack, next: { path: '/sessions/123', origin } });
-assert.deepEqual(resolveAppBackTarget({ stack, origin, currentPath: '/sessions/123', fallback: '/dashboard' }), { target: '/dashboard', usedFallback: false }, 'uses safe previous in-app route');
+let resolution = resolveAppBackTarget({ stack, origin, currentPath: '/sessions/123', fallback: '/dashboard' });
+assert.equal(resolution.target, '/dashboard', 'uses safe previous in-app route');
+assert.equal(resolution.usedFallback, false, 'safe previous route does not use fallback');
+assert.equal(resolution.canNavigate, true, 'safe previous route can navigate');
+assert.deepEqual(resolution.nextStack.map((entry) => entry.path), ['/dashboard'], 'custom back consumes the current stack entry');
 
-assert.deepEqual(resolveAppBackTarget({ stack: [{ path: '/sessions/123', origin }], origin, currentPath: '/sessions/123', fallback: '/dashboard' }), { target: '/dashboard', usedFallback: true }, 'direct deep link uses fallback');
+stack = ['/dashboard', '/sessions/123', '/sessions/123/analysis'].reduce((current, path) => updateAppNavigationStack({ stack: current, next: { path, origin } }), []);
+resolution = resolveAppBackTarget({ stack, origin, currentPath: '/sessions/123/analysis', fallback: '/dashboard' });
+assert.equal(resolution.target, '/sessions/123', 'analysis custom back targets its parent session');
+stack = updateAppNavigationStack({ stack: resolution.nextStack, next: { path: resolution.target, origin } });
+assert.deepEqual(stack.map((entry) => entry.path), ['/dashboard', '/sessions/123'], 'landing on the custom back target does not append a duplicate parent');
+resolution = resolveAppBackTarget({ stack, origin, currentPath: '/sessions/123', fallback: '/dashboard' });
+assert.equal(resolution.target, '/dashboard', 'second custom back targets dashboard instead of bouncing to analysis');
+assert.deepEqual(resolution.nextStack.map((entry) => entry.path), ['/dashboard'], 'second custom back consumes the session entry');
+
+resolution = resolveAppBackTarget({ stack: [{ path: '/sessions/123', origin }], origin, currentPath: '/sessions/123', fallback: '/dashboard' });
+assert.equal(resolution.target, '/dashboard', 'direct deep link uses fallback');
+assert.equal(resolution.canNavigate, true, 'deep-link fallback can navigate when fallback differs from current route');
+
+resolution = resolveAppBackTarget({ stack: [{ path: '/dashboard', origin }], origin, currentPath: '/dashboard', fallback: '/dashboard' });
+assert.equal(resolution.canNavigate, false, 'direct dashboard fallback to dashboard is a safe no-op');
+assert.deepEqual(resolution.nextStack.map((entry) => entry.path), ['/dashboard'], 'same-route fallback leaves stack unchanged');
 
 stack = updateAppNavigationStack({ stack: [{ path: '/login', origin }], next: { path: '/dashboard', origin }, replace: true });
 assert.equal(stack.length, 1, 'auth startup replace does not retain login entry');
-assert.deepEqual(resolveAppBackTarget({ stack, origin, currentPath: '/dashboard', fallback: '/dashboard' }), { target: '/dashboard', usedFallback: true }, 'auth startup fallback avoids login loop');
+resolution = resolveAppBackTarget({ stack, origin, currentPath: '/dashboard', fallback: '/dashboard' });
+assert.equal(resolution.canNavigate, false, 'auth startup fallback avoids login loop and same-route navigation');
+
+stack = ['/dashboard', '/sessions/123', '/sessions/123/analysis'].reduce((current, path) => updateAppNavigationStack({ stack: current, next: { path, origin } }), []);
+stack = reconcilePopstateNavigationStack({ stack, next: { path: '/sessions/123', origin } });
+assert.deepEqual(stack.map((entry) => entry.path), ['/dashboard', '/sessions/123'], 'native popstate back pops the custom stack to the browser destination');
+resolution = resolveAppBackTarget({ stack, origin, currentPath: '/sessions/123', fallback: '/dashboard' });
+assert.equal(resolution.target, '/dashboard', 'custom back after native popstate continues backwards');
+
+stack = ['/dashboard', '/sessions/123'].reduce((current, path) => updateAppNavigationStack({ stack: current, next: { path, origin } }), []);
+stack = reconcilePopstateNavigationStack({ stack, next: { path: '/settings', origin } });
+assert.deepEqual(stack.map((entry) => entry.path), ['/dashboard', '/settings'], 'unknown popstate destination replaces the current stack entry instead of preserving stale forward history');
 
 assert.equal(decideSwipeBackGesture({ startX: 29, startY: 10, currentX: 110, currentY: 12, viewportWidth: 390 }), 'cancel', 'swipe must start inside edge threshold');
 assert.equal(decideSwipeBackGesture({ startX: 12, startY: 10, currentX: 88, currentY: 18, viewportWidth: 390 }), 'back', 'clear horizontal edge swipe goes back');
@@ -30,10 +60,13 @@ assert.equal(isSafeInAppPrevious({ path: '/settings', origin: 'https://evil.exam
 
 const provider = readFileSync('app/components/navigation/AppNavigationProvider.tsx', 'utf8');
 assert.match(provider, /navigatingRef\.current/, 'provider guards against double navigation');
+assert.match(provider, /writeStack\(resolution\.nextStack\)/, 'provider persists consumed stack before custom navigation');
+assert.match(provider, /popstateRef\.current/, 'provider reconciles native popstate with the custom stack');
+assert.match(provider, /if \(!resolution\.canNavigate\)/, 'provider leaves same-route fallback as a no-op');
+assert.match(provider, /if \(didNavigate\) \{ state\.fired = true; event\.preventDefault\(\); \}/, 'provider prevents default only after real swipe navigation');
 assert.match(provider, /shouldIgnoreSwipeTarget\(event\.target\)/, 'provider checks interactive and opt-out targets');
 assert.match(source, /data-cpl-swipe-back-opt-out/, 'explicit opt-out marker is documented in target selector');
 assert.match(source, /input, textarea, select, button, a/, 'interactive controls are ignored by swipe detection');
 assert.match(provider, /history\.replaceState = function patchedReplaceState/, 'provider observes replaceState for auth/startup compatibility');
-assert.match(provider, /router\.push\(backTarget\(fallback\)\)/, 'provider navigates only to resolved safe app target');
 
 console.log('App navigation checks passed');

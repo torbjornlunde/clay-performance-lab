@@ -4,6 +4,7 @@ export const DEFAULT_APP_BACK_FALLBACK = "/dashboard";
 const PUBLIC_AUTH_ROUTES = new Set(["/", "/login", "/reset-password", "/join-beta", "/beta/access"]);
 
 export type AppNavEntry = { path: string; origin: string };
+export type AppBackResolution = { target: string; usedFallback: boolean; canNavigate: boolean; nextStack: AppNavEntry[] };
 export type SwipeDecision = "pending" | "back" | "cancel";
 
 export function normalizeAppPath(path: string): string | null {
@@ -28,27 +29,44 @@ export function isSafeInAppPrevious(entry: AppNavEntry | null | undefined, curre
   return true;
 }
 
-export function resolveAppBackTarget(input: { stack: AppNavEntry[]; origin: string; currentPath: string; fallback?: string }): { target: string; usedFallback: boolean } {
+function sanitizeStack(stack: AppNavEntry[], maxLength = 24): AppNavEntry[] {
+  return stack.filter((entry) => normalizeAppPath(entry.path)).slice(-maxLength);
+}
+
+export function resolveAppBackTarget(input: { stack: AppNavEntry[]; origin: string; currentPath: string; fallback?: string }): AppBackResolution {
+  const stack = sanitizeStack(input.stack);
   const fallback = normalizeAppPath(input.fallback || DEFAULT_APP_BACK_FALLBACK) || DEFAULT_APP_BACK_FALLBACK;
-  for (let index = input.stack.length - 2; index >= 0; index -= 1) {
-    const candidate = input.stack[index];
+  for (let index = stack.length - 2; index >= 0; index -= 1) {
+    const candidate = stack[index];
     if (isSafeInAppPrevious(candidate, input.origin, input.currentPath)) {
-      return { target: candidate.path, usedFallback: false };
+      return { target: candidate.path, usedFallback: false, canNavigate: true, nextStack: stack.slice(0, index + 1) };
     }
   }
-  return { target: fallback, usedFallback: true };
+  return { target: fallback, usedFallback: true, canNavigate: fallback !== input.currentPath && !isPublicAuthRoute(fallback), nextStack: stack };
 }
 
 export function updateAppNavigationStack(input: { stack: AppNavEntry[]; next: AppNavEntry; replace?: boolean; maxLength?: number }): AppNavEntry[] {
   const maxLength = input.maxLength ?? 24;
   const path = normalizeAppPath(input.next.path);
-  if (!path) return input.stack.slice(-maxLength);
+  if (!path) return sanitizeStack(input.stack, maxLength);
   const next = { ...input.next, path };
-  const stack = input.stack.filter((entry) => normalizeAppPath(entry.path));
+  const stack = sanitizeStack(input.stack, maxLength);
   const last = stack[stack.length - 1];
   if (last?.path === next.path && last.origin === next.origin) return stack.slice(-maxLength);
   const updated = input.replace && stack.length ? [...stack.slice(0, -1), next] : [...stack, next];
   return updated.slice(-maxLength);
+}
+
+export function reconcilePopstateNavigationStack(input: { stack: AppNavEntry[]; next: AppNavEntry; maxLength?: number }): AppNavEntry[] {
+  const maxLength = input.maxLength ?? 24;
+  const path = normalizeAppPath(input.next.path);
+  if (!path) return sanitizeStack(input.stack, maxLength);
+  const stack = sanitizeStack(input.stack, maxLength);
+  for (let index = stack.length - 1; index >= 0; index -= 1) {
+    const entry = stack[index];
+    if (entry.path === path && entry.origin === input.next.origin) return stack.slice(0, index + 1);
+  }
+  return updateAppNavigationStack({ stack, next: { ...input.next, path }, replace: true, maxLength });
 }
 
 export function shouldIgnoreSwipeTarget(target: EventTarget | null): boolean {
