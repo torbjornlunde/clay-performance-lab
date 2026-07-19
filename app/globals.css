@@ -9886,3 +9886,38 @@ select {
     width: 100%;
   }
 }
+
+.recentFormSplit {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recentFormSplit.singleRecentForm {
+  grid-template-columns: 1fr;
+}
+
+.recentFormSplit > div {
+  background: var(--surface-cell);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.recentFormSplit p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.recentFormSplit small {
+  color: var(--text-muted);
+}
+
+@media (max-width: 760px) {
+  .recentFormSplit {
+    grid-template-columns: 1fr;
+  }
+}

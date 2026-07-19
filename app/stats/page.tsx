@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { calculateRollingAverage, calculateRollingStdDev, DEFAULT_ROLLING_WINDOW_SIZE } from "@/lib/analysis/stats";
 import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
-import { averageScorePercentage, calculateCompetitionActivity, calculatePerformanceSummary, calculateWinnerContext, filterPerformanceResults, type PerformanceDataType, type PerformancePeriod, type PerformanceResult } from "@/lib/performance/summary";
+import { buildCompetitionActivitySummary } from "@/lib/competitionActivity";
+import { calculateDisciplineBreakdown, calculatePerformanceSummary, calculateWinnerContext, filterPerformanceResults, type DisciplinePerformanceBreakdown, type PerformanceDataType, type PerformancePeriod, type PerformanceResult } from "@/lib/performance/summary";
 import { normalizeShootingGroundName, type UserShootingGround } from "@/lib/shootingGrounds/aliases";
 import { supabase } from "@/lib/supabase/client";
 
@@ -20,6 +21,7 @@ type SessionRow = {
   created_at: string;
   competition_date?: string | null;
   leirdue_result_url?: string | null;
+  notes?: string | null;
   own_score?: number | null;
   winning_score?: number | null;
   calculated_score?: number | null;
@@ -66,6 +68,7 @@ type TrainingVolumeLog = {
   targets_fired: number;
   hits: number | null;
   kind: "practice_log" | "training_score_sheet";
+  discipline: string | null;
 };
 
 type TrainingVolumeInsights = {
@@ -94,16 +97,6 @@ type GroundSummary = {
   sessions: Array<{ session: SessionRow; score: number; percentage: number }>;
 };
 
-type DisciplineSummary = {
-  discipline: string;
-  competitionCount: number;
-  competitionAverage: number | null;
-  competitionRecent: number | null;
-  competitionBest: number | null;
-  averageWinnerGap: number | null;
-  trainingCount: number;
-  trainingHitAverage: number | null;
-};
 
 type ChartPoint = {
   id: string;
@@ -175,6 +168,23 @@ function formatGap(value: number | null) {
   return `${value.toFixed(1)} target${Math.abs(value - 1) < 0.05 ? "" : "s"}`;
 }
 
+function percentageForPerformanceResult(result: PerformanceResult) {
+  if (result.dataType === "competition" && result.winningScore && result.winningScore > 0) return (result.score / result.winningScore) * 100;
+  if (result.dataType === "training" && result.maxScore && result.maxScore > 0) return (result.score / result.maxScore) * 100;
+  return null;
+}
+
+function recentFormLine(results: PerformanceResult[]) {
+  return results
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 5)
+    .map((result) => percentageForPerformanceResult(result))
+    .filter((value): value is number => value !== null)
+    .map((value) => `${value.toFixed(0)}%`)
+    .join(" · ");
+}
+
 function hitPercentage(log: SimpleTrainingLog) {
   if (log.hits === null || log.targets_fired <= 0) return null;
   return (log.hits / log.targets_fired) * 100;
@@ -196,6 +206,7 @@ function scoreSheetToVolumeLog(sheet: TrainingScoreSheetLog): TrainingVolumeLog 
     targets_fired: sheet.total_targets,
     hits: null,
     kind: "training_score_sheet",
+    discipline: sheet.discipline || null,
   };
 }
 
@@ -205,6 +216,7 @@ function simpleLogToVolumeLog(log: SimpleTrainingLog): TrainingVolumeLog {
     targets_fired: log.targets_fired,
     hits: log.hits,
     kind: "practice_log",
+    discipline: log.discipline || null,
   };
 }
 
@@ -513,7 +525,7 @@ export default function StatsPage() {
         .returns<PerformanceTrainingLog[]>(),
       supabase
         .from("training_logs")
-        .select("date,targets_fired,hits")
+        .select("date,discipline,targets_fired,hits")
         .eq("source_type", "simple_training")
         .lte("date", todayValue)
         .order("date", { ascending: true })
@@ -683,38 +695,31 @@ export default function StatsPage() {
 
   const selectedGround = useMemo(() => byShootingGround.find((ground) => ground.key === selectedGroundKey) || null, [byShootingGround, selectedGroundKey]);
 
-  const competitionActivity = useMemo(() => calculateCompetitionActivity(sessions.map((session) => ({ id: session.id, session_type: session.session_type, date: session.competition_date || session.created_at, discipline: session.discipline, total_targets: session.total_targets, leirdue_result_url: session.leirdue_result_url })), selectedCompetitionYear, selectedDiscipline || null), [sessions, selectedCompetitionYear, selectedDiscipline]);
+  const competitionActivity = useMemo(() => buildCompetitionActivitySummary(sessions.filter((session) => !selectedDiscipline || session.discipline === selectedDiscipline).map((session) => ({ id: session.id, session_type: session.session_type, competition_date: session.competition_date || null, created_at: session.created_at, total_targets: session.total_targets, leirdue_result_url: session.leirdue_result_url, notes: session.notes })), selectedCompetitionYear), [sessions, selectedCompetitionYear, selectedDiscipline]);
 
-  const disciplineBreakdown = useMemo<DisciplineSummary[]>(() => {
-    const names = [...new Set(performanceResults.map((result) => result.discipline).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b));
-    return names.map((discipline) => {
-      const comp = performanceResults.filter((result) => result.discipline === discipline && result.dataType === "competition");
-      const train = performanceResults.filter((result) => result.discipline === discipline && result.dataType === "training");
-      const compValues = comp.map((result) => averageScorePercentage([result])).filter((value): value is number => value !== null);
-      const trainValues = train.map((result) => averageScorePercentage([result])).filter((value): value is number => value !== null);
-      const gaps = comp.filter((result) => typeof result.winningScore === "number" && result.winningScore > 0).map((result) => Math.max(0, (result.winningScore || 0) - result.score));
-      return {
-        discipline,
-        competitionCount: comp.length,
-        competitionAverage: average(compValues),
-        competitionRecent: average(compValues.slice(-3)),
-        competitionBest: compValues.length ? Math.max(...compValues) : null,
-        averageWinnerGap: average(gaps),
-        trainingCount: train.length,
-        trainingHitAverage: average(trainValues),
-      };
-    }).filter((item) => item.competitionCount + item.trainingCount > 0);
-  }, [performanceResults]);
+  const disciplineBreakdown = useMemo<DisciplinePerformanceBreakdown[]>(() => calculateDisciplineBreakdown(filteredPerformanceResults), [filteredPerformanceResults]);
 
-  const dataCoverage = useMemo(() => ({
-    scoredCompetitionResults: performanceResults.filter((result) => result.dataType === "competition").length,
-    competitionsWithWinnerScore: performanceResults.filter((result) => result.dataType === "competition" && typeof result.winningScore === "number" && result.winningScore > 0).length,
-    resultsWithShootingGround: sessions.filter((session) => session.session_type === "Competition" && displayGroundForSession(session) !== "Unknown shooting ground").length,
-    trainingSessionsWithKnownVolume: volumeLogs.filter((log) => log.targets_fired > 0).length,
-    trainingLogsWithKnownHits: volumeLogs.filter((log) => log.kind === "practice_log" && log.hits !== null && log.targets_fired > 0).length,
-  }), [performanceResults, sessions, volumeLogs]);
+  const scopedVolumeLogs = useMemo(() => selectedDiscipline ? volumeLogs.filter((log) => log.discipline === selectedDiscipline) : volumeLogs, [volumeLogs, selectedDiscipline]);
 
-  const volumeInsights = useMemo(() => buildTrainingVolumeInsights(volumeLogs), [volumeLogs]);
+  const dataCoverage = useMemo(() => {
+    const scopedCompetitionResults = filteredPerformanceResults.filter((result) => result.dataType === "competition");
+    const scopedTrainingResults = filteredPerformanceResults.filter((result) => result.dataType === "training");
+    const scopedCompetitionSessions = filteredCompetitionSessions.filter((session) => !selectedDiscipline || session.discipline === selectedDiscipline);
+    return {
+      scoredCompetitionResults: selectedType === "training" ? null : scopedCompetitionResults.length,
+      competitionsWithWinnerScore: selectedType === "training" ? null : scopedCompetitionResults.filter((result) => typeof result.winningScore === "number" && result.winningScore > 0).length,
+      resultsWithShootingGround: selectedType === "training" ? null : scopedCompetitionSessions.filter((session) => displayGroundForSession(session) !== "Unknown shooting ground").length,
+      trainingResultsWithHits: selectedType === "competition" ? null : scopedTrainingResults.length,
+      trainingSessionsWithKnownVolume: selectedType === "competition" ? null : scopedVolumeLogs.filter((log) => log.targets_fired > 0).length,
+      trainingLogsWithKnownHits: selectedType === "competition" ? null : scopedVolumeLogs.filter((log) => log.kind === "practice_log" && log.hits !== null && log.targets_fired > 0).length,
+    };
+  }, [filteredPerformanceResults, filteredCompetitionSessions, scopedVolumeLogs, selectedDiscipline, selectedType]);
+
+  const volumeInsights = useMemo(() => buildTrainingVolumeInsights(scopedVolumeLogs), [scopedVolumeLogs]);
+  const recentCompetitionFormLine = useMemo(() => recentFormLine(competitionOnlyResults), [competitionOnlyResults]);
+  const recentTrainingFormLine = useMemo(() => recentFormLine(trainingOnlyResults), [trainingOnlyResults]);
+  const recentCombinedFormLine = useMemo(() => recentFormLine(filteredPerformanceResults), [filteredPerformanceResults]);
+  const hasDataCoverage = dataCoverage.scoredCompetitionResults !== null || dataCoverage.trainingSessionsWithKnownVolume !== null || dataCoverage.trainingResultsWithHits !== null;
   async function saveSessionGround(sessionId: string) {
     const trimmedNewGroundName = newGroundName.trim();
     if (!selectedAssignmentGroundId && !trimmedNewGroundName) { setGroundError("Choose an existing ground or enter a new ground name."); return; }
@@ -856,18 +861,16 @@ export default function StatsPage() {
             <h2>Recent form</h2>
             <Link href="/results" className="subtleLink">View all results →</Link>
           </div>
-          <p className="recentFormCompactLine">
-            {filteredPerformanceResults
-              .slice()
-              .sort((a, b) => b.date.localeCompare(a.date))
-              .slice(0, 5)
-              .map((result) => {
-                const percentage = result.dataType === "competition" && result.winningScore ? (result.score / result.winningScore) * 100 : result.maxScore ? (result.score / result.maxScore) * 100 : null;
-                return percentage === null ? null : `${percentage.toFixed(0)}%`;
-              })
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
+          {selectedType === "all" && competitionOnlyResults.length > 0 && trainingOnlyResults.length > 0 ? (
+            <div className="recentFormSplit">
+              <div><strong>Competition</strong><p>{recentCompetitionFormLine || "No recent scored competitions"}</p><small>{competitionOnlyResults.length} recent result{competitionOnlyResults.length === 1 ? "" : "s"}</small></div>
+              <div><strong>Training</strong><p>{recentTrainingFormLine || "No recent scored training"}</p><small>{trainingOnlyResults.length} recent log{trainingOnlyResults.length === 1 ? "" : "s"}</small></div>
+            </div>
+          ) : (
+            <div className="recentFormSplit singleRecentForm">
+              <div><strong>{selectedType === "training" ? "Training" : "Competition"}</strong><p>{recentCombinedFormLine}</p><small>{filteredPerformanceResults.length} recent {selectedType === "training" ? "log" : "result"}{filteredPerformanceResults.length === 1 ? "" : "s"}</small></div>
+            </div>
+          )}
         </section>
       )}
 
@@ -900,7 +903,7 @@ export default function StatsPage() {
         </section>
       )}
 
-      {!loading && (winnerContext.averageGap !== null || dataCoverage.scoredCompetitionResults > 0 || dataCoverage.trainingSessionsWithKnownVolume > 0) && (
+      {!loading && (winnerContext.averageGap !== null || hasDataCoverage) && (
         <section className="card deeperPerformanceDataCard">
           <div className="compactSectionHeader"><h2>Deeper performance data</h2></div>
           {winnerContext.averageGap !== null && (
@@ -917,11 +920,12 @@ export default function StatsPage() {
           <details>
             <summary>Data coverage</summary>
             <div className="trainingVolumeCompactList">
-              <p><strong>Scored Competition results:</strong> {formatMetricNumber(dataCoverage.scoredCompetitionResults)}</p>
-              <p><strong>Competitions with winner score:</strong> {formatMetricNumber(dataCoverage.competitionsWithWinnerScore)}</p>
-              <p><strong>Results with shooting ground:</strong> {formatMetricNumber(dataCoverage.resultsWithShootingGround)}</p>
-              <p><strong>Training sessions with known target volume:</strong> {formatMetricNumber(dataCoverage.trainingSessionsWithKnownVolume)}</p>
-              <p><strong>Training logs with known hits:</strong> {formatMetricNumber(dataCoverage.trainingLogsWithKnownHits)}</p>
+              {dataCoverage.scoredCompetitionResults !== null && <p><strong>Scored Competition results in this view:</strong> {formatMetricNumber(dataCoverage.scoredCompetitionResults)}</p>}
+              {dataCoverage.competitionsWithWinnerScore !== null && <p><strong>Competitions with winner score in this view:</strong> {formatMetricNumber(dataCoverage.competitionsWithWinnerScore)}</p>}
+              {dataCoverage.resultsWithShootingGround !== null && <p><strong>Competition results with shooting ground in this view:</strong> {formatMetricNumber(dataCoverage.resultsWithShootingGround)}</p>}
+              {dataCoverage.trainingResultsWithHits !== null && <p><strong>Training logs with hit percentage in this view:</strong> {formatMetricNumber(dataCoverage.trainingResultsWithHits)}</p>}
+              {dataCoverage.trainingSessionsWithKnownVolume !== null && <p><strong>Training sessions with known target volume for this discipline:</strong> {formatMetricNumber(dataCoverage.trainingSessionsWithKnownVolume)}</p>}
+              {dataCoverage.trainingLogsWithKnownHits !== null && <p><strong>Training logs with known hits for this discipline:</strong> {formatMetricNumber(dataCoverage.trainingLogsWithKnownHits)}</p>}
             </div>
           </details>
         </section>
