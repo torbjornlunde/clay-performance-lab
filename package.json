@@ -46,7 +46,8 @@
     "@supabase/supabase-js": "latest",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/node": "latest",

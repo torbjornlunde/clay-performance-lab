@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
   try {
     const supabase = serviceClient();
-    const { data, error } = await supabase.from("beta_interest_submissions").upsert(
+    const { error } = await supabase.from("beta_interest_submissions").upsert(
       {
         name,
         email,
@@ -65,17 +65,10 @@ export async function POST(request: Request) {
         instagram_handle: instagramHandle,
       },
       { onConflict: "normalized_email" },
-    ).select("id").single<{ id: string }>();
+    );
 
     if (error) {
       return NextResponse.json({ error: "We could not save your interest right now. Please try again." }, { status: 500 });
-    }
-    if (data?.id) {
-      fetch(new URL("/api/notifications/push-admin-event", request.url), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ eventType: "beta_access_request", eventId: data.id }),
-      }).catch(() => undefined);
     }
   } catch {
     return NextResponse.json({ error: "Beta interest storage is not configured yet." }, { status: 500 });

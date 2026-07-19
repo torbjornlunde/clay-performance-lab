@@ -51,8 +51,13 @@ begin
   insert into public.web_push_subscriptions (user_id, endpoint, p256dh, auth, user_agent, active, updated_at)
   values (auth.uid(), subscription_endpoint, subscription_p256dh, subscription_auth, nullif(trim(subscription_user_agent), ''), true, now())
   on conflict (endpoint) do update
-    set user_id = auth.uid(), p256dh = excluded.p256dh, auth = excluded.auth, user_agent = excluded.user_agent, active = true, updated_at = now()
+    set p256dh = excluded.p256dh, auth = excluded.auth, user_agent = excluded.user_agent, active = true, updated_at = now()
+    where public.web_push_subscriptions.user_id = auth.uid()
   returning * into saved_subscription;
+
+  if saved_subscription.id is null then
+    raise exception 'Push subscription endpoint already belongs to another user.';
+  end if;
 
   return saved_subscription;
 end;
@@ -80,3 +85,50 @@ revoke execute on function public.delete_my_web_push_subscription(text) from pub
 grant execute on function public.delete_my_web_push_subscription(text) to authenticated;
 
 comment on table public.web_push_subscriptions is 'Private per-device browser Push API subscriptions owned by authenticated users.';
+
+create table if not exists public.web_push_delivery_jobs (
+  id uuid primary key default gen_random_uuid(),
+  notification_id uuid not null references public.user_notifications(id) on delete cascade,
+  status text not null default 'pending',
+  attempt_count integer not null default 0,
+  last_error text,
+  next_attempt_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint web_push_delivery_jobs_status_check check (status in ('pending', 'processing', 'delivered', 'failed', 'skipped'))
+);
+
+create unique index if not exists web_push_delivery_jobs_notification_unique_idx
+  on public.web_push_delivery_jobs(notification_id);
+
+create index if not exists web_push_delivery_jobs_pending_idx
+  on public.web_push_delivery_jobs(status, next_attempt_at, created_at)
+  where status in ('pending', 'failed');
+
+alter table public.web_push_delivery_jobs enable row level security;
+
+create or replace function public.enqueue_web_push_for_notification()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.notification_type in ('beta_access_request', 'beta_feedback') then
+    insert into public.web_push_delivery_jobs(notification_id)
+    values (new.id)
+    on conflict (notification_id) do nothing;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists user_notifications_enqueue_web_push on public.user_notifications;
+create trigger user_notifications_enqueue_web_push
+  after insert on public.user_notifications
+  for each row execute function public.enqueue_web_push_for_notification();
+
+revoke all on public.web_push_delivery_jobs from public, anon, authenticated;
+revoke execute on function public.enqueue_web_push_for_notification() from public, anon, authenticated;
+
+comment on table public.web_push_delivery_jobs is 'Server-side Web Push delivery queue tied one-to-one to in-app notification rows.';
