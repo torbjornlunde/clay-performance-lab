@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { canManageBetaAccess, type UserAccessProfile } from "@/lib/access";
 import { betaFeedbackHref } from "@/lib/betaFeedback";
-import { loadMyUnreadNotificationCount } from "@/lib/notifications/client";
+import { loadMyUnreadNotificationCount, NOTIFICATIONS_CHANGED_EVENT } from "@/lib/notifications/client";
 import { supabase } from "@/lib/supabase/client";
 import { exportMyDataForCurrentUser } from "@/lib/export/exportMyDataClient";
 import { openOnboardingHelp } from "@/app/components/OnboardingHelp";
@@ -97,7 +97,11 @@ export default function AuthHeader() {
     function handleForegroundRefresh() {
       if (document.visibilityState === "visible") void refreshUnreadNotifications();
     }
+    function handleNotificationsChanged() {
+      void refreshUnreadNotifications();
+    }
     document.addEventListener("visibilitychange", handleForegroundRefresh);
+    window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, handleNotificationsChanged);
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthenticated(Boolean(session?.user));
@@ -107,6 +111,7 @@ export default function AuthHeader() {
     return () => {
       active = false;
       document.removeEventListener("visibilitychange", handleForegroundRefresh);
+      window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, handleNotificationsChanged);
       listener.subscription.unsubscribe();
     };
   }, [pathname]);

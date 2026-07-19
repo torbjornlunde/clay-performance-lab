@@ -1,5 +1,11 @@
 import { supabase } from "@/lib/supabase/client";
 
+export const NOTIFICATIONS_CHANGED_EVENT = "cpl:notifications-changed";
+
+export function notifyNotificationsChanged() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED_EVENT));
+}
+
 export type UserNotification = {
   id: string;
   user_id: string;

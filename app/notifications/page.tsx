@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { loadMyNotifications, markAllMyNotificationsRead, markMyNotificationRead, safeNotificationHref, type UserNotification } from "@/lib/notifications/client";
+import { loadMyNotifications, loadMyUnreadNotificationCount, markAllMyNotificationsRead, markMyNotificationRead, notifyNotificationsChanged, safeNotificationHref, type UserNotification } from "@/lib/notifications/client";
 import { supabase } from "@/lib/supabase/client";
 
 function compactTime(value: string) {
@@ -20,6 +20,7 @@ function compactTime(value: string) {
 export default function NotificationsPage() {
   const router = useRouter();
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -32,9 +33,14 @@ export default function NotificationsPage() {
       router.replace("/login");
       return;
     }
-    const { data, error: loadError } = await loadMyNotifications();
-    if (loadError) setError("Notifications could not be loaded right now.");
-    setNotifications(data ?? []);
+    const [listResult, countResult] = await Promise.all([
+      loadMyNotifications(),
+      loadMyUnreadNotificationCount(),
+    ]);
+    if (listResult.error) setError("Notifications could not be loaded right now.");
+    if (countResult.error) setError("Unread count could not be loaded right now.");
+    setNotifications(listResult.data ?? []);
+    setUnreadCount(countResult.count);
     setLoading(false);
   }
 
@@ -42,25 +48,39 @@ export default function NotificationsPage() {
 
   async function openNotification(notification: UserNotification) {
     setSaving(true);
-    await markMyNotificationRead(notification.id);
+    setError("");
+    const markResult = await markMyNotificationRead(notification.id);
     setSaving(false);
     const href = safeNotificationHref(notification.href);
+
+    if (markResult.error) {
+      setError("Notification could not be marked as read right now.");
+      if (href) router.push(href);
+      return;
+    }
+
+    setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, read_at: item.read_at ?? new Date().toISOString() } : item));
+    setUnreadCount((current) => Math.max(0, current - (notification.read_at ? 0 : 1)));
+    notifyNotificationsChanged();
+
     if (href) router.push(href);
     else void refresh();
   }
 
   async function markAllRead() {
     setSaving(true);
+    setError("");
     const { error: markError } = await markAllMyNotificationsRead();
     setSaving(false);
     if (markError) {
       setError("Notifications could not be marked as read right now.");
       return;
     }
+    setNotifications((current) => current.map((notification) => ({ ...notification, read_at: notification.read_at ?? new Date().toISOString() })));
+    setUnreadCount(0);
+    notifyNotificationsChanged();
     await refresh();
   }
-
-  const unreadCount = notifications.filter((notification) => !notification.read_at).length;
 
   return (
     <main className="notificationsPage">

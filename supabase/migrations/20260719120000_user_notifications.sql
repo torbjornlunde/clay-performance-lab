@@ -148,7 +148,26 @@ create trigger beta_feedback_notify_admins
   after insert on public.beta_feedback
   for each row execute function public.notify_admins_of_new_beta_feedback();
 
+revoke execute on function public.notify_access_admins(text, text, text, text, jsonb, text) from public;
+revoke execute on function public.notify_access_admins(text, text, text, text, jsonb, text) from anon;
+revoke execute on function public.notify_access_admins(text, text, text, text, jsonb, text) from authenticated;
+
+revoke execute on function public.notify_admins_of_new_beta_interest() from public;
+revoke execute on function public.notify_admins_of_new_beta_interest() from anon;
+revoke execute on function public.notify_admins_of_new_beta_interest() from authenticated;
+
+revoke execute on function public.notify_admins_of_new_beta_feedback() from public;
+revoke execute on function public.notify_admins_of_new_beta_feedback() from anon;
+revoke execute on function public.notify_admins_of_new_beta_feedback() from authenticated;
+
+revoke execute on function public.mark_my_notification_read(uuid) from public;
+revoke execute on function public.mark_my_notification_read(uuid) from anon;
+revoke execute on function public.mark_my_notification_read(uuid) from authenticated;
 grant execute on function public.mark_my_notification_read(uuid) to authenticated;
+
+revoke execute on function public.mark_all_my_notifications_read() from public;
+revoke execute on function public.mark_all_my_notifications_read() from anon;
+revoke execute on function public.mark_all_my_notifications_read() from authenticated;
 grant execute on function public.mark_all_my_notifications_read() to authenticated;
 
 comment on table public.user_notifications is 'Private in-app notifications, one row per recipient. Push/device transport is intentionally out of scope.';
