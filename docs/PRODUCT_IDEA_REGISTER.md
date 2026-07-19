@@ -75,10 +75,10 @@ The only material that cannot be guaranteed here is content that is no longer ac
 | UX-001 | Email/password login and account creation. | Implemented | Initial MVP. |
 | UX-002 | Public landing should not expose protected Dashboard actions to unauthenticated users. | Implemented | Early PRs #9/#11. |
 | UX-003 | Auth-aware navigation: show workspace navigation only when signed in. | Implemented | Early auth/navigation work. |
-| UX-004 | Installed PWA should route an already authenticated user directly into the app instead of showing a false login/public landing state. | Next | Real iPhone/PWA feedback, July 2026. |
-| UX-005 | An authenticated user opening `/login` should be redirected into the app. | Next | PWA auth-startup feedback. |
-| UX-006 | Protected pages must still reject truly unauthenticated users. | Planned | Auth constraint. |
-| UX-007 | Avoid visible auth-state flashes between public and signed-in UI. | Planned | PWA startup redesign. |
+| UX-004 | Installed PWA should route an already authenticated user directly into the app instead of showing a false login/public landing state. | Implemented | STAB-02, July 2026; `/` now checks persisted Supabase session and replaces to Dashboard. |
+| UX-005 | An authenticated user opening `/login` should be redirected into the app. | Implemented | STAB-02, July 2026; `/login` checks persisted session before rendering the form. |
+| UX-006 | Protected pages must still reject truly unauthenticated users. | Implemented | `ProfileGate` remains the protected-route authorization/profile gate after STAB-02 entry routing. |
+| UX-007 | Avoid visible auth-state flashes between public and signed-in UI. | Implemented | STAB-02 neutral startup state blocks public/login content until initial session resolution. |
 | UX-008 | One coherent persistent global menu across signed-in pages. | Implemented | Issue #133 / PR #134. |
 | UX-009 | Keep Dashboard and Performance as the most direct high-level navigation concepts; use Menu for the rest. | Implemented | Issue #133 / PR #134, later dashboard cleanup. |
 | UX-010 | Dashboard should be the main workflow chooser rather than an overloaded top header. | Implemented | June 2026 navigation decisions. |
@@ -687,10 +687,11 @@ The only material that cannot be guaranteed here is content that is no longer ac
 | PWA-005 | Native Android install prompt when browser supports it. | Implemented | PR #219. |
 | PWA-006 | Clear iPhone Safari Add-to-Home-Screen instructions including `Open as Web App`. | Implemented | PR #219. |
 | PWA-007 | Dismissing promotional install hint must not remove explicit Install action. | Implemented | PR #219. |
-| PWA-008 | Current generated CP/LAB icon is temporary. | Stabilizing | User feedback. |
+| PWA-008 | Current generated CP/LAB icon is temporary. | Stabilizing | User feedback; not changed by STAB-02. |
 | PWA-009 | Final app icon should use actual CPL gold monogram/clay logo without long text. | Planned | User logo decision. |
 | PWA-010 | Account for iOS/PWA icon caching and home-screen reinstall/update behavior. | Planned | Icon implementation note. |
 | PWA-011 | Native App Store wrapper should be considered only if PWA constraints create a real product need. | Later | Product roadmap. |
+| PWA-012 | Auth-aware installed-app startup from `/` and `/login` without public/login flicker for persisted sessions. | Implemented | STAB-02, July 2026; manifest `start_url` remains `/` because root is now auth-aware. |
 
 ---
 

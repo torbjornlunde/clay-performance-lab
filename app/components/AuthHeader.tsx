@@ -179,7 +179,7 @@ export default function AuthHeader() {
   async function logout() {
     closeMenu();
     await supabase.auth.signOut();
-    router.push("/login");
+    router.replace("/login");
   }
 
   return (

@@ -113,7 +113,7 @@ Disse beslutningene skal ikke åpnes på nytt uten en tydelig ny begrunnelse.
 - Android native install prompt der nettleseren tilbyr det.
 - iPhone/iPad-veiledning for Safari → Share → Add to Home Screen → Open as Web App → Add.
 
-**Ikke ferdig:** korrekt oppstarts-/auth-routing, ekte tilbakeflyt, swipe-back og endelig merkevareikon.
+**Delvis stabilisert:** korrekt auth-aware oppstarts-/login-routing er implementert for `/` og `/login`, mens ekte tilbakeflyt, swipe-back, bredere offlinefunksjonalitet og endelig merkevareikon fortsatt ikke er ferdig.
 
 ### 4.3 Konkurranse og resultater
 
@@ -217,13 +217,22 @@ Dette er høyeste prioritet før større nye funksjoner.
 
 **Mål:** Ingen falsk login-opplevelse.
 
-**Krav:**
+**Status 19. juli 2026:** Implementert som en fokusert stabiliseringsretting. `/` og `/login` bruker en delt persisted-session entry-sjekk, viser en nøytral oppstartstilstand mens session avklares, og bruker `router.replace("/dashboard")` når en session finnes. Manifestets `start_url` står fortsatt på `/`, fordi roten nå er auth-aware. `ProfileGate` er fortsatt ansvarlig for beta-, profil- og onboarding-gating på beskyttede sider.
 
-- Gyldig innlogget session → åpne Dashboard/app direkte.
-- Ikke innlogget → login/offentlig inngang.
+**Implementert:**
+
+- Gyldig innlogget session → åpne Dashboard/app-flow direkte fra `/`.
+- Ikke innlogget → offentlig inngang eller login som før.
 - Innlogget bruker som åpner `/login` → redirect til Dashboard.
-- Beskyttede sider må fortsatt avvise faktisk utloggede brukere.
-- Auth state må ikke blinke mellom offentlig og innlogget UI mer enn nødvendig.
+- Automatisk entry-routing bruker replace-semantikk, ikke push.
+- Offentlig forside/loginform rendres ikke før initial session-status er avklart.
+- Beskyttede sider må fortsatt avvise faktisk utloggede brukere gjennom `ProfileGate`.
+
+**Fortsatt separat:**
+
+- Ekte mobil tilbake-/swipe-atferd.
+- Endelig CPL-appikon.
+- Bredere offlinefunksjonalitet utover eksisterende smale fallback.
 
 ### STAB-03: Mobil appnavigasjon
 
@@ -256,7 +265,7 @@ Gjennomfør STAB-01 før mer avansert scorecard-AI bygges.
 
 ### Prioritet 2 – PWA auth/startup
 
-Gjennomfør STAB-02 som en liten, isolert auth-/routing-retting.
+STAB-02 auth-aware `/` og `/login`-routing er implementert. Videre PWA-stabilisering fortsetter med separat tilbake-/swipe-atferd, endelig ikon og bredere offlinearbeid.
 
 ### Prioritet 3 – Varslingsfundament
 
@@ -622,7 +631,7 @@ Detaljer: [ROADMAP_MENTAL_PERFORMANCE.md](./ROADMAP_MENTAL_PERFORMANCE.md).
 
 **Planlagt / under stabilisering:**
 
-- APP-01: riktig auth-aware start route.
+- APP-01: riktig auth-aware start route. **Implementert for `/` og `/login`; videre PWA-stabilisering fortsetter separat.**
 - APP-02: tilbakeknapp.
 - APP-03: edge swipe-back.
 - APP-04: ekte CPL-logo som ikon.
@@ -803,7 +812,7 @@ Særlig disse nylige idéene er nå eksplisitt sikret i masterroadmapen:
 - scorecard review med fri manuell korrigering
 - originalbildet tilgjengelig under review
 - kompakt poststruktur med default + exceptions
-- auth-aware PWA startup
+- auth-aware PWA startup for `/` and `/login`
 - admin pushvarsler for beta requests og feedback
 - in-app notification center
 - nyttige brukerpushvarsler senere
