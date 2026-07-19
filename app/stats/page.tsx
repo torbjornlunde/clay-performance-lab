@@ -813,7 +813,7 @@ export default function StatsPage() {
                 <div className="summaryStat"><span>Confidence</span><strong>{performanceSummary.confidence}</strong></div>
               </div>
             )}
-            <p className="small muted summarySupportText">Based on {performanceSummary.count} result{performanceSummary.count === 1 ? "" : "s"}. All view separates incompatible Competition and Training percentages.</p>
+            <p className="small muted summarySupportText">Based on {performanceSummary.count} result{performanceSummary.count === 1 ? "" : "s"}. Confidence reflects sample size.{selectedType === "all" ? " All view separates incompatible Competition and Training percentages." : ""}</p>
             {selectedType !== "training" && winnerContext.averageGap !== null && (
               <p className="winnerContextLine"><strong>Competition winner gap</strong> Average {formatGap(winnerContext.averageGap)} · Best {formatGap(winnerContext.bestGap)} · Latest {formatGap(winnerContext.latestGap)}</p>
             )}
@@ -894,8 +894,8 @@ export default function StatsPage() {
               {disciplineBreakdown.map((item) => (
                 <div className="disciplineBreakdownItem" key={item.discipline}>
                   <strong>{item.discipline}</strong>
-                  <p className="small muted">Competition: {item.competitionCount} result{item.competitionCount === 1 ? "" : "s"}{item.competitionAverage !== null ? ` · Avg ${item.competitionAverage.toFixed(1)}% · Recent ${formatMetricPercentage(item.competitionRecent)} · Best ${formatMetricPercentage(item.competitionBest)}` : ""}{item.averageWinnerGap !== null ? ` · Avg gap ${formatGap(item.averageWinnerGap)}` : ""}</p>
-                  <p className="small muted">Training: {item.trainingCount} log{item.trainingCount === 1 ? "" : "s"}{item.trainingHitAverage !== null ? ` · Hit average ${formatMetricPercentage(item.trainingHitAverage)}` : " · no hit percentage yet"}</p>
+                  {selectedType !== "training" && item.competitionCount > 0 && <p className="small muted">Competition: {item.competitionCount} result{item.competitionCount === 1 ? "" : "s"}{item.competitionAverage !== null ? ` · Avg ${item.competitionAverage.toFixed(1)}% · Recent ${formatMetricPercentage(item.competitionRecent)} · Best ${formatMetricPercentage(item.competitionBest)}` : ""}{item.averageWinnerGap !== null ? ` · Avg gap ${formatGap(item.averageWinnerGap)}` : ""}</p>}
+                  {selectedType !== "competition" && item.trainingCount > 0 && <p className="small muted">Training: {item.trainingCount} log{item.trainingCount === 1 ? "" : "s"}{item.trainingHitAverage !== null ? ` · Hit average ${formatMetricPercentage(item.trainingHitAverage)}` : " · no hit percentage yet"}</p>}
                 </div>
               ))}
             </div>
@@ -924,8 +924,8 @@ export default function StatsPage() {
               {dataCoverage.competitionsWithWinnerScore !== null && <p><strong>Competitions with winner score in this view:</strong> {formatMetricNumber(dataCoverage.competitionsWithWinnerScore)}</p>}
               {dataCoverage.resultsWithShootingGround !== null && <p><strong>Competition results with shooting ground in this view:</strong> {formatMetricNumber(dataCoverage.resultsWithShootingGround)}</p>}
               {dataCoverage.trainingResultsWithHits !== null && <p><strong>Training logs with hit percentage in this view:</strong> {formatMetricNumber(dataCoverage.trainingResultsWithHits)}</p>}
-              {dataCoverage.trainingSessionsWithKnownVolume !== null && <p><strong>Training sessions with known target volume for this discipline:</strong> {formatMetricNumber(dataCoverage.trainingSessionsWithKnownVolume)}</p>}
-              {dataCoverage.trainingLogsWithKnownHits !== null && <p><strong>Training logs with known hits for this discipline:</strong> {formatMetricNumber(dataCoverage.trainingLogsWithKnownHits)}</p>}
+              {dataCoverage.trainingSessionsWithKnownVolume !== null && <p><strong>{selectedDiscipline ? "All-time Training sessions with known target volume for this discipline" : "All-time Training sessions with known target volume"}:</strong> {formatMetricNumber(dataCoverage.trainingSessionsWithKnownVolume)}</p>}
+              {dataCoverage.trainingLogsWithKnownHits !== null && <p><strong>{selectedDiscipline ? "All-time Training logs with known hits for this discipline" : "All-time Training logs with known hits"}:</strong> {formatMetricNumber(dataCoverage.trainingLogsWithKnownHits)}</p>}
             </div>
           </details>
         </section>

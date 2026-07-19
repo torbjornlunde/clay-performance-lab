@@ -23,12 +23,18 @@ assert.match(source, /Competition and Training are kept separate/, 'All view exp
 assert.match(source, /recentFormSplit/, 'Recent form is split into compact semantic groups');
 assert.match(source, /selectedType === "all" && competitionOnlyResults\.length > 0 && trainingOnlyResults\.length > 0/, 'All recent form separates Competition and Training');
 assert.match(source, /calculateDisciplineBreakdown\(filteredPerformanceResults\)/, 'Discipline breakdown derives from currently filtered Performance data');
+assert.match(source, /selectedType !== "training" && item\.competitionCount > 0/, 'Competition-only discipline breakdown omits Training statistics rows');
+assert.match(source, /selectedType !== "competition" && item\.trainingCount > 0/, 'Training-only discipline breakdown omits Competition statistics rows');
+assert.match(source, /selectedType !== "training"[\s\S]*selectedType !== "competition"/, 'All mode may show both Competition and Training discipline rows when both have data');
 assert.match(source, /<summary>By discipline<\/summary>/, 'Discipline breakdown is collapsed by default');
 assert.match(source, /<summary>Data coverage<\/summary>/, 'Data coverage deep dive is collapsed by default');
 assert.equal(source.includes('rowsForSummary = known.length >= 2 || known.length >= unknown.length ? known : scored'), false, 'Unknown shooting grounds cannot contaminate named-ground summaries');
 assert.match(source, /volumeScoreSheetsResult\.data \|\| \[\]\)\.map\(scoreSheetToVolumeLog\)/, 'Training Score Sheet target volume contributes to Training volume');
 assert.match(source, /trainingResultsWithHits: selectedType === "competition" \? null/, 'Data coverage hides Training-specific coverage in Competition-only view');
 assert.match(source, /scoredCompetitionResults: selectedType === "training" \? null/, 'Data coverage hides Competition-specific coverage in Training-only view');
+assert.match(source, /All-time Training sessions with known target volume/, 'Data coverage clearly labels broader all-time Training volume scope');
+assert.match(source, /selectedDiscipline \? "All-time Training sessions with known target volume for this discipline" : "All-time Training sessions with known target volume"/, 'Training volume coverage only says for this discipline when a discipline is selected');
+assert.match(source, /selectedType === "all" \? " All view separates incompatible Competition and Training percentages\." : ""/, 'All-view explanatory copy appears only in All mode');
 assert.equal(source.includes('groundSessionList">\n            {selectedGround.sessions.map'), false, 'Ground drilldown does not restore unlimited inline history');
 
 console.log('stats page presentation tests passed');
