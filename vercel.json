@@ -1,8 +1,13 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
       "path": "/api/leirdue/refresh-recent",
       "schedule": "17 3 * * *"
+    },
+    {
+      "path": "/api/notifications/process-push-queue",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
