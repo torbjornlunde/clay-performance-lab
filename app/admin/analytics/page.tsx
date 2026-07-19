@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { recordAnalyticsEvent } from "@/lib/analytics";
+import { AppBackButton } from "@/app/components/navigation/AppBackButton";
 
 type CountItem = { name: string; count: number };
 type DayItem = { date: string; count: number };
@@ -36,6 +37,7 @@ export default function AdminAnalyticsPage() {
 
   return <main className="container adminAnalyticsPage">
     <section className="card">
+      <AppBackButton fallback="/beta/admin" />
       <p className="eyebrow">Admin</p>
       <h1>Product usage analytics</h1>
       <p className="muted">Privacy-limited first-party beta insight. This dashboard shows aggregates only, not raw event dumps.</p>

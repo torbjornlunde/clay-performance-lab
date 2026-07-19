@@ -15,6 +15,7 @@ import {
   shortMissedTarget,
 } from "@/lib/misses/labels";
 import { supabase } from "@/lib/supabase/client";
+import { AppBackButton } from "@/app/components/navigation/AppBackButton";
 
 export default function AnalysisPage() {
   const params = useParams<{ id: string }>();
@@ -131,6 +132,7 @@ export default function AnalysisPage() {
   return (
     <main>
       <div className="card">
+        <AppBackButton fallback={`/sessions/${params.id}`} />
         <h2>Analysis</h2>
         <p className="small muted">{session.name}</p>
         {hasReviewedPostScorecard ? (

@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { AppBackButton } from "@/app/components/navigation/AppBackButton";
 import { applyUserCorrection, summarizeGrid, type NormalizedScorecardAnalysis, type ScorecardCell, type ScorecardOutcome } from "@/lib/scorecards/scorecardAnalysis";
 
 async function fingerprint(file: File) {
@@ -85,6 +86,7 @@ export default function ImportScorecardPage() {
 
   return <main>
     <div className="card">
+      <AppBackButton fallback="/results" />
       <p className="eyebrow">Import scorecard</p>
       <h2>Import scorecard photo</h2>
       <p className="muted">Start with minimal Training metadata, upload a paper scorecard, review the detected structure and targets, then confirm before saving.</p>
