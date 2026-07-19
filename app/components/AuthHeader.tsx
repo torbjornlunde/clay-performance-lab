@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { canManageBetaAccess, type UserAccessProfile } from "@/lib/access";
 import { betaFeedbackHref } from "@/lib/betaFeedback";
+import { loadMyUnreadNotificationCount } from "@/lib/notifications/client";
 import { supabase } from "@/lib/supabase/client";
 import { exportMyDataForCurrentUser } from "@/lib/export/exportMyDataClient";
 import { openOnboardingHelp } from "@/app/components/OnboardingHelp";
@@ -60,10 +61,16 @@ export default function AuthHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const { installAvailable, openInstallExperience } = usePwaInstallPrompt();
 
   useEffect(() => {
     let active = true;
+    async function refreshUnreadNotifications() {
+      const { count, error } = await loadMyUnreadNotificationCount();
+      if (active && !error) setUnreadNotifications(count);
+    }
+
     async function refreshAuthHeader() {
       const { data } = await supabase.auth.getUser();
       if (!active) return;
@@ -77,14 +84,21 @@ export default function AuthHeader() {
           .maybeSingle<Pick<UserAccessProfile, "access_status" | "system_role">>();
         if (!active) return;
         setShowBetaAdmin(canManageBetaAccess(accessProfile));
+        await refreshUnreadNotifications();
       } else {
         setShowBetaAdmin(false);
+        setUnreadNotifications(0);
       }
       setFeedbackHref(betaFeedbackHref("General beta", typeof window === "undefined" ? pathname : `${window.location.pathname}${window.location.search}`));
       setReady(true);
     }
 
     refreshAuthHeader();
+    function handleForegroundRefresh() {
+      if (document.visibilityState === "visible") void refreshUnreadNotifications();
+    }
+    document.addEventListener("visibilitychange", handleForegroundRefresh);
+
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthenticated(Boolean(session?.user));
       if (!session?.user) setShowBetaAdmin(false);
@@ -92,6 +106,7 @@ export default function AuthHeader() {
     });
     return () => {
       active = false;
+      document.removeEventListener("visibilitychange", handleForegroundRefresh);
       listener.subscription.unsubscribe();
     };
   }, [pathname]);
@@ -196,6 +211,10 @@ export default function AuthHeader() {
           <nav className="topNav" aria-label="Primary navigation">
             <Link className="desktopNavItem" href="/dashboard">Dashboard</Link>
             <Link className="desktopNavItem" href="/stats">Performance</Link>
+            <Link className="notificationBell" href="/notifications" aria-label={unreadNotifications > 0 ? `${unreadNotifications > 9 ? "9+" : unreadNotifications} unread notifications` : "Notifications"}>
+              <span aria-hidden="true">🔔</span>
+              {unreadNotifications > 0 ? <span className="notificationBadge">{unreadNotifications > 9 ? "9+" : unreadNotifications}</span> : null}
+            </Link>
             <div className="globalMenuWrap" ref={menuWrapRef}>
               <button
                 type="button"
