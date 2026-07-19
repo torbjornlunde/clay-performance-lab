@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { loadMyNotifications, loadMyUnreadNotificationCount, markAllMyNotificationsRead, markMyNotificationRead, notifyNotificationsChanged, safeNotificationHref, type UserNotification } from "@/lib/notifications/client";
 import { supabase } from "@/lib/supabase/client";
+import WebPushControls from "@/app/components/WebPushControls";
 
 function compactTime(value: string) {
   const date = new Date(value);
@@ -95,6 +96,8 @@ export default function NotificationsPage() {
           <Link className="button secondary" href="/dashboard">Dashboard</Link>
         </div>
       </section>
+
+      <WebPushControls />
 
       {loading ? <div className="card">Loading notifications...</div> : null}
       {error ? <div className="error" role="alert">{error}</div> : null}

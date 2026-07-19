@@ -10001,3 +10001,8 @@ select {
   .notificationRow { padding: 12px; gap: 8px; }
   .notificationTime { font-size: .8rem; }
 }
+
+.webPushControls { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.webPushControls h3 { margin: 0 0 4px; }
+.webPushControls p { margin: 0; color: var(--text-secondary); }
+@media (max-width: 560px) { .webPushControls { align-items: stretch; flex-direction: column; } .webPushControls button { width: 100%; min-height: 44px; font-size: 1rem; } }

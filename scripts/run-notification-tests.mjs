@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const migration = readFileSync("supabase/migrations/20260719120000_user_notifications.sql", "utf8");
+const pushMigration = readFileSync("supabase/migrations/20260719143000_web_push_subscriptions.sql", "utf8");
 assert.match(migration, /create table if not exists public\.user_notifications/, "notification table exists");
 assert.match(migration, /references auth\.users\(id\) on delete cascade/, "notifications are user-owned and cascade with auth user");
 assert.match(migration, /unique index[^;]+user_notifications_user_dedupe_key_unique_idx[\s\S]+where dedupe_key is not null;/, "dedupe is user + non-null dedupe key only");
@@ -62,7 +63,55 @@ assert.match(client, /NOTIFICATIONS_CHANGED_EVENT = "cpl:notifications-changed"/
 assert.match(client, /dispatchEvent\(new Event\(NOTIFICATIONS_CHANGED_EVENT\)\)/, "shared helper dispatches notification refresh event");
 assert.match(client, /href\.startsWith\("\/"\).*href\.startsWith\("\/\/"\)/s, "href helper accepts only internal app paths");
 
-const sw = readFileSync("app/components/ServiceWorkerRegistration.tsx", "utf8");
-assert.doesNotMatch(header + page + client + sw, /Notification\.requestPermission|PushManager|pushManager|serviceWorker\.ready/, "no push permission or Web Push subscription was added");
+const swRegistration = readFileSync("app/components/ServiceWorkerRegistration.tsx", "utf8");
+const sw = readFileSync("public/sw.js", "utf8");
+const pushControls = readFileSync("app/components/WebPushControls.tsx", "utf8");
+const pushRoute = readFileSync("app/api/notifications/process-push-queue/route.ts", "utf8");
+const serverPush = readFileSync("lib/notifications/serverPush.ts", "utf8");
+const betaInterestRoute = readFileSync("app/api/beta-interest/route.ts", "utf8");
+const feedbackPage = readFileSync("app/feedback/page.tsx", "utf8");
+const packageJson = readFileSync("package.json", "utf8");
+const vercelConfig = JSON.parse(readFileSync("vercel.json", "utf8"));
+
+assert.match(pushMigration, /create table if not exists public\.web_push_subscriptions/, "push subscription table exists");
+assert.match(pushMigration, /references auth\.users\(id\) on delete cascade/, "push subscriptions are user-owned");
+assert.match(pushMigration, /unique index[^;]+web_push_subscriptions_endpoint_unique_idx[\s\S]+endpoint\);/, "push subscriptions dedupe by endpoint");
+assert.match(pushMigration, /for select to authenticated using \(auth\.uid\(\) = user_id\)/, "users can select only own push subscriptions");
+assert.match(pushMigration, /for delete to authenticated using \(auth\.uid\(\) = user_id\)/, "users can delete only own push subscriptions");
+assert.match(pushMigration, /upsert_my_web_push_subscription[\s\S]+on conflict \(endpoint\) do update[\s\S]+where public\.web_push_subscriptions\.user_id = auth\.uid\(\)/, "push subscription upsert cannot transfer endpoint ownership");
+assert.doesNotMatch(pushMigration, /on conflict \(endpoint\) do update[\s\S]+set user_id = auth\.uid\(\)/, "push subscription conflict does not reassign user_id");
+assert.match(pushMigration, /delete_my_web_push_subscription[\s\S]+where user_id = auth\.uid\(\) and endpoint = subscription_endpoint/, "push subscription removal is scoped to owner");
+assert.match(pushControls, /Notification\.requestPermission\(\)/, "push permission is requested only from explicit UI action");
+assert.match(pushControls, /Notification\.permission === "denied"/, "denied permission is treated as blocked without repeat prompt");
+assert.match(sw, /self\.addEventListener\("push"/, "service worker handles push events");
+assert.match(sw, /self\.addEventListener\("notificationclick"/, "service worker handles notification clicks");
+assert.match(sw, /safeNotificationHref/, "service worker validates notification hrefs");
+assert.match(packageJson, /"web-push": "\^3\.6\.7"/, "standards-compliant maintained Web Push package is declared");
+assert.match(serverPush, /require\("web-push"\)/, "server push uses a traceable maintained web-push runtime dependency");
+assert.doesNotMatch(serverPush, /createSign|X-CPL-Notification|Authorization: `vapid/, "server push does not hand-roll VAPID or send payload in custom headers");
+assert.match(serverPush, /webPush\.sendNotification[\s\S]+JSON\.stringify\(payload\)/, "encrypted Web Push payload is sent through web-push request body");
+assert.match(serverPush, /from\("web_push_delivery_jobs"\)[\s\S]+notification:user_notifications/, "push delivery is tied to queued in-app notifications");
+assert.match(serverPush, /\.in\("status", \["pending", "failed"\]\)[\s\S]+\.select\("id"\)/, "queue jobs are atomically claimed before delivery");
+assert.match(serverPush, /eq\("status", "processing"\)[\s\S]+staleProcessingCutoff/, "stale processing jobs are recovered for retry");
+assert.match(pushMigration, /web_push_delivery_jobs_notification_unique_idx[\s\S]+notification_id/, "push jobs dedupe by notification id");
+assert.match(pushMigration, /after insert on public\.user_notifications/, "push jobs are created from in-app notification inserts");
+assert.match(serverPush, /statusCode === 404 \|\| statusCode === 410/, "permanently invalid subscriptions are removed");
+assert.match(pushRoute, /process\.env\.CRON_SECRET[\s\S]+process\.env\.PUSH_DELIVERY_TOKEN/, "cron and manual trusted delivery use server-only bearer secrets");
+assert.match(pushRoute, /supabase\.auth\.getUser\(jwt\)/, "authenticated queue kicks validate the user JWT on the server");
+assert.match(pushRoute, /export async function GET\(request: Request\)/, "push queue exposes the GET handler required by Vercel Cron");
+assert.match(pushRoute, /export async function POST\(request: Request\)/, "push queue exposes an authenticated POST kick for immediate delivery");
+assert.doesNotMatch(pushRoute, /request\.json\(/, "queue endpoint accepts no client-controlled push payload");
+assert.doesNotMatch(betaInterestRoute + feedbackPage + pushRoute + serverPush, /push-admin-event/, "removed arbitrary event-based push endpoint is not referenced");
+assert.match(betaInterestRoute, /await processPendingPushJobs\(10\)\.catch\(\(\) => undefined\)/, "beta access requests immediately attempt server-side queue delivery");
+assert.match(feedbackPage, /fetch\("\/api\/notifications\/process-push-queue"[\s\S]+authorization: `Bearer \$\{token\}`/, "beta feedback immediately requests an authenticated queue drain");
+assert.doesNotMatch(header + page + client + swRegistration, /Notification\.requestPermission/, "no automatic push permission prompt occurs in shell or notification loading");
+assert.ok(
+  vercelConfig.crons.some((cron) => cron.path === "/api/leirdue/refresh-recent"),
+  "existing Leirdue cron remains registered",
+);
+assert.ok(
+  vercelConfig.crons.some((cron) => cron.path === "/api/notifications/process-push-queue" && cron.schedule === "41 4 * * *"),
+  "Hobby-compatible daily fallback scheduler invokes the push queue",
+);
 
 console.log("Notification foundation regression tests passed.");

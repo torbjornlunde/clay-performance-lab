@@ -48,3 +48,41 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
   }
 });
+
+
+function safeNotificationHref(href) {
+  if (!href || typeof href !== "string" || !href.startsWith("/") || href.startsWith("//")) return "/notifications";
+  try {
+    const url = new URL(href, self.location.origin);
+    if (url.origin !== self.location.origin) return "/notifications";
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/notifications";
+  }
+}
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch { payload = {}; }
+  const title = typeof payload.title === "string" && payload.title.trim() ? payload.title : "Clay Performance Lab";
+  const body = typeof payload.body === "string" ? payload.body : undefined;
+  const href = safeNotificationHref(payload.href);
+  event.waitUntil(self.registration.showNotification(title, { body, data: { href }, icon: "/pwa-icons/192", badge: "/pwa-icons/192" }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const href = safeNotificationHref(event.notification && event.notification.data && event.notification.data.href);
+  event.waitUntil((async () => {
+    const windowClients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of windowClients) {
+      const url = new URL(client.url);
+      if (url.origin === self.location.origin && "focus" in client) {
+        await client.focus();
+        if ("navigate" in client) return client.navigate(href);
+        return;
+      }
+    }
+    return self.clients.openWindow(href);
+  })());
+});

@@ -54,3 +54,17 @@ export async function markMyNotificationRead(notificationId: string) {
 export async function markAllMyNotificationsRead() {
   return supabase.rpc("mark_all_my_notifications_read");
 }
+
+
+export async function upsertMyWebPushSubscription(input: { endpoint: string; keys: { p256dh: string; auth: string } }, userAgent?: string) {
+  return supabase.rpc("upsert_my_web_push_subscription", {
+    subscription_endpoint: input.endpoint,
+    subscription_p256dh: input.keys.p256dh,
+    subscription_auth: input.keys.auth,
+    subscription_user_agent: userAgent ?? null,
+  });
+}
+
+export async function deleteMyWebPushSubscription(endpoint: string) {
+  return supabase.rpc("delete_my_web_push_subscription", { subscription_endpoint: endpoint });
+}

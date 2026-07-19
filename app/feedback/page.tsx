@@ -147,6 +147,21 @@ export default function FeedbackPage() {
       return;
     }
 
+    // Start a best-effort queue drain in parallel with attachment handling.
+    // The client cannot choose a push payload or recipient; the server drains only
+    // deduplicated notification jobs already created by database triggers.
+    const pushAttempt = supabase.auth
+      .getSession()
+      .then(async ({ data }) => {
+        const token = data.session?.access_token;
+        if (!token) return;
+        await fetch("/api/notifications/process-push-queue", {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}` },
+        });
+      })
+      .catch(() => undefined);
+
     let attachmentWarning = "";
     for (const file of attachments) {
       const storagePath = `${userId}/${feedbackRow.id}/${crypto.randomUUID()}-${safeStorageFilename(file.name)}`;
@@ -175,6 +190,7 @@ export default function FeedbackPage() {
       }
     }
 
+    await pushAttempt;
     setSaving(false);
     setMessage("");
     if (attachmentWarning) {
