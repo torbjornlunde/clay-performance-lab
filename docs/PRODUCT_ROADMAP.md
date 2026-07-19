@@ -265,20 +265,25 @@ Gjennomfør STAB-01 før mer avansert scorecard-AI bygges.
 
 ### Prioritet 2 – PWA auth/startup
 
-STAB-02 auth-aware `/` og `/login`-routing er implementert. Videre PWA-stabilisering fortsetter med separat tilbake-/swipe-atferd, endelig ikon og bredere offlinearbeid.
+STAB-02 auth-aware `/` og `/login`-routing er implementert og manuelt testet OK i installert PWA. Videre PWA-stabilisering fortsetter separat med tilbake-/swipe-atferd og endelig CPL-ikon. Offline core ligger etter nåværende notification-/mobilstabilisering med mindre ekte bruk avdekker en mer kritisk feil.
 
 ### Prioritet 3 – Varslingsfundament
 
-Start med adminnytte og en generell arkitektur som også kan brukes av vanlige brukere senere.
+Aktiv workstream: start med adminnytte og en generell in-app arkitektur som også kan brukes av vanlige brukere senere. Issue #229 implementerer kun in-app notification foundation. Web Push er umiddelbar oppfølger og skal ikke blandes inn i foundation-PRen.
 
 **Første nyttige versjon:**
 
 - In-app notification center / bjelle.
 - Ulest-status.
+- In-app adminvarsel ved ny beta access request.
+- In-app adminvarsel ved ny beta feedback.
+- Trykk på varsel åpner riktig adminside.
+
+**Umiddelbar notification-oppfølger:**
+
 - Push subscription per enhet.
 - Pushvarsel til admin ved ny beta access request.
 - Pushvarsel til admin ved ny beta feedback.
-- Trykk på varsel åpner riktig adminside.
 - App-badge der plattformen støtter det.
 - Tydelig brukeropt-in for push.
 

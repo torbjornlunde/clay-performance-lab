@@ -39,7 +39,8 @@
     "test:pwa": "node scripts/run-pwa-tests.mjs",
     "test:stats-page": "node scripts/run-stats-page-presentation-tests.mjs",
     "test:equipment-last-serviced": "node scripts/run-equipment-last-serviced-tests.mjs",
-    "test:auth-entry": "node scripts/run-auth-entry-tests.mjs"
+    "test:auth-entry": "node scripts/run-auth-entry-tests.mjs",
+    "test:notifications": "node scripts/run-notification-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",

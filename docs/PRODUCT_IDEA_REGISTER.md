@@ -659,12 +659,12 @@ The only material that cannot be guaranteed here is content that is no longer ac
 
 | ID | Idea / decision | Status | Historical source / note |
 |---|---|---|---|
-| NOTIF-001 | In-app notification center / bell. | Planned | July 2026 discussion. |
-| NOTIF-002 | Unread notification state/count. | Planned | July 2026 discussion. |
+| NOTIF-001 | In-app notification center / bell. | Implemented | Issue #229 in-app foundation; no Web Push yet. |
+| NOTIF-002 | Unread notification state/count. | Implemented | Issue #229 in-app foundation; refreshes on auth/navigation/foreground/open/read actions. |
 | NOTIF-003 | Web Push subscription per device for installed PWA/browser. | Planned | July 2026 discussion. |
-| NOTIF-004 | Admin push when a new beta access request arrives. | Planned | July 2026 discussion. |
-| NOTIF-005 | Admin push when new beta feedback arrives. | Planned | July 2026 discussion. |
-| NOTIF-006 | Tapping a notification should deep-link to the relevant admin/app screen. | Planned | July 2026 discussion. |
+| NOTIF-004 | Admin notification when a new beta access request arrives. | Partly implemented | Issue #229 adds in-app admin notification; Web Push remains next. |
+| NOTIF-005 | Admin notification when new beta feedback arrives. | Partly implemented | Issue #229 adds in-app admin notification; Web Push remains next. |
+| NOTIF-006 | Tapping a notification should deep-link to the relevant admin/app screen. | Implemented | Issue #229 supports safe internal in-app links; OS notification clicks remain for Web Push PR. |
 | NOTIF-007 | App badge on supported platforms. | Planned | July 2026 discussion. |
 | NOTIF-008 | Notify user when added to shared Training Score Sheet. | Planned | Shared training. |
 | NOTIF-009 | Notify user when a result is ready to claim/review. | Planned | Shared training. |
