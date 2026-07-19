@@ -1,7 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { EntryStartup } from "@/app/components/auth/EntryStartup";
+import { useEntrySession } from "@/app/components/auth/useEntrySession";
 import { supabase } from "@/lib/supabase/client";
 
 const LOGIN_HELP_MESSAGE =
@@ -21,6 +23,11 @@ export default function LoginPage() {
   const [msg, setMsg] = useState("");
   const [messageKind, setMessageKind] = useState<MessageKind>("info");
   const [submitting, setSubmitting] = useState(false);
+  const entrySession = useEntrySession();
+
+  useEffect(() => {
+    if (entrySession === "authenticated") router.replace("/dashboard");
+  }, [entrySession, router]);
 
   function setModeAndClear(nextMode: LoginMode) {
     setMode(nextMode);
@@ -108,8 +115,10 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/dashboard");
+    router.replace("/dashboard");
   }
+
+  if (entrySession !== "unauthenticated") return <EntryStartup />;
 
   const isSignIn = mode === "signIn";
   const isSignUp = mode === "signUp";

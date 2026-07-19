@@ -9921,3 +9921,15 @@ select {
     grid-template-columns: 1fr;
   }
 }
+
+.entryStartup {
+  min-height: min(42vh, 360px);
+  display: grid;
+  place-content: center;
+  gap: 0.35rem;
+  text-align: center;
+}
+
+.entryStartup p {
+  margin: 0;
+}
