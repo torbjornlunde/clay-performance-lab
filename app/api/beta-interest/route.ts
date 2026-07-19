@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { processPendingPushJobs } from "@/lib/notifications/serverPush";
 
 const DISCIPLINES = ["Sporting", "Compak Sporting", "FITASC Sporting", "Skeet", "Trap", "Other"] as const;
 type Discipline = (typeof DISCIPLINES)[number];
@@ -70,6 +71,10 @@ export async function POST(request: Request) {
     if (error) {
       return NextResponse.json({ error: "We could not save your interest right now. Please try again." }, { status: 500 });
     }
+
+    // Best-effort immediate delivery. The database-created queue remains the source of truth,
+    // and the scheduled fallback can retry later if push delivery is unavailable now.
+    await processPendingPushJobs(10).catch(() => undefined);
   } catch {
     return NextResponse.json({ error: "Beta interest storage is not configured yet." }, { status: 500 });
   }
