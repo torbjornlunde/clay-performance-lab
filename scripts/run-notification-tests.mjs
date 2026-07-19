@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const migration = readFileSync("supabase/migrations/20260719120000_user_notifications.sql", "utf8");
+const pushMigration = readFileSync("supabase/migrations/20260719143000_web_push_subscriptions.sql", "utf8");
 assert.match(migration, /create table if not exists public\.user_notifications/, "notification table exists");
 assert.match(migration, /references auth\.users\(id\) on delete cascade/, "notifications are user-owned and cascade with auth user");
 assert.match(migration, /unique index[^;]+user_notifications_user_dedupe_key_unique_idx[\s\S]+where dedupe_key is not null;/, "dedupe is user + non-null dedupe key only");
@@ -62,7 +63,24 @@ assert.match(client, /NOTIFICATIONS_CHANGED_EVENT = "cpl:notifications-changed"/
 assert.match(client, /dispatchEvent\(new Event\(NOTIFICATIONS_CHANGED_EVENT\)\)/, "shared helper dispatches notification refresh event");
 assert.match(client, /href\.startsWith\("\/"\).*href\.startsWith\("\/\/"\)/s, "href helper accepts only internal app paths");
 
-const sw = readFileSync("app/components/ServiceWorkerRegistration.tsx", "utf8");
-assert.doesNotMatch(header + page + client + sw, /Notification\.requestPermission|PushManager|pushManager|serviceWorker\.ready/, "no push permission or Web Push subscription was added");
+const swRegistration = readFileSync("app/components/ServiceWorkerRegistration.tsx", "utf8");
+const sw = readFileSync("public/sw.js", "utf8");
+const pushControls = readFileSync("app/components/WebPushControls.tsx", "utf8");
+const pushRoute = readFileSync("app/api/notifications/push-admin-event/route.ts", "utf8");
+assert.match(pushMigration, /create table if not exists public\.web_push_subscriptions/, "push subscription table exists");
+assert.match(pushMigration, /references auth\.users\(id\) on delete cascade/, "push subscriptions are user-owned");
+assert.match(pushMigration, /unique index[^;]+web_push_subscriptions_endpoint_unique_idx[\s\S]+endpoint\);/, "push subscriptions dedupe by endpoint");
+assert.match(pushMigration, /for select to authenticated using \(auth\.uid\(\) = user_id\)/, "users can select only own push subscriptions");
+assert.match(pushMigration, /for delete to authenticated using \(auth\.uid\(\) = user_id\)/, "users can delete only own push subscriptions");
+assert.match(pushMigration, /upsert_my_web_push_subscription[\s\S]+on conflict \(endpoint\) do update[\s\S]+set user_id = auth\.uid\(\)/, "push subscription upsert dedupes endpoint safely");
+assert.match(pushMigration, /delete_my_web_push_subscription[\s\S]+where user_id = auth\.uid\(\) and endpoint = subscription_endpoint/, "push subscription removal is scoped to owner");
+assert.match(pushControls, /Notification\.requestPermission\(\)/, "push permission is requested only from explicit UI action");
+assert.match(pushControls, /Notification\.permission === "denied"/, "denied permission is treated as blocked without repeat prompt");
+assert.match(sw, /self\.addEventListener\("push"/, "service worker handles push events");
+assert.match(sw, /self\.addEventListener\("notificationclick"/, "service worker handles notification clicks");
+assert.match(sw, /safeNotificationHref/, "service worker validates notification hrefs");
+assert.match(pushRoute, /WEB_PUSH_VAPID_PRIVATE_KEY/, "private VAPID key is server-side only");
+assert.match(pushRoute, /response\.status === 404 \|\| response\.status === 410/, "permanently invalid subscriptions are removed");
+assert.doesNotMatch(header + page + client + swRegistration, /Notification\.requestPermission/, "no automatic push permission prompt occurs in shell or notification loading");
 
 console.log("Notification foundation regression tests passed.");

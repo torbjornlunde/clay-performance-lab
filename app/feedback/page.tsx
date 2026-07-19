@@ -147,6 +147,12 @@ export default function FeedbackPage() {
       return;
     }
 
+    fetch("/api/notifications/push-admin-event", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ eventType: "beta_feedback", eventId: feedbackRow.id }),
+    }).catch(() => undefined);
+
     let attachmentWarning = "";
     for (const file of attachments) {
       const storagePath = `${userId}/${feedbackRow.id}/${crypto.randomUUID()}-${safeStorageFilename(file.name)}`;
