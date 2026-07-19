@@ -864,3 +864,11 @@ The audit explicitly recovered several ideas that were absent or too vague in th
 - local-first private notes and the broader need to consolidate local/offline queues
 
 These entries now remain in this append-only register even if they are later deprioritized.
+
+
+## 19 July 2026 addendum – issue #222 / #224
+
+| ID | Idea / decision | Status | Historical source / note |
+|---|---|---|---|
+| PERF-222 | Restore Performance depth with progressive disclosure after the over-aggressive PR #221 cleanup. Keep a simple overview at the top, then add compact Activity & Form, breakdowns and collapsed deeper data. | Next / in progress | Issue #222. |
+| EQUIP-224 | Add optional weapon `Last serviced` date, editable from Equipment only. Do not put service tracking into quick Competition/Training logging; full service history/reminders remain later. | Next after PERF-222 | Issue #224. |

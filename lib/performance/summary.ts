@@ -90,7 +90,8 @@ export function calculateDataConfidence(count: number): DataConfidenceLabel {
 
 export function calculatePerformanceSummary(allResults: PerformanceResult[], filteredResults: PerformanceResult[], filters: { discipline?: string; period: PerformancePeriod; type: PerformanceDataType; today?: Date }) {
   const count = filteredResults.length;
-  const currentAverage = averageScorePercentage(filteredResults);
+  const mixedAllTypes = filters.type === "all" && new Set(filteredResults.map((result) => result.dataType)).size > 1;
+  const currentAverage = mixedAllTypes ? null : averageScorePercentage(filteredResults);
   const best = filteredResults.reduce<number | null>((bestValue, result) => {
     const value = averageScorePercentage([result]);
     return value === null ? bestValue : bestValue === null ? value : Math.max(bestValue, value);
@@ -99,13 +100,13 @@ export function calculatePerformanceSummary(allResults: PerformanceResult[], fil
     const sorted = filteredResults.slice().sort((a, b) => a.date.localeCompare(b.date));
     if (sorted.length >= 4) {
       const half = Math.floor(sorted.length / 2);
-      const previousAverage = averageScorePercentage(sorted.slice(0, half));
-      const latestAverage = averageScorePercentage(sorted.slice(half));
+        const previousAverage = mixedAllTypes ? null : averageScorePercentage(sorted.slice(0, half));
+      const latestAverage = mixedAllTypes ? null : averageScorePercentage(sorted.slice(half));
       return { recentAverage: latestAverage, best, count, confidence: calculateDataConfidence(count), trend: calculateTrend(latestAverage, previousAverage) };
     }
   }
   const previous = getPreviousPeriodBounds(filters.period, filters.today || new Date());
-  const previousAverage = previous
+  const previousAverage = previous && !mixedAllTypes
     ? averageScorePercentage(allResults.filter((result) => {
       const date = dateOnly(result.date);
       if (filters.type !== "all" && result.dataType !== filters.type) return false;
@@ -120,4 +121,49 @@ export function calculateWinnerContext(results: PerformanceResult[]) {
   const gaps = results.filter((result) => result.dataType === "competition" && typeof result.winningScore === "number" && result.winningScore > 0).map((result) => ({ date: result.date, gap: Math.max(0, (result.winningScore || 0) - result.score) })).sort((a, b) => a.date.localeCompare(b.date));
   if (gaps.length < 2) return { count: gaps.length, averageGap: null, bestGap: null, latestGap: null };
   return { count: gaps.length, averageGap: gaps.reduce((sum, item) => sum + item.gap, 0) / gaps.length, bestGap: Math.min(...gaps.map((item) => item.gap)), latestGap: gaps[gaps.length - 1].gap };
+}
+
+
+export type CompetitionActivitySession = {
+  id: string;
+  session_type: string;
+  date: string;
+  discipline?: string | null;
+  total_targets?: number | null;
+  leirdue_result_url?: string | null;
+};
+
+export type CompetitionActivitySummary = {
+  allTimeCompetitionCount: number;
+  allTimeCompetitionTargetCount: number;
+  selectedYearCompetitionCount: number;
+  selectedYearCompetitionTargetCount: number;
+  hasUnknownAllTimeTargets: boolean;
+  hasUnknownSelectedYearTargets: boolean;
+  years: number[];
+};
+
+function competitionActivityDate(session: CompetitionActivitySession) { return dateOnly(session.date); }
+function competitionActivityDedupKey(session: CompetitionActivitySession) { return session.leirdue_result_url?.trim() || session.id; }
+
+export function calculateCompetitionActivity(sessions: CompetitionActivitySession[], selectedYear: number, discipline?: string | null): CompetitionActivitySummary {
+  const canonical = new Map<string, CompetitionActivitySession>();
+  for (const session of sessions) {
+    if (session.session_type !== "Competition") continue;
+    if (discipline && session.discipline !== discipline) continue;
+    if (!canonical.has(competitionActivityDedupKey(session))) canonical.set(competitionActivityDedupKey(session), session);
+  }
+  const competitions = [...canonical.values()];
+  const years = [...new Set(competitions.map((session) => Number(competitionActivityDate(session).slice(0, 4))).filter(Number.isFinite))].sort((a, b) => b - a);
+  const selectedYearSessions = competitions.filter((session) => Number(competitionActivityDate(session).slice(0, 4)) === selectedYear);
+  const knownTargets = (rows: CompetitionActivitySession[]) => rows.filter((session) => typeof session.total_targets === "number" && Number.isFinite(session.total_targets) && session.total_targets > 0);
+  return {
+    allTimeCompetitionCount: competitions.length,
+    allTimeCompetitionTargetCount: knownTargets(competitions).reduce((sum, session) => sum + (session.total_targets || 0), 0),
+    selectedYearCompetitionCount: selectedYearSessions.length,
+    selectedYearCompetitionTargetCount: knownTargets(selectedYearSessions).reduce((sum, session) => sum + (session.total_targets || 0), 0),
+    hasUnknownAllTimeTargets: competitions.length > knownTargets(competitions).length,
+    hasUnknownSelectedYearTargets: selectedYearSessions.length > knownTargets(selectedYearSessions).length,
+    years,
+  };
 }

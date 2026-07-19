@@ -9802,3 +9802,87 @@ select {
 .structureSummary{position:relative;overflow-wrap:anywhere}.structureEditGrid{grid-template-columns:repeat(auto-fit,minmax(4.75rem,1fr))}.structureEditGrid label{display:grid;gap:.25rem}.structureEditGrid input,.scorecardSetupEditor input{font-size:16px;min-height:44px;max-width:100%}
 .imageLightbox{touch-action:pan-x pan-y pinch-zoom}.imageLightbox img{width:auto;max-width:none;max-height:none;min-width:100%;touch-action:pinch-zoom}
 @media (max-width:430px){.scorecardGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}.scorecardCell{font-size:1rem}.reviewReferenceBar{gap:.5rem}.reviewReferenceBar span{min-width:0;overflow-wrap:anywhere}.scorecardCellChoice{font-size:1rem}}
+
+.splitPerformanceSummary,
+.competitionActivityCompactGrid,
+.disciplineBreakdownList {
+  display: grid;
+  gap: 10px;
+}
+
+.splitPerformanceSummary,
+.competitionActivityCompactGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.competitionActivityCompactGrid > div,
+.disciplineBreakdownItem {
+  background: var(--surface-cell);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.competitionActivityCompactGrid span,
+.competitionActivityCompactGrid small {
+  color: var(--text-muted);
+}
+
+.compactYearSelector {
+  display: grid;
+  gap: 4px;
+  min-width: 112px;
+}
+
+.compactYearSelector span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.compactYearSelector select {
+  font-size: 16px;
+  min-height: 42px;
+}
+
+.statsBreakdownCard details,
+.deeperPerformanceDataCard details {
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: var(--surface-cell);
+  padding: 0;
+  overflow: hidden;
+}
+
+.statsBreakdownCard summary,
+.deeperPerformanceDataCard summary {
+  cursor: pointer;
+  font-weight: 900;
+  min-height: 44px;
+  padding: 12px;
+}
+
+.statsBreakdownCard details > :not(summary),
+.deeperPerformanceDataCard details > :not(summary) {
+  margin-left: 12px;
+  margin-right: 12px;
+}
+
+.deeperPerformanceDataCard {
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 760px) {
+  .splitPerformanceSummary,
+  .competitionActivityCompactGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .compactYearSelector {
+    width: 100%;
+  }
+}

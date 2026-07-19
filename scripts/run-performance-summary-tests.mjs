@@ -42,6 +42,7 @@ const trainingNoiseRows = [
   { id: 'comp-prev', date: '2026-04-10', discipline: 'Leirduesti', dataType: 'competition', score: 90, winningScore: 100 },
   { id: 'train-prev', date: '2026-04-11', discipline: 'Leirduesti', dataType: 'training', score: 10, maxScore: 100 },
   { id: 'comp-now', date: '2026-06-20', discipline: 'Leirduesti', dataType: 'competition', score: 91, winningScore: 100 },
+  { id: 'train-now', date: '2026-06-21', discipline: 'Leirduesti', dataType: 'training', score: 50, maxScore: 50 },
 ];
 const competitionOnlyTrend = mod.calculatePerformanceSummary(
   trainingNoiseRows,
@@ -54,7 +55,21 @@ const allTypeTrend = mod.calculatePerformanceSummary(
   mod.filterPerformanceResults(trainingNoiseRows, { period: '90d', type: 'all', discipline: 'Leirduesti', today }),
   { period: '90d', type: 'all', discipline: 'Leirduesti', today },
 );
-assert.equal(allTypeTrend.trend.label, 'Improving', 'All type intentionally includes competition and training in the previous period');
+assert.equal(allTypeTrend.recentAverage, null, 'All type does not average competition winner-relative percentages with training hit percentages');
+assert.equal(allTypeTrend.trend.label, 'Not enough data yet', 'All type mixed metrics do not report a combined trend');
+const activity = mod.calculateCompetitionActivity([
+  { id: 'comp-2025', session_type: 'Competition', date: '2025-05-01', discipline: 'Trap', total_targets: 100 },
+  { id: 'comp-2026', session_type: 'Competition', date: '2026-06-01', discipline: 'Trap', total_targets: null },
+  { id: 'train-2026', session_type: 'Training', date: '2026-06-02', discipline: 'Trap', total_targets: 200 },
+  { id: 'dup-import-a', session_type: 'Competition', date: '2026-06-03', discipline: 'Trap', total_targets: 50, leirdue_result_url: 'https://example.test/result/1' },
+  { id: 'dup-import-b', session_type: 'Competition', date: '2026-06-03', discipline: 'Trap', total_targets: 50, leirdue_result_url: 'https://example.test/result/1' },
+], 2026, 'Trap');
+assert.equal(activity.allTimeCompetitionCount, 3, 'Competition activity counts canonical competitions only');
+assert.equal(activity.allTimeCompetitionTargetCount, 150, 'Competition activity never invents unknown targets');
+assert.equal(activity.selectedYearCompetitionCount, 2, 'Competition activity year filtering works');
+assert.equal(activity.selectedYearCompetitionTargetCount, 50, 'Selected-year target count uses known targets only');
+assert.equal(activity.years.includes(2025), true, 'Competition activity all-time years ignore Performance period');
+
 assert.deepEqual([0, 3, 5, 10, 20].map(mod.calculateDataConfidence), ['Very low', 'Low', 'Moderate', 'Good', 'Strong'], 'data confidence labels use sample size');
 const winner = mod.calculateWinnerContext(rows);
 assert.equal(winner.count, 4, 'winner-gap calculations use competition results with winning scores');
