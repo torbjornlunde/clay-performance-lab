@@ -7,7 +7,7 @@
     },
     {
       "path": "/api/notifications/process-push-queue",
-      "schedule": "*/5 * * * *"
+      "schedule": "41 4 * * *"
     }
   ]
 }
