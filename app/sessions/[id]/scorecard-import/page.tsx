@@ -124,7 +124,7 @@ export default function Page() {
     if (next?.localReviewRevision) persistenceRef.current?.noteRevision(next.localReviewRevision);
     setPending(next);
   }
-  function currentPostReconciliation(postNumber: number) {
+  function currentPostReconciliation(postNumber: number, options: { asReviewed?: boolean } = {}) {
     const row = pendingRef.current?.analysis?.shooterRows.find((r) => r.candidateId === selected);
     const post = row?.posts.find((x) => x.postNumber === postNumber);
     const cells = grid.filter((c) => c.postNumber === postNumber);
@@ -135,11 +135,12 @@ export default function Page() {
       expectedTargetCount: cells.length,
       originalStatus: post?.reconciliationStatus,
       originalWarning: post?.reconciliationWarning,
+      explicitlyReviewed: options.asReviewed || reviewedPosts.includes(postNumber),
     });
   }
-  function postStatusMap() {
+  function postStatusMap(confirmingPost?: number) {
     const map: Record<number, any> = {};
-    for (let post = 1; post <= (postCount || 0); post++) map[post] = currentPostReconciliation(post).reconciliationStatus;
+    for (let post = 1; post <= (postCount || 0); post++) map[post] = currentPostReconciliation(post, { asReviewed: post === confirmingPost }).reconciliationStatus;
     return map;
   }
   type PersistenceResult = { ok: true } | { ok: false; error: string };
@@ -646,7 +647,7 @@ export default function Page() {
     );
   }
   async function savePostAndNext() {
-    const outcome = confirmCurrentPostReview({ grid, currentPost, postCount, reviewedPostNumbers: reviewedPosts, postStatuses: postStatusMap() });
+    const outcome = confirmCurrentPostReview({ grid, currentPost, postCount, reviewedPostNumbers: reviewedPosts, postStatuses: postStatusMap(currentPost) });
     if (!outcome.ok) {
       const result = await persistReview(grid, { currentReviewPost: currentPost, reviewedPostNumbers: reviewedPosts });
       setReviewMessage(result.ok ? outcome.message : result.error);
