@@ -56,6 +56,7 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
   const [myDisciplines, setMyDisciplines] = useState<string[]>([]);
   const [shooterCountry, setShooterCountry] = useState("");
 
@@ -159,6 +160,22 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
     }
 
     router.push("/log-training?simpleLogSaved=1");
+  }
+
+  async function upgradeLog() {
+    if (!isEdit || !initialValues?.id) return;
+    setErr("");
+    setUpgrading(true);
+
+    const { data: sessionId, error } = await supabase.rpc("upgrade_simple_training_log", { p_log_id: initialValues.id });
+
+    if (error || !sessionId) {
+      setErr(userFacingSaveError(error, "Could not upgrade this training log right now. The simple log is still intact; try again when online."));
+      setUpgrading(false);
+      return;
+    }
+
+    router.push(`/sessions/${sessionId}`);
   }
 
   async function deleteLog() {
@@ -285,8 +302,8 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
 
       {isEdit && (
         <section className="subcard simpleTrainingFutureDetails" aria-labelledby="simple-training-future-details">
-          <h2 id="simple-training-future-details">More detail can be added later</h2>
-          <p className="small muted">This simple log can grow over time without becoming a dead end. Later you may choose to add:</p>
+          <h2 id="simple-training-future-details">Continue as detailed training log</h2>
+          <p className="small muted">Upgrade this simple entry into the existing detailed personal Training session flow. Date, targets fired, known hits, discipline, range, notes and equipment snapshot are carried forward automatically. You can still save simple edits without upgrading.</p>
           <ul className="small muted simpleTrainingFutureList">
             <li>post/station scores</li>
             <li>target-by-target scoring</li>
@@ -294,15 +311,18 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
             <li>target definitions</li>
             <li>video/ShotKam links</li>
           </ul>
+          <button className="secondary" type="button" disabled={saving || deleting || upgrading} onClick={upgradeLog}>
+            {upgrading ? "Upgrading..." : "Add detailed training data"}
+          </button>
         </section>
       )}
 
       {err && <div className="error">{err}</div>}
       <div className="btns simpleTrainingFormActions">
-        <button type="submit" disabled={saving || deleting}>{saving ? "Saving..." : isEdit ? "Save changes" : "Save training log"}</button>
+        <button type="submit" disabled={saving || deleting || upgrading}>{saving ? "Saving..." : isEdit ? "Save changes" : "Save training log"}</button>
         <Link href="/log-training" className="button secondary">Cancel</Link>
         {isEdit && (
-          <button className="danger" type="button" disabled={saving || deleting} onClick={deleteLog}>
+          <button className="danger" type="button" disabled={saving || deleting || upgrading} onClick={deleteLog}>
             {deleting ? "Deleting..." : "Delete"}
           </button>
         )}
