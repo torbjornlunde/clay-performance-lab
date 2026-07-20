@@ -15,7 +15,7 @@ export const directions = ["Unknown","Left to right","Right to left","Incoming",
 export const angles = ["Unknown","Straight","Slight left","Slight right","Hard left","Hard right","High","Low","Quartering","Other"];
 export const speeds = ["Unknown","Very slow","Slow","Medium","Fast","Very fast"];
 export const distances = ["Unknown","Close","Medium","Long"];
-export const difficulties = ["Unknown","1 - Easy","2 - Manageable","3 - Medium","4 - Hard","5 - Very hard","Easy","Medium","Hard","Tricky"];
+export const difficulties = ["Unknown","1 - Easy","2 - Manageable","3 - Medium","4 - Hard","5 - Very hard"];
 export function targetCountFor(type: PresentationType) { return type === "single" || type === "unknown" ? 1 : 2; }
 export function defaultTargetLabel() { return ""; }
 export function normalizeTargetLabel(label: string | null | undefined) { return String(label || "").trim().toUpperCase(); }
