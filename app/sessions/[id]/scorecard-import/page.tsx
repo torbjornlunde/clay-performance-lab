@@ -179,6 +179,7 @@ export default function Page() {
     setReviewedPosts(reset.reviewedPostNumbers);
     setAck(Boolean(reset.acknowledgeAmbiguousExisting));
     setReviewMessage("");
+    setUnresolvedReviewCursor(null);
     if (base && persist) {
       const revision = nextRevision();
       const next = createReviewPersistenceSnapshot(base, {
@@ -404,6 +405,7 @@ export default function Page() {
     if (!saved.ok) { setError(saved.error); return; }
     setSelected(null);
     setGrid([]);
+    setUnresolvedReviewCursor(null);
     setCurrentPost(1);
     setReviewedPosts([]);
     setReviewMessage("");
@@ -419,6 +421,7 @@ export default function Page() {
     setError("");
     setSelected(null);
     setGrid([]);
+    setUnresolvedReviewCursor(null);
     setCurrentPost(1);
     setReviewedPosts([]);
     setReviewMessage("");
@@ -506,6 +509,7 @@ export default function Page() {
     };
     setSelected(null);
     setGrid([]);
+    setUnresolvedReviewCursor(null);
     setCurrentPost(1);
     setReviewedPosts([]);
     setReviewMessage("");
@@ -647,9 +651,16 @@ export default function Page() {
     rememberPending(next);
     return enqueuePendingWrite(next);
   }
+  function invalidateAcceptedPosts(postNumbers: number[]) {
+    const invalidated = new Set(postNumbers);
+    const next = reviewedPosts.filter((post) => !invalidated.has(post));
+    if (next.length !== reviewedPosts.length) setReviewedPosts(next);
+    return next;
+  }
   function setCell(c: ScorecardCell, result: ScorecardOutcome) {
     persistReview(
       applyUserCorrection(grid, c.postNumber, c.targetNumber, result),
+      { reviewedPostNumbers: invalidateAcceptedPosts([c.postNumber]) },
     );
   }
   async function savePostAndNext() {
@@ -687,12 +698,11 @@ export default function Page() {
     const statuses = postStatusMap();
     const items = unresolvedWholeScorecardItems({ grid, postCount, postStatuses: statuses });
     if (!items.length) { setUnresolvedReviewCursor(null); return; }
-    const currentStillUnresolved = unresolvedReviewCursor && items.some((item) => item.postNumber === unresolvedReviewCursor.postNumber && item.targetNumber === unresolvedReviewCursor.targetNumber);
-    const item = nextWholeScorecardReviewItem({ grid, postCount, postStatuses: statuses, after: currentStillUnresolved ? unresolvedReviewCursor : null });
+    const item = nextWholeScorecardReviewItem({ grid, postCount, postStatuses: statuses, after: unresolvedReviewCursor });
     if (item) { setUnresolvedReviewCursor(item); focusScorecardCell(item.postNumber, item.targetNumber); }
   }
   function cycleCell(c: ScorecardCell) {
-    persistReview(applyUserCorrection(grid, c.postNumber, c.targetNumber, cycleScorecardCellResult(c.result)), { currentReviewPost: c.postNumber });
+    persistReview(applyUserCorrection(grid, c.postNumber, c.targetNumber, cycleScorecardCellResult(c.result)), { currentReviewPost: c.postNumber, reviewedPostNumbers: invalidateAcceptedPosts([c.postNumber]) });
     setCurrentPost(c.postNumber);
     setUnresolvedReviewCursor({ postNumber: c.postNumber, targetNumber: c.targetNumber });
   }
@@ -711,7 +721,7 @@ export default function Page() {
     for (let post = maxExistingPost + 1; post <= safeCount; post++) {
       nextGrid.push({ postNumber: post, targetNumber: 1, result: "unknown", cellState: "active_blank", rawMark: null, observedMarkCategory: "blank", confidence: "low", warning: "Added during review setup correction.", reviewed: false });
     }
-    persistReview(nextGrid.sort((a, b) => a.postNumber - b.postNumber || a.targetNumber - b.targetNumber), { currentReviewPost: Math.min(currentPost, safeCount), reviewedPostNumbers: reviewedPosts.filter((post) => post <= safeCount) });
+    persistReview(nextGrid.sort((a, b) => a.postNumber - b.postNumber || a.targetNumber - b.targetNumber), { currentReviewPost: Math.min(currentPost, safeCount), reviewedPostNumbers: reviewedPosts.filter((post) => post <= safeCount && grid.filter((cell) => cell.postNumber === post).length === nextGrid.filter((cell) => cell.postNumber === post).length) });
   }
   function editExpectedTargets(postNumber: number, nextCount: number) {
     const safeCount = Math.max(1, Math.min(100, Math.trunc(nextCount || 1)));
@@ -871,6 +881,7 @@ export default function Page() {
       rememberPending(null);
       setGrid([]);
       setSelected(null);
+      setUnresolvedReviewCursor(null);
       setPreviewUrl(null);
       setOriginalUrl(null);
     }
@@ -1226,7 +1237,7 @@ export default function Page() {
                               const targetNumber = ti + 1;
                               const c = cells.find((cell) => cell.targetNumber === targetNumber);
                               if (!c) return <span key={`inactive-${post}-${targetNumber}`} className="scorecardMiniCell inactive" aria-label={`Post ${post} target ${targetNumber} inactive`}>–</span>;
-                              const needsAttention = c.result === "unknown" || (!c.reviewed && (c.confidence !== "high" || Boolean(c.warning)));
+                              const needsAttention = c.result === "unknown";
                               return <button id={cellDomId(c.postNumber, c.targetNumber)} type="button" key={`${c.postNumber}-${c.targetNumber}`} className={`scorecardMiniCell ${c.result} ${needsAttention ? "attention" : ""} ${c.reviewed ? "manual" : ""}`} aria-label={`Post ${post} target ${targetNumber}: ${c.result}${needsAttention ? ", needs attention" : ""}`} onClick={() => cycleCell(c)}>
                                 <span aria-hidden="true">{c.result === "hit" ? "✓" : c.result === "miss" ? "×" : "?"}</span>
                               </button>;
@@ -1284,8 +1295,8 @@ export default function Page() {
               <details className="scorecardAdvancedBulk">
                 <summary>Advanced whole-card actions</summary>
                 <div className="btns">
-                  <button type="button" className="button secondary smallButton" onClick={() => persistReview(bulkResolveUnknowns(grid, "hit", confirm(`Advanced action: mark all ${summary.unknowns} unknown targets on the whole card as hit?`)).grid)}>Mark all unknown as hit</button>
-                  <button type="button" className="button secondary smallButton" onClick={() => persistReview(bulkResolveUnknowns(grid, "miss", confirm(`Advanced action: mark all ${summary.unknowns} unknown targets on the whole card as miss?`)).grid)}>Mark all unknown as miss</button>
+                  <button type="button" className="button secondary smallButton" onClick={() => persistReview(bulkResolveUnknowns(grid, "hit", confirm(`Advanced action: mark all ${summary.unknowns} unknown targets on the whole card as hit?`)).grid, { reviewedPostNumbers: invalidateAcceptedPosts(Array.from(new Set(grid.filter((cell) => cell.result === "unknown").map((cell) => cell.postNumber)))) })}>Mark all unknown as hit</button>
+                  <button type="button" className="button secondary smallButton" onClick={() => persistReview(bulkResolveUnknowns(grid, "miss", confirm(`Advanced action: mark all ${summary.unknowns} unknown targets on the whole card as miss?`)).grid, { reviewedPostNumbers: invalidateAcceptedPosts(Array.from(new Set(grid.filter((cell) => cell.result === "unknown").map((cell) => cell.postNumber)))) })}>Mark all unknown as miss</button>
                 </div>
               </details>
               <div className="subcard finalScorecardSummary">

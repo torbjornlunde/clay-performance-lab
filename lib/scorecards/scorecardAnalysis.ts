@@ -495,9 +495,7 @@ export function unresolvedWholeScorecardItems({ grid, postCount, postStatuses = 
     if (!seen.has(key)) { seen.add(key); items.push({ postNumber, targetNumber, reason }); }
   };
   for (const cell of [...grid].sort((a, b) => a.postNumber - b.postNumber || a.targetNumber - b.targetNumber)) {
-    if (cell.result === "unknown") push(cell.postNumber, cell.targetNumber, "unknown");
-    else if (!cell.reviewed && (cell.confidence === "low" || cell.cellState === "uncertain")) push(cell.postNumber, cell.targetNumber, "low_confidence");
-    else if (!cell.reviewed && cell.warning) push(cell.postNumber, cell.targetNumber, "warning");
+    if (cell.result === "unknown") push(cell.postNumber, cell.targetNumber, cell.cellState === "uncertain" ? "low_confidence" : "unknown");
   }
   for (let post = 1; post <= postCount; post++) {
     if (postStatuses[post] === "conflict") {
@@ -523,14 +521,12 @@ export function unresolvedTargetsForPost(grid: ScorecardCell[], postNumber: numb
 
 export function scorecardApplyIssues({ grid, postCount, reviewedPostNumbers = [], postStatuses = {} }: { grid: ScorecardCell[]; postCount: number; reviewedPostNumbers?: number[]; postStatuses?: Record<number, ReconciliationStatus | null | undefined> }) {
   const issues: Array<{ post: number; message: string }> = [];
+  const blockers = unresolvedWholeScorecardItems({ grid, postCount, postStatuses });
   for (let post = 1; post <= postCount; post++) {
-    const cells = grid.filter((c) => c.postNumber === post);
-    const status = getPostReviewStatus({ cells, reconciliationStatus: postStatuses[post], explicitlyReviewed: reviewedPostNumbers.includes(post) });
-    if (status === "Conflict") issues.push({ post, message: `Post ${post}: reconciliation conflict` });
-    else if (status === "Needs review") {
-      const unresolved = unresolvedTargetsForPost(grid, post);
-      issues.push({ post, message: `Post ${post}: ${unresolved.length ? unresolved.join(", ") + " target(s) still need review" : "needs review"}` });
-    }
+    const postBlockers = blockers.filter((item) => item.postNumber === post);
+    if (!postBlockers.length) continue;
+    if (postStatuses[post] === "conflict") issues.push({ post, message: `Post ${post}: reconciliation conflict` });
+    else issues.push({ post, message: `Post ${post}: ${postBlockers.map((item) => item.targetNumber).join(", ")} target(s) still need review` });
   }
   return issues;
 }
