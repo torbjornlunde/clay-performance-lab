@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { AppBackButton } from "@/app/components/navigation/AppBackButton";
 
 type StatusResponse = { year: number; status: Record<string, unknown> | null; shooterRowsStored: number; resultListsDiscovered: number; eventsDiscovered: number; error?: string };
 
@@ -103,6 +104,7 @@ export default function LeirdueCacheAdminPage() {
   return (
     <main className="container">
       <section className="card">
+        <AppBackButton fallback="/beta/admin" />
         <p className="eyebrow">Admin</p>
         <h1>Leirdue cache</h1>
         <p className="muted">Shared year ingestion status. User searches read the shared cache and do not start full-year crawls.</p>

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { loadMyNotifications, loadMyUnreadNotificationCount, markAllMyNotificationsRead, markMyNotificationRead, notifyNotificationsChanged, safeNotificationHref, type UserNotification } from "@/lib/notifications/client";
 import { supabase } from "@/lib/supabase/client";
 import WebPushControls from "@/app/components/WebPushControls";
+import { AppBackButton } from "@/app/components/navigation/AppBackButton";
 
 function compactTime(value: string) {
   const date = new Date(value);
@@ -87,6 +88,7 @@ export default function NotificationsPage() {
     <main className="notificationsPage">
       <section className="heroCard notificationsHero">
         <div>
+          <AppBackButton fallback="/dashboard" />
           <p className="eyebrow">Notifications</p>
           <h2>Notification center</h2>
           <p>Useful event notifications from Clay Performance Lab.</p>

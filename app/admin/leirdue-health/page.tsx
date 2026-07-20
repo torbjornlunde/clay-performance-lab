@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { leirdueHealthSummary, needsLeirdueAdminAttention, type LeirdueHealthState, type LeirdueJobHealthRow } from "@/lib/leirdue/jobHealth";
 import { supabase } from "@/lib/supabase/client";
+import { AppBackButton } from "@/app/components/navigation/AppBackButton";
 
 type HealthResponse = { state: LeirdueHealthState; healthy: boolean; row: LeirdueJobHealthRow | null; staleAfterHours: number; emailAlerts?: { status: "configured" | "not_configured" }; error?: string };
 
@@ -41,6 +42,7 @@ export default function LeirdueHealthPage() {
 
   return <main className="container leirdueHealthPage">
     <section className="card">
+      <AppBackButton fallback="/beta/admin" />
       <p className="eyebrow">Admin</p>
       <h1>Leirdue refresh health</h1>
       <p className="muted">Daily recent-result cache refresh status. Normal users do not see cache controls or health alerts.</p>
