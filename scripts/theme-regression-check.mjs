@@ -146,6 +146,15 @@ for (const token of ['--action-unselected-bg', '--action-unselected-text', '--ac
   }
 }
 
+
+const wholeScorecardCss = ruleFor('.wholeScorecardReview') + ruleFor('.scorecardReviewSummary') + ruleFor('.scorecardTableScroller') + ruleFor('.scorecardMiniCell') + ruleFor('.scorecardPostTotal') + ruleFor('.detailedPostReview');
+for (const badToken of ['--surface-secondary','--surface-primary','--border-subtle','--text-primary','--text-secondary','--field-surface-primary']) {
+  if (wholeScorecardCss.includes(`var(${badToken})`)) failures.push(`whole-scorecard review must not use undefined/legacy token ${badToken}`);
+}
+for (const requiredToken of ['--card-bg','--panel2','--panel3','--field','--text','--muted','--line','--lineStrong','--success-bg','--success-text','--error-bg','--error-text']) {
+  if (!wholeScorecardCss.includes(`var(${requiredToken})`)) failures.push(`whole-scorecard review should use CPL token ${requiredToken}`);
+}
+
 expectRule('.disciplineChoice', [['background', '--action-unselected-bg'], ['color', '--action-unselected-text'], ['border-color', '--action-unselected-border']]);
 expectRule('.disciplineChoice:has(input:checked)', [['background', '--action-selected-bg'], ['color', '--action-selected-text'], ['border-color', '--action-selected-border']]);
 if (!/\.disciplineChoice:has\(input:checked\) span::after\s*\{[\s\S]*Selected/.test(css)) failures.push('selected discipline cards need a text/state indicator beyond the checkmark');

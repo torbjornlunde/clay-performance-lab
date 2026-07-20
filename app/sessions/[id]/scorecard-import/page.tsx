@@ -12,6 +12,7 @@ import {
 } from "@/lib/scorecards/scorecardProfiles";
 import {
   applyUserCorrection,
+  cycleScorecardCellResult,
   bulkResolveUnknowns,
   bulkResolveUnknownsForPost,
   confirmCurrentPostReview,
@@ -19,9 +20,12 @@ import {
   deriveCurrentPostReconciliation,
   findNextReviewPost,
   getPostReviewStatus,
+  nextWholeScorecardReviewItem,
   normalizeReviewProgress,
   resetReviewProgress,
+  scorecardApplyIssues,
   unresolvedTargetsForPost,
+  unresolvedWholeScorecardItems,
   summarizeGrid,
   type NormalizedScorecardAnalysis,
   type ScorecardCell,
@@ -117,6 +121,8 @@ export default function Page() {
   const [crop, setCrop] = useState<NormalizedCrop>(fullImageCrop);
   const [viewer, setViewer] = useState<"analyzed" | "original" | null>(null);
   const [structureDetailsOpen, setStructureDetailsOpen] = useState(false);
+  const [unresolvedReviewCursor, setUnresolvedReviewCursor] = useState<{ postNumber: number; targetNumber: number } | null>(null);
+  const [detailedPostOpen, setDetailedPostOpen] = useState(false);
   const pendingRef = useRef<PendingScorecardPhoto | null>(null);
   const persistenceRef = useRef<ReturnType<typeof createOrderedPendingPersistence<PendingScorecardPhoto>> | null>(null);
   function rememberPending(next: PendingScorecardPhoto | null) {
@@ -173,6 +179,7 @@ export default function Page() {
     setReviewedPosts(reset.reviewedPostNumbers);
     setAck(Boolean(reset.acknowledgeAmbiguousExisting));
     setReviewMessage("");
+    setUnresolvedReviewCursor(null);
     if (base && persist) {
       const revision = nextRevision();
       const next = createReviewPersistenceSnapshot(base, {
@@ -398,6 +405,7 @@ export default function Page() {
     if (!saved.ok) { setError(saved.error); return; }
     setSelected(null);
     setGrid([]);
+    setUnresolvedReviewCursor(null);
     setCurrentPost(1);
     setReviewedPosts([]);
     setReviewMessage("");
@@ -413,6 +421,7 @@ export default function Page() {
     setError("");
     setSelected(null);
     setGrid([]);
+    setUnresolvedReviewCursor(null);
     setCurrentPost(1);
     setReviewedPosts([]);
     setReviewMessage("");
@@ -500,6 +509,7 @@ export default function Page() {
     };
     setSelected(null);
     setGrid([]);
+    setUnresolvedReviewCursor(null);
     setCurrentPost(1);
     setReviewedPosts([]);
     setReviewMessage("");
@@ -641,9 +651,16 @@ export default function Page() {
     rememberPending(next);
     return enqueuePendingWrite(next);
   }
+  function invalidateAcceptedPosts(postNumbers: number[]) {
+    const invalidated = new Set(postNumbers);
+    const next = reviewedPosts.filter((post) => !invalidated.has(post));
+    if (next.length !== reviewedPosts.length) setReviewedPosts(next);
+    return next;
+  }
   function setCell(c: ScorecardCell, result: ScorecardOutcome) {
     persistReview(
       applyUserCorrection(grid, c.postNumber, c.targetNumber, result),
+      { reviewedPostNumbers: invalidateAcceptedPosts([c.postNumber]) },
     );
   }
   async function savePostAndNext() {
@@ -665,7 +682,35 @@ export default function Page() {
   function navigatePost(post: number) {
     const safe = Math.max(1, Math.min(postCount || 1, post));
     setCurrentPost(safe);
+    setDetailedPostOpen(true);
     persistReview(grid, { currentReviewPost: safe, reviewedPostNumbers: reviewedPosts });
+  }
+  function cellDomId(postNumber: number, targetNumber: number) { return `scorecard-cell-${postNumber}-${targetNumber}`; }
+  function focusScorecardCell(postNumber: number, targetNumber: number) {
+    setCurrentPost(postNumber);
+    window.requestAnimationFrame(() => {
+      const el = document.getElementById(cellDomId(postNumber, targetNumber));
+      el?.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+      (el as HTMLButtonElement | null)?.focus?.();
+    });
+  }
+  function reviewUncertainOnly() {
+    const statuses = postStatusMap();
+    const items = unresolvedWholeScorecardItems({ grid, postCount, postStatuses: statuses });
+    if (!items.length) { setUnresolvedReviewCursor(null); return; }
+    const item = nextWholeScorecardReviewItem({ grid, postCount, postStatuses: statuses, after: unresolvedReviewCursor });
+    if (item) { setUnresolvedReviewCursor(item); focusScorecardCell(item.postNumber, item.targetNumber); }
+  }
+  function cycleCell(c: ScorecardCell) {
+    persistReview(applyUserCorrection(grid, c.postNumber, c.targetNumber, cycleScorecardCellResult(c.result)), { currentReviewPost: c.postNumber, reviewedPostNumbers: invalidateAcceptedPosts([c.postNumber]) });
+    setCurrentPost(c.postNumber);
+    setUnresolvedReviewCursor({ postNumber: c.postNumber, targetNumber: c.targetNumber });
+  }
+  function acceptReviewedPostTotal(postNumber: number) {
+    const reviewed = Array.from(new Set([...reviewedPosts, postNumber])).sort((a, b) => a - b);
+    setReviewedPosts(reviewed);
+    setCurrentPost(postNumber);
+    void persistReview(grid, { currentReviewPost: postNumber, reviewedPostNumbers: reviewed });
   }
 
 
@@ -676,7 +721,7 @@ export default function Page() {
     for (let post = maxExistingPost + 1; post <= safeCount; post++) {
       nextGrid.push({ postNumber: post, targetNumber: 1, result: "unknown", cellState: "active_blank", rawMark: null, observedMarkCategory: "blank", confidence: "low", warning: "Added during review setup correction.", reviewed: false });
     }
-    persistReview(nextGrid.sort((a, b) => a.postNumber - b.postNumber || a.targetNumber - b.targetNumber), { currentReviewPost: Math.min(currentPost, safeCount), reviewedPostNumbers: reviewedPosts.filter((post) => post <= safeCount) });
+    persistReview(nextGrid.sort((a, b) => a.postNumber - b.postNumber || a.targetNumber - b.targetNumber), { currentReviewPost: Math.min(currentPost, safeCount), reviewedPostNumbers: reviewedPosts.filter((post) => post <= safeCount && grid.filter((cell) => cell.postNumber === post).length === nextGrid.filter((cell) => cell.postNumber === post).length) });
   }
   function editExpectedTargets(postNumber: number, nextCount: number) {
     const safeCount = Math.max(1, Math.min(100, Math.trunc(nextCount || 1)));
@@ -690,15 +735,10 @@ export default function Page() {
   }
 
   function currentApplyIssues() {
-    const issues: Array<{ post: number; message: string }> = [];
-    for (let post = 1; post <= (postCount || 0); post++) {
-      const cells = grid.filter((c) => c.postNumber === post);
-      const rec = currentPostReconciliation(post);
-      const status = getPostReviewStatus({ cells, reconciliationStatus: rec.reconciliationStatus, explicitlyReviewed: reviewedPosts.includes(post) });
-      if (status === "Conflict") issues.push({ post, message: `Post ${post}: ${rec.reconciliationWarning || "reconciliation conflict"}` });
-      else if (status === "Needs review") issues.push({ post, message: `Post ${post}: ${unresolvedTargetsForPost(grid, post).length ? unresolvedTargetsForPost(grid, post).join(", ") + " target(s) still need review" : "needs review"}` });
-    }
-    return issues;
+    return scorecardApplyIssues({ grid, postCount: postCount || 0, reviewedPostNumbers: reviewedPosts, postStatuses: postStatusMap() }).map((issue) => {
+      const rec = currentPostReconciliation(issue.post);
+      return rec.reconciliationStatus === "conflict" ? { ...issue, message: `Post ${issue.post}: ${rec.reconciliationWarning || "reconciliation conflict"}` } : issue;
+    });
   }
   async function saveLeirdueLink() {
     setLeirdueSaveStatus("Saving...");
@@ -841,6 +881,7 @@ export default function Page() {
       rememberPending(null);
       setGrid([]);
       setSelected(null);
+      setUnresolvedReviewCursor(null);
       setPreviewUrl(null);
       setOriginalUrl(null);
     }
@@ -1162,70 +1203,100 @@ export default function Page() {
                   {Array.from({ length: postCount }, (_, pi) => { const post = pi + 1; const count = grid.filter((c) => c.postNumber === post).length || 1; return <label className="small" key={`edit-structure-${post}`}>P{post}<input type="number" min={1} max={100} value={count} onChange={(event) => editExpectedTargets(post, Number(event.target.value))} /></label>; })}
                 </div>
               </div>}
-              <h3>Review one {profile?.reviewLabel?.toLowerCase() || "post"} at a time</h3>
-              <p>
-                {saveStatus === "saving" ? "Saving on device" : saveStatus === "failed" ? "Save failed" : "Saved on this device"} · Score {summary.score}/{summary.totalTargets} · Unknown {summary.unknowns}
-              </p>
-              <div className="postNavigator" aria-label="Scorecard post navigator">
-                {Array.from({ length: postCount }, (_, pi) => {
-                  const post = pi + 1;
-                  const postCells = grid.filter((c) => c.postNumber === post);
-                  const postSummary = summarizeGrid(postCells);
-                  const postMeta = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected)?.posts.find((x) => x.postNumber === post);
-                  const currentRec = currentPostReconciliation(post); const status = getPostReviewStatus({ cells: postCells, reconciliationStatus: currentRec.reconciliationStatus, explicitlyReviewed: reviewedPosts.includes(post) });
-                  return <button type="button" key={post} className={`postNavButton ${post === currentPost ? "selected" : ""}`} onClick={() => navigatePost(post)}>
-                    <strong>{profile?.reviewLabel || "Post"} {post}</strong>
-                    <span>{postSummary.score}/{postCells.length} · {status}</span>
-                  </button>;
-                })}
-              </div>
               {(() => {
-                const postCells = grid.filter((c) => c.postNumber === currentPost);
-                const postSummary = summarizeGrid(postCells);
-                const postMeta = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected)?.posts.find((x) => x.postNumber === currentPost);
-                const unknownCount = postCells.filter((c) => c.result === "unknown").length;
-                const detectedPostScore = postMeta?.detectedPostScore ?? null;
-                const detectedConfidence = postMeta?.detectedPostScoreConfidence ? `${postMeta.detectedPostScoreConfidence[0].toUpperCase()}${postMeta.detectedPostScoreConfidence.slice(1)} confidence` : "confidence not read";
-                const currentRec = currentPostReconciliation(currentPost);
-                return <div className="subcard currentScorecardPost">
-                  <h4>{profile?.reviewLabel || "Post"} {currentPost}</h4>
-                  <p className="small">Detected post score: <strong>{detectedPostScore === null ? "Not read" : `${detectedPostScore}/${postCells.length}`}</strong> · {detectedConfidence} · Current reviewed score: <strong>{postSummary.score}/{postCells.length}</strong></p>
-                  {detectedPostScore !== null && detectedPostScore !== postSummary.score && <div className="warning small">Detected post score and reviewed score differ. Review this post before applying.</div>}
-                  {currentRec.reconciliationWarning && <div className="warning small">{currentRec.reconciliationWarning}</div>}
-                  <div className="scorecardGrid">
-                    {postCells.map((c) => (
-                      <div key={`${c.postNumber}-${c.targetNumber}`} className={`scorecardCell ${c.result}`}>
-                        <strong>Target {c.targetNumber}</strong>
-                        <span>{c.result === "unknown" ? "Unknown" : c.result === "hit" ? "Hit" : "Miss"}</span>
-                        <div className="scorecardCellChoices" aria-label={`Set target ${c.targetNumber}`}>
-                          {(["hit", "miss", "unknown"] as ScorecardOutcome[]).map((choice) => (
-                            <button type="button" key={choice} className={`scorecardCellChoice ${c.result === choice ? "selected" : ""}`} aria-pressed={c.result === choice} onClick={() => setCell(c, choice)}>
-                              {choice === "unknown" ? "?" : choice === "hit" ? "Hit" : "Miss"}
-                            </button>
-                          ))}
-                        </div>
-                        {c.observedMarkCategory && <small>{c.observedMarkCategory.replace("_", " ")}</small>}
-                        {c.confidence !== "high" && <small>{c.confidence}</small>}
-                      </div>
-                    ))}
+                const row = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected);
+                const unresolvedItems = unresolvedWholeScorecardItems({ grid, postCount, postStatuses: postStatusMap() });
+                const maxTargets = Math.max(1, ...Array.from({ length: postCount }, (_, pi) => grid.filter((c) => c.postNumber === pi + 1).length));
+                return <section className="wholeScorecardReview" aria-label="Whole scorecard review">
+                  <div className="wholeScorecardHeader">
+                    <div>
+                      <h3>Review full scorecard</h3>
+                      <p className="small muted">{saveStatus === "saving" ? "Saving on device" : saveStatus === "failed" ? "Save failed" : "Saved on this device"} · Tap a target to cycle Hit → Miss → Unknown.</p>
+                    </div>
+                    <button type="button" className="button secondary smallButton" disabled={!unresolvedItems.length} onClick={reviewUncertainOnly}>Review uncertain only</button>
                   </div>
-                  {reviewMessage && <div className={saveStatus === "failed" ? "error small" : "notice small"}>{reviewMessage}</div>}
-                  <div className="btns">
-                    <button type="button" className="button secondary smallButton" disabled={currentPost <= 1} onClick={() => navigatePost(currentPost - 1)}>Previous</button>
-                    <button type="button" className="button secondary smallButton" disabled={currentPost >= postCount} onClick={() => navigatePost(currentPost + 1)}>Next</button>
-                    <button type="button" className="button" onClick={savePostAndNext}>Save post and next</button>
+                  <div className="scorecardReviewSummary" aria-live="polite">
+                    <span><strong>Shooter</strong>{row?.displayName || row?.rowLabel || "Detected shooter"}</span>
+                    <span><strong>Score</strong>{summary.score}/{summary.totalTargets}</span>
+                    <span><strong>{profile?.reviewLabel || "Posts"}</strong>{postCount}</span>
+                    <span><strong>Targets</strong>{summary.totalTargets}</span>
+                    <span className={unresolvedItems.length ? "needsAttention" : "looksGood"}><strong>Needs attention</strong>{unresolvedItems.length}</span>
                   </div>
-                  <div className="btns">
-                    <button type="button" className="button secondary smallButton" disabled={!unknownCount} onClick={() => persistReview(bulkResolveUnknownsForPost(grid, currentPost, "hit", confirm(`Mark ${unknownCount} unknown targets in ${profile?.reviewLabel || "Post"} ${currentPost} as hit?`)).grid)}>Mark uncertain targets in {profile?.reviewLabel || "Post"} {currentPost} as hit</button>
-                    <button type="button" className="button secondary smallButton" disabled={!unknownCount} onClick={() => persistReview(bulkResolveUnknownsForPost(grid, currentPost, "miss", confirm(`Mark ${unknownCount} unknown targets in ${profile?.reviewLabel || "Post"} ${currentPost} as miss?`)).grid)}>Mark uncertain targets in {profile?.reviewLabel || "Post"} {currentPost} as miss</button>
+                  <div className="scorecardTableScroller">
+                    <div className="scorecardTable" style={{ ["--scorecard-target-columns" as string]: maxTargets }}>
+                      {Array.from({ length: postCount }, (_, pi) => {
+                        const post = pi + 1;
+                        const cells = grid.filter((c) => c.postNumber === post).sort((a, b) => a.targetNumber - b.targetNumber);
+                        const ps = summarizeGrid(cells);
+                        const rec = currentPostReconciliation(post);
+                        const conflictClass = rec.reconciliationStatus === "conflict" ? " conflict" : rec.reconciliationStatus === "needs_review" ? " needsReview" : "";
+                        return <div className={`scorecardTableRow${conflictClass}`} key={`row-${post}`}>
+                          <div className="scorecardPostLabel">{profile?.reviewLabel || "Post"} {post}</div>
+                          <div className="scorecardTargetsRow">
+                            {Array.from({ length: maxTargets }, (_, ti) => {
+                              const targetNumber = ti + 1;
+                              const c = cells.find((cell) => cell.targetNumber === targetNumber);
+                              if (!c) return <span key={`inactive-${post}-${targetNumber}`} className="scorecardMiniCell inactive" aria-label={`Post ${post} target ${targetNumber} inactive`}>–</span>;
+                              const needsAttention = c.result === "unknown";
+                              return <button id={cellDomId(c.postNumber, c.targetNumber)} type="button" key={`${c.postNumber}-${c.targetNumber}`} className={`scorecardMiniCell ${c.result} ${needsAttention ? "attention" : ""} ${c.reviewed ? "manual" : ""}`} aria-label={`Post ${post} target ${targetNumber}: ${c.result}${needsAttention ? ", needs attention" : ""}`} onClick={() => cycleCell(c)}>
+                                <span aria-hidden="true">{c.result === "hit" ? "✓" : c.result === "miss" ? "×" : "?"}</span>
+                              </button>;
+                            })}
+                          </div>
+                          <button type="button" className="scorecardPostTotal" onClick={() => navigatePost(post)}>{ps.score}/{ps.totalTargets}</button>
+                        </div>;
+                      })}
+                    </div>
                   </div>
-                </div>;
+                  {unresolvedItems.length ? <p className="small warning">{unresolvedItems.length} target{unresolvedItems.length === 1 ? "" : "s"} or post total conflict need attention before confirmation.</p> : <p className="small notice">Everything looks good. Confirm once when the photo matches the grid.</p>}
+                </section>;
               })()}
+              <details className="detailedPostReview" open={detailedPostOpen} onToggle={(event) => setDetailedPostOpen(event.currentTarget.open)}>
+                <summary>Open detailed post review</summary>
+                <div className="postNavigator" aria-label="Scorecard post navigator">
+                  {Array.from({ length: postCount }, (_, pi) => {
+                    const post = pi + 1; const postCells = grid.filter((c) => c.postNumber === post); const postSummary = summarizeGrid(postCells); const currentRec = currentPostReconciliation(post); const status = getPostReviewStatus({ cells: postCells, reconciliationStatus: currentRec.reconciliationStatus, explicitlyReviewed: reviewedPosts.includes(post) });
+                    return <button type="button" key={post} className={`postNavButton ${post === currentPost ? "selected" : ""}`} onClick={() => navigatePost(post)}><strong>{profile?.reviewLabel || "Post"} {post}</strong><span>{postSummary.score}/{postCells.length} · {status}</span></button>;
+                  })}
+                </div>
+                {(() => {
+                  const postCells = grid.filter((c) => c.postNumber === currentPost).sort((a, b) => a.targetNumber - b.targetNumber);
+                  const postSummary = summarizeGrid(postCells);
+                  const postMeta = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected)?.posts.find((x) => x.postNumber === currentPost);
+                  const detectedPostScore = postMeta?.detectedPostScore ?? null;
+                  const currentRec = currentPostReconciliation(currentPost);
+                  const needsPostAcceptance = currentRec.reconciliationStatus === "conflict" && postSummary.unknowns === 0;
+                  return <div className="subcard currentScorecardPost compactDetailedPostEditor">
+                    <h4>{profile?.reviewLabel || "Post"} {currentPost}</h4>
+                    <p className="small">Detected post total: <strong>{detectedPostScore === null ? "Not read" : `${detectedPostScore}/${postCells.length}`}</strong> · Reviewed total: <strong>{postSummary.score}/{postCells.length}</strong></p>
+                    {currentRec.reconciliationWarning && <div className="warning small">{currentRec.reconciliationWarning}</div>}
+                    <div className="scorecardGrid">
+                      {postCells.map((c) => (
+                        <div key={`${c.postNumber}-${c.targetNumber}`} className={`scorecardCell ${c.result}`}>
+                          <strong>Target {c.targetNumber}</strong>
+                          <span>{c.result === "unknown" ? "Unknown" : c.result === "hit" ? "Hit" : "Miss"}</span>
+                          <div className="scorecardCellChoices" aria-label={`Set target ${c.targetNumber}`}>
+                            {(["hit", "miss", "unknown"] as ScorecardOutcome[]).map((choice) => (
+                              <button type="button" key={choice} className={`scorecardCellChoice ${c.result === choice ? "selected" : ""}`} aria-pressed={c.result === choice} onClick={() => setCell(c, choice)}>
+                                {choice === "unknown" ? "?" : choice === "hit" ? "Hit" : "Miss"}
+                              </button>
+                            ))}
+                          </div>
+                          {c.observedMarkCategory && <small>Mark: {c.observedMarkCategory.replace("_", " ")}</small>}
+                          {c.confidence !== "high" && <small>Confidence: {c.confidence}</small>}
+                          {c.warning && <small className="warning">{c.warning}</small>}
+                        </div>
+                      ))}
+                    </div>
+                    {needsPostAcceptance && <button type="button" className="button secondary smallButton" onClick={() => acceptReviewedPostTotal(currentPost)}>Use reviewed total for this post</button>}
+                  </div>;
+                })()}
+              </details>
               <details className="scorecardAdvancedBulk">
                 <summary>Advanced whole-card actions</summary>
                 <div className="btns">
-                  <button type="button" className="button secondary smallButton" onClick={() => persistReview(bulkResolveUnknowns(grid, "hit", confirm(`Advanced action: mark all ${summary.unknowns} unknown targets on the whole card as hit?`)).grid)}>Mark all unknown as hit</button>
-                  <button type="button" className="button secondary smallButton" onClick={() => persistReview(bulkResolveUnknowns(grid, "miss", confirm(`Advanced action: mark all ${summary.unknowns} unknown targets on the whole card as miss?`)).grid)}>Mark all unknown as miss</button>
+                  <button type="button" className="button secondary smallButton" onClick={() => persistReview(bulkResolveUnknowns(grid, "hit", confirm(`Advanced action: mark all ${summary.unknowns} unknown targets on the whole card as hit?`)).grid, { reviewedPostNumbers: invalidateAcceptedPosts(Array.from(new Set(grid.filter((cell) => cell.result === "unknown").map((cell) => cell.postNumber)))) })}>Mark all unknown as hit</button>
+                  <button type="button" className="button secondary smallButton" onClick={() => persistReview(bulkResolveUnknowns(grid, "miss", confirm(`Advanced action: mark all ${summary.unknowns} unknown targets on the whole card as miss?`)).grid, { reviewedPostNumbers: invalidateAcceptedPosts(Array.from(new Set(grid.filter((cell) => cell.result === "unknown").map((cell) => cell.postNumber)))) })}>Mark all unknown as miss</button>
                 </div>
               </details>
               <div className="subcard finalScorecardSummary">
@@ -1344,7 +1415,7 @@ export default function Page() {
                 >
                   {pending?.status === "applying"
                     ? "Applying..."
-                    : "Apply reviewed scorecard"}
+                    : "Confirm and save scorecard"}
                 </button>
               </div>
             </div>
