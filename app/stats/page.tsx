@@ -220,6 +220,18 @@ function simpleLogToVolumeLog(log: SimpleTrainingLog): TrainingVolumeLog {
   };
 }
 
+function trainingSessionToVolumeLog(session: SessionRow, missCounts: Record<string, number>): TrainingVolumeLog | null {
+  if (session.session_type !== "Training" || !isUsableNumber(session.total_targets) || session.total_targets <= 0) return null;
+  const score = isUsableNumber(session.own_score) ? session.own_score : scoreFromMisses(session.total_targets, missCounts[session.id] || 0);
+  return {
+    date: session.competition_date || session.created_at.slice(0, 10),
+    targets_fired: session.total_targets,
+    hits: isUsableNumber(score) ? score : null,
+    kind: "practice_log",
+    discipline: session.discipline || null,
+  };
+}
+
 function buildTrainingVolumeInsights(logs: TrainingVolumeLog[], today = new Date()): TrainingVolumeInsights {
   const todayValue = isoDateValue(today);
   const yearStart = `${today.getFullYear()}-01-01`;
@@ -518,6 +530,7 @@ export default function StatsPage() {
         .from("training_logs")
         .select("id,date,discipline,targets_fired,hits,source_type")
         .eq("source_type", "simple_training")
+        .is("upgraded_session_id", null)
         .not("hits", "is", null)
         .gt("targets_fired", 0)
         .lte("date", todayValue)
@@ -527,6 +540,7 @@ export default function StatsPage() {
         .from("training_logs")
         .select("date,discipline,targets_fired,hits")
         .eq("source_type", "simple_training")
+        .is("upgraded_session_id", null)
         .lte("date", todayValue)
         .order("date", { ascending: true })
         .returns<SimpleTrainingLog[]>(),
@@ -554,6 +568,7 @@ export default function StatsPage() {
       setPerformanceTrainingLogs(performanceTrainingResult.data || []);
       setVolumeLogs([
         ...(volumeTrainingResult.data || []).map(simpleLogToVolumeLog),
+        ...(sessionsResult.data || []).map((session) => trainingSessionToVolumeLog(session, counts)).filter((log): log is TrainingVolumeLog => Boolean(log)),
         ...(volumeScoreSheetsResult.data || []).map(scoreSheetToVolumeLog),
       ]);
     }
@@ -576,10 +591,17 @@ export default function StatsPage() {
         maxScore: session.total_targets || null,
       }];
     });
+    const detailedTrainingResults = sessions
+      .filter((session) => session.session_type === "Training" && isUsableNumber(session.total_targets) && session.total_targets > 0)
+      .map((session): PerformanceResult | null => {
+        const score = isUsableNumber(session.own_score) ? session.own_score : scoreFromMisses(session.total_targets!, missCounts[session.id] || 0);
+        return isUsableNumber(score) ? { id: session.id, date: session.competition_date || session.created_at, discipline: session.discipline || null, dataType: "training" as const, score, maxScore: session.total_targets } : null;
+      })
+      .filter((result): result is PerformanceResult => Boolean(result));
     const simpleTrainingResults = performanceTrainingLogs
       .filter((log) => log.hits !== null && log.targets_fired > 0)
       .map((log) => ({ id: log.id, date: log.date, discipline: log.discipline, dataType: "training" as const, score: log.hits || 0, maxScore: log.targets_fired }));
-    return [...competitionResults, ...simpleTrainingResults];
+    return [...competitionResults, ...detailedTrainingResults, ...simpleTrainingResults];
   }, [sessions, missCounts, performanceTrainingLogs]);
 
   const disciplineOptions = useMemo(() => [...new Set(performanceResults.map((result) => result.discipline).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b)), [performanceResults]);
