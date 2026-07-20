@@ -520,6 +520,21 @@ export function cycleScorecardCellResult(result: ScorecardOutcome): ScorecardOut
 export function unresolvedTargetsForPost(grid: ScorecardCell[], postNumber: number) {
   return grid.filter((c) => c.postNumber === postNumber && c.result === "unknown").map((c) => c.targetNumber).sort((a, b) => a - b);
 }
+
+export function scorecardApplyIssues({ grid, postCount, reviewedPostNumbers = [], postStatuses = {} }: { grid: ScorecardCell[]; postCount: number; reviewedPostNumbers?: number[]; postStatuses?: Record<number, ReconciliationStatus | null | undefined> }) {
+  const issues: Array<{ post: number; message: string }> = [];
+  for (let post = 1; post <= postCount; post++) {
+    const cells = grid.filter((c) => c.postNumber === post);
+    const status = getPostReviewStatus({ cells, reconciliationStatus: postStatuses[post], explicitlyReviewed: reviewedPostNumbers.includes(post) });
+    if (status === "Conflict") issues.push({ post, message: `Post ${post}: reconciliation conflict` });
+    else if (status === "Needs review") {
+      const unresolved = unresolvedTargetsForPost(grid, post);
+      issues.push({ post, message: `Post ${post}: ${unresolved.length ? unresolved.join(", ") + " target(s) still need review" : "needs review"}` });
+    }
+  }
+  return issues;
+}
+
 export function normalizeReviewProgress({ grid, postCount, currentReviewPost, reviewedPostNumbers, postStatuses }: { grid: ScorecardCell[]; postCount: number; currentReviewPost?: number | null; reviewedPostNumbers?: number[] | null; postStatuses?: Record<number, ReconciliationStatus | null | undefined> }) {
   const safePostCount = Math.max(1, Math.floor(postCount || 1));
   const reviewed = Array.from(new Set((Array.isArray(reviewedPostNumbers) ? reviewedPostNumbers : []).filter((n) => Number.isInteger(n) && n >= 1 && n <= safePostCount))).sort((a, b) => a - b).filter((post) => getPostReviewStatus({ cells: grid.filter((c) => c.postNumber === post), reconciliationStatus: postStatuses?.[post], explicitlyReviewed: true }) === "Reviewed");
