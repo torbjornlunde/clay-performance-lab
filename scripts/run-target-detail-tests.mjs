@@ -36,7 +36,9 @@ const [legacyRow] = postTargets.rowsFromPosts('legacy-session', [legacyPost]);
 assert.equal(legacyRow.target_type, 'Crossing', 'legacy target type loads and saves unchanged');
 assert.equal(legacyRow.difficulty, 'Tricky', 'legacy difficulty loads and saves unchanged');
 assert.ok(postTargets.targetTypes.includes('Crossing'), 'legacy target type remains visible in controls');
-assert.equal(details.displayTargetDifficulty('Tricky'), '4 - Hard', 'legacy difficulty maps to canonical display without changing storage');
+assert.equal(details.targetDifficultySelectValue('Easy'), '1 - Easy', 'legacy Easy selects the canonical value without changing storage');
+assert.equal(details.targetDifficultySelectValue('Tricky'), 'Unknown', 'unsupported legacy Tricky does not silently map to a canonical value');
+assert.equal(details.legacyTargetDifficultyNote('Tricky'), 'Previously: Tricky', 'unsupported legacy difficulty is shown as previous value');
 assert.equal(postTargets.difficulties.includes('Tricky'), false, 'new difficulty selector uses only canonical choices');
 const explicitlyChanged = postTargets.normalizePost(1, [{presentation_number:1,presentation_type:'single',targets:[{...legacy, target_type:'Standard', difficulty:'4 - Hard'}]}]);
 const [changedRow] = postTargets.rowsFromPosts('legacy-session', [explicitlyChanged]);
@@ -86,7 +88,8 @@ assert.match(targetPage, /program references will remain/, 'A-F Clear details co
 const postEditor = readFileSync('app/sessions/[id]/targets/PostTargetEditor.tsx','utf8');
 assert.match(postEditor, /More target details · \{targetDetailsSummary/, 'post\/stand details use the same compact summary pattern');
 assert.match(postEditor, /optionsWithCurrent\(targetTypes, t\.target_type\)/, 'post\/stand type control preserves legacy stored values');
-assert.match(postEditor, /optionsWithCurrent\(difficulties, t\.difficulty\)/, 'post\/stand difficulty control preserves legacy stored values while canonical choices stay deduplicated');
+assert.match(postEditor, /targetDifficultySelectValue\(t\.difficulty\)/, 'post\/stand difficulty selector displays canonical legacy mappings without adding duplicate options');
+assert.doesNotMatch(postEditor, /optionsWithCurrent\(difficulties, t\.difficulty\)/, 'post\/stand difficulty selector does not add legacy values as visible duplicate options');
 
 
 const targetPageSourceForCopy = readFileSync('app/sessions/[id]/targets/page.tsx','utf8');

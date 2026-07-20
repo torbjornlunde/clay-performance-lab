@@ -20,13 +20,26 @@ export const LEGACY_TARGET_DIFFICULTY_DISPLAY: Record<string, string> = {
   Easy: "1 - Easy",
   Medium: "3 - Medium",
   Hard: "4 - Hard",
-  Tricky: "4 - Hard",
 };
 
-export function displayTargetDifficulty(value: unknown) {
+export function targetDifficultySelectValue(value: unknown) {
+  const text = typeof value === "string" ? value.trim() : value == null ? "" : String(value).trim();
+  if (!text || text === "Unknown") return "Unknown";
+  if ((TARGET_DIFFICULTIES as readonly string[]).includes(text)) return text;
+  return LEGACY_TARGET_DIFFICULTY_DISPLAY[text] || "Unknown";
+}
+
+export function legacyTargetDifficultyNote(value: unknown) {
   const text = typeof value === "string" ? value.trim() : value == null ? "" : String(value).trim();
   if (!text || text === "Unknown") return null;
-  return LEGACY_TARGET_DIFFICULTY_DISPLAY[text] || text;
+  if ((TARGET_DIFFICULTIES as readonly string[]).includes(text)) return null;
+  return `Previously: ${text}`;
+}
+
+export function displayTargetDifficulty(value: unknown) {
+  const selected = targetDifficultySelectValue(value);
+  if (selected !== "Unknown") return selected;
+  return legacyTargetDifficultyNote(value);
 }
 
 function optional(value: unknown) {

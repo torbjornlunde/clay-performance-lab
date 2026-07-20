@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { isPostBasedSportingDiscipline } from "@/lib/disciplines";
-import { optionsWithCurrent, targetDetailsHaveValue, targetDetailsSummary, TARGET_ANGLES, TARGET_DIFFICULTIES, TARGET_DIRECTIONS, TARGET_DISTANCES, TARGET_SPEEDS, TARGET_TYPES } from "@/lib/targets/targetDetails";
+import { legacyTargetDifficultyNote, optionsWithCurrent, targetDetailsHaveValue, targetDetailsSummary, targetDifficultySelectValue, TARGET_ANGLES, TARGET_DIFFICULTIES, TARGET_DIRECTIONS, TARGET_DISTANCES, TARGET_SPEEDS, TARGET_TYPES } from "@/lib/targets/targetDetails";
 import { PostTargetEditor } from "./PostTargetEditor";
 
 const machines = ["A", "B", "C", "D", "E", "F"];
@@ -250,12 +250,12 @@ export default function TargetDefinitionsPage() {
   ) {
     return (
       <div className="quickButtonGrid compactQuickGrid">
-        {optionsWithCurrent(options, defs[machine][field]).map((option) => (
+        {(field === "difficulty" ? options : optionsWithCurrent(options, defs[machine][field])).map((option) => (
           <button
             type="button"
             key={option}
             className={
-              defs[machine][field] === option
+              (field === "difficulty" ? targetDifficultySelectValue(defs[machine][field]) : defs[machine][field]) === option
                 ? "quickButton selected"
                 : "quickButton"
             }
@@ -421,6 +421,7 @@ export default function TargetDefinitionsPage() {
               {buttonGroup(machine, "distance", distances)}
               <label>Difficulty</label>
               {buttonGroup(machine, "difficulty", difficulties)}
+              {legacyTargetDifficultyNote(defs[machine].difficulty) && <p className="small muted">{legacyTargetDifficultyNote(defs[machine].difficulty)}</p>}
               <label>Notes</label>
               <textarea
                 value={defs[machine].notes}

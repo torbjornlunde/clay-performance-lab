@@ -10070,3 +10070,17 @@ select {
     padding-bottom: .1rem;
   }
 }
+
+@media all and (display-mode: standalone) {
+  body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 19;
+    height: env(safe-area-inset-top, 0px);
+    background: var(--header-bg);
+    pointer-events: none;
+  }
+}

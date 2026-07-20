@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "Clay Performance Lab",
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "black",
   },
   icons: {
     icon: [

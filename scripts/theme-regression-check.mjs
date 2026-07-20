@@ -150,6 +150,7 @@ expectRule('.disciplineChoice', [['background', '--action-unselected-bg'], ['col
 expectRule('.disciplineChoice:has(input:checked)', [['background', '--action-selected-bg'], ['color', '--action-selected-text'], ['border-color', '--action-selected-border']]);
 if (!/\.disciplineChoice:has\(input:checked\) span::after\s*\{[\s\S]*Selected/.test(css)) failures.push('selected discipline cards need a text/state indicator beyond the checkmark');
 if (!/padding-top:\s*calc\(12px \+ env\(safe-area-inset-top, 0px\)\)/.test(css)) failures.push('header safe-area top should add inset without desktop over-spacing');
+if (!/@media all and \(display-mode: standalone\)[\s\S]*body::before[\s\S]*height:\s*env\(safe-area-inset-top, 0px\)[\s\S]*background:\s*var\(--header-bg\)/.test(css)) failures.push('standalone PWA needs a theme-aware fixed safe-area backdrop');
 
 if (failures.length) {
   console.error('Theme regression check failed:');
