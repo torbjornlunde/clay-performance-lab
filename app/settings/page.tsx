@@ -1,11 +1,13 @@
 import Link from "next/link";
 import AppearanceControl from "@/app/components/AppearanceControl";
 import InstallAppCard from "@/app/components/InstallAppCard";
+import { AppBackButton } from "@/app/components/navigation/AppBackButton";
 
 export default function SettingsPage() {
   return (
     <main className="settingsMain">
       <div className="settingsIntro">
+        <AppBackButton fallback="/dashboard" />
         <p className="eyebrow">Settings</p>
         <h2>Settings</h2>
         <p className="muted">Manage device-specific app preferences.</p>

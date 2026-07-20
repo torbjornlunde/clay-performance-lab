@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import AuthHeader from "./components/AuthHeader";
 import ProfileGate from "./components/ProfileGate";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { OnboardingHelpPanel } from "./components/OnboardingHelp";
 import ServiceWorkerRegistration from "./components/ServiceWorkerRegistration";
 import { PwaInstallProvider } from "./components/PwaInstallProvider";
+import { AppNavigationProvider } from "./components/navigation/AppNavigationProvider";
 import "./globals.css";
 import "./beta-admin-theme.css";
 
@@ -46,7 +48,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <ServiceWorkerRegistration />
             <AuthHeader />
             <OnboardingHelpPanel />
-            <ProfileGate>{children}</ProfileGate>
+            <Suspense fallback={null}>
+              <AppNavigationProvider>
+                <ProfileGate>{children}</ProfileGate>
+              </AppNavigationProvider>
+            </Suspense>
           </PwaInstallProvider>
         </ThemeProvider>
       </body>

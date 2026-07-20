@@ -6,6 +6,7 @@ import type { BetaFeedback, BetaFeedbackAdminStatus, BetaFeedbackAttachment, Use
 import { canManageBetaAccess } from "@/lib/access";
 import { formatFeedbackFileSize, loadBetaFeedbackWithSignedAttachments } from "@/lib/adminBetaFeedback";
 import { supabase } from "@/lib/supabase/client";
+import { AppBackButton } from "@/app/components/navigation/AppBackButton";
 
 const USER_COLUMNS = "user_id,email,full_name,access_status,system_role,account_type,created_at,updated_at,approved_at,approved_by";
 
@@ -126,6 +127,7 @@ export default function AdminFeedbackPage() {
     <main>
       <section className="heroCard">
         <div>
+          <AppBackButton fallback="/beta/admin" />
           <p className="eyebrow">Admin tools</p>
           <h2>Beta feedback</h2>
           <p>Review bug reports, screenshots and tester comments from internal beta users.</p>

@@ -10006,3 +10006,13 @@ select {
 .webPushControls h3 { margin: 0 0 4px; }
 .webPushControls p { margin: 0; color: var(--text-secondary); }
 @media (max-width: 560px) { .webPushControls { align-items: stretch; flex-direction: column; } .webPushControls button { width: 100%; min-height: 44px; font-size: 1rem; } }
+
+.appBackButton {
+  min-height: 40px;
+  padding-inline: 0.8rem;
+}
+
+.appBackButton::before {
+  content: "←";
+  margin-right: 0.35rem;
+}
