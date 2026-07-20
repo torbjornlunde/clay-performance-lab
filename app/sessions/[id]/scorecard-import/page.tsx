@@ -12,6 +12,7 @@ import {
 } from "@/lib/scorecards/scorecardProfiles";
 import {
   applyUserCorrection,
+  cycleScorecardCellResult,
   bulkResolveUnknowns,
   bulkResolveUnknownsForPost,
   confirmCurrentPostReview,
@@ -19,9 +20,11 @@ import {
   deriveCurrentPostReconciliation,
   findNextReviewPost,
   getPostReviewStatus,
+  nextWholeScorecardReviewItem,
   normalizeReviewProgress,
   resetReviewProgress,
   unresolvedTargetsForPost,
+  unresolvedWholeScorecardItems,
   summarizeGrid,
   type NormalizedScorecardAnalysis,
   type ScorecardCell,
@@ -135,7 +138,7 @@ export default function Page() {
       expectedTargetCount: cells.length,
       originalStatus: post?.reconciliationStatus,
       originalWarning: post?.reconciliationWarning,
-      explicitlyReviewed: options.asReviewed || reviewedPosts.includes(postNumber),
+      explicitlyReviewed: options.asReviewed || reviewedPosts.includes(postNumber) || cells.some((cell) => cell.reviewed),
     });
   }
   function postStatusMap(confirmingPost?: number) {
@@ -667,6 +670,23 @@ export default function Page() {
     setCurrentPost(safe);
     persistReview(grid, { currentReviewPost: safe, reviewedPostNumbers: reviewedPosts });
   }
+  function cellDomId(postNumber: number, targetNumber: number) { return `scorecard-cell-${postNumber}-${targetNumber}`; }
+  function focusScorecardCell(postNumber: number, targetNumber: number) {
+    setCurrentPost(postNumber);
+    window.requestAnimationFrame(() => {
+      const el = document.getElementById(cellDomId(postNumber, targetNumber));
+      el?.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+      (el as HTMLButtonElement | null)?.focus?.();
+    });
+  }
+  function reviewUncertainOnly() {
+    const item = nextWholeScorecardReviewItem({ grid, postCount, postStatuses: postStatusMap(), after: { postNumber: currentPost, targetNumber: 0 } });
+    if (item) focusScorecardCell(item.postNumber, item.targetNumber);
+  }
+  function cycleCell(c: ScorecardCell) {
+    persistReview(applyUserCorrection(grid, c.postNumber, c.targetNumber, cycleScorecardCellResult(c.result)), { currentReviewPost: c.postNumber });
+    setCurrentPost(c.postNumber);
+  }
 
 
   function editPostCount(nextPostCount: number) {
@@ -1162,65 +1182,63 @@ export default function Page() {
                   {Array.from({ length: postCount }, (_, pi) => { const post = pi + 1; const count = grid.filter((c) => c.postNumber === post).length || 1; return <label className="small" key={`edit-structure-${post}`}>P{post}<input type="number" min={1} max={100} value={count} onChange={(event) => editExpectedTargets(post, Number(event.target.value))} /></label>; })}
                 </div>
               </div>}
-              <h3>Review one {profile?.reviewLabel?.toLowerCase() || "post"} at a time</h3>
-              <p>
-                {saveStatus === "saving" ? "Saving on device" : saveStatus === "failed" ? "Save failed" : "Saved on this device"} · Score {summary.score}/{summary.totalTargets} · Unknown {summary.unknowns}
-              </p>
-              <div className="postNavigator" aria-label="Scorecard post navigator">
-                {Array.from({ length: postCount }, (_, pi) => {
-                  const post = pi + 1;
-                  const postCells = grid.filter((c) => c.postNumber === post);
-                  const postSummary = summarizeGrid(postCells);
-                  const postMeta = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected)?.posts.find((x) => x.postNumber === post);
-                  const currentRec = currentPostReconciliation(post); const status = getPostReviewStatus({ cells: postCells, reconciliationStatus: currentRec.reconciliationStatus, explicitlyReviewed: reviewedPosts.includes(post) });
-                  return <button type="button" key={post} className={`postNavButton ${post === currentPost ? "selected" : ""}`} onClick={() => navigatePost(post)}>
-                    <strong>{profile?.reviewLabel || "Post"} {post}</strong>
-                    <span>{postSummary.score}/{postCells.length} · {status}</span>
-                  </button>;
-                })}
-              </div>
               {(() => {
-                const postCells = grid.filter((c) => c.postNumber === currentPost);
-                const postSummary = summarizeGrid(postCells);
-                const postMeta = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected)?.posts.find((x) => x.postNumber === currentPost);
-                const unknownCount = postCells.filter((c) => c.result === "unknown").length;
-                const detectedPostScore = postMeta?.detectedPostScore ?? null;
-                const detectedConfidence = postMeta?.detectedPostScoreConfidence ? `${postMeta.detectedPostScoreConfidence[0].toUpperCase()}${postMeta.detectedPostScoreConfidence.slice(1)} confidence` : "confidence not read";
-                const currentRec = currentPostReconciliation(currentPost);
-                return <div className="subcard currentScorecardPost">
-                  <h4>{profile?.reviewLabel || "Post"} {currentPost}</h4>
-                  <p className="small">Detected post score: <strong>{detectedPostScore === null ? "Not read" : `${detectedPostScore}/${postCells.length}`}</strong> · {detectedConfidence} · Current reviewed score: <strong>{postSummary.score}/{postCells.length}</strong></p>
-                  {detectedPostScore !== null && detectedPostScore !== postSummary.score && <div className="warning small">Detected post score and reviewed score differ. Review this post before applying.</div>}
-                  {currentRec.reconciliationWarning && <div className="warning small">{currentRec.reconciliationWarning}</div>}
-                  <div className="scorecardGrid">
-                    {postCells.map((c) => (
-                      <div key={`${c.postNumber}-${c.targetNumber}`} className={`scorecardCell ${c.result}`}>
-                        <strong>Target {c.targetNumber}</strong>
-                        <span>{c.result === "unknown" ? "Unknown" : c.result === "hit" ? "Hit" : "Miss"}</span>
-                        <div className="scorecardCellChoices" aria-label={`Set target ${c.targetNumber}`}>
-                          {(["hit", "miss", "unknown"] as ScorecardOutcome[]).map((choice) => (
-                            <button type="button" key={choice} className={`scorecardCellChoice ${c.result === choice ? "selected" : ""}`} aria-pressed={c.result === choice} onClick={() => setCell(c, choice)}>
-                              {choice === "unknown" ? "?" : choice === "hit" ? "Hit" : "Miss"}
-                            </button>
-                          ))}
-                        </div>
-                        {c.observedMarkCategory && <small>{c.observedMarkCategory.replace("_", " ")}</small>}
-                        {c.confidence !== "high" && <small>{c.confidence}</small>}
-                      </div>
-                    ))}
+                const row = pending?.analysis?.shooterRows.find((r) => r.candidateId === selected);
+                const unresolvedItems = unresolvedWholeScorecardItems({ grid, postCount, postStatuses: postStatusMap() });
+                const maxTargets = Math.max(1, ...Array.from({ length: postCount }, (_, pi) => grid.filter((c) => c.postNumber === pi + 1).length));
+                return <section className="wholeScorecardReview" aria-label="Whole scorecard review">
+                  <div className="wholeScorecardHeader">
+                    <div>
+                      <h3>Review full scorecard</h3>
+                      <p className="small muted">{saveStatus === "saving" ? "Saving on device" : saveStatus === "failed" ? "Save failed" : "Saved on this device"} · Tap a target to cycle Hit → Miss → Unknown.</p>
+                    </div>
+                    <button type="button" className="button secondary smallButton" disabled={!unresolvedItems.length} onClick={reviewUncertainOnly}>Review uncertain only</button>
                   </div>
-                  {reviewMessage && <div className={saveStatus === "failed" ? "error small" : "notice small"}>{reviewMessage}</div>}
-                  <div className="btns">
-                    <button type="button" className="button secondary smallButton" disabled={currentPost <= 1} onClick={() => navigatePost(currentPost - 1)}>Previous</button>
-                    <button type="button" className="button secondary smallButton" disabled={currentPost >= postCount} onClick={() => navigatePost(currentPost + 1)}>Next</button>
-                    <button type="button" className="button" onClick={savePostAndNext}>Save post and next</button>
+                  <div className="scorecardReviewSummary" aria-live="polite">
+                    <span><strong>Shooter</strong>{row?.displayName || row?.rowLabel || "Detected shooter"}</span>
+                    <span><strong>Score</strong>{summary.score}/{summary.totalTargets}</span>
+                    <span><strong>{profile?.reviewLabel || "Posts"}</strong>{postCount}</span>
+                    <span><strong>Targets</strong>{summary.totalTargets}</span>
+                    <span className={unresolvedItems.length ? "needsAttention" : "looksGood"}><strong>Needs attention</strong>{unresolvedItems.length}</span>
                   </div>
-                  <div className="btns">
-                    <button type="button" className="button secondary smallButton" disabled={!unknownCount} onClick={() => persistReview(bulkResolveUnknownsForPost(grid, currentPost, "hit", confirm(`Mark ${unknownCount} unknown targets in ${profile?.reviewLabel || "Post"} ${currentPost} as hit?`)).grid)}>Mark uncertain targets in {profile?.reviewLabel || "Post"} {currentPost} as hit</button>
-                    <button type="button" className="button secondary smallButton" disabled={!unknownCount} onClick={() => persistReview(bulkResolveUnknownsForPost(grid, currentPost, "miss", confirm(`Mark ${unknownCount} unknown targets in ${profile?.reviewLabel || "Post"} ${currentPost} as miss?`)).grid)}>Mark uncertain targets in {profile?.reviewLabel || "Post"} {currentPost} as miss</button>
+                  <div className="scorecardTableScroller">
+                    <div className="scorecardTable" style={{ ["--scorecard-target-columns" as string]: maxTargets }}>
+                      {Array.from({ length: postCount }, (_, pi) => {
+                        const post = pi + 1;
+                        const cells = grid.filter((c) => c.postNumber === post).sort((a, b) => a.targetNumber - b.targetNumber);
+                        const ps = summarizeGrid(cells);
+                        const rec = currentPostReconciliation(post);
+                        const conflictClass = rec.reconciliationStatus === "conflict" ? " conflict" : rec.reconciliationStatus === "needs_review" ? " needsReview" : "";
+                        return <div className={`scorecardTableRow${conflictClass}`} key={`row-${post}`}>
+                          <div className="scorecardPostLabel">{profile?.reviewLabel || "Post"} {post}</div>
+                          <div className="scorecardTargetsRow">
+                            {Array.from({ length: maxTargets }, (_, ti) => {
+                              const targetNumber = ti + 1;
+                              const c = cells.find((cell) => cell.targetNumber === targetNumber);
+                              if (!c) return <span key={`inactive-${post}-${targetNumber}`} className="scorecardMiniCell inactive" aria-label={`Post ${post} target ${targetNumber} inactive`}>–</span>;
+                              const needsAttention = c.result === "unknown" || (!c.reviewed && (c.confidence !== "high" || Boolean(c.warning)));
+                              return <button id={cellDomId(c.postNumber, c.targetNumber)} type="button" key={`${c.postNumber}-${c.targetNumber}`} className={`scorecardMiniCell ${c.result} ${needsAttention ? "attention" : ""} ${c.reviewed ? "manual" : ""}`} aria-label={`Post ${post} target ${targetNumber}: ${c.result}${needsAttention ? ", needs attention" : ""}`} onClick={() => cycleCell(c)}>
+                                <span aria-hidden="true">{c.result === "hit" ? "✓" : c.result === "miss" ? "×" : "?"}</span>
+                              </button>;
+                            })}
+                          </div>
+                          <button type="button" className="scorecardPostTotal" onClick={() => navigatePost(post)}>{ps.score}/{ps.totalTargets}</button>
+                        </div>;
+                      })}
+                    </div>
                   </div>
-                </div>;
+                  {unresolvedItems.length ? <p className="small warning">{unresolvedItems.length} target{unresolvedItems.length === 1 ? "" : "s"} or post total conflict need attention before confirmation.</p> : <p className="small notice">Everything looks good. Confirm once when the photo matches the grid.</p>}
+                </section>;
               })()}
+              <details className="detailedPostReview">
+                <summary>Open detailed post review</summary>
+                <div className="postNavigator" aria-label="Scorecard post navigator">
+                  {Array.from({ length: postCount }, (_, pi) => {
+                    const post = pi + 1; const postCells = grid.filter((c) => c.postNumber === post); const postSummary = summarizeGrid(postCells); const currentRec = currentPostReconciliation(post); const status = getPostReviewStatus({ cells: postCells, reconciliationStatus: currentRec.reconciliationStatus, explicitlyReviewed: reviewedPosts.includes(post) });
+                    return <button type="button" key={post} className={`postNavButton ${post === currentPost ? "selected" : ""}`} onClick={() => navigatePost(post)}><strong>{profile?.reviewLabel || "Post"} {post}</strong><span>{postSummary.score}/{postCells.length} · {status}</span></button>;
+                  })}
+                </div>
+              </details>
               <details className="scorecardAdvancedBulk">
                 <summary>Advanced whole-card actions</summary>
                 <div className="btns">
@@ -1344,7 +1362,7 @@ export default function Page() {
                 >
                   {pending?.status === "applying"
                     ? "Applying..."
-                    : "Apply reviewed scorecard"}
+                    : "Confirm and save scorecard"}
                 </button>
               </div>
             </div>

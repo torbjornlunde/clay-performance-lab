@@ -485,6 +485,38 @@ export function getPostReviewStatus({ cells, reconciliationStatus, explicitlyRev
   if (cells.some((c) => c.result === "unknown")) return "Needs review";
   return explicitlyReviewed ? "Reviewed" : "Ready";
 }
+
+export type FullScorecardReviewItem = { postNumber: number; targetNumber: number; reason: "unknown" | "conflict" | "low_confidence" | "warning" };
+export function unresolvedWholeScorecardItems({ grid, postCount, postStatuses = {} }: { grid: ScorecardCell[]; postCount: number; postStatuses?: Record<number, ReconciliationStatus | null | undefined> }): FullScorecardReviewItem[] {
+  const items: FullScorecardReviewItem[] = [];
+  const seen = new Set<string>();
+  const push = (postNumber: number, targetNumber: number, reason: FullScorecardReviewItem["reason"]) => {
+    const key = `${postNumber}:${targetNumber}`;
+    if (!seen.has(key)) { seen.add(key); items.push({ postNumber, targetNumber, reason }); }
+  };
+  for (const cell of [...grid].sort((a, b) => a.postNumber - b.postNumber || a.targetNumber - b.targetNumber)) {
+    if (cell.result === "unknown") push(cell.postNumber, cell.targetNumber, "unknown");
+    else if (!cell.reviewed && (cell.confidence === "low" || cell.cellState === "uncertain")) push(cell.postNumber, cell.targetNumber, "low_confidence");
+    else if (!cell.reviewed && cell.warning) push(cell.postNumber, cell.targetNumber, "warning");
+  }
+  for (let post = 1; post <= postCount; post++) {
+    if (postStatuses[post] === "conflict") {
+      const first = grid.filter((c) => c.postNumber === post).sort((a, b) => a.targetNumber - b.targetNumber)[0];
+      if (first) push(post, first.targetNumber, "conflict");
+    }
+  }
+  return items.sort((a, b) => a.postNumber - b.postNumber || a.targetNumber - b.targetNumber);
+}
+export function nextWholeScorecardReviewItem({ grid, postCount, postStatuses = {}, after }: { grid: ScorecardCell[]; postCount: number; postStatuses?: Record<number, ReconciliationStatus | null | undefined>; after?: { postNumber: number; targetNumber: number } | null }) {
+  const items = unresolvedWholeScorecardItems({ grid, postCount, postStatuses });
+  if (!items.length) return null;
+  if (!after) return items[0];
+  return items.find((item) => item.postNumber > after.postNumber || (item.postNumber === after.postNumber && item.targetNumber > after.targetNumber)) || items[0];
+}
+export function cycleScorecardCellResult(result: ScorecardOutcome): ScorecardOutcome {
+  return result === "hit" ? "miss" : result === "miss" ? "unknown" : "hit";
+}
+
 export function unresolvedTargetsForPost(grid: ScorecardCell[], postNumber: number) {
   return grid.filter((c) => c.postNumber === postNumber && c.result === "unknown").map((c) => c.targetNumber).sort((a, b) => a - b);
 }
