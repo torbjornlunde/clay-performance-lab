@@ -361,4 +361,11 @@ let corrected=a.applyUserCorrection(compakGrid,2,5,'hit'); assert.equal(correcte
 
 const raw={schemaVersion:1,queueId:'q',clientImportId:'00000000-0000-4000-8000-000000000000',sessionId:'s',image:new Blob(['x']),imageFingerprint:'a'.repeat(64),status:'applying',analysis:n,selectedShooterCandidateId:'shooter-1'}; const migrated=q.migratePendingScorecardPhoto(raw); assert.equal(migrated.schemaVersion,4); assert.equal(migrated.status,'saved_on_device'); assert.deepEqual(migrated.crop,{x:0,y:0,width:1,height:1,mode:'full'}); assert.equal(migrated.cropFingerprint, migrated.imageFingerprint); assert(migrated.reviewedGrid.length>0); assert.equal(migrated.setupFingerprint,null, 'old pending data without setup fingerprint migrates safely and requires re-analysis'); assert.equal(q.shouldIgnoreStale({sessionId:'s',clientImportId:'a',imageFingerprint:'b'},{sessionId:'s',clientImportId:'x',imageFingerprint:'b'}),true);
 function rpcRetryOrderSimulation(existing, expectedOwnScore, currentOwnScore){ if(existing) return 'alreadyImported'; if(currentOwnScore !== expectedOwnScore) return 'stale_score'; return 'inserted'; } assert.equal(rpcRetryOrderSimulation(true, null, 22), 'alreadyImported'); assert.equal(rpcRetryOrderSimulation(false, null, 22), 'stale_score');
+const globalCssForReview = readFileSync('app/globals.css','utf8');
+const issue237Css = globalCssForReview.slice(globalCssForReview.indexOf('/* Issue #237 focused mobile usability fixes. */'));
+const narrowScorecardOverride = issue237Css.match(/@media \(max-width: 430px\) \{[\s\S]*?\n\}/)?.[0] || '';
+assert.match(narrowScorecardOverride, /\.scorecardGrid\s*\{[\s\S]*grid-template-columns:\s*1fr/, 'narrow scorecard review uses this PR single-column cards to avoid control collisions');
+assert.match(narrowScorecardOverride, /\.scorecardCellChoices\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(4rem,\s*1fr\)\)/, 'narrow scorecard review verifies this PR Hit/Miss/? override, not an older global rule');
+assert.match(globalCssForReview, /\.scorecardCellChoices\s*\{[\s\S]*max-width:\s*100%/, 'scorecard review choices stay inside the card width');
+
 console.log('scorecard focused tests passed');

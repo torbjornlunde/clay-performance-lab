@@ -14,7 +14,33 @@ export const TARGET_DIRECTIONS = ["Unknown", "Left to right", "Right to left", "
 export const TARGET_SPEEDS = ["Unknown", "Very slow", "Slow", "Medium", "Fast", "Very fast"] as const;
 export const TARGET_DISTANCES = ["Unknown", "Close", "Medium", "Long"] as const;
 export const TARGET_ANGLES = ["Unknown", "Straight", "Slight left", "Slight right", "Hard left", "Hard right", "High", "Low", "Quartering", "Other"] as const;
-export const TARGET_DIFFICULTIES = ["Unknown", "1 - Easy", "2 - Manageable", "3 - Medium", "4 - Hard", "5 - Very hard", "Easy", "Medium", "Hard", "Tricky"] as const;
+export const TARGET_DIFFICULTIES = ["Unknown", "1 - Easy", "2 - Manageable", "3 - Medium", "4 - Hard", "5 - Very hard"] as const;
+
+export const LEGACY_TARGET_DIFFICULTY_DISPLAY: Record<string, string> = {
+  Easy: "1 - Easy",
+  Medium: "3 - Medium",
+  Hard: "4 - Hard",
+};
+
+export function targetDifficultySelectValue(value: unknown) {
+  const text = typeof value === "string" ? value.trim() : value == null ? "" : String(value).trim();
+  if (!text || text === "Unknown") return "Unknown";
+  if ((TARGET_DIFFICULTIES as readonly string[]).includes(text)) return text;
+  return LEGACY_TARGET_DIFFICULTY_DISPLAY[text] || "Unknown";
+}
+
+export function legacyTargetDifficultyNote(value: unknown) {
+  const text = typeof value === "string" ? value.trim() : value == null ? "" : String(value).trim();
+  if (!text || text === "Unknown") return null;
+  if ((TARGET_DIFFICULTIES as readonly string[]).includes(text)) return null;
+  return `Previously: ${text}`;
+}
+
+export function displayTargetDifficulty(value: unknown) {
+  const selected = targetDifficultySelectValue(value);
+  if (selected !== "Unknown") return selected;
+  return legacyTargetDifficultyNote(value);
+}
 
 function optional(value: unknown) {
   if (value === null || value === undefined) return null;
@@ -49,7 +75,8 @@ export function optionsWithCurrent(options: readonly string[], current: unknown)
 
 export function targetDetailsSummary(input: TargetDetails = {}) {
   const normalized = normalizeTargetDetails(input);
-  const parts = [normalized.speed, normalized.distance, normalized.difficulty ? `Difficulty ${String(normalized.difficulty).replace(/^([1-5])\s*-\s*/, "$1 ")}` : null, normalized.angle]
+  const displayDifficulty = displayTargetDifficulty(normalized.difficulty);
+  const parts = [normalized.speed, normalized.distance, displayDifficulty ? `Difficulty ${displayDifficulty.replace(/^([1-5])\s*-\s*/, "$1 ")}` : null, normalized.angle]
     .filter((value): value is string => Boolean(value));
   return parts.length ? parts.slice(0, 3).join(" · ") : "Optional";
 }

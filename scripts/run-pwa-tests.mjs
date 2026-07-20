@@ -21,6 +21,7 @@ const layout = readFileSync('app/layout.tsx', 'utf8');
 const provider = readFileSync('app/components/PwaInstallProvider.tsx', 'utf8');
 const installCard = readFileSync('app/components/InstallAppCard.tsx', 'utf8');
 const authHeader = readFileSync('app/components/AuthHeader.tsx', 'utf8');
+assert.match(layout, /statusBarStyle:\s*"black"/, 'installed iOS app uses a non-translucent status bar to prevent visible scroll-underlap');
 assert.match(layout, /<PwaInstallProvider>[\s\S]*<ProfileGate>/, 'root layout mounts the PWA install provider before Settings can mount');
 assert.match(provider, /window\.addEventListener\("beforeinstallprompt", capturePrompt\)/, 'beforeinstallprompt is captured globally');
 assert.match(provider, /event\.preventDefault\(\)/, 'global beforeinstallprompt capture prevents the browser mini-infobar');
@@ -47,6 +48,9 @@ assert.match(installCard, /Install app/, 'Settings uses a clear Android install 
 const hook = readFileSync('lib/pwa/useStandaloneMode.ts', 'utf8');
 assert.match(hook, /display-mode: standalone/, 'standalone hook checks display-mode');
 assert.match(hook, /navigator\.standalone === true/, 'standalone hook checks iOS navigator.standalone');
+
+const css = readFileSync('app/globals.css', 'utf8');
+assert.match(css, /@media all and \(display-mode: standalone\)[\s\S]*body::before[\s\S]*background:\s*var\(--header-bg\)/, 'standalone iOS safe-area backdrop uses theme-aware header tokens');
 
 const sw = readFileSync('public/sw.js', 'utf8');
 assert.match(sw, /const CACHE_PREFIX = "cpl-pwa-";/, 'service worker owns only cpl-pwa-* caches');

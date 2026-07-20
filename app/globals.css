@@ -10016,3 +10016,71 @@ select {
   content: "←";
   margin-right: 0.35rem;
 }
+
+/* Issue #237 focused mobile usability fixes. */
+.disciplineChoice {
+  background: var(--action-unselected-bg);
+  color: var(--action-unselected-text);
+  border-color: var(--action-unselected-border);
+}
+.disciplineChoice:has(input:checked) {
+  background: var(--action-selected-bg);
+  color: var(--action-selected-text);
+  border-color: var(--action-selected-border);
+  box-shadow: var(--focus-ring);
+}
+.disciplineChoice:has(input:checked) span::after {
+  content: " · Selected";
+  font-weight: 900;
+}
+
+@supports (padding: max(0px)) {
+  .header {
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  }
+  .reviewReferenceBar,
+  .desktopReference {
+    top: calc(12px + env(safe-area-inset-top, 0px));
+  }
+}
+
+.scorecardGrid,
+.scorecardCell,
+.scorecardCellChoices,
+.compactSummary {
+  max-width: 100%;
+}
+.scorecardCell strong,
+.scorecardCell span {
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+@media (max-width: 430px) {
+  .scorecardGrid {
+    grid-template-columns: 1fr;
+  }
+  .scorecardCell {
+    align-items: stretch;
+    padding: .6rem;
+  }
+  .scorecardCellChoices {
+    grid-template-columns: repeat(3, minmax(4rem, 1fr));
+    overflow-x: auto;
+    padding-bottom: .1rem;
+  }
+}
+
+@media all and (display-mode: standalone) {
+  body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 19;
+    height: env(safe-area-inset-top, 0px);
+    background: var(--header-bg);
+    pointer-events: none;
+  }
+}
