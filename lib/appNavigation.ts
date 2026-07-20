@@ -1,9 +1,12 @@
 export const APP_NAV_STACK_KEY = "cpl-app-nav-stack-v1";
+export const APP_NAV_EPOCH_KEY = "cpl-app-nav-epoch-v1";
+export const APP_NAV_STATE_KEY = "__cplNav";
 export const DEFAULT_APP_BACK_FALLBACK = "/dashboard";
 
 const PUBLIC_AUTH_ROUTES = new Set(["/", "/login", "/reset-password", "/join-beta", "/beta/access"]);
 
-export type AppNavEntry = { path: string; origin: string };
+export type AppHistoryMarker = { v: 1; epoch: string; index: number };
+export type AppNavEntry = { path: string; origin: string; historyEpoch?: string; historyIndex?: number };
 export type AppBackMode = "history" | "replace" | "none";
 export type AppBackResolution = { target: string; usedFallback: boolean; canNavigate: boolean; mode: AppBackMode; historySteps: number; nextStack: AppNavEntry[] };
 export type SwipeDecision = "pending" | "back" | "cancel";
@@ -20,6 +23,32 @@ export function isPublicAuthRoute(path: string): boolean {
   return PUBLIC_AUTH_ROUTES.has(pathname);
 }
 
+export function readAppHistoryMarker(state: unknown): AppHistoryMarker | null {
+  if (!state || typeof state !== "object") return null;
+  const marker = (state as Record<string, unknown>)[APP_NAV_STATE_KEY];
+  if (!marker || typeof marker !== "object") return null;
+  const value = marker as Partial<AppHistoryMarker>;
+  const index = value.index;
+  return value.v === 1 && typeof value.epoch === "string" && typeof index === "number" && Number.isInteger(index) && index >= 0
+    ? { v: 1, epoch: value.epoch, index }
+    : null;
+}
+
+export function withAppHistoryMarker<T>(state: T, marker: AppHistoryMarker): T & { [APP_NAV_STATE_KEY]: AppHistoryMarker } {
+  const base = state && typeof state === "object" ? state as Record<string, unknown> : {};
+  return { ...base, [APP_NAV_STATE_KEY]: marker } as T & { [APP_NAV_STATE_KEY]: AppHistoryMarker };
+}
+
+export function isVerifiedHistoryTarget(candidate: AppNavEntry, currentMarker: AppHistoryMarker | null | undefined): boolean {
+  return Boolean(
+    currentMarker &&
+    candidate.historyEpoch === currentMarker.epoch &&
+    typeof candidate.historyIndex === "number" &&
+    candidate.historyIndex >= 0 &&
+    candidate.historyIndex < currentMarker.index,
+  );
+}
+
 export function isSafeInAppPrevious(entry: AppNavEntry | null | undefined, currentOrigin: string, currentPath: string): entry is AppNavEntry {
   if (!entry) return false;
   const path = normalizeAppPath(entry.path);
@@ -34,13 +63,15 @@ function sanitizeStack(stack: AppNavEntry[], maxLength = 24): AppNavEntry[] {
   return stack.filter((entry) => normalizeAppPath(entry.path)).slice(-maxLength);
 }
 
-export function resolveAppBackTarget(input: { stack: AppNavEntry[]; origin: string; currentPath: string; fallback?: string }): AppBackResolution {
+export function resolveAppBackTarget(input: { stack: AppNavEntry[]; origin: string; currentPath: string; fallback?: string; currentMarker?: AppHistoryMarker | null }): AppBackResolution {
   const stack = sanitizeStack(input.stack);
   const fallback = normalizeAppPath(input.fallback || DEFAULT_APP_BACK_FALLBACK) || DEFAULT_APP_BACK_FALLBACK;
-  for (let index = stack.length - 2; index >= 0; index -= 1) {
+  const currentEntry = stack[stack.length - 1];
+  const currentEntryVerified = Boolean(input.currentMarker && currentEntry?.path === input.currentPath && currentEntry.historyEpoch === input.currentMarker.epoch && currentEntry.historyIndex === input.currentMarker.index);
+  for (let index = stack.length - 2; currentEntryVerified && index >= 0; index -= 1) {
     const candidate = stack[index];
-    if (isSafeInAppPrevious(candidate, input.origin, input.currentPath)) {
-      return { target: candidate.path, usedFallback: false, canNavigate: true, mode: "history", historySteps: stack.length - 1 - index, nextStack: stack.slice(0, index + 1) };
+    if (isSafeInAppPrevious(candidate, input.origin, input.currentPath) && isVerifiedHistoryTarget(candidate, input.currentMarker)) {
+      return { target: candidate.path, usedFallback: false, canNavigate: true, mode: "history", historySteps: input.currentMarker!.index - candidate.historyIndex!, nextStack: stack.slice(0, index + 1) };
     }
   }
   const canNavigate = fallback !== input.currentPath && !isPublicAuthRoute(fallback);
@@ -54,7 +85,7 @@ export function updateAppNavigationStack(input: { stack: AppNavEntry[]; next: Ap
   const next = { ...input.next, path };
   const stack = sanitizeStack(input.stack, maxLength);
   const last = stack[stack.length - 1];
-  if (last?.path === next.path && last.origin === next.origin) return stack.slice(-maxLength);
+  if (last?.path === next.path && last.origin === next.origin) return [...stack.slice(0, -1), next].slice(-maxLength);
   const updated = input.replace && stack.length ? [...stack.slice(0, -1), next] : [...stack, next];
   return updated.slice(-maxLength);
 }
@@ -66,9 +97,11 @@ export function reconcilePopstateNavigationStack(input: { stack: AppNavEntry[]; 
   const stack = sanitizeStack(input.stack, maxLength);
   for (let index = stack.length - 1; index >= 0; index -= 1) {
     const entry = stack[index];
-    if (entry.path === path && entry.origin === input.next.origin) return stack.slice(0, index + 1);
+    if (entry.path === path && entry.origin === input.next.origin && entry.historyEpoch === input.next.historyEpoch && entry.historyIndex === input.next.historyIndex) return stack.slice(0, index + 1);
   }
-  return updateAppNavigationStack({ stack, next: { ...input.next, path }, replace: true, maxLength });
+  const last = stack[stack.length - 1];
+  const isMarkedForward = last?.historyEpoch === input.next.historyEpoch && typeof last.historyIndex === "number" && typeof input.next.historyIndex === "number" && input.next.historyIndex > last.historyIndex;
+  return updateAppNavigationStack({ stack, next: { ...input.next, path }, replace: !isMarkedForward, maxLength });
 }
 
 export function shouldIgnoreSwipeTarget(target: EventTarget | null): boolean {
