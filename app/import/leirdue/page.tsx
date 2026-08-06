@@ -9,13 +9,14 @@ import { normalizeDisciplines, prioritizedDisciplineOptions, shooterProfileDispl
 import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
 import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 import { ContextualHelpCard } from "@/app/components/OnboardingHelp";
+import { correctedFieldNames, parsedValues, validateLeirdueReviewedCandidate } from "@/lib/leirdue/review";
 
 const DEFAULT_DISCIPLINES = [COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI, "Sporting"];
 const BATCH_TIMEOUT_MS = 20_000;
 const AUTO_CONTINUATION_DELAY_MS = 750;
 const MAX_AUTO_CONTINUATION_FAILURES = 2;
 
-type EditableCandidate = LeirdueCandidate & { selected: boolean; localId: string; saveStatus?: "saved" | "duplicate" | "error"; saveMessage?: string };
+type EditableCandidate = LeirdueCandidate & { selected: boolean; localId: string; editorOpen?: boolean; duplicateNeedsRecheck?: boolean; saveStatus?: "saved" | "duplicate" | "error"; saveMessage?: string };
 type CandidatePipelineDiagnostics = {
   backendCandidateCount: number;
   frontendReceivedCandidateCount: number;
@@ -46,12 +47,12 @@ type CandidatePipelineDiagnostics = {
 type SavedImportSummary = { id?: string; eventName: string; date: string | null; score: string };
 
 type SaveResponse = {
-  results?: { candidate: LeirdueCandidate; status: "saved" | "duplicate" | "error"; id?: string; message?: string; duplicateMatches?: LeirdueDuplicateMatch[] }[];
+  results?: { clientCandidateId?: string; candidate: LeirdueCandidate; status: "saved" | "duplicate" | "error"; id?: string; message?: string; duplicateMatches?: LeirdueDuplicateMatch[] }[];
   error?: string;
 };
 
 type DuplicateResponse = {
-  results?: { candidate: LeirdueCandidate; status: LeirdueDuplicateStatus; matches: LeirdueDuplicateMatch[] }[];
+  results?: { clientCandidateId?: string; candidate: LeirdueCandidate; status: LeirdueDuplicateStatus; matches: LeirdueDuplicateMatch[] }[];
   error?: string;
 };
 
@@ -124,13 +125,17 @@ function performance(candidate: EditableCandidate) {
 
 function toEditable(candidate: LeirdueCandidate, index: number): EditableCandidate {
   const sourceIds = candidateSourceIds(candidate);
+  const localId = `${candidateIdentity({ ...candidate, ...sourceIds })}-${index}`;
   return {
     ...candidate,
     ...sourceIds,
     warnings: candidate.warnings || [],
     seriesScores: candidate.seriesScores || [],
+    reviewedSeriesScores: [...(candidate.seriesScores || [])],
+    originalParsed: parsedValues(candidate),
     selected: candidateSelectedByDefault(candidate),
-    localId: `${candidateIdentity({ ...candidate, ...sourceIds })}-${index}`,
+    localId,
+    clientCandidateId: localId,
     duplicateStatus: candidate.duplicateStatus || "new",
     duplicateMatches: candidate.duplicateMatches || [],
     shooterMatchStatus: candidate.shooterMatchStatus || null,
@@ -193,7 +198,7 @@ function candidateWarnings(candidate: EditableCandidate) {
 }
 
 function canSelectCandidate(candidate: EditableCandidate) {
-  return candidate.duplicateStatus !== "exact" && !candidate.alreadyImported && candidate.saveStatus !== "saved";
+  return validateLeirdueReviewedCandidate(candidate).valid && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported && candidate.saveStatus !== "saved";
 }
 
 function candidateMergeKey(candidate: LeirdueCandidate) {
@@ -514,16 +519,26 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
   const percent = performance(candidate);
   const sourceIds = candidateSourceIds(candidate);
   const warnings = candidateWarnings(candidate);
+  const original = parsedValues(candidate);
+  const validation = validateLeirdueReviewedCandidate(candidate);
+  const corrected = correctedFieldNames(candidate);
   const nameMatchLabel = candidate.shooterMatchStatus === "matched_to_you" ? (candidate.category === "recommended" ? "Name match" : "Strong name match") : candidate.shooterMatchStatus === "possible_match" ? "Possible match" : null;
   const visibleReason = candidate.category === "control" || isLowQualitySummaryCandidate(candidate) ? candidateReason(candidate) : null;
 
-  function update<Key extends keyof EditableCandidate>(key: Key, value: EditableCandidate[Key]) {
-    onChange({ ...candidate, [key]: value, saveStatus: undefined, saveMessage: undefined });
+  function update<Key extends keyof EditableCandidate>(key: Key, value: EditableCandidate[Key], duplicateRelevant = true) {
+    onChange({ ...candidate, [key]: value, ...(duplicateRelevant ? { duplicateStatus: "new" as const, duplicateMatches: [], duplicateNeedsRecheck: true, allowDuplicateSave: false } : {}), saveStatus: undefined, saveMessage: undefined });
   }
-
+  function reviewedNumber(key: "ownScore" | "totalTargets" | "winningScore", raw: string) {
+    update(key, raw === "" ? null : Number(raw));
+  }
+  function reset() {
+    onChange({ ...candidate, ...original, seriesScores: [...original.seriesScores], reviewedSeriesScores: [...original.seriesScores], seriesMismatchAcknowledged: false, duplicateStatus: "new", duplicateMatches: [], duplicateNeedsRecheck: true, allowDuplicateSave: false, saveStatus: undefined, saveMessage: undefined });
+  }
   function skipAsNotMe() {
     onChange({ ...candidate, selected: false, shooterMatchStatus: "unmatched", warnings: Array.from(new Set([...(candidate.warnings || []), "Marked as not me."])) });
   }
+  const errorFor = (key: keyof typeof validation.errors) => validation.errors[key];
+  const changedBadge = (key: string) => corrected.includes(key) ? <span className="badge badgeGold">User corrected</span> : null;
 
   return (
     <article className={`candidateCard compactCandidateCard selectableResultCard ${candidate.selected ? "selectedResultCard" : ""} ${candidate.category === "control" ? "secondaryCandidateCard" : ""}`}>
@@ -531,101 +546,47 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
         <div className="compactCandidateMain">
           {nameMatchLabel ? <div className="compactCandidateLine"><span className={`badge ${candidate.shooterMatchStatus === "matched_to_you" ? "badgeGreen" : "badgeGold"}`}>{nameMatchLabel}</span></div> : null}
           <div className="compactCandidateLine resultShooterLine"><strong>{candidate.shooterName || shooterName || "Unknown shooter"}</strong></div>
-          <div className="compactCandidateLine scoreLine"><strong>{candidate.ownScore ?? "?"}/{candidate.maxScore ?? candidate.totalTargets ?? "?"}</strong><span>·</span><span>Winning score: {candidate.winningScore ?? "unknown"}</span></div>
+          <div className="compactCandidateLine scoreLine"><strong>{candidate.ownScore ?? "?"}/{candidate.totalTargets ?? "?"}</strong><span>·</span><span>Winning score: {candidate.winningScore ?? "unknown"}</span></div>
           <div className="compactCandidateLine"><span>{candidate.placement ? `Place ${candidate.placement}` : "Placement unknown"}</span><span>·</span><span>{candidate.listType || "Unknown list"}</span></div>
           <div className="compactCandidateLine"><span>{candidate.shootingGround || "Club unknown"}</span><span>·</span><span>{candidate.discipline || "Unknown discipline"}</span><span>·</span><span>{formatDate(candidate.date)}</span></div>
         </div>
         <div className="compactCandidateBadges">
           <span className={`badge ${statusBadgeClass(candidate)}`}>{reviewStatusLabel(candidate)}</span>
-          {candidate.duplicateStatus ? <span className={`badge ${candidate.duplicateStatus === "new" ? "badgeGreen" : candidate.duplicateStatus === "possible" ? "badgeGold" : "badgeBlue"}`}>{duplicateLabel(candidate)}</span> : null}
-          {candidate.saveStatus === "saved" ? <span className="badge badgeGreen">Saved</span> : null}
-          {candidate.saveStatus === "error" ? <span className="badge danger">Error</span> : null}
+          {candidate.duplicateNeedsRecheck ? <span className="badge badgeGold">Duplicate recheck needed</span> : candidate.duplicateStatus ? <span className={`badge ${candidate.duplicateStatus === "new" ? "badgeGreen" : candidate.duplicateStatus === "possible" ? "badgeGold" : "badgeBlue"}`}>{duplicateLabel(candidate)}</span> : null}
         </div>
-        <div className="compactCandidateAction"><ReviewAction candidate={candidate} update={update} /></div>
+        <div className="compactCandidateAction">
+          <ReviewAction candidate={candidate} update={(key, value) => update(key, value, false)} />
+          {candidate.category !== "control" && !isLowQualitySummaryCandidate(candidate) ? <button type="button" className="secondary smallButton" aria-expanded={Boolean(candidate.editorOpen)} onClick={() => update("editorOpen", !candidate.editorOpen, false)}>Review / edit result</button> : null}
+        </div>
       </div>
       {visibleReason ? <p className="small muted compactCandidateReason"><strong>Reason:</strong> {visibleReason}</p> : null}
 
-      <details className="candidateDetails">
-        <summary>Show details</summary>
+      {candidate.editorOpen ? <section className="leirdueResultEditor" aria-label="Review result values">
+        <div className="reviewEditorHeading"><div><strong>Review result</strong><p className="small muted">Parsed: {original.ownScore ?? "?"}/{original.totalTargets ?? "?"} · Reviewed: {candidate.ownScore ?? "?"}/{candidate.totalTargets ?? "?"}</p></div><button type="button" className="secondary smallButton" onClick={reset}>Reset to parsed values</button></div>
+        <div className="leirdueScoreGrid">
+          {([ ["ownScore", "Own score"], ["totalTargets", "Total / max targets"], ["winningScore", "Winning score"] ] as const).map(([key, label]) => <div key={key}>
+            <label htmlFor={`${candidate.localId}-${key}`}>{label} {changedBadge(key)}</label>
+            <input id={`${candidate.localId}-${key}`} type="number" step="1" min={key === "totalTargets" ? 1 : 0} inputMode="numeric" value={candidate[key] ?? ""} aria-invalid={Boolean(errorFor(key))} aria-describedby={errorFor(key) ? `${candidate.localId}-${key}-error` : undefined} onChange={(event) => reviewedNumber(key, event.target.value)} />
+            <span className="small muted">Parsed: {original[key] ?? "unknown"}</span>{errorFor(key) ? <span id={`${candidate.localId}-${key}-error`} className="fieldError">{errorFor(key)}</span> : null}
+          </div>)}
+        </div>
+        {(candidate.reviewedSeriesScores?.length || 0) > 0 ? <div className="seriesReview"><strong>Series / course scores</strong><div className="leirdueSeriesGrid">{candidate.reviewedSeriesScores?.map((score, index) => <div key={index}><label htmlFor={`${candidate.localId}-series-${index}`}>Series {index + 1}</label><input id={`${candidate.localId}-series-${index}`} type="number" step="1" min="0" inputMode="numeric" value={score ?? ""} onChange={(event) => { const slots = [...(candidate.reviewedSeriesScores || [])]; slots[index] = event.target.value === "" ? null : Number(event.target.value); update("reviewedSeriesScores", slots); }} /><span className="small muted">Parsed: {original.seriesScores[index] ?? "unknown"}</span></div>)}</div>
+          <p className="small">{validation.series.partial ? `Known series subtotal: ${validation.series.knownSubtotal}` : `Series total: ${validation.series.knownSubtotal}`}</p>
+          {errorFor("seriesScores") ? <p className="fieldError">{errorFor("seriesScores")}</p> : null}
+          {validation.completeMismatch ? <div className="notice"><strong>Complete series total differs from own score.</strong><div className="btns"><button type="button" className="secondary smallButton" onClick={() => onChange({ ...candidate, ownScore: validation.series.knownSubtotal, seriesMismatchAcknowledged: true, duplicateStatus: "new", duplicateMatches: [], duplicateNeedsRecheck: true, allowDuplicateSave: false })}>Use series total</button><button type="button" className="secondary smallButton" onClick={() => update("seriesMismatchAcknowledged", true)}>Keep own score</button></div></div> : null}
+        </div> : null}
+        <div className="row"><div><label htmlFor={`${candidate.localId}-date`}>Date {changedBadge("date")}</label><input id={`${candidate.localId}-date`} type="date" value={candidate.date || ""} onChange={(event) => update("date", event.target.value)} />{errorFor("date") ? <span className="fieldError">{errorFor("date")}</span> : null}</div><div><label htmlFor={`${candidate.localId}-discipline`}>Discipline {changedBadge("discipline")}</label><select id={`${candidate.localId}-discipline`} value={candidate.discipline} onChange={(event) => update("discipline", event.target.value)}>{DISCIPLINE_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></div></div>
+        <label htmlFor={`${candidate.localId}-name`}>Competition name {changedBadge("name")}</label><input id={`${candidate.localId}-name`} value={candidate.name} onChange={(event) => update("name", event.target.value)} />
+        <label htmlFor={`${candidate.localId}-ground`}>Shooting ground / organizer {changedBadge("shootingGround")}</label><input id={`${candidate.localId}-ground`} value={candidate.shootingGround || ""} onChange={(event) => update("shootingGround", event.target.value)} />
+        {candidate.duplicateStatus === "possible" ? <label className="checkboxLabel"><input type="checkbox" checked={Boolean(candidate.allowDuplicateSave)} onChange={(event) => update("allowDuplicateSave", event.target.checked, false)} /><span>Save anyway after reviewing this possible duplicate</span></label> : null}
+      </section> : null}
+
+      <details className="candidateDetails"><summary>Technical details</summary>
         <p className="small muted"><strong>Review reason:</strong> {candidateReason(candidate)}</p>
-
-        {candidate.duplicateStatus === "possible" ? (
-          <label className="checkboxLabel">
-            <input type="checkbox" checked={Boolean(candidate.allowDuplicateSave)} onChange={(event) => update("allowDuplicateSave", event.target.checked)} />
-            <span>Save anyway after reviewing this possible duplicate</span>
-          </label>
-        ) : null}
-
-        <div className="row">
-          <div>
-            <label>Date</label>
-            <input type="date" value={candidate.date || ""} onChange={(event) => update("date", event.target.value)} />
-          </div>
-          <div>
-            <label>Proposed discipline</label>
-            <select value={candidate.discipline} onChange={(event) => update("discipline", event.target.value)}>
-              {DISCIPLINE_OPTIONS.map((option) => (
-                <option key={option}>{option}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <label>Competition name</label>
-        <input value={candidate.name} onChange={(event) => update("name", event.target.value)} />
-
-        <label>Shooting ground / organizer</label>
-        <input value={candidate.shootingGround || ""} onChange={(event) => update("shootingGround", event.target.value)} placeholder="Shooting ground" />
-
-        <div className="row threeColumnRow">
-          <div>
-            <label>Own score</label>
-            <input type="number" min="0" inputMode="numeric" value={candidate.ownScore ?? ""} onChange={(event) => update("ownScore", event.target.value === "" ? null : Number(event.target.value))} />
-          </div>
-          <div>
-            <label>Total / max score</label>
-            <input type="number" min="1" inputMode="numeric" value={candidate.totalTargets ?? ""} onChange={(event) => update("totalTargets", event.target.value === "" ? null : Number(event.target.value))} />
-          </div>
-          <div>
-            <label>Winning score</label>
-            <input type="number" min="1" inputMode="numeric" value={candidate.winningScore ?? ""} onChange={(event) => update("winningScore", event.target.value === "" ? null : Number(event.target.value))} />
-          </div>
-        </div>
-
-        <div className="metricsRow">
-          <span className="metricChip"><strong>{candidate.shooterClass || "?"}</strong> class</span>
-          <span className="metricChip"><strong>{candidate.placement ?? "?"}</strong> placement</span>
-          <span className="metricChip"><strong>{candidate.seriesScores?.length ? candidate.seriesScores.join(" · ") : "?"}</strong> series/post scores</span>
-          <span className="metricChip"><strong>{candidate.winningScore ?? "unknown"}{candidate.winningScore !== null ? `/${candidate.totalTargets ?? "?"}` : ""}</strong> winning score</span>
-          {percent !== null ? <span className="metricChip highlightMetric"><strong>{percent.toFixed(1)}%</strong> performance</span> : null}
-          <span className="metricChip"><strong>{candidate.listType || "Unknown list"}</strong></span>
-          <span className="metricChip"><strong>{sourceIds.stevneId || "?"}</strong> stevne_id</span>
-          <span className="metricChip"><strong>{sourceIds.listeId || "?"}</strong> liste_id</span>
-          {candidate.shooterMatchStatus === "matched_to_you" ? <span className="metricChip highlightMetric"><strong>Matched to you</strong></span> : null}
-          {candidate.shooterMatchStatus === "possible_match" ? <span className="metricChip badgeGold"><strong>Possible match</strong></span> : null}
-          {candidate.shooterMatchReason ? <span className="metricChip"><strong>{candidate.shooterMatchReason}</strong> name match</span> : null}
-        </div>
-
-        {warnings.length > 0 ? (
-          <div className={candidate.duplicateStatus === "exact" ? "error" : "notice"}>
-            <strong>Import warnings</strong>
-            <ul>
-              {warnings.map((warning) => <li key={warning}>{warning}</li>)}
-            </ul>
-            {candidate.duplicateMatches?.length ? <p className="small muted">Duplicate matches: {candidate.duplicateMatches.map((match) => `${match.reason} (${match.id})`).join("; ")}</p> : null}
-          </div>
-        ) : null}
-
-        <label>Leirdue URL</label>
-        <input value={candidate.leirdueUrl} onChange={(event) => update("leirdueUrl", event.target.value)} placeholder="https://www.leirdue.net/..." />
-
-        <label>Notes / raw parser values</label>
-        <textarea value={candidate.notes} onChange={(event) => update("notes", event.target.value)} placeholder="Parser notes or your correction notes" />
-
-        <div className="btns compactDetailActions">
-          {candidate.leirdueUrl ? <a href={candidate.leirdueUrl} target="_blank" rel="noreferrer" className="button secondary smallButton">Open Leirdue link</a> : null}
-          {candidate.category !== "control" && canSelectCandidate(candidate) ? <button type="button" className="secondary smallButton" onClick={skipAsNotMe}>Mark as not me</button> : null}
-        </div>
+        <div className="metricsRow"><span className="metricChip"><strong>{candidate.shooterClass || "?"}</strong> class</span><span className="metricChip"><strong>{candidate.placement ?? "?"}</strong> placement</span>{percent !== null ? <span className="metricChip highlightMetric"><strong>{percent.toFixed(1)}%</strong> performance</span> : null}<span className="metricChip"><strong>{sourceIds.stevneId || "?"}</strong> stevne_id</span><span className="metricChip"><strong>{sourceIds.listeId || "?"}</strong> liste_id</span></div>
+        {warnings.length ? <div className={candidate.duplicateStatus === "exact" ? "error" : "notice"}><strong>Import warnings</strong><ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div> : null}
+        <p className="small muted">Source: <a href={candidate.leirdueUrl} target="_blank" rel="noreferrer">Open Leirdue link</a></p><p className="small muted">Parser notes: {candidate.notes || "None"}</p>
+        {candidate.category !== "control" && canSelectCandidate(candidate) ? <button type="button" className="secondary smallButton" onClick={skipAsNotMe}>Mark as not me</button> : null}
       </details>
       {candidate.saveMessage ? <div className={candidate.saveStatus === "error" ? "error" : "notice"}>{candidate.saveMessage}</div> : null}
     </article>
@@ -958,15 +919,16 @@ export default function LeirdueImportPage() {
       const data = (await response.json()) as DuplicateResponse;
       if (!response.ok || !data.results) return candidateList;
       return candidateList.map((candidate) => {
-        const result = data.results?.find((item) => item.candidate.leirdueUrl === candidate.leirdueUrl && item.candidate.date === candidate.date && item.candidate.name === candidate.name);
+        const result = data.results?.find((item) => item.clientCandidateId === candidate.localId);
         if (!result) return candidate;
         const exact = result.status === "exact";
         return {
           ...candidate,
           duplicateStatus: result.status,
           duplicateMatches: result.matches,
+          duplicateNeedsRecheck: false,
           alreadyImported: exact || candidate.alreadyImported,
-          selected: result.status === "new" ? candidate.selected : false,
+          selected: exact ? false : candidate.selected,
           warnings: result.status === "new" ? candidate.warnings : Array.from(new Set([...(candidate.warnings || []), result.status === "exact" ? "Already imported." : "Possible duplicate."])),
         };
       });
@@ -1267,8 +1229,8 @@ export default function LeirdueImportPage() {
     setError("");
     setSuccess("");
     setSavedImport(null);
-    const selected = candidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate) && canSelectCandidate(candidate) && (candidate.duplicateStatus !== "possible" || candidate.allowDuplicateSave));
-    if (selected.length === 0) {
+    const chosen = candidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate));
+    if (chosen.length === 0) {
       setError("Select at least one candidate to save.");
       return;
     }
@@ -1282,6 +1244,14 @@ export default function LeirdueImportPage() {
       return;
     }
 
+    const recheckedCandidates = await checkDuplicatesFor(candidates);
+    setCandidates(recheckedCandidates);
+    const selected = recheckedCandidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate) && canSelectCandidate(candidate) && (candidate.duplicateStatus !== "possible" || candidate.allowDuplicateSave));
+    if (selected.length !== chosen.length) {
+      setSaving(false);
+      setError("Review the updated duplicate or validation status before importing.");
+      return;
+    }
     const response = await fetch("/api/leirdue/save", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -1297,7 +1267,7 @@ export default function LeirdueImportPage() {
 
     setCandidates((current) =>
       current.map((candidate) => {
-        const result = data.results?.find((item) => item.candidate.leirdueUrl === candidate.leirdueUrl && item.candidate.date === candidate.date && item.candidate.name === candidate.name);
+        const result = data.results?.find((item) => item.clientCandidateId === candidate.localId);
         if (!result) return candidate;
         return {
           ...candidate,

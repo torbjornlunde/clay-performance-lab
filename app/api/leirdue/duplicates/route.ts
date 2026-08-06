@@ -10,6 +10,7 @@ type DuplicateBody = {
 };
 
 type DuplicateResult = {
+  clientCandidateId?: string;
   candidate: LeirdueCandidate;
   status: LeirdueDuplicateStatus;
   matches: LeirdueDuplicateMatch[];
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
       .map((row) => compareLeirdueDuplicate(candidate, row))
       .filter((match): match is LeirdueDuplicateMatch => Boolean(match));
     const status: LeirdueDuplicateStatus = matches.some((match) => match.exact) ? "exact" : matches.length > 0 ? "possible" : "new";
-    return { candidate, status, matches };
+    return { clientCandidateId: candidate.clientCandidateId, candidate, status, matches };
   });
 
   return NextResponse.json({ results });

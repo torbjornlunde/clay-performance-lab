@@ -12,6 +12,8 @@ export type LeirdueDuplicateMatch = {
 };
 
 export type LeirdueCandidate = {
+  /** Request-scoped identity. Echoed by APIs, never persisted. */
+  clientCandidateId?: string;
   date: string | null;
   name: string;
   shootingGround: string | null;
@@ -22,6 +24,10 @@ export type LeirdueCandidate = {
   maxScore?: number | null;
   placement?: number | null;
   seriesScores?: number[];
+  reviewedSeriesScores?: Array<number | null>;
+  originalParsed?: LeirdueParsedValues;
+  correctedFields?: string[];
+  seriesMismatchAcknowledged?: boolean;
   shooterName?: string | null;
   shooterClass?: string | null;
   stevneId?: string | null;
@@ -39,6 +45,17 @@ export type LeirdueCandidate = {
   category: LeirdueCategory;
   importRecommended: boolean;
   alreadyImported?: boolean;
+};
+
+export type LeirdueParsedValues = {
+  ownScore: number | null;
+  totalTargets: number | null;
+  winningScore: number | null;
+  seriesScores: number[];
+  date: string | null;
+  discipline: string;
+  name: string;
+  shootingGround: string | null;
 };
 
 export type LeirdueDebugParseInput = {
