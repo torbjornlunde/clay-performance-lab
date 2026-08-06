@@ -23,6 +23,17 @@ These instructions apply to the entire repository unless a more specific `AGENTS
 - Preserve the existing Dashboard Menu unless the task specifically concerns it.
 - Do not introduce payments, subscriptions, service history, analytics or unrelated integrations unless explicitly requested.
 
+## User-facing update notes
+
+- Every PR that changes behavior visible to normal users must evaluate whether the in-app `What's new` data needs a new entry.
+- When a meaningful user-facing feature, workflow improvement or important fix is shipped, add a short shooter-facing entry to the canonical `What's new` data source in the same PR.
+- Do not wait for the product owner to request the entry. Treat it as part of completing the user-facing change.
+- Use the established update format `vN.MM.YY`, where `N` starts at 1 each month and increments for each published update in that month, for example `v1.08.26`, `v2.08.26` and `v3.08.26`.
+- Determine the next number by inspecting the existing canonical update data. Never reuse or skip an existing ID accidentally.
+- Keep entries concise: a short heading and 2–5 user-facing bullets. Do not mention PR numbers, migrations, implementation details or GitHub terminology.
+- Do not add noise for internal refactors, test-only changes, admin-only maintenance or invisible technical work. In those cases, explicitly state in the PR checklist why no user-facing update entry is required.
+- A user-facing PR is not complete until the update-note decision is documented and, when required, the canonical `What's new` data is updated.
+
 ## Data and Supabase
 
 - Preserve all existing user data and existing routes.
@@ -67,6 +78,7 @@ Every completed task should report:
 - commits added
 - files changed
 - user-visible behavior changed
+- whether the canonical `What's new` data was updated, including the update ID, or why no user-facing entry was required
 - database fields and migration filename, if any
 - complete SQL and whether it must be run manually, if any
 - tests actually run and their results
