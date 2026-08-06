@@ -9,6 +9,13 @@
 - [ ] No unrelated redesign or feature work was added.
 - [ ] Existing routes and user data are preserved.
 
+## User-facing update note
+
+- [ ] This PR includes a meaningful user-facing change and the canonical `What's new` data was updated.
+- [ ] No `What's new` entry is required because this change is internal, test-only, admin-only or otherwise invisible to normal users.
+
+Update ID, for example `v3.08.26`, or reason no entry is required:
+
 ## Database
 
 - [ ] No database change.
@@ -50,4 +57,5 @@ Results:
 ## Final confirmation
 
 - [ ] English UI text only.
+- [ ] `What's new` decision is documented.
 - [ ] PR has not been merged.
