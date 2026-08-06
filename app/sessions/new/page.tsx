@@ -13,10 +13,15 @@ import { userFacingSaveError } from "@/lib/userFacingErrors";
 import { CompetitionTemplateSuggestions, type CompetitionTemplateCandidate } from "@/app/components/CompetitionTemplateSuggestions";
 import { useCompetitionTemplateCandidates } from "@/lib/competitionTemplates/useCompetitionTemplateCandidates";
 import { postFormatOptions } from "@/lib/targets/postSetupState";
+import { CompakCourseProgrammeFields } from "@/app/components/CompakCourseProgrammeFields";
+import { getExpectedPresentationRows } from "@/lib/fitasc/compakSchemes";
+import { validateCompakCourse, type CompakConflictResolution, type CompakProgrammeType } from "@/lib/fitasc/compakProgramme";
 
 type CourseSetup = {
   courseNumber: number;
   scheme: number | null;
+  rememberedProgramme: CompakProgrammeType | null;
+  conflictResolution: CompakConflictResolution | null;
   shooterNumber: number;
   startPlate: number;
 };
@@ -25,6 +30,8 @@ type SessionCourseInsert = {
   session_id: string;
   course_number: number;
   fitasc_scheme: number | null;
+  compak_programme_type: CompakProgrammeType | null;
+  compak_conflict_resolution: CompakConflictResolution | null;
   shooter_number: number | null;
   start_plate: number | null;
 };
@@ -33,7 +40,7 @@ function makeCourses(count: number, old: CourseSetup[]) {
   return Array.from({ length: count }, (_, i) =>
     old[i]
       ? { ...old[i], courseNumber: i + 1 }
-      : { courseNumber: i + 1, scheme: null, shooterNumber: 1, startPlate: 1 },
+      : { courseNumber: i + 1, scheme: null, rememberedProgramme: null, conflictResolution: null, shooterNumber: 1, startPlate: 1 },
   );
 }
 
@@ -154,6 +161,8 @@ export default function NewSessionPage() {
     }
 
     const isCompak = isCompactDiscipline(discipline);
+    const programmeError = courses.map((course) => validateCompakCourse({ isCompak: isCompactDiscipline(discipline), scheme: course.scheme, rememberedProgramme: course.rememberedProgramme, conflictResolution: course.conflictResolution, schemePresentations: course.scheme ? getExpectedPresentationRows(course.scheme) : null })).find(Boolean);
+    if (programmeError) { setErr(programmeError); setSaving(false); return; }
     const isSporttrap = discipline === "Sporttrap";
     const isLeirduesti = isOrdinaryLeirduesti(discipline);
     const targetsPerPostNumber = Number(targetsPerPost) || 10;
@@ -202,6 +211,8 @@ export default function NewSessionPage() {
               session_id: session.id,
               course_number: 1,
               fitasc_scheme: null,
+              compak_programme_type: null,
+              compak_conflict_resolution: null,
               shooter_number: sporttrapStand,
               start_plate: null,
             },
@@ -210,6 +221,8 @@ export default function NewSessionPage() {
             session_id: session.id,
             course_number: course.courseNumber,
             fitasc_scheme: isCompak ? course.scheme : null,
+            compak_programme_type: isCompak ? course.rememberedProgramme : null,
+            compak_conflict_resolution: isCompak ? course.conflictResolution : null,
             shooter_number: isCompak && format === "Squad" ? course.shooterNumber : null,
             start_plate: isCompak && format === "Squad" ? course.startPlate : null,
           }));
@@ -356,18 +369,7 @@ export default function NewSessionPage() {
             {courses.map((course, i) => (
               <div className="subcard" key={course.courseNumber}>
                 <h3>Course {course.courseNumber}</h3>
-                <label>FITASC scheme</label>
-                <select
-                  value={course.scheme ?? ""}
-                  onChange={(e) => updateCourse(i, { scheme: e.target.value ? Number(e.target.value) : null })}
-                >
-                  <option value="">Unknown / set later</option>
-                  {schemes.map((option) => (
-                    <option key={option.scheme} value={option.scheme}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                <CompakCourseProgrammeFields course={course} schemes={schemes} onChange={(update) => updateCourse(i, update)} />
                 {format === "Squad" && (
                   <>
                     <div className="row">

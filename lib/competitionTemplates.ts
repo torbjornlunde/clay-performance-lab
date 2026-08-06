@@ -20,7 +20,7 @@ function scanForbidden(value: unknown): string[] { const found = new Set<string>
 export function assertSafeTemplatePayload(payload: unknown) { const found = scanForbidden(payload); if (found.length) throw new Error(`Template payload contains non-publishable fields: ${found.join(", ")}`); return true; }
 export function buildTemplatePayload(args: { session: any; courses?: any[]; postTargets?: any[]; postDetails?: any[]; targetDefinitions?: any[] }) {
   const { session } = args;
-  const coursePayload = (args.courses || []).map((course) => ({ courseNumber: Number(course.course_number), fitascScheme: course.fitasc_scheme ?? null, shooterNumber: course.shooter_number ?? null, startPlate: course.start_plate ?? null }));
+  const coursePayload = (args.courses || []).map((course) => ({ courseNumber: Number(course.course_number), fitascScheme: course.fitasc_scheme ?? null, compakProgrammeType: course.compak_programme_type ?? null, compakConflictResolution: course.compak_conflict_resolution ?? null, shooterNumber: course.shooter_number ?? null, startPlate: course.start_plate ?? null }));
   let setup: any;
   if (isPostBasedSportingDiscipline(session.discipline) || isOrdinaryLeirduesti(session.discipline)) {
     const byPost = new Map<number, any[]>();

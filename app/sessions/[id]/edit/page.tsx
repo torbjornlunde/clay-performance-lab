@@ -23,6 +23,8 @@ import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { supabase } from "@/lib/supabase/client";
 import { normalizeDefaultPostFormat, postFormatOptions } from "@/lib/targets/postSetupState";
 import { prioritizedDisciplineOptions } from "@/lib/profile";
+import { CompakCourseProgrammeFields } from "@/app/components/CompakCourseProgrammeFields";
+import { validateCompakCourse, type CompakConflictResolution, type CompakProgrammeType } from "@/lib/fitasc/compakProgramme";
 
 type Session = {
   id: string;
@@ -51,6 +53,8 @@ type CourseSetup = {
   id?: string;
   courseNumber: number;
   scheme: number | null;
+  rememberedProgramme: CompakProgrammeType | null;
+  conflictResolution: CompakConflictResolution | null;
   shooterNumber: number;
   startPlate: number;
 };
@@ -67,6 +71,8 @@ type CourseRow = {
   id: string;
   course_number: number;
   fitasc_scheme: number | null;
+  compak_programme_type: CompakProgrammeType | null;
+  compak_conflict_resolution: CompakConflictResolution | null;
   shooter_number: number | null;
   start_plate: number | null;
 };
@@ -75,7 +81,7 @@ function makeCourses(count: number, old: CourseSetup[]) {
   return Array.from({ length: count }, (_, i) =>
     old[i]
       ? { ...old[i], courseNumber: i + 1 }
-      : { courseNumber: i + 1, scheme: null, shooterNumber: 1, startPlate: 1 },
+      : { courseNumber: i + 1, scheme: null, rememberedProgramme: null, conflictResolution: null, shooterNumber: 1, startPlate: 1 },
   );
 }
 
@@ -173,7 +179,7 @@ export default function EditSessionPage() {
 
     const { data: courseRows, error: courseError } = await supabase
       .from("session_courses")
-      .select("id,course_number,fitasc_scheme,shooter_number,start_plate")
+      .select("id,course_number,fitasc_scheme,compak_programme_type,compak_conflict_resolution,shooter_number,start_plate")
       .eq("session_id", sessionId)
       .order("course_number")
       .returns<CourseRow[]>();
@@ -224,6 +230,8 @@ export default function EditSessionPage() {
       id: course.id,
       courseNumber: course.course_number,
       scheme: course.fitasc_scheme,
+      rememberedProgramme: course.compak_programme_type,
+      conflictResolution: course.compak_conflict_resolution,
       shooterNumber: course.shooter_number || 1,
       startPlate:
         course.start_plate ||
@@ -341,6 +349,8 @@ export default function EditSessionPage() {
     const isCompak = isCompactDiscipline(discipline);
     const isLeirduesti = isOrdinaryLeirduesti(discipline);
     const targetsPerPostNumber = Number(targetsPerPost) || 10;
+    const programmeError = courses.map((course) => validateCompakCourse({ isCompak, scheme: course.scheme, rememberedProgramme: course.rememberedProgramme, conflictResolution: course.conflictResolution, schemePresentations: course.scheme ? getExpectedPresentationRows(course.scheme) : null })).find(Boolean);
+    if (programmeError) { setErr(programmeError); setSaving(false); return; }
 
     if (isResultOnlyImport && !advancedSetupEnabled) {
       const { error: basicError } = await supabase
@@ -464,6 +474,8 @@ export default function EditSessionPage() {
           session_id: sessionId,
           course_number: course.courseNumber,
           fitasc_scheme: isCompak ? course.scheme : null,
+          compak_programme_type: isCompak ? course.rememberedProgramme : null,
+          compak_conflict_resolution: isCompak ? course.conflictResolution : null,
           shooter_number:
             isSporttrap || (isCompak && format === "Squad")
               ? course.shooterNumber
@@ -699,24 +711,9 @@ export default function EditSessionPage() {
             {courses.map((course, i) => (
               <div className="subcard" key={course.courseNumber}>
                 <h3>Course {course.courseNumber}</h3>
-                <label>FITASC scheme</label>
-                <select
-                  value={course.scheme ?? ""}
-                  onChange={(e) =>
-                    updateCourse(i, {
-                      scheme: e.target.value ? Number(e.target.value) : null,
-                    })
-                  }
-                >
-                  <option value="">Unknown / set later</option>
-                  {schemes.map((option) => (
-                    <option key={option.scheme} value={option.scheme}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                <CompakCourseProgrammeFields course={course} schemes={schemes} onChange={(update) => updateCourse(i, update)} />
 
-                <details className="optionalDetails">
+                <details className="optionalDetails" hidden={!course.scheme}>
                   <summary>Course overrides</summary>
                   <p className="small muted">
                     Keep scheme data unchanged, but override the actual

@@ -14,7 +14,8 @@ import {
   postNumbersMeetingExpected,
   scoreDisplay,
 } from "@/lib/targets/postSetupState";
-import { getSchemeType, plateRotation } from "@/lib/fitasc/schemes";
+import { plateRotation } from "@/lib/fitasc/schemes";
+import { compakCourseSummary } from "@/lib/fitasc/compakProgramme";
 import {
   normalizeLeirduestiLabel,
   shortMissedTarget,
@@ -1450,9 +1451,7 @@ export default function Page() {
                   <div className="subcard" key={course.id}>
                     <strong>Course {course.course_number}</strong>
                     <div className="small muted">
-                      {course.fitasc_scheme
-                        ? `Scheme ${course.fitasc_scheme} — ${getSchemeType(course.fitasc_scheme)}`
-                        : "FITASC scheme not set yet"}
+                      {compakCourseSummary(course.course_number, course.fitasc_scheme, course.compak_programme_type, course.compak_conflict_resolution)}
                     </div>
                     {session.shooting_format === "Squad" &&
                       course.start_plate && (
