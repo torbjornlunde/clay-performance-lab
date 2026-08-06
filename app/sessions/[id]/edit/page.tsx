@@ -354,18 +354,6 @@ export default function EditSessionPage() {
     const programmeError = isCompak ? courses.map((course) => validateCompakCourse({ isCompak, detailMode: course.detailMode, scheme: course.scheme, rememberedProgramme: course.rememberedProgramme, conflictResolution: course.conflictResolution, schemePresentations: course.scheme ? getExpectedPresentationRows(course.scheme) : null })).find(Boolean) : null;
     if (programmeError) { setErr(programmeError); setSaving(false); return; }
 
-    if (!isCompak) {
-      const { error: normalizeCourseError } = await supabase
-        .from("session_courses")
-        .update({ fitasc_scheme: null, compak_programme_type: null, compak_conflict_resolution: null })
-        .eq("session_id", sessionId);
-      if (normalizeCourseError) {
-        setErr(normalizeCourseError.message);
-        setSaving(false);
-        return;
-      }
-    }
-
     if (isResultOnlyImport && !advancedSetupEnabled) {
       const { error: basicError } = await supabase
         .from("sessions")
@@ -389,6 +377,18 @@ export default function EditSessionPage() {
         setErr(basicError.message);
         setSaving(false);
         return;
+      }
+
+      if (!isCompak) {
+        const { error: normalizeCourseError } = await supabase
+          .from("session_courses")
+          .update({ fitasc_scheme: null, compak_programme_type: null, compak_conflict_resolution: null })
+          .eq("session_id", sessionId);
+        if (normalizeCourseError) {
+          setErr(normalizeCourseError.message);
+          setSaving(false);
+          return;
+        }
       }
 
       router.push(`/sessions/${sessionId}`);
@@ -442,6 +442,18 @@ export default function EditSessionPage() {
       setErr(sessionError.message);
       setSaving(false);
       return;
+    }
+
+    if (!isCompak) {
+      const { error: normalizeCourseError } = await supabase
+        .from("session_courses")
+        .update({ fitasc_scheme: null, compak_programme_type: null, compak_conflict_resolution: null })
+        .eq("session_id", sessionId);
+      if (normalizeCourseError) {
+        setErr(normalizeCourseError.message);
+        setSaving(false);
+        return;
+      }
     }
 
     if (isCompak) {
