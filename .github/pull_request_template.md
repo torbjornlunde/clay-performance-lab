@@ -16,6 +16,13 @@
 
 Update ID, for example `v3.08.26`, or reason no entry is required:
 
+## Social media consideration
+
+- [ ] This change is a useful candidate for a future Instagram/Facebook post or update roundup.
+- [ ] This change is not suitable for social media or is too small/internal to mention.
+
+Suggested social angle, short caption idea or visual — or reason it is not suitable:
+
 ## Database
 
 - [ ] No database change.
@@ -58,4 +65,5 @@ Results:
 
 - [ ] English UI text only.
 - [ ] `What's new` decision is documented.
+- [ ] Social media suitability is documented.
 - [ ] PR has not been merged.
