@@ -42,6 +42,62 @@ function stringValue(value: string | number | null | undefined) {
   return String(value);
 }
 
+
+type SimpleTrainingPayload = {
+  date: string;
+  targets_fired: number;
+  hits: number | null;
+  discipline: string | null;
+  location: string | null;
+  notes: string | null;
+  source_type: "simple_training";
+  equipment_weapon_id: string | null;
+  equipment_ammunition_profile_id: string | null;
+  equipment_snapshot: any;
+};
+
+function buildSimpleTrainingPayload(values: {
+  date: string;
+  targetsFired: string;
+  hits: string;
+  discipline: string;
+  location: string;
+  notes: string;
+  equipmentSelection: EquipmentSelection;
+  equipmentSnapshot: any;
+}): { payload: SimpleTrainingPayload; error: null } | { payload: null; error: string } {
+  const targetCount = Number(values.targetsFired);
+  const hitCount = values.hits === "" ? null : Number(values.hits);
+
+  if (!values.date) {
+    return { payload: null, error: "Choose a date for this training log." };
+  }
+
+  if (!Number.isInteger(targetCount) || targetCount <= 0) {
+    return { payload: null, error: "Targets fired must be a whole number greater than 0." };
+  }
+
+  if (hitCount !== null && (!Number.isInteger(hitCount) || hitCount < 0 || hitCount > targetCount)) {
+    return { payload: null, error: "Hits must be a whole number from 0 up to targets fired." };
+  }
+
+  return {
+    error: null,
+    payload: {
+      date: values.date,
+      targets_fired: targetCount,
+      hits: hitCount,
+      discipline: values.discipline || null,
+      location: values.location.trim() || null,
+      notes: values.notes.trim() || null,
+      source_type: "simple_training",
+      equipment_weapon_id: values.equipmentSelection.weaponId || null,
+      equipment_ammunition_profile_id: values.equipmentSelection.ammunitionId || null,
+      equipment_snapshot: values.equipmentSnapshot,
+    },
+  };
+}
+
 export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLogFormProps) {
   const router = useRouter();
   const isEdit = mode === "edit";
@@ -89,21 +145,9 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
     event.preventDefault();
     setErr("");
 
-    const targetCount = Number(targetsFired);
-    const hitCount = hits === "" ? null : Number(hits);
-
-    if (!date) {
-      setErr("Choose a date for this training log.");
-      return;
-    }
-
-    if (!Number.isInteger(targetCount) || targetCount <= 0) {
-      setErr("Targets fired must be a whole number greater than 0.");
-      return;
-    }
-
-    if (hitCount !== null && (!Number.isInteger(hitCount) || hitCount < 0 || hitCount > targetCount)) {
-      setErr("Hits must be a whole number from 0 up to targets fired.");
+    const built = buildSimpleTrainingPayload({ date, targetsFired, hits, discipline, location, notes, equipmentSelection, equipmentSnapshot });
+    if (!built.payload) {
+      setErr(built.error);
       return;
     }
 
@@ -114,18 +158,7 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
       return;
     }
 
-    const payload = {
-      date,
-      targets_fired: targetCount,
-      hits: hitCount,
-      discipline: discipline || null,
-      location: location.trim() || null,
-      notes: notes.trim() || null,
-      source_type: "simple_training",
-      equipment_weapon_id: equipmentSelection.weaponId || null,
-      equipment_ammunition_profile_id: equipmentSelection.ammunitionId || null,
-      equipment_snapshot: equipmentSnapshot,
-    };
+    const payload = built.payload;
 
     if (isEdit) {
       const { error } = await supabase
@@ -165,12 +198,30 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
   async function upgradeLog() {
     if (!isEdit || !initialValues?.id) return;
     setErr("");
+    const built = buildSimpleTrainingPayload({ date, targetsFired, hits, discipline, location, notes, equipmentSelection, equipmentSnapshot });
+    if (!built.payload) {
+      setErr(built.error);
+      return;
+    }
+
     setUpgrading(true);
+    const saveResult = await supabase
+      .from("training_logs")
+      .update(built.payload)
+      .eq("id", initialValues.id)
+      .eq("source_type", "simple_training")
+      .is("upgraded_session_id", null);
+
+    if (saveResult.error) {
+      setErr(userFacingSaveError(saveResult.error, "Could not save your latest edits before upgrading. The simple log was not converted; try again when online."));
+      setUpgrading(false);
+      return;
+    }
 
     const { data: sessionId, error } = await supabase.rpc("upgrade_simple_training_log", { p_log_id: initialValues.id });
 
     if (error || !sessionId) {
-      setErr(userFacingSaveError(error, "Could not upgrade this training log right now. The simple log is still intact; try again when online."));
+      setErr(userFacingSaveError(error, "Could not upgrade this training log right now. Your latest simple-log edits are still saved; try again when online."));
       setUpgrading(false);
       return;
     }
@@ -309,7 +360,6 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
             <li>target-by-target scoring</li>
             <li>miss details</li>
             <li>target definitions</li>
-            <li>video/ShotKam links</li>
           </ul>
           <button className="secondary" type="button" disabled={saving || deleting || upgrading} onClick={upgradeLog}>
             {upgrading ? "Upgrading..." : "Add detailed training data"}

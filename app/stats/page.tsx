@@ -222,7 +222,8 @@ function simpleLogToVolumeLog(log: SimpleTrainingLog): TrainingVolumeLog {
 
 function trainingSessionToVolumeLog(session: SessionRow, missCounts: Record<string, number>): TrainingVolumeLog | null {
   if (session.session_type !== "Training" || !isUsableNumber(session.total_targets) || session.total_targets <= 0) return null;
-  const score = isUsableNumber(session.own_score) ? session.own_score : scoreFromMisses(session.total_targets, missCounts[session.id] || 0);
+  const missCount = missCounts[session.id] || 0;
+  const score = isUsableNumber(session.own_score) ? session.own_score : missCount > 0 ? scoreFromMisses(session.total_targets, missCount) : null;
   return {
     date: session.competition_date || session.created_at.slice(0, 10),
     targets_fired: session.total_targets,
@@ -594,7 +595,8 @@ export default function StatsPage() {
     const detailedTrainingResults = sessions
       .filter((session) => session.session_type === "Training" && isUsableNumber(session.total_targets) && session.total_targets > 0)
       .map((session): PerformanceResult | null => {
-        const score = isUsableNumber(session.own_score) ? session.own_score : scoreFromMisses(session.total_targets!, missCounts[session.id] || 0);
+        const missCount = missCounts[session.id] || 0;
+        const score = isUsableNumber(session.own_score) ? session.own_score : missCount > 0 ? scoreFromMisses(session.total_targets!, missCount) : null;
         return isUsableNumber(score) ? { id: session.id, date: session.competition_date || session.created_at, discipline: session.discipline || null, dataType: "training" as const, score, maxScore: session.total_targets } : null;
       })
       .filter((result): result is PerformanceResult => Boolean(result));
