@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v4.08.26", title: "Official CPL app icon", bullets: ["Clay Performance Lab now uses the gold CP and clay mark as its app icon.", "Fresh home-screen installations and browser tabs use the new branding.", "Existing iPhone installations may need to be removed and added again to refresh the icon."] },
   { id: "v3.08.26", title: "What’s new in the app", bullets: ["Recent meaningful improvements are now collected in one place.", "Open What’s new from Menu → Support.", "A small New marker shows when an update has not been opened on this device."] },
   { id: "v2.08.26", title: "Safer result import review", bullets: ["Review and correct imported Leirdue.net results before saving.", "Edit total targets, winning score and individual series values.", "Duplicate checking is repeated using the reviewed values."] },
   { id: "v1.08.26", title: "More useful training logs", bullets: ["Upgrade a quick training log into a detailed Training session.", "Keep the original date, score, location, notes and equipment.", "Continue adding posts, targets and miss details later."] },
