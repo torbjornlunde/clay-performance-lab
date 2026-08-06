@@ -628,6 +628,7 @@ export default function DashboardPage() {
       .from("training_logs")
       .select("id,date,targets_fired,hits,discipline,location,notes,source_type,created_at")
       .eq("source_type", "simple_training")
+      .is("upgraded_session_id", null)
       .order("date", { ascending: false })
       .order("created_at", { ascending: false })
       .returns<SimpleTrainingLogRow[]>();

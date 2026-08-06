@@ -9,6 +9,7 @@ import { userFacingLoadError } from "@/lib/userFacingErrors";
 
 type SimpleTrainingLogRow = SimpleTrainingLogFormValues & {
   source_type: string;
+  upgraded_session_id?: string | null;
 };
 
 export default function EditSimpleTrainingLogPage() {
@@ -35,7 +36,7 @@ export default function EditSimpleTrainingLogPage() {
 
       const { data, error } = await supabase
         .from("training_logs")
-        .select("id,date,targets_fired,hits,discipline,location,notes,source_type,equipment_weapon_id,equipment_ammunition_profile_id,equipment_snapshot")
+        .select("id,date,targets_fired,hits,discipline,location,notes,source_type,equipment_weapon_id,equipment_ammunition_profile_id,equipment_snapshot,upgraded_session_id")
         .eq("id", params.id)
         .eq("source_type", "simple_training")
         .maybeSingle<SimpleTrainingLogRow>();
@@ -53,6 +54,11 @@ export default function EditSimpleTrainingLogPage() {
         setErr("This simple training log was not found, or you do not have access to it.");
         setLog(null);
         setLoading(false);
+        return;
+      }
+
+      if (data.upgraded_session_id) {
+        router.replace(`/sessions/${data.upgraded_session_id}`);
         return;
       }
 
