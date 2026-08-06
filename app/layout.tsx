@@ -22,10 +22,11 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/pwa-icons/192", sizes: "192x192", type: "image/png" },
-      { url: "/pwa-icons/512", sizes: "512x512", type: "image/png" },
+      { url: "/pwa-icons/v1/192", sizes: "192x192", type: "image/png" },
+      { url: "/pwa-icons/v1/512", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/pwa-icons/apple", sizes: "180x180", type: "image/png" }],
+    apple: [{ url: "/pwa-icons/v1/apple", sizes: "180x180", type: "image/png" }],
+    shortcut: [{ url: "/pwa-icons/v1/192", type: "image/png" }],
   },
 };
 
