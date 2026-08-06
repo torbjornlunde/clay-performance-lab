@@ -34,6 +34,15 @@ These instructions apply to the entire repository unless a more specific `AGENTS
 - Do not add noise for internal refactors, test-only changes, admin-only maintenance or invisible technical work. In those cases, explicitly state in the PR checklist why no user-facing update entry is required.
 - A user-facing PR is not complete until the update-note decision is documented and, when required, the canonical `What's new` data is updated.
 
+## Social media consideration
+
+- Every meaningful user-facing PR must also be evaluated as a possible future Instagram/Facebook update.
+- Do not publish or prepare a separate post for every small release. Prefer a major feature announcement or a short roundup of several worthwhile improvements.
+- Use the approved shooter-facing `What's new` wording as the factual source, but adapt the final social caption and visual for the platform rather than copying technical release notes.
+- Only mention features that are already available in production. Never announce unfinished PRs or uncertain functionality.
+- Record in the PR checklist whether the change is a social-media candidate and, when useful, note a short suggested angle or visual.
+- Social publishing remains an intentional product-owner decision; Codex must identify candidates but must not claim that a post was published.
+
 ## Data and Supabase
 
 - Preserve all existing user data and existing routes.
@@ -79,6 +88,7 @@ Every completed task should report:
 - files changed
 - user-visible behavior changed
 - whether the canonical `What's new` data was updated, including the update ID, or why no user-facing entry was required
+- whether the change is a possible social-media update and the suggested angle, or why it is not suitable
 - database fields and migration filename, if any
 - complete SQL and whether it must be run manually, if any
 - tests actually run and their results
