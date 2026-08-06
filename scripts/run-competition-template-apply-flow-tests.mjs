@@ -11,7 +11,7 @@ function applyTemplate(db, sessionId, templateId) {
   for (const table of ['postDetails','postTargets','targetDefinitions','misses','scorecardImports','participants']) {
     if (db[table].some((r)=>r.session_id===sessionId)) throw new Error('This setup can only be applied to a new, empty competition.');
   }
-  if (db.courses.some((r)=>r.session_id===sessionId && (r.fitasc_scheme != null || r.shooter_number != null || r.start_plate != null))) throw new Error('This setup can only be applied to a new, empty competition.');
+  if (db.courses.some((r)=>r.session_id===sessionId && (r.fitasc_scheme != null || r.compak_programme_type != null || r.compak_conflict_resolution != null || r.shooter_number != null || r.start_plate != null))) throw new Error('This setup can only be applied to a new, empty competition.');
   const snapshot = JSON.parse(JSON.stringify({sessions:db.sessions,courses:db.courses,postDetails:db.postDetails,postTargets:db.postTargets,targetDefinitions:db.targetDefinitions,copies:db.copies}));
   try {
     db.courses = db.courses.filter((r)=>r.session_id !== sessionId);
@@ -28,17 +28,18 @@ function applyTemplate(db, sessionId, templateId) {
     throw e;
   }
 }
-function fixture() { return {user:'u1',sessions:[],courses:[],postDetails:[],postTargets:[],targetDefinitions:[],misses:[],scorecardImports:[],participants:[],copies:[],templates:[{id:'t1',owner_user_id:'u2',visibility:'searchable',withdrawn_at:null,discipline:'Compak Sporting',version:3,courses:[{course_number:1,fitasc_scheme:2,shooter_number:4,start_plate:3}],postDetails:[],postTargets:[],targetDefinitions:[{course_number:1,machine:'A'}]},{id:'t2',owner_user_id:'u2',visibility:'private',withdrawn_at:null,discipline:'Compak Sporting',version:1,courses:[],postDetails:[],postTargets:[],targetDefinitions:[]},{id:'t3',owner_user_id:'u2',visibility:'searchable',withdrawn_at:'now',discipline:'Compak Sporting',version:1,courses:[],postDetails:[],postTargets:[],targetDefinitions:[]},{id:'t4',owner_user_id:'u2',visibility:'searchable',withdrawn_at:null,discipline:'Sporting',version:1,courses:[],postDetails:[],postTargets:[],targetDefinitions:[]}]}; }
+function fixture() { return {user:'u1',sessions:[],courses:[],postDetails:[],postTargets:[],targetDefinitions:[],misses:[],scorecardImports:[],participants:[],copies:[],templates:[{id:'t1',owner_user_id:'u2',visibility:'searchable',withdrawn_at:null,discipline:'Compak Sporting',version:3,courses:[{course_number:1,fitasc_scheme:null,compak_programme_type:'three_singles_one_report_pair',compak_conflict_resolution:null,shooter_number:null,start_plate:null},{course_number:2,fitasc_scheme:null,compak_programme_type:'one_single_two_report_pairs',compak_conflict_resolution:null,shooter_number:null,start_plate:null},{course_number:3,fitasc_scheme:null,compak_programme_type:null,compak_conflict_resolution:null,shooter_number:null,start_plate:null},{course_number:4,fitasc_scheme:27,compak_programme_type:null,compak_conflict_resolution:null,shooter_number:4,start_plate:3}],postDetails:[],postTargets:[],targetDefinitions:[{course_number:1,machine:'A'}]},{id:'t2',owner_user_id:'u2',visibility:'private',withdrawn_at:null,discipline:'Compak Sporting',version:1,courses:[],postDetails:[],postTargets:[],targetDefinitions:[]},{id:'t3',owner_user_id:'u2',visibility:'searchable',withdrawn_at:'now',discipline:'Compak Sporting',version:1,courses:[],postDetails:[],postTargets:[],targetDefinitions:[]},{id:'t4',owner_user_id:'u2',visibility:'searchable',withdrawn_at:null,discipline:'Sporting',version:1,courses:[],postDetails:[],postTargets:[],targetDefinitions:[]}]}; }
 
 let db = fixture();
-let sessionId = createSession(db,{user_id:'u1',name:'RM Kismul',competition_date:'2026-07-01',shooting_ground:'Kismul',discipline:'Compak Sporting',shooting_format:'Squad',course_count:1,post_count:null,targets_per_post:null,own_score:null,winning_score:null,equipment_snapshot:{gun:'kept'}});
+let sessionId = createSession(db,{user_id:'u1',name:'RM Kismul',competition_date:'2026-07-01',shooting_ground:'Kismul',discipline:'Compak Sporting',shooting_format:'Squad',course_count:4,post_count:null,targets_per_post:null,own_score:null,winning_score:null,equipment_snapshot:{gun:'kept'}});
 applyTemplate(db, sessionId, 't1');
 assert.equal(db.sessions.length, 1, 'normal creation creates one session');
 assert.deepEqual(db.sessions[0].equipment_snapshot, {gun:'kept'}, 'equipment is preserved');
 assert.equal(db.sessions[0].shooting_format, 'Squad', 'shooting format is preserved');
-assert.equal(db.sessions[0].course_count, 1, 'course settings are preserved on session');
+assert.equal(db.sessions[0].course_count, 4, 'course settings are preserved on session');
 assert.equal(db.sessions[0].name, 'RM Kismul'); assert.equal(db.sessions[0].competition_date, '2026-07-01'); assert.equal(db.sessions[0].shooting_ground, 'Kismul');
 assert.equal(db.courses[0].session_id, sessionId, 'template setup is added to same session');
+assert.deepEqual(db.courses.map(({fitasc_scheme,compak_programme_type})=>[fitasc_scheme,compak_programme_type]),[[null,'three_singles_one_report_pair'],[null,'one_single_two_report_pairs'],[null,null],[27,null]],'mixed partial, unknown and exact courses round-trip');
 assert.equal(db.sessions[0].copied_from_competition_template_id, 't1'); assert.equal(db.sessions[0].copied_from_competition_template_version, 3);
 
 let resultDb = fixture();

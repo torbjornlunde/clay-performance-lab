@@ -15,11 +15,12 @@ import { useCompetitionTemplateCandidates } from "@/lib/competitionTemplates/use
 import { postFormatOptions } from "@/lib/targets/postSetupState";
 import { CompakCourseProgrammeFields } from "@/app/components/CompakCourseProgrammeFields";
 import { getExpectedPresentationRows } from "@/lib/fitasc/compakSchemes";
-import { validateCompakCourse, type CompakConflictResolution, type CompakProgrammeType } from "@/lib/fitasc/compakProgramme";
+import { validateCompakCourse, type CompakConflictResolution, type CompakDetailMode, type CompakProgrammeType } from "@/lib/fitasc/compakProgramme";
 
 type CourseSetup = {
   courseNumber: number;
   scheme: number | null;
+  detailMode: CompakDetailMode;
   rememberedProgramme: CompakProgrammeType | null;
   conflictResolution: CompakConflictResolution | null;
   shooterNumber: number;
@@ -36,11 +37,11 @@ type SessionCourseInsert = {
   start_plate: number | null;
 };
 
-function makeCourses(count: number, old: CourseSetup[]) {
+function makeCourses(count: number, old: CourseSetup[]): CourseSetup[] {
   return Array.from({ length: count }, (_, i) =>
     old[i]
       ? { ...old[i], courseNumber: i + 1 }
-      : { courseNumber: i + 1, scheme: null, rememberedProgramme: null, conflictResolution: null, shooterNumber: 1, startPlate: 1 },
+      : { courseNumber: i + 1, scheme: null, detailMode: "unknown", rememberedProgramme: null, conflictResolution: null, shooterNumber: 1, startPlate: 1 },
   );
 }
 
@@ -161,7 +162,7 @@ export default function NewSessionPage() {
     }
 
     const isCompak = isCompactDiscipline(discipline);
-    const programmeError = courses.map((course) => validateCompakCourse({ isCompak: isCompactDiscipline(discipline), scheme: course.scheme, rememberedProgramme: course.rememberedProgramme, conflictResolution: course.conflictResolution, schemePresentations: course.scheme ? getExpectedPresentationRows(course.scheme) : null })).find(Boolean);
+    const programmeError = isCompak ? courses.map((course) => validateCompakCourse({ isCompak, detailMode: course.detailMode, scheme: course.scheme, rememberedProgramme: course.rememberedProgramme, conflictResolution: course.conflictResolution, schemePresentations: course.scheme ? getExpectedPresentationRows(course.scheme) : null })).find(Boolean) : null;
     if (programmeError) { setErr(programmeError); setSaving(false); return; }
     const isSporttrap = discipline === "Sporttrap";
     const isLeirduesti = isOrdinaryLeirduesti(discipline);

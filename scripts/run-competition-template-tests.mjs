@@ -3,6 +3,7 @@ import fs from 'node:fs';
 
 const lib = fs.readFileSync('lib/competitionTemplates.ts', 'utf8');
 const sql = fs.readFileSync('supabase/migrations/20260702040000_competition_templates.sql', 'utf8');
+const partialSql = fs.readFileSync('supabase/migrations/20260806120000_compak_partial_programmes.sql', 'utf8');
 const sharePage = fs.readFileSync('app/sessions/[id]/share-setup/page.tsx', 'utf8');
 const searchPage = fs.readFileSync('app/competition-templates/page.tsx', 'utf8');
 const previewPage = fs.readFileSync('app/competition-templates/[id]/page.tsx', 'utf8');
@@ -55,4 +56,8 @@ assert.match(previewPage, /get_competition_template_preview/, 'Preview page uses
 assert.match(previewPage, /copy_competition_template_to_new_session/, 'Preview page uses safe copy RPC');
 assert.doesNotMatch(searchPage + previewPage, /owner_user_id|source_session_id/, 'Search and preview pages do not request owner/source IDs');
 
+assert.match(partialSql, /'compakProgrammeType', c\.compak_programme_type/, 'snapshot publishes remembered programme');
+assert.match(partialSql, /'compakConflictResolution', c\.compak_conflict_resolution/, 'snapshot publishes discrepancy choice');
+assert.equal((partialSql.match(/insert into public\.session_courses\(session_id,course_number,fitasc_scheme,compak_programme_type,compak_conflict_resolution/g) || []).length, 2, 'both copy and apply restore partial programme fields');
+assert.match(partialSql, /security definer set search_path = public/, 'replacement RPCs preserve security and search path');
 console.log('competition template RPC/security/static tests passed');

@@ -9,6 +9,40 @@ export const COMPAK_PROGRAMME_TYPES = [
 export type CompakProgrammeType = (typeof COMPAK_PROGRAMME_TYPES)[number]["code"];
 export type CompakConflictResolution = "exact_authoritative" | "remembered_discrepancy";
 export type CompakCourseCompleteness = "Exact" | "Partial" | "Unknown";
+export type CompakDetailMode = "exact" | "programme" | "unknown";
+export type CompakComparisonState = "not_applicable" | "match" | "conflict" | "unclassifiable";
+
+export type CompakCourseSetup = {
+  detailMode: CompakDetailMode;
+  scheme: number | null;
+  rememberedProgramme: CompakProgrammeType | null;
+  conflictResolution: CompakConflictResolution | null;
+};
+
+export function deriveCompakDetailMode(scheme: number | null | undefined, remembered: CompakProgrammeType | null | undefined): CompakDetailMode {
+  return scheme != null ? "exact" : remembered ? "programme" : "unknown";
+}
+
+export function transitionCompakDetailMode(course: CompakCourseSetup, nextMode: CompakDetailMode, confirmed = false) {
+  const requiresConfirmation = course.scheme != null && course.detailMode === "exact" && nextMode !== "exact";
+  if (requiresConfirmation && !confirmed) return { course, changed: false, requiresConfirmation: true } as const;
+  if (nextMode === "unknown") return { course: { ...course, detailMode: nextMode, scheme: null, rememberedProgramme: null, conflictResolution: null }, changed: true, requiresConfirmation: false } as const;
+  if (nextMode === "programme") return { course: { ...course, detailMode: nextMode, scheme: null, conflictResolution: null }, changed: true, requiresConfirmation: false } as const;
+  return { course: { ...course, detailMode: nextMode, conflictResolution: null }, changed: true, requiresConfirmation: false } as const;
+}
+
+export function selectCompakScheme(course: CompakCourseSetup, value: string): CompakCourseSetup {
+  const scheme = value === "" ? null : Number(value);
+  return { ...course, scheme: Number.isInteger(scheme) && Number(scheme) > 0 ? scheme : null, conflictResolution: null };
+}
+
+export function selectCompakProgramme(course: CompakCourseSetup, value: string): CompakCourseSetup {
+  return { ...course, rememberedProgramme: isCompakProgrammeType(value) ? value : null, conflictResolution: null };
+}
+
+export function normalizeCompakSetupForDiscipline(course: CompakCourseSetup, isCompak: boolean): CompakCourseSetup {
+  return isCompak ? course : { ...course, detailMode: "unknown", scheme: null, rememberedProgramme: null, conflictResolution: null };
+}
 
 export function isCompakProgrammeType(value: unknown): value is CompakProgrammeType {
   return COMPAK_PROGRAMME_TYPES.some((programme) => programme.code === value);
@@ -45,24 +79,29 @@ export function getCompakConflict(
   schemePresentations: readonly unknown[] | null,
   remembered: CompakProgrammeType | null | undefined,
 ) {
-  if (!schemePresentations || !remembered) return { exactProgramme: null, conflicts: false } as const;
+  if (!schemePresentations || !remembered) return { exactProgramme: null, state: "not_applicable" as CompakComparisonState };
   const exactProgramme = classifyCompakPresentations(schemePresentations);
-  return { exactProgramme, conflicts: exactProgramme !== null && exactProgramme !== remembered };
+  if (!exactProgramme) return { exactProgramme: null, state: "unclassifiable" as CompakComparisonState };
+  return { exactProgramme, state: (exactProgramme === remembered ? "match" : "conflict") as CompakComparisonState };
 }
 
 export function validateCompakCourse(input: {
   isCompak: boolean;
+  detailMode?: CompakDetailMode;
   scheme: number | null;
   rememberedProgramme: CompakProgrammeType | null;
   conflictResolution: CompakConflictResolution | null;
   schemePresentations?: readonly unknown[] | null;
 }) {
-  if (!input.isCompak && (input.rememberedProgramme || input.conflictResolution)) return "Programme types are only available for Compak courses.";
+  if (!input.isCompak && (input.scheme || input.rememberedProgramme || input.conflictResolution)) return "Programme types are only available for Compak courses.";
+  if (input.detailMode === "exact" && input.scheme == null) return "Choose a FITASC scheme before saving.";
+  if (input.detailMode === "programme" && input.rememberedProgramme == null) return "Choose a programme type before saving.";
   if (input.rememberedProgramme && !isCompakProgrammeType(input.rememberedProgramme)) return "Choose a valid Compak programme type.";
   if (input.conflictResolution && (!input.scheme || !input.rememberedProgramme)) return "A discrepancy choice requires both an exact scheme and a remembered programme.";
   const conflict = getCompakConflict(input.schemePresentations ?? null, input.rememberedProgramme);
-  if (conflict.conflicts && !input.conflictResolution) return "Choose how to resolve the programme discrepancy before saving.";
-  if (!conflict.conflicts && input.conflictResolution) return "The saved discrepancy choice is stale. Review the course again.";
+  if (conflict.state === "unclassifiable") return "The selected FITASC scheme programme cannot be classified. Review the scheme before saving.";
+  if (conflict.state === "conflict" && !input.conflictResolution) return "Choose how to resolve the programme discrepancy before saving.";
+  if (conflict.state !== "conflict" && input.conflictResolution) return "The saved discrepancy choice is stale. Review the course again.";
   return null;
 }
 

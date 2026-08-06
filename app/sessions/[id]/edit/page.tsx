@@ -24,7 +24,7 @@ import { supabase } from "@/lib/supabase/client";
 import { normalizeDefaultPostFormat, postFormatOptions } from "@/lib/targets/postSetupState";
 import { prioritizedDisciplineOptions } from "@/lib/profile";
 import { CompakCourseProgrammeFields } from "@/app/components/CompakCourseProgrammeFields";
-import { validateCompakCourse, type CompakConflictResolution, type CompakProgrammeType } from "@/lib/fitasc/compakProgramme";
+import { deriveCompakDetailMode, validateCompakCourse, type CompakConflictResolution, type CompakDetailMode, type CompakProgrammeType } from "@/lib/fitasc/compakProgramme";
 
 type Session = {
   id: string;
@@ -53,6 +53,7 @@ type CourseSetup = {
   id?: string;
   courseNumber: number;
   scheme: number | null;
+  detailMode: CompakDetailMode;
   rememberedProgramme: CompakProgrammeType | null;
   conflictResolution: CompakConflictResolution | null;
   shooterNumber: number;
@@ -77,11 +78,11 @@ type CourseRow = {
   start_plate: number | null;
 };
 
-function makeCourses(count: number, old: CourseSetup[]) {
+function makeCourses(count: number, old: CourseSetup[]): CourseSetup[] {
   return Array.from({ length: count }, (_, i) =>
     old[i]
       ? { ...old[i], courseNumber: i + 1 }
-      : { courseNumber: i + 1, scheme: null, rememberedProgramme: null, conflictResolution: null, shooterNumber: 1, startPlate: 1 },
+      : { courseNumber: i + 1, scheme: null, detailMode: "unknown", rememberedProgramme: null, conflictResolution: null, shooterNumber: 1, startPlate: 1 },
   );
 }
 
@@ -230,6 +231,7 @@ export default function EditSessionPage() {
       id: course.id,
       courseNumber: course.course_number,
       scheme: course.fitasc_scheme,
+      detailMode: deriveCompakDetailMode(course.fitasc_scheme, course.compak_programme_type),
       rememberedProgramme: course.compak_programme_type,
       conflictResolution: course.compak_conflict_resolution,
       shooterNumber: course.shooter_number || 1,
@@ -349,8 +351,20 @@ export default function EditSessionPage() {
     const isCompak = isCompactDiscipline(discipline);
     const isLeirduesti = isOrdinaryLeirduesti(discipline);
     const targetsPerPostNumber = Number(targetsPerPost) || 10;
-    const programmeError = courses.map((course) => validateCompakCourse({ isCompak, scheme: course.scheme, rememberedProgramme: course.rememberedProgramme, conflictResolution: course.conflictResolution, schemePresentations: course.scheme ? getExpectedPresentationRows(course.scheme) : null })).find(Boolean);
+    const programmeError = isCompak ? courses.map((course) => validateCompakCourse({ isCompak, detailMode: course.detailMode, scheme: course.scheme, rememberedProgramme: course.rememberedProgramme, conflictResolution: course.conflictResolution, schemePresentations: course.scheme ? getExpectedPresentationRows(course.scheme) : null })).find(Boolean) : null;
     if (programmeError) { setErr(programmeError); setSaving(false); return; }
+
+    if (!isCompak) {
+      const { error: normalizeCourseError } = await supabase
+        .from("session_courses")
+        .update({ fitasc_scheme: null, compak_programme_type: null, compak_conflict_resolution: null })
+        .eq("session_id", sessionId);
+      if (normalizeCourseError) {
+        setErr(normalizeCourseError.message);
+        setSaving(false);
+        return;
+      }
+    }
 
     if (isResultOnlyImport && !advancedSetupEnabled) {
       const { error: basicError } = await supabase
