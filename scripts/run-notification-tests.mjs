@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 
 const migration = readFileSync("supabase/migrations/20260719120000_user_notifications.sql", "utf8");
 const pushMigration = readFileSync("supabase/migrations/20260719143000_web_push_subscriptions.sql", "utf8");
+const accessProfileMigration = readFileSync("supabase/migrations/20260806090000_notify_beta_access_profile_requests.sql", "utf8");
+const accessProfileSqlTest = readFileSync("supabase/tests/beta_access_profile_notifications.sql", "utf8");
 assert.match(migration, /create table if not exists public\.user_notifications/, "notification table exists");
 assert.match(migration, /references auth\.users\(id\) on delete cascade/, "notifications are user-owned and cascade with auth user");
 assert.match(migration, /unique index[^;]+user_notifications_user_dedupe_key_unique_idx[\s\S]+where dedupe_key is not null;/, "dedupe is user + non-null dedupe key only");
@@ -34,6 +36,21 @@ for (const signature of ["public.mark_my_notification_read(uuid)", "public.mark_
   assert.match(migration, new RegExp(`grant execute on function ${signature.replace(/[().]/g, "\\$&")} to authenticated;`), `${signature} is explicitly granted to authenticated`);
 }
 assert.doesNotMatch(migration, /grant execute on function public\.notify_.* to authenticated/, "internal notify helpers are not granted to authenticated clients");
+
+assert.match(accessProfileMigration, /after insert on public\.user_access_profiles/, "new access-profile requests are detected server-side on insert");
+assert.match(accessProfileMigration, /new\.access_status <> 'pending' or new\.system_role <> 'user'/, "only pending regular-user profiles are actionable");
+assert.match(accessProfileMigration, /interest\.normalized_email = normalized_request_email/, "profile requests dedupe against the combined inbox's normalized person identity");
+assert.match(accessProfileMigration, /'beta-access-request:email:' \|\| public\.normalize_beta_email/, "both request sources use deterministic normalized-email dedupe keys");
+assert.match(accessProfileMigration, /'beta_access_request'[\s\S]+?'\/beta\/admin'/, "profile notifications use the supported type and safe admin href");
+assert.match(accessProfileMigration, /exception when others[\s\S]+return new;/, "notification failures cannot reject the primary profile write");
+assert.doesNotMatch(accessProfileMigration, /insert into public\.web_push_delivery_jobs/, "migration reuses rather than redesigns the push queue");
+assert.doesNotMatch(accessProfileMigration, /insert into public\.user_notifications[\s\S]+from public\.user_access_profiles/, "migration does not backfill historical pending profiles");
+assert.match(accessProfileMigration, /revoke execute on function public\.notify_admins_of_new_access_profile_request\(\) from public, anon, authenticated;/, "clients cannot call the profile notification trigger function");
+assert.match(accessProfileSqlTest, /begin;[\s\S]+rollback;/, "database regression test is isolated in a transaction");
+assert.match(accessProfileSqlTest, /existing Web Push trigger did not enqueue/, "database regression covers push-job creation");
+assert.match(accessProfileSqlTest, /interest-first person produced duplicate or missing alert/, "database regression covers interest-first dedupe");
+assert.match(accessProfileSqlTest, /account-first person produced duplicate or missing alert/, "database regression covers account-first dedupe");
+assert.match(accessProfileSqlTest, /push failure blocked the access-profile write/, "database regression covers best-effort failure isolation");
 
 const header = readFileSync("app/components/AuthHeader.tsx", "utf8");
 assert.match(header, /ready && authenticated && \(/, "authenticated header block gates the bell");
