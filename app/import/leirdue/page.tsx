@@ -9,7 +9,7 @@ import { normalizeDisciplines, prioritizedDisciplineOptions, shooterProfileDispl
 import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
 import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 import { ContextualHelpCard } from "@/app/components/OnboardingHelp";
-import { correctedFieldNames, parsedValues, validateLeirdueReviewedCandidate } from "@/lib/leirdue/review";
+import { applyReviewedValue, candidateRenderIdentity, candidateSourceIdentity, correctedFieldNames, mergeReviewedCandidate, parsedValues, useReviewedSeriesTotal, validateLeirdueReviewedCandidate } from "@/lib/leirdue/review";
 
 const DEFAULT_DISCIPLINES = [COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI, "Sporting"];
 const BATCH_TIMEOUT_MS = 20_000;
@@ -125,7 +125,7 @@ function performance(candidate: EditableCandidate) {
 
 function toEditable(candidate: LeirdueCandidate, index: number): EditableCandidate {
   const sourceIds = candidateSourceIds(candidate);
-  const localId = `${candidateIdentity({ ...candidate, ...sourceIds })}-${index}`;
+  const localId = `${candidateSourceIdentity({ ...candidate, ...sourceIds })}|${index}`;
   return {
     ...candidate,
     ...sourceIds,
@@ -158,24 +158,11 @@ function candidateSourceIds(candidate: LeirdueCandidate) {
 }
 
 function candidateIdentity(candidate: LeirdueCandidate) {
-  const sourceIds = candidateSourceIds(candidate);
-  return [
-    sourceIds.stevneId || "no-event",
-    sourceIds.listeId || "no-liste",
-    candidate.leirdueUrl || "no-url",
-    candidate.date || "no-date",
-    candidate.discipline || "no-discipline",
-    candidate.ownScore ?? "?",
-    candidate.totalTargets ?? "?",
-  ].join("|");
-}
-
-function candidateReactKey(candidate: LeirdueCandidate) {
-  return `leirdue-result|${candidateIdentity(candidate)}`;
+  return candidateSourceIdentity(candidate);
 }
 
 function candidateRenderKey(candidate: EditableCandidate) {
-  return `${candidateReactKey(candidate)}|${candidate.localId}`;
+  return candidateRenderIdentity(candidate);
 }
 
 function leirdueUiScopeKey(name: string, selectedYear: string, selectedDisciplines: string[]) {
@@ -334,13 +321,12 @@ function mergeCandidates(current: EditableCandidate[], incoming: LeirdueCandidat
   incoming.forEach((candidate, index) => {
     const key = candidateMergeKey(candidate);
     const existing = merged.get(key);
-    const editable = toEditable(candidate, current.length + index);
     if (!existing) {
-      merged.set(key, editable);
+      merged.set(key, toEditable(candidate, current.length + index));
       return;
     }
     if (candidateQualityRank(candidate) > candidateQualityRank(existing)) {
-      merged.set(key, { ...editable, selected: existing.selected, localId: existing.localId, saveStatus: existing.saveStatus, saveMessage: existing.saveMessage });
+      merged.set(key, mergeReviewedCandidate(existing, candidate));
     }
   });
   return sortCandidatesForReview(Array.from(merged.values()));
@@ -526,7 +512,8 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
   const visibleReason = candidate.category === "control" || isLowQualitySummaryCandidate(candidate) ? candidateReason(candidate) : null;
 
   function update<Key extends keyof EditableCandidate>(key: Key, value: EditableCandidate[Key], duplicateRelevant = true) {
-    onChange({ ...candidate, [key]: value, ...(duplicateRelevant ? { duplicateStatus: "new" as const, duplicateMatches: [], duplicateNeedsRecheck: true, allowDuplicateSave: false } : {}), saveStatus: undefined, saveMessage: undefined });
+    const updated = duplicateRelevant ? applyReviewedValue(candidate, key, value) : { ...candidate, [key]: value };
+    onChange({ ...updated, ...(duplicateRelevant ? { duplicateNeedsRecheck: true } : {}), saveStatus: undefined, saveMessage: undefined });
   }
   function reviewedNumber(key: "ownScore" | "totalTargets" | "winningScore", raw: string) {
     update(key, raw === "" ? null : Number(raw));
@@ -570,16 +557,18 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
             <span className="small muted">Parsed: {original[key] ?? "unknown"}</span>{errorFor(key) ? <span id={`${candidate.localId}-${key}-error`} className="fieldError">{errorFor(key)}</span> : null}
           </div>)}
         </div>
-        {(candidate.reviewedSeriesScores?.length || 0) > 0 ? <div className="seriesReview"><strong>Series / course scores</strong><div className="leirdueSeriesGrid">{candidate.reviewedSeriesScores?.map((score, index) => <div key={index}><label htmlFor={`${candidate.localId}-series-${index}`}>Series {index + 1}</label><input id={`${candidate.localId}-series-${index}`} type="number" step="1" min="0" inputMode="numeric" value={score ?? ""} onChange={(event) => { const slots = [...(candidate.reviewedSeriesScores || [])]; slots[index] = event.target.value === "" ? null : Number(event.target.value); update("reviewedSeriesScores", slots); }} /><span className="small muted">Parsed: {original.seriesScores[index] ?? "unknown"}</span></div>)}</div>
+        {(candidate.reviewedSeriesScores?.length || 0) > 0 ? <div className="seriesReview" role="group" aria-labelledby={`${candidate.localId}-series-label`} aria-describedby={errorFor("seriesScores") ? `${candidate.localId}-series-error` : undefined}><strong id={`${candidate.localId}-series-label`}>Series / course scores</strong><div className="leirdueSeriesGrid">{candidate.reviewedSeriesScores?.map((score, index) => <div key={index}><label htmlFor={`${candidate.localId}-series-${index}`}>Series {index + 1}</label><input id={`${candidate.localId}-series-${index}`} type="number" step="1" min="0" inputMode="numeric" value={score ?? ""} aria-invalid={Boolean(errorFor("seriesScores"))} aria-describedby={errorFor("seriesScores") ? `${candidate.localId}-series-error` : undefined} onChange={(event) => { const slots = [...(candidate.reviewedSeriesScores || [])]; slots[index] = event.target.value === "" ? null : Number(event.target.value); update("reviewedSeriesScores", slots); }} /><span className="small muted">Parsed: {original.seriesScores[index] ?? "unknown"}</span></div>)}</div>
           <p className="small">{validation.series.partial ? `Known series subtotal: ${validation.series.knownSubtotal}` : `Series total: ${validation.series.knownSubtotal}`}</p>
-          {errorFor("seriesScores") ? <p className="fieldError">{errorFor("seriesScores")}</p> : null}
-          {validation.completeMismatch ? <div className="notice"><strong>Complete series total differs from own score.</strong><div className="btns"><button type="button" className="secondary smallButton" onClick={() => onChange({ ...candidate, ownScore: validation.series.knownSubtotal, seriesMismatchAcknowledged: true, duplicateStatus: "new", duplicateMatches: [], duplicateNeedsRecheck: true, allowDuplicateSave: false })}>Use series total</button><button type="button" className="secondary smallButton" onClick={() => update("seriesMismatchAcknowledged", true)}>Keep own score</button></div></div> : null}
+          {errorFor("seriesScores") ? <p id={`${candidate.localId}-series-error`} className="fieldError">{errorFor("seriesScores")}</p> : null}
+          {validation.completeMismatch && !candidate.seriesMismatchAcknowledged ? <div className="notice"><strong>Complete series total differs from own score.</strong><div className="btns"><button type="button" className="secondary smallButton" onClick={() => onChange({ ...useReviewedSeriesTotal(candidate), duplicateNeedsRecheck: true, saveStatus: undefined, saveMessage: undefined })}>Use series total</button><button type="button" className="secondary smallButton" onClick={() => update("seriesMismatchAcknowledged", true)}>Keep own score</button></div></div> : null}
+          {validation.completeMismatch && candidate.seriesMismatchAcknowledged ? <p className="success small"><strong>Reviewed:</strong> own score intentionally kept as authoritative.</p> : null}
         </div> : null}
-        <div className="row"><div><label htmlFor={`${candidate.localId}-date`}>Date {changedBadge("date")}</label><input id={`${candidate.localId}-date`} type="date" value={candidate.date || ""} onChange={(event) => update("date", event.target.value)} />{errorFor("date") ? <span className="fieldError">{errorFor("date")}</span> : null}</div><div><label htmlFor={`${candidate.localId}-discipline`}>Discipline {changedBadge("discipline")}</label><select id={`${candidate.localId}-discipline`} value={candidate.discipline} onChange={(event) => update("discipline", event.target.value)}>{DISCIPLINE_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></div></div>
-        <label htmlFor={`${candidate.localId}-name`}>Competition name {changedBadge("name")}</label><input id={`${candidate.localId}-name`} value={candidate.name} onChange={(event) => update("name", event.target.value)} />
+        <div className="row"><div><label htmlFor={`${candidate.localId}-date`}>Date {changedBadge("date")}</label><input id={`${candidate.localId}-date`} type="date" value={candidate.date || ""} aria-invalid={Boolean(errorFor("date"))} aria-describedby={errorFor("date") ? `${candidate.localId}-date-error` : undefined} onChange={(event) => update("date", event.target.value)} />{errorFor("date") ? <span id={`${candidate.localId}-date-error`} className="fieldError">{errorFor("date")}</span> : null}</div><div><label htmlFor={`${candidate.localId}-discipline`}>Discipline {changedBadge("discipline")}</label><select id={`${candidate.localId}-discipline`} value={candidate.discipline} aria-invalid={Boolean(errorFor("discipline"))} aria-describedby={errorFor("discipline") ? `${candidate.localId}-discipline-error` : undefined} onChange={(event) => update("discipline", event.target.value)}>{DISCIPLINE_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select>{errorFor("discipline") ? <span id={`${candidate.localId}-discipline-error`} className="fieldError">{errorFor("discipline")}</span> : null}</div></div>
+        <label htmlFor={`${candidate.localId}-name`}>Competition name {changedBadge("name")}</label><input id={`${candidate.localId}-name`} value={candidate.name} aria-invalid={Boolean(errorFor("name"))} aria-describedby={errorFor("name") ? `${candidate.localId}-name-error` : undefined} onChange={(event) => update("name", event.target.value)} />{errorFor("name") ? <span id={`${candidate.localId}-name-error`} className="fieldError">{errorFor("name")}</span> : null}
         <label htmlFor={`${candidate.localId}-ground`}>Shooting ground / organizer {changedBadge("shootingGround")}</label><input id={`${candidate.localId}-ground`} value={candidate.shootingGround || ""} onChange={(event) => update("shootingGround", event.target.value)} />
         {candidate.duplicateStatus === "possible" ? <label className="checkboxLabel"><input type="checkbox" checked={Boolean(candidate.allowDuplicateSave)} onChange={(event) => update("allowDuplicateSave", event.target.checked, false)} /><span>Save anyway after reviewing this possible duplicate</span></label> : null}
       </section> : null}
+      {!validation.valid && !candidate.editorOpen ? <p className="error small"><strong>Cannot import:</strong> Open Review / edit result to fix the highlighted fields.</p> : null}
 
       <details className="candidateDetails"><summary>Technical details</summary>
         <p className="small muted"><strong>Review reason:</strong> {candidateReason(candidate)}</p>

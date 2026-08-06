@@ -35,6 +35,63 @@ export function correctedFieldNames(candidate: LeirdueCandidate) {
   return names;
 }
 
+function sourceParam(candidate: LeirdueCandidate, key: "stevne" | "liste") {
+  try { return new URL(candidate.leirdueUrl).searchParams.get(key); } catch { return null; }
+}
+
+/** Identity is deliberately limited to immutable source-row attributes. */
+export function candidateSourceIdentity(candidate: LeirdueCandidate) {
+  return [
+    candidate.stevneId || sourceParam(candidate, "stevne") || "no-event",
+    candidate.listeId || sourceParam(candidate, "liste") || "no-list",
+    candidate.leirdueUrl || "no-url",
+    candidate.shooterName || "no-shooter",
+    candidate.placement ?? "no-placement",
+    candidate.shooterClass || "no-class",
+  ].join("|");
+}
+
+export function candidateRenderIdentity(candidate: { localId: string }) {
+  return candidate.localId;
+}
+
+/** Upgrade parser metadata without replacing anything the user has reviewed. */
+export function mergeReviewedCandidate<State extends LeirdueCandidate & { localId: string }>(existing: State, incoming: LeirdueCandidate): State {
+  return {
+    ...incoming,
+    ...existing,
+    stevneId: existing.stevneId || incoming.stevneId,
+    listeId: existing.listeId || incoming.listeId,
+    shooterName: existing.shooterName || incoming.shooterName,
+    shooterClass: existing.shooterClass || incoming.shooterClass,
+    placement: existing.placement ?? incoming.placement,
+    maxScore: existing.maxScore ?? incoming.maxScore,
+    confidence: incoming.confidence,
+    category: incoming.category,
+    importRecommended: incoming.importRecommended,
+    warnings: Array.from(new Set([...(existing.warnings || []), ...(incoming.warnings || [])])),
+    localId: existing.localId,
+    clientCandidateId: existing.localId,
+  };
+}
+
+export function applyReviewedValue<State extends LeirdueCandidate, Key extends keyof State>(candidate: State, key: Key, value: State[Key]): State {
+  const resetsMismatch = key === "ownScore" || key === "reviewedSeriesScores";
+  return {
+    ...candidate,
+    [key]: value,
+    ...(resetsMismatch ? { seriesMismatchAcknowledged: false } : {}),
+    duplicateStatus: "new",
+    duplicateMatches: [],
+    allowDuplicateSave: false,
+  };
+}
+
+export function useReviewedSeriesTotal<State extends LeirdueCandidate>(candidate: State): State {
+  const summary = seriesSummary(candidate.reviewedSeriesScores);
+  return applyReviewedValue(candidate, "ownScore", summary.knownSubtotal) as State;
+}
+
 export function validateLeirdueReviewedCandidate(candidate: LeirdueCandidate) {
   const errors: LeirdueFieldErrors = {};
   if (!validWhole(candidate.ownScore) || (candidate.ownScore as number) < 0) errors.ownScore = "Own score is required and must be a non-negative whole number.";
