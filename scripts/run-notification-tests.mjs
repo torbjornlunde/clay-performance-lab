@@ -39,17 +39,24 @@ assert.doesNotMatch(migration, /grant execute on function public\.notify_.* to a
 
 assert.match(accessProfileMigration, /after insert on public\.user_access_profiles/, "new access-profile requests are detected server-side on insert");
 assert.match(accessProfileMigration, /new\.access_status <> 'pending' or new\.system_role <> 'user'/, "only pending regular-user profiles are actionable");
-assert.match(accessProfileMigration, /interest\.normalized_email = normalized_request_email/, "profile requests dedupe against the combined inbox's normalized person identity");
+assert.match(accessProfileMigration, /from public\.user_access_profiles recipient[\s\S]+recipient\.access_status = 'approved'[\s\S]+recipient\.system_role in \('owner', 'admin'\)/, "profile requests select the trusted recipients server-side");
+assert.match(accessProfileMigration, /not exists \([\s\S]+notification\.user_id = recipient\.user_id/, "equivalent notification coverage is checked per recipient");
+assert.match(accessProfileMigration, /notification\.metadata->>'beta_interest_submission_id' = interest\.id::text/, "legacy interest metadata counts as recipient coverage");
+assert.match(accessProfileMigration, /notification\.dedupe_key = 'beta-access-request:' \|\| interest\.id::text/, "legacy interest dedupe keys count as recipient coverage");
+assert.doesNotMatch(accessProfileMigration, /if normalized_request_email is not null and exists \([\s\S]+from public\.beta_interest_submissions[\s\S]+return new;/, "an interest row alone does not globally suppress profile notifications");
 assert.match(accessProfileMigration, /'beta-access-request:email:' \|\| public\.normalize_beta_email/, "both request sources use deterministic normalized-email dedupe keys");
 assert.match(accessProfileMigration, /'beta_access_request'[\s\S]+?'\/beta\/admin'/, "profile notifications use the supported type and safe admin href");
 assert.match(accessProfileMigration, /exception when others[\s\S]+return new;/, "notification failures cannot reject the primary profile write");
 assert.doesNotMatch(accessProfileMigration, /insert into public\.web_push_delivery_jobs/, "migration reuses rather than redesigns the push queue");
-assert.doesNotMatch(accessProfileMigration, /insert into public\.user_notifications[\s\S]+from public\.user_access_profiles/, "migration does not backfill historical pending profiles");
+assert.doesNotMatch(accessProfileMigration, /\bdo\s+\$\$/i, "migration contains no one-time historical backfill block");
 assert.match(accessProfileMigration, /revoke execute on function public\.notify_admins_of_new_access_profile_request\(\) from public, anon, authenticated;/, "clients cannot call the profile notification trigger function");
 assert.match(accessProfileSqlTest, /begin;[\s\S]+rollback;/, "database regression test is isolated in a transaction");
 assert.match(accessProfileSqlTest, /existing Web Push trigger did not enqueue/, "database regression covers push-job creation");
 assert.match(accessProfileSqlTest, /interest-first person produced duplicate or missing alert/, "database regression covers interest-first dedupe");
 assert.match(accessProfileSqlTest, /account-first person produced duplicate or missing alert/, "database regression covers account-first dedupe");
+assert.match(accessProfileSqlTest, /legacy interest without notifications did not notify every admin/, "database regression covers historical interest rows without notification coverage");
+assert.match(accessProfileSqlTest, /admin with legacy coverage received a duplicate/, "database regression covers per-recipient legacy coverage");
+assert.match(accessProfileSqlTest, /missing admin did not receive canonical coverage/, "database regression fills only missing recipient coverage");
 assert.match(accessProfileSqlTest, /push failure blocked the access-profile write/, "database regression covers best-effort failure isolation");
 
 const header = readFileSync("app/components/AuthHeader.tsx", "utf8");

@@ -68,18 +68,19 @@ begin
   normalized_request_email := public.normalize_beta_email(new.email);
   request_dedupe_key := public.beta_access_request_dedupe_key(new.email, new.user_id);
 
-  -- An interest submission already represents this person in the normalized-
-  -- email combined inbox and already emitted the actionable notification. This
-  -- check also bridges the legacy interest notification's row-id dedupe key.
-  if normalized_request_email is not null and exists (
-    select 1
-    from public.beta_interest_submissions interest
-    where interest.normalized_email = normalized_request_email
-  ) then
-    return new;
-  end if;
-
-  perform public.notify_access_admins(
+  -- Coverage is checked per recipient. Historical interest rows can predate the
+  -- notification foundation, so their existence alone is not proof of coverage.
+  insert into public.user_notifications (
+    user_id,
+    notification_type,
+    title,
+    body,
+    href,
+    metadata,
+    dedupe_key
+  )
+  select
+    recipient.user_id,
     'beta_access_request',
     'New beta access request',
     'A new beta access request is ready for review.',
@@ -89,7 +90,35 @@ begin
       'normalized_email', normalized_request_email
     ),
     request_dedupe_key
-  );
+  from public.user_access_profiles recipient
+  where recipient.access_status = 'approved'
+    and recipient.system_role in ('owner', 'admin')
+    and not exists (
+      select 1
+      from public.user_notifications notification
+      where notification.user_id = recipient.user_id
+        and notification.notification_type = 'beta_access_request'
+        and (
+          notification.dedupe_key = request_dedupe_key
+          or (
+            normalized_request_email is not null
+            and public.normalize_beta_email(notification.metadata->>'normalized_email') = normalized_request_email
+          )
+          or (
+            normalized_request_email is not null
+            and exists (
+              select 1
+              from public.beta_interest_submissions interest
+              where interest.normalized_email = normalized_request_email
+                and (
+                  notification.metadata->>'beta_interest_submission_id' = interest.id::text
+                  or notification.dedupe_key = 'beta-access-request:' || interest.id::text
+                )
+            )
+          )
+        )
+    )
+  on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing;
   return new;
 exception when others then
   -- Notification and downstream push-queue failures must never reject signup.
@@ -110,4 +139,3 @@ revoke execute on function public.notify_admins_of_new_beta_interest() from publ
 
 comment on function public.notify_admins_of_new_access_profile_request() is
   'Creates best-effort admin notifications for new pending regular-user access profiles; Web Push is queued by the existing user_notifications trigger.';
-

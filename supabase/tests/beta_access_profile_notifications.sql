@@ -5,13 +5,17 @@ begin;
 do $$
 declare
   test_admin constant uuid := '24400000-0000-4000-8000-000000000001';
+  second_admin constant uuid := '24400000-0000-4000-8000-000000000008';
   direct_user constant uuid := '24400000-0000-4000-8000-000000000002';
   approved_user constant uuid := '24400000-0000-4000-8000-000000000003';
   owner_user constant uuid := '24400000-0000-4000-8000-000000000004';
   interest_first_user constant uuid := '24400000-0000-4000-8000-000000000005';
   account_first_user constant uuid := '24400000-0000-4000-8000-000000000006';
   failure_user constant uuid := '24400000-0000-4000-8000-000000000007';
+  legacy_unnotified_user constant uuid := '24400000-0000-4000-8000-000000000009';
+  legacy_covered_user constant uuid := '24400000-0000-4000-8000-000000000010';
   interest_id uuid;
+  legacy_interest_id uuid;
   feedback_id uuid;
   direct_notification_id uuid;
   before_count integer;
@@ -19,24 +23,28 @@ declare
 begin
   insert into auth.users (id, email) values
     (test_admin, 'issue244-admin@example.test'),
+    (second_admin, 'issue244-second-admin@example.test'),
     (direct_user, 'issue244-direct@example.test'),
     (approved_user, 'issue244-approved@example.test'),
     (owner_user, 'issue244-owner@example.test'),
     (interest_first_user, 'issue244-interest-first@example.test'),
     (account_first_user, 'issue244-account-first@example.test'),
-    (failure_user, 'issue244-failure@example.test');
+    (failure_user, 'issue244-failure@example.test'),
+    (legacy_unnotified_user, 'issue244-legacy-unnotified@example.test'),
+    (legacy_covered_user, 'issue244-legacy-covered@example.test');
 
   update public.user_access_profiles
   set access_status = 'approved', system_role = 'admin', approved_at = now()
-  where user_id = test_admin;
+  where user_id in (test_admin, second_admin);
 
   -- Reinsert fixtures after the auth trigger so this test controls each INSERT.
   delete from public.user_notifications
   where metadata->>'normalized_email' like 'issue244-%@example.test';
   delete from public.user_access_profiles
-  where user_id <> test_admin and user_id in (
+  where user_id not in (test_admin, second_admin) and user_id in (
     direct_user, approved_user, owner_user, interest_first_user,
-    account_first_user, failure_user
+    account_first_user, failure_user, legacy_unnotified_user,
+    legacy_covered_user
   );
 
   insert into public.user_access_profiles
@@ -125,6 +133,70 @@ begin
       where user_id = test_admin
         and dedupe_key = 'beta-access-request:email:issue244-account-first@example.test') <> 1 then
     raise exception 'account-first person produced duplicate or missing alert';
+  end if;
+
+  -- A historical interest row is not notification coverage by itself.
+  insert into public.beta_interest_submissions
+    (name, email, country, main_discipline)
+  values ('Legacy Unnotified', 'issue244-legacy-unnotified@example.test', 'Norway', 'Skeet')
+  returning id into legacy_interest_id;
+  delete from public.user_notifications
+  where dedupe_key = 'beta-access-request:email:issue244-legacy-unnotified@example.test';
+
+  insert into public.user_access_profiles
+    (user_id, email, access_status, system_role, account_type)
+  values (legacy_unnotified_user, 'issue244-legacy-unnotified@example.test', 'pending', 'user', 'personal');
+  if exists (
+    select 1
+    from public.user_access_profiles recipient
+    where recipient.access_status = 'approved'
+      and recipient.system_role in ('owner', 'admin')
+      and not exists (
+        select 1 from public.user_notifications notification
+        join public.web_push_delivery_jobs job on job.notification_id = notification.id
+        where notification.user_id = recipient.user_id
+          and notification.dedupe_key = 'beta-access-request:email:issue244-legacy-unnotified@example.test'
+      )
+  ) then
+    raise exception 'legacy interest without notifications did not notify every admin';
+  end if;
+
+  -- Legacy row-id coverage suppresses only the recipient who actually has it.
+  insert into public.beta_interest_submissions
+    (name, email, country, main_discipline)
+  values ('Legacy Covered', 'issue244-legacy-covered@example.test', 'Norway', 'Compak Sporting')
+  returning id into legacy_interest_id;
+  delete from public.user_notifications
+  where dedupe_key = 'beta-access-request:email:issue244-legacy-covered@example.test';
+  insert into public.user_notifications
+    (user_id, notification_type, title, href, metadata, dedupe_key)
+  values (
+    test_admin,
+    'beta_access_request',
+    'New beta access request',
+    '/beta/admin',
+    jsonb_build_object('beta_interest_submission_id', legacy_interest_id),
+    'beta-access-request:' || legacy_interest_id::text
+  );
+
+  insert into public.user_access_profiles
+    (user_id, email, access_status, system_role, account_type)
+  values (legacy_covered_user, 'issue244-legacy-covered@example.test', 'pending', 'user', 'personal');
+  if (select count(*) from public.user_notifications
+      where user_id = test_admin
+        and notification_type = 'beta_access_request'
+        and (
+          dedupe_key = 'beta-access-request:' || legacy_interest_id::text
+          or dedupe_key = 'beta-access-request:email:issue244-legacy-covered@example.test'
+        )) <> 1 then
+    raise exception 'admin with legacy coverage received a duplicate';
+  end if;
+  if not exists (
+    select 1 from public.user_notifications
+    where user_id = second_admin
+      and dedupe_key = 'beta-access-request:email:issue244-legacy-covered@example.test'
+  ) then
+    raise exception 'missing admin did not receive canonical coverage';
   end if;
 
   insert into public.beta_feedback
