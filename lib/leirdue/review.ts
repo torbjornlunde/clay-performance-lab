@@ -1,4 +1,5 @@
 import type { LeirdueCandidate, LeirdueParsedValues } from "@/lib/leirdue/types";
+import { leirdueWinningScoreWithinShootOffTolerance } from "./scoringRules";
 
 export type LeirdueFieldErrors = Partial<Record<"ownScore" | "totalTargets" | "winningScore" | "seriesScores" | "date" | "name" | "discipline", string>>;
 
@@ -98,7 +99,7 @@ export function validateLeirdueReviewedCandidate(candidate: LeirdueCandidate) {
   if (!validWhole(candidate.totalTargets) || (candidate.totalTargets as number) <= 0) errors.totalTargets = "Total targets is required and must be a whole number greater than zero.";
   if (!errors.ownScore && !errors.totalTargets && (candidate.ownScore as number) > (candidate.totalTargets as number)) errors.ownScore = "Own score cannot exceed total targets.";
   if (candidate.winningScore !== null && (!validWhole(candidate.winningScore) || candidate.winningScore < 0)) errors.winningScore = "Winning score must be blank or a non-negative whole number.";
-  if (!errors.totalTargets && candidate.winningScore !== null && validWhole(candidate.winningScore) && candidate.winningScore > (candidate.totalTargets as number)) errors.winningScore = "Winning score cannot exceed total targets.";
+  if (!errors.totalTargets && candidate.winningScore !== null && validWhole(candidate.winningScore) && !leirdueWinningScoreWithinShootOffTolerance(candidate.winningScore, candidate.totalTargets as number)) errors.winningScore = "Winning score is outside the supported shoot-off range for this event.";
   if (!candidate.date?.trim()) errors.date = "Date is required.";
   if (!candidate.name?.trim()) errors.name = "Competition name is required.";
   if (!candidate.discipline?.trim()) errors.discipline = "Discipline is required.";

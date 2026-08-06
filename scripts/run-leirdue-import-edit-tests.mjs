@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 
-writeFileSync('.leirdue-edit-test-tsconfig.json', JSON.stringify({ compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', target: 'ES2022', outDir: '.leirdue-edit-test-build', skipLibCheck: true, rootDir: '.', baseUrl: '.', ignoreDeprecations: '6.0', paths: { '@/*': ['./*'] } }, include: ['lib/leirdue/review.ts', 'lib/leirdue/saveValidation.ts', 'lib/leirdue/types.ts'] }));
+writeFileSync('.leirdue-edit-test-tsconfig.json', JSON.stringify({ compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', target: 'ES2022', outDir: '.leirdue-edit-test-build', skipLibCheck: true, rootDir: '.', baseUrl: '.', ignoreDeprecations: '6.0', paths: { '@/*': ['./*'] } }, include: ['lib/leirdue/review.ts', 'lib/leirdue/saveValidation.ts', 'lib/leirdue/scoringRules.ts', 'lib/leirdue/duplicateCheck.ts', 'lib/leirdue/types.ts'] }));
 execSync('rm -rf .leirdue-edit-test-build && npx tsc -p .leirdue-edit-test-tsconfig.json', { stdio: 'inherit' });
 const review = await import('../.leirdue-edit-test-build/lib/leirdue/review.js');
 const validation = await import('../.leirdue-edit-test-build/lib/leirdue/saveValidation.js');
+const duplicateCheck = await import('../.leirdue-edit-test-build/lib/leirdue/duplicateCheck.js');
 const base = { date:'2026-07-01', name:'Summer shoot', shootingGround:'CPL', discipline:'Sporting', ownScore:91, totalTargets:100, winningScore:96, seriesScores:[23,22,23,23], reviewedSeriesScores:[23,22,23,23], leirdueUrl:'https://leirdue.net/?stevne=1&liste=2', listType:'main', confidence:'high', notes:'', category:'recommended', importRecommended:true };
 const original = review.parsedValues(base);
 const corrected = { ...base, ownScore:92, originalParsed:original };
@@ -31,6 +32,30 @@ oneCandidate.set(review.candidateSourceIdentity(incomingOriginal), review.mergeR
 assert.equal(oneCandidate.size, 1, 'original continuation row cannot create a duplicate reviewed card');
 
 assert.equal(review.validateLeirdueReviewedCandidate({ ...base, winningScore:null }).valid, true, 'blank winning score remains null and valid');
+assert.equal(review.validateLeirdueReviewedCandidate({ ...base, ownScore:92, totalTargets:100, winningScore:102, reviewedSeriesScores:[] }).valid, true, '100-target event accepts established shoot-off winner score 102');
+for (const winningScore of [-1, 1.5, NaN, Infinity]) assert.equal(review.validateLeirdueReviewedCandidate({ ...base, winningScore }).valid, false, `invalid winning score rejected: ${String(winningScore)}`);
+assert.equal(review.validateLeirdueReviewedCandidate({ ...base, totalTargets:100, winningScore:106, reviewedSeriesScores:[] }).valid, false, 'winner score outside shared five-percent parser tolerance is rejected');
+assert.equal(validation.isLeirdueSaveCandidate({ ...base, ownScore:92, totalTargets:100, winningScore:102, reviewedSeriesScores:[] }), true, 'server save validation uses the same shoot-off rule');
+
+const duplicateCandidate = { ...base, clientCandidateId:'source-row-1' };
+const successfulDuplicatePayload = { results:[{ clientCandidateId:'source-row-1', candidate:duplicateCandidate, status:'new', matches:[] }] };
+const rejectedCheck = await duplicateCheck.requestLeirdueDuplicateCheck([duplicateCandidate], 'token', async () => { throw new Error('offline'); });
+assert.equal(rejectedCheck.ok, false, 'rejected duplicate fetch blocks import');
+assert.match(rejectedCheck.error, /No result was imported.*Retry is safe/, 'network failure is clear and retryable');
+assert.equal((await duplicateCheck.requestLeirdueDuplicateCheck([duplicateCandidate], 'token', async () => ({ ok:false, json:async()=>({}) }))).ok, false, 'non-2xx duplicate response blocks import');
+assert.equal((await duplicateCheck.requestLeirdueDuplicateCheck([duplicateCandidate], 'token', async () => ({ ok:true, json:async()=>{ throw new Error('bad json'); } }))).ok, false, 'invalid duplicate JSON blocks import');
+assert.equal((await duplicateCheck.requestLeirdueDuplicateCheck([duplicateCandidate], 'token', async () => ({ ok:true, json:async()=>({}) }))).ok, false, 'missing duplicate results block import');
+assert.equal((await duplicateCheck.requestLeirdueDuplicateCheck([duplicateCandidate, { ...duplicateCandidate, clientCandidateId:'source-row-2' }], 'token', async () => ({ ok:true, json:async()=>successfulDuplicatePayload }))).ok, false, 'missing candidate response blocks entire batch');
+let saveCalls = 0;
+const retry = await duplicateCheck.requestLeirdueDuplicateCheck([duplicateCandidate], 'token', async () => ({ ok:true, json:async()=>successfulDuplicatePayload }));
+if (retry.ok) saveCalls += 1;
+assert.equal(saveCalls, 1, 'successful retry permits exactly one save attempt');
+assert.equal(retry.ok && retry.results[0].clientCandidateId, 'source-row-1', 'successful retry maps stable candidate ID');
+const exact = await duplicateCheck.requestLeirdueDuplicateCheck([duplicateCandidate], 'token', async () => ({ ok:true, json:async()=>({ results:[{ ...successfulDuplicatePayload.results[0], status:'exact', matches:[{id:'saved',reason:'same',exact:true}] }] }) }));
+assert.equal(exact.ok && exact.results[0].status, 'exact', 'exact duplicate remains blocking after recheck');
+const possible = await duplicateCheck.requestLeirdueDuplicateCheck([duplicateCandidate], 'token', async () => ({ ok:true, json:async()=>({ results:[{ ...successfulDuplicatePayload.results[0], status:'possible', matches:[{id:'saved',reason:'possible',exact:false}] }] }) }));
+assert.equal(possible.ok && possible.results[0].status, 'possible', 'possible duplicate still requires UI acknowledgement');
+
 for (const ownScore of [101, -1, 1.5, NaN, Infinity, 'bad']) assert.equal(review.validateLeirdueReviewedCandidate({ ...base, ownScore }).valid, false, `invalid own score rejected: ${String(ownScore)}`);
 for (const totalTargets of [0, -1, 1.5, NaN, Infinity, 'bad', null]) assert.equal(review.validateLeirdueReviewedCandidate({ ...base, totalTargets }).valid, false, `invalid total rejected: ${String(totalTargets)}`);
 assert.equal(validation.isLeirdueSaveCandidate({ ...base, ownScore:101 }), false, 'server helper rejects score over total');
@@ -65,7 +90,7 @@ assert.match(page, /reviewedSeriesScores.*map/, 'series slots are edited individ
 assert.match(page, /event\.target\.value === "" \? null/, 'blank series slot remains null');
 assert.match(page, /Reset to parsed values/, 'per-candidate reset is available');
 assert.match(page, /duplicateNeedsRecheck: true/g, 'corrections invalidate duplicate status');
-assert.match(page, /const recheckedCandidates = await checkDuplicatesFor\(candidates\)/, 'duplicates rerun before save');
+assert.match(page, /const duplicateCheck = await checkDuplicatesFor\(candidates\)[\s\S]*if \(!duplicateCheck\.ok\)[\s\S]*setSaving\(false\)[\s\S]*return;/, 'failed mandatory recheck recovers saving state and blocks save API');
 assert.match(page, /item\.clientCandidateId === candidate\.localId/g, 'responses map by stable candidate ID');
 assert.match(page, /aria-invalid=.*errorFor\(\"date\"\)[\s\S]*aria-describedby/, 'date field exposes its validation error accessibly');
 assert.match(page, /aria-invalid=.*errorFor\(\"discipline\"\)[\s\S]*discipline-error/, 'discipline field exposes its validation error accessibly');

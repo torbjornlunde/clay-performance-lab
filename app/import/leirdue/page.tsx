@@ -6,10 +6,11 @@ import { COMPAK_SPORTING, DISCIPLINE_OPTIONS, KOMPAKT_LEIRDUESTI, LEIRDUESTI } f
 import { supabase } from "@/lib/supabase/client";
 import { recordAnalyticsEvent } from "@/lib/analytics";
 import { normalizeDisciplines, prioritizedDisciplineOptions, shooterProfileDisplayName, type ShooterProfile } from "@/lib/profile";
-import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueDuplicateStatus, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
+import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
 import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 import { ContextualHelpCard } from "@/app/components/OnboardingHelp";
 import { applyReviewedValue, candidateRenderIdentity, candidateSourceIdentity, correctedFieldNames, mergeReviewedCandidate, parsedValues, useReviewedSeriesTotal, validateLeirdueReviewedCandidate } from "@/lib/leirdue/review";
+import { requestLeirdueDuplicateCheck } from "@/lib/leirdue/duplicateCheck";
 
 const DEFAULT_DISCIPLINES = [COMPAK_SPORTING, KOMPAKT_LEIRDUESTI, LEIRDUESTI, "Sporting"];
 const BATCH_TIMEOUT_MS = 20_000;
@@ -48,11 +49,6 @@ type SavedImportSummary = { id?: string; eventName: string; date: string | null;
 
 type SaveResponse = {
   results?: { clientCandidateId?: string; candidate: LeirdueCandidate; status: "saved" | "duplicate" | "error"; id?: string; message?: string; duplicateMatches?: LeirdueDuplicateMatch[] }[];
-  error?: string;
-};
-
-type DuplicateResponse = {
-  results?: { clientCandidateId?: string; candidate: LeirdueCandidate; status: LeirdueDuplicateStatus; matches: LeirdueDuplicateMatch[] }[];
   error?: string;
 };
 
@@ -893,22 +889,17 @@ export default function LeirdueImportPage() {
 
   async function checkDuplicatesFor(candidateList: EditableCandidate[]) {
     const visible = candidateList.filter(visibleImportCandidate);
-    if (visible.length === 0) return candidateList;
+    if (visible.length === 0) return { ok: true as const, candidates: candidateList };
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
-    if (!token) return candidateList;
+    if (!token) return { ok: false as const, candidates: candidateList, error: "Duplicate checking could not be completed. No result was imported. Retry is safe." };
 
     setCheckingDuplicates(true);
     try {
-      const response = await fetch("/api/leirdue/duplicates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ candidates: visible }),
-      });
-      const data = (await response.json()) as DuplicateResponse;
-      if (!response.ok || !data.results) return candidateList;
-      return candidateList.map((candidate) => {
-        const result = data.results?.find((item) => item.clientCandidateId === candidate.localId);
+      const outcome = await requestLeirdueDuplicateCheck(visible, token);
+      if (!outcome.ok) return { ok: false as const, candidates: candidateList, error: outcome.error };
+      const updated = candidateList.map((candidate) => {
+        const result = outcome.results.find((item) => item.clientCandidateId === candidate.localId);
         if (!result) return candidate;
         const exact = result.status === "exact";
         return {
@@ -921,6 +912,7 @@ export default function LeirdueImportPage() {
           warnings: result.status === "new" ? candidate.warnings : Array.from(new Set([...(candidate.warnings || []), result.status === "exact" ? "Already imported." : "Possible duplicate."])),
         };
       });
+      return { ok: true as const, candidates: updated };
     } finally {
       setCheckingDuplicates(false);
     }
@@ -928,8 +920,8 @@ export default function LeirdueImportPage() {
 
   async function setReviewedCandidates(candidateList: EditableCandidate[]) {
     const matched = applyShooterMatching(candidateList);
-    const withDuplicates = await checkDuplicatesFor(matched);
-    const reviewed = sortCandidatesForReview(withDuplicates);
+    const duplicateCheck = await checkDuplicatesFor(matched);
+    const reviewed = sortCandidatesForReview(duplicateCheck.candidates);
     setCandidates(reviewed);
     return reviewed;
   }
@@ -1233,7 +1225,13 @@ export default function LeirdueImportPage() {
       return;
     }
 
-    const recheckedCandidates = await checkDuplicatesFor(candidates);
+    const duplicateCheck = await checkDuplicatesFor(candidates);
+    if (!duplicateCheck.ok) {
+      setSaving(false);
+      setError(duplicateCheck.error);
+      return;
+    }
+    const recheckedCandidates = duplicateCheck.candidates;
     setCandidates(recheckedCandidates);
     const selected = recheckedCandidates.filter((candidate) => candidate.selected && visibleImportCandidate(candidate) && canSelectCandidate(candidate) && (candidate.duplicateStatus !== "possible" || candidate.allowDuplicateSave));
     if (selected.length !== chosen.length) {

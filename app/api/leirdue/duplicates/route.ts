@@ -27,7 +27,7 @@ function supabaseForRequest(request: Request) {
 function isCandidate(value: unknown): value is LeirdueCandidate {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<LeirdueCandidate>;
-  return typeof candidate.name === "string" && typeof candidate.discipline === "string" && typeof candidate.leirdueUrl === "string";
+  return typeof candidate.clientCandidateId === "string" && candidate.clientCandidateId.trim().length > 0 && typeof candidate.name === "string" && typeof candidate.discipline === "string" && typeof candidate.leirdueUrl === "string";
 }
 
 export async function POST(request: Request) {
@@ -38,7 +38,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid duplicate check request." }, { status: 400 });
   }
 
-  const candidates = Array.isArray(body.candidates) ? body.candidates.filter(isCandidate) : [];
+  if (!Array.isArray(body.candidates)) return NextResponse.json({ error: "Candidates must be an array." }, { status: 400 });
+  if (body.candidates.some((candidate) => !isCandidate(candidate))) return NextResponse.json({ error: "Every duplicate-check candidate requires valid source fields and a clientCandidateId." }, { status: 400 });
+  const candidates = body.candidates as LeirdueCandidate[];
+  const candidateIds = candidates.map((candidate) => candidate.clientCandidateId as string);
+  if (new Set(candidateIds).size !== candidateIds.length) return NextResponse.json({ error: "Duplicate clientCandidateId values are not allowed." }, { status: 400 });
   if (candidates.length === 0) return NextResponse.json({ results: [] });
 
   const supabase = supabaseForRequest(request);
