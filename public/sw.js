@@ -1,12 +1,12 @@
 const CACHE_PREFIX = "cpl-pwa-";
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const STATIC_CACHE = `${CACHE_PREFIX}${CACHE_VERSION}-static`;
 const REQUIRED_STATIC_ASSETS = ["/offline.html"];
 const OPTIONAL_STATIC_ASSETS = [
-  "/pwa-icons/192",
-  "/pwa-icons/512",
-  "/pwa-icons/maskable",
-  "/pwa-icons/apple",
+  "/pwa-icons/v1/192",
+  "/pwa-icons/v1/512",
+  "/pwa-icons/v1/maskable",
+  "/pwa-icons/v1/apple",
 ];
 const STATIC_ASSETS = [...REQUIRED_STATIC_ASSETS, ...OPTIONAL_STATIC_ASSETS];
 
@@ -49,7 +49,6 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
-
 function safeNotificationHref(href) {
   if (!href || typeof href !== "string" || !href.startsWith("/") || href.startsWith("//")) return "/notifications";
   try {
@@ -67,7 +66,7 @@ self.addEventListener("push", (event) => {
   const title = typeof payload.title === "string" && payload.title.trim() ? payload.title : "Clay Performance Lab";
   const body = typeof payload.body === "string" ? payload.body : undefined;
   const href = safeNotificationHref(payload.href);
-  event.waitUntil(self.registration.showNotification(title, { body, data: { href }, icon: "/pwa-icons/192", badge: "/pwa-icons/192" }));
+  event.waitUntil(self.registration.showNotification(title, { body, data: { href }, icon: "/pwa-icons/v1/192", badge: "/pwa-icons/v1/192" }));
 });
 
 self.addEventListener("notificationclick", (event) => {
