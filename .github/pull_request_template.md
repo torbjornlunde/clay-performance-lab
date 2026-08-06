@@ -11,10 +11,12 @@
 
 ## User-facing update note
 
-- [ ] This PR includes a meaningful user-facing change and the canonical `What's new` data was updated.
+- [ ] This PR includes a meaningful user-facing change and `lib/updates/whatsNew.ts` was updated.
 - [ ] No `What's new` entry is required because this change is internal, test-only, admin-only or otherwise invisible to normal users.
 
 Update ID, for example `v3.08.26`, or reason no entry is required:
+
+Next ID was determined by inspecting existing entries, and released historical entries were left unchanged: Yes / No / Not applicable
 
 ## Social media consideration
 
