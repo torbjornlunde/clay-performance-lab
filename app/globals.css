@@ -5987,8 +5987,30 @@ body {
 
 .compactCandidateAction {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
 }
+
+.leirdueResultEditor {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--lineStrong);
+  border-radius: 14px;
+  background: var(--surface-secondary);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.reviewEditorHeading { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 8px; }
+.reviewEditorHeading p { margin: 3px 0 0; }
+.leirdueScoreGrid, .leirdueSeriesGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.leirdueScoreGrid > div, .leirdueSeriesGrid > div { display: grid; align-content: start; gap: 4px; min-width: 0; }
+.leirdueScoreGrid input, .leirdueSeriesGrid input { width: 100%; min-width: 0; font-size: 16px; }
+.seriesReview { display: grid; gap: 8px; }
+.fieldError { display: block; color: var(--danger, #d94b4b); font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
 
 .compactImportToggle {
   min-width: 96px;
@@ -6050,6 +6072,9 @@ body {
   .compactImportToggle {
     min-width: 0;
   }
+
+  .leirdueScoreGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .leirdueSeriesGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .accessTableWrap {

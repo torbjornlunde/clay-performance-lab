@@ -1,6 +1,7 @@
 import { COMPAK_SPORTING, JEGERTRAP_NORDISK_TRAP, KOMPAKT_LEIRDUESTI, LEIRDUESTI, SKEET, TRAP } from "@/lib/disciplines";
 import { extractLeirdueSourceIdentifiers, normalizeLeirdueDisciplineLabel, normalizeLeirdueName, nordicSafeNameKey, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 import type { LeirdueCandidate, LeirdueCategory, LeirdueConfidence, LeirdueDebugParseInput, LeirdueDebugParseResult, LeirdueCheckedListDebug, LeirdueManualLinkParseResult, LeirdueSearchDebug, LeirdueSearchResult, LeirdueValidationChecklistItem } from "@/lib/leirdue/types";
+import { leirdueWinningScoreWithinShootOffTolerance } from "@/lib/leirdue/scoringRules";
 
 const LEIRDUE_BASE_URL = "https://www.leirdue.net/";
 const FETCH_ERROR_MESSAGE = "Could not fetch Leirdue results right now.";
@@ -956,7 +957,7 @@ function textDisallowsTotalTargetsInference(text: string) {
 function inferTotalTargets(contextText: string, rowText: string, score?: number | null, winningScore?: number | null, seriesScores: number[] = []): TotalTargetsInference | null {
   if (score === null || score === undefined || textDisallowsTotalTargetsInference(rowText) || textDisallowsTotalTargetsInference(contextText)) return null;
   const explicit = explicitTargetCountFromText(contextText);
-  if (explicit !== null && score <= explicit && (winningScore === null || winningScore === undefined || winningScore <= explicit || winningScore <= Math.ceil(explicit * 1.05))) {
+  if (explicit !== null && score <= explicit && (winningScore === null || winningScore === undefined || leirdueWinningScoreWithinShootOffTolerance(winningScore, explicit))) {
     return { totalTargets: explicit, source: "titleTargetCount", confidence: "high" };
   }
   return totalTargetsInferenceFromSeriesScores(seriesScores, score, rowText);

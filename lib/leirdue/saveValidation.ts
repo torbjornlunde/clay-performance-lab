@@ -1,4 +1,5 @@
 import type { LeirdueCandidate } from "@/lib/leirdue/types";
+import { validateLeirdueReviewedCandidate } from "./review";
 
 export function numberOrNull(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
@@ -9,8 +10,6 @@ export function numberOrNull(value: unknown) {
 export function isLeirdueSaveCandidate(value: unknown): value is LeirdueCandidate {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<LeirdueCandidate>;
-  const ownScore = numberOrNull(candidate.ownScore);
-  const totalTargets = numberOrNull(candidate.totalTargets);
   return Boolean(
     typeof candidate.date === "string" &&
       candidate.date.trim() &&
@@ -18,11 +17,8 @@ export function isLeirdueSaveCandidate(value: unknown): value is LeirdueCandidat
       candidate.name.trim() &&
       typeof candidate.discipline === "string" &&
       candidate.discipline.trim() &&
-      ownScore !== null &&
-      totalTargets !== null &&
-      totalTargets > 0 &&
-      ownScore >= 0 &&
-      ownScore <= totalTargets,
+      typeof candidate.leirdueUrl === "string" &&
+      validateLeirdueReviewedCandidate(candidate as LeirdueCandidate).valid,
   );
 }
 

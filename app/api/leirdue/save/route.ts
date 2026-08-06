@@ -4,6 +4,7 @@ import type { LeirdueCandidate, LeirdueDuplicateMatch } from "@/lib/leirdue/type
 import { extractLeirdueSourceIdentifiers } from "@/lib/leirdue/normalize";
 import { compareLeirdueDuplicate, type LeirdueDuplicateSessionRow } from "@/lib/leirdue/duplicates";
 import { isLeirdueSaveCandidate, leirdueWinningScoreForInsert } from "@/lib/leirdue/saveValidation";
+import { correctedFieldNames, parsedValues, validateLeirdueReviewedCandidate } from "@/lib/leirdue/review";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ type SaveBody = {
 };
 
 type SaveResult = {
+  clientCandidateId?: string;
   candidate: LeirdueCandidate;
   status: "saved" | "duplicate" | "error";
   id?: string;
@@ -43,10 +45,20 @@ function sourceNotes(candidate: LeirdueCandidate, importedAt: string) {
     `shooter_name: ${candidate.shooterName || "unknown"}`,
     `shooter_class: ${candidate.shooterClass || "unknown"}`,
     `placement: ${candidate.placement ?? "unknown"}`,
-    `series_scores: ${candidate.seriesScores?.length ? candidate.seriesScores.join(",") : "unknown"}`,
+    `series_scores: ${(candidate.reviewedSeriesScores || candidate.seriesScores)?.length ? (candidate.reviewedSeriesScores || candidate.seriesScores)?.map((value) => value ?? "unknown").join(",") : "unknown"}`,
     `Leirdue import: ${candidate.listType}`,
     `confidence: ${candidate.confidence}`,
   ];
+  const corrected = correctedFieldNames(candidate);
+  if (corrected.length) {
+    const original = parsedValues(candidate);
+    parts.push(`user_corrected_fields: ${corrected.join(",")}`);
+    parts.push(`original_parsed_own_score: ${original.ownScore ?? "unknown"}`);
+    parts.push(`original_parsed_total_targets: ${original.totalTargets ?? "unknown"}`);
+    parts.push(`original_parsed_winning_score: ${original.winningScore ?? "unknown"}`);
+    parts.push(`original_parsed_series_scores: ${original.seriesScores.length ? original.seriesScores.join(",") : "unknown"}`);
+    parts.push(`reviewed_series_scores: ${(candidate.reviewedSeriesScores || []).length ? candidate.reviewedSeriesScores?.map((value) => value ?? "unknown").join(",") : "unknown"}`);
+  }
   if (candidate.warnings?.length) parts.push(`warnings: ${candidate.warnings.join(" | ")}`);
   if (candidate.notes?.trim()) parts.push(candidate.notes.trim());
   return parts.join(". ");
@@ -60,8 +72,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid save request." }, { status: 400 });
   }
 
-  const candidates = Array.isArray(body.candidates) ? body.candidates.filter(isCandidate) : [];
-  if (candidates.length === 0) return NextResponse.json({ error: "No selected candidates to save." }, { status: 400 });
+  const requested = Array.isArray(body.candidates) ? body.candidates : [];
+  if (requested.length === 0) return NextResponse.json({ error: "No selected candidates to save." }, { status: 400 });
+  const invalid = requested.find((candidate) => !isCandidate(candidate));
+  if (invalid) return NextResponse.json({ error: "Invalid reviewed result.", fieldErrors: typeof invalid === "object" && invalid ? validateLeirdueReviewedCandidate(invalid as LeirdueCandidate).errors : {} }, { status: 400 });
+  const candidates = requested as LeirdueCandidate[];
 
   const supabase = supabaseForRequest(request);
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -76,7 +91,7 @@ export async function POST(request: Request) {
     const url = candidate.leirdueUrl?.trim() || null;
 
     if (!candidate.name.trim() || !candidate.date || totalTargets <= 0 || ownScore < 0 || ownScore > totalTargets) {
-      results.push({ candidate, status: "error", message: "Missing required result fields." });
+      results.push({ clientCandidateId: candidate.clientCandidateId, candidate, status: "error", message: "Missing required result fields." });
       continue;
     }
 
@@ -87,7 +102,7 @@ export async function POST(request: Request) {
       .returns<LeirdueDuplicateSessionRow[]>();
 
     if (duplicateError) {
-      results.push({ candidate, status: "error", message: duplicateError.message });
+      results.push({ clientCandidateId: candidate.clientCandidateId, candidate, status: "error", message: duplicateError.message });
       continue;
     }
 
@@ -98,12 +113,12 @@ export async function POST(request: Request) {
     const possibleDuplicate = duplicateMatches.find((match) => !match.exact);
 
     if (exactDuplicate) {
-      results.push({ candidate: { ...candidate, alreadyImported: true, duplicateStatus: "exact", duplicateMatches }, status: "duplicate", id: exactDuplicate.id, message: "Already imported from the same Leirdue source.", duplicateMatches });
+      results.push({ clientCandidateId: candidate.clientCandidateId, candidate: { ...candidate, alreadyImported: true, duplicateStatus: "exact", duplicateMatches }, status: "duplicate", id: exactDuplicate.id, message: "Already imported from the same Leirdue source.", duplicateMatches });
       continue;
     }
 
     if (possibleDuplicate && !candidate.allowDuplicateSave) {
-      results.push({ candidate: { ...candidate, duplicateStatus: "possible", duplicateMatches }, status: "duplicate", id: possibleDuplicate.id, message: "Possible duplicate found. Review it and choose Save anyway if this is a separate result.", duplicateMatches });
+      results.push({ clientCandidateId: candidate.clientCandidateId, candidate: { ...candidate, duplicateStatus: "possible", duplicateMatches }, status: "duplicate", id: possibleDuplicate.id, message: "Possible duplicate found. Review it and choose Save anyway if this is a separate result.", duplicateMatches });
       continue;
     }
 
@@ -130,9 +145,9 @@ export async function POST(request: Request) {
       .single<{ id: string }>();
 
     if (insertError) {
-      results.push({ candidate, status: "error", message: insertError.message });
+      results.push({ clientCandidateId: candidate.clientCandidateId, candidate, status: "error", message: insertError.message });
     } else {
-      results.push({ candidate, status: "saved", id: inserted.id });
+      results.push({ clientCandidateId: candidate.clientCandidateId, candidate, status: "saved", id: inserted.id });
     }
   }
 
