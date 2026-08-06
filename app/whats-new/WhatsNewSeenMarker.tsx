@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
-import { markLatestWhatsNewSeen } from "@/lib/updates/whatsNewSeen";
+import { markLatestWhatsNewSeen, safeBrowserLocalStorage } from "@/lib/updates/whatsNewSeen";
 
 export function WhatsNewSeenMarker({ latestId }: { latestId: string }) {
   useEffect(() => {
-    markLatestWhatsNewSeen(window.localStorage, latestId, window);
+    markLatestWhatsNewSeen(safeBrowserLocalStorage(window), latestId, window);
   }, [latestId]);
   return null;
 }

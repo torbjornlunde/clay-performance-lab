@@ -6,6 +6,16 @@ export const WHATS_NEW_SEEN_EVENT = "clay-performance-lab:whats-new-seen";
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
 type EventTargetLike = Pick<EventTarget, "dispatchEvent">;
 
+export function safeBrowserLocalStorage(
+  browserWindow: Pick<Window, "localStorage"> | null | undefined,
+): Storage | null {
+  try {
+    return browserWindow?.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function isLatestWhatsNewUnseen(storedValue: string | null | undefined, latestId: string) {
   parseWhatsNewId(latestId);
   if (!storedValue) return true;

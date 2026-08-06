@@ -40,6 +40,11 @@ assert.equal(seen.isLatestWhatsNewUnseen(null, "v3.08.26"), true, "empty seen va
 assert.equal(seen.isLatestWhatsNewUnseen("v2.08.26", "v3.08.26"), true, "older seen value is unseen");
 assert.equal(seen.isLatestWhatsNewUnseen("v3.08.26", "v3.08.26"), false, "latest seen value hides badge");
 assert.equal(seen.isLatestWhatsNewUnseen("broken", "v3.08.26"), true, "malformed stored value is safely unseen");
+const browserWithThrowingStorageGetter = {};
+Object.defineProperty(browserWithThrowingStorageGetter, "localStorage", { get() { throw new DOMException("blocked", "SecurityError"); } });
+assert.doesNotThrow(() => seen.safeBrowserLocalStorage(browserWithThrowingStorageGetter), "localStorage property acquisition cannot escape");
+assert.equal(seen.safeBrowserLocalStorage(browserWithThrowingStorageGetter), null, "blocked localStorage acquisition returns null");
+assert.equal(seen.safeBrowserLocalStorage(null), null, "missing browser returns null");
 const throwingStorage = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } };
 assert.doesNotThrow(() => seen.readWhatsNewUnseen(throwingStorage, "v3.08.26"));
 assert.equal(seen.readWhatsNewUnseen(throwingStorage, "v3.08.26"), false, "failed storage read avoids a permanent broken badge");
@@ -63,7 +68,9 @@ assert.match(header, /querySelectorAll<HTMLElement>[\s\S]*a\[role="menuitem"\]/,
 assert.match(header, /WHATS_NEW_SEEN_EVENT[\s\S]*addEventListener\("storage"/, "menu listens for same-tab and cross-tab changes");
 assert.match(layout, /<ProfileGate>\{children\}<\/ProfileGate>/, "route uses existing global authenticated gate");
 assert.match(page, /<AppBackButton fallback="\/dashboard" \/>/, "page uses safe AppBackButton");
-assert.match(marker, /markLatestWhatsNewSeen\(window\.localStorage, latestId, window\)/, "opening page records latest update");
+assert.match(header, /readWhatsNewUnseen\(safeBrowserLocalStorage\(window\), latestWhatsNewId\)/, "header guards localStorage property acquisition");
+assert.match(marker, /markLatestWhatsNewSeen\(safeBrowserLocalStorage\(window\), latestId, window\)/, "opening page guards storage acquisition and records latest update");
+assert.doesNotMatch([header, marker].join("\n"), /window\.localStorage/, "browser callers never acquire localStorage before the shared guard");
 assert.match(css, /\.whatsNewPage[\s\S]*width: min\(100% - 24px, 760px\)[\s\S]*overflow-wrap: anywhere/, "mobile page constrains content without horizontal overflow");
 assert.ok(!existsSync("app/whats-new/route.ts"), "no API route introduced");
 assert.doesNotMatch([page, marker, readFileSync("lib/updates/whatsNewSeen.ts", "utf8")].join("\n"), /supabase|cookie/i, "update page and seen state have no database or cookie state");

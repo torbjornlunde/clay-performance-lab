@@ -11,7 +11,7 @@ import { exportMyDataForCurrentUser } from "@/lib/export/exportMyDataClient";
 import { openOnboardingHelp } from "@/app/components/OnboardingHelp";
 import { usePwaInstallPrompt } from "@/app/components/PwaInstallProvider";
 import { latestWhatsNewEntry, WHATS_NEW_ENTRIES } from "@/lib/updates/whatsNew";
-import { readWhatsNewUnseen, WHATS_NEW_SEEN_EVENT, WHATS_NEW_SEEN_STORAGE_KEY } from "@/lib/updates/whatsNewSeen";
+import { readWhatsNewUnseen, safeBrowserLocalStorage, WHATS_NEW_SEEN_EVENT, WHATS_NEW_SEEN_STORAGE_KEY } from "@/lib/updates/whatsNewSeen";
 
 const latestWhatsNewId = latestWhatsNewEntry(WHATS_NEW_ENTRIES)?.id ?? "";
 
@@ -71,7 +71,7 @@ export default function AuthHeader() {
 
   useEffect(() => {
     if (!latestWhatsNewId) return;
-    const refresh = () => setWhatsNewUnseen(readWhatsNewUnseen(window.localStorage, latestWhatsNewId));
+    const refresh = () => setWhatsNewUnseen(readWhatsNewUnseen(safeBrowserLocalStorage(window), latestWhatsNewId));
     const handleStorage = (event: StorageEvent) => {
       if (event.key === WHATS_NEW_SEEN_STORAGE_KEY) refresh();
     };
