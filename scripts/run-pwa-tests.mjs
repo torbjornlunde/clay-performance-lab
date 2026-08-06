@@ -5,23 +5,35 @@ const manifest = readFileSync('app/manifest.ts', 'utf8');
 assert.match(manifest, /name:\s*"Clay Performance Lab"/, 'manifest uses full app name');
 assert.match(manifest, /display:\s*"standalone"/, 'manifest display is standalone');
 for (const size of ['192x192', '512x512']) assert.match(manifest, new RegExp(`sizes:\\s*"${size}"`), `manifest includes ${size} icon`);
-assert.match(manifest, /src:\s*"\/pwa-icons\/192"/, 'manifest references generated 192 icon route');
-assert.match(manifest, /src:\s*"\/pwa-icons\/512"/, 'manifest references generated 512 icon route');
-assert.match(manifest, /src:\s*"\/pwa-icons\/maskable"[\s\S]*purpose:\s*"maskable"/, 'manifest references generated maskable icon route');
-assert.ok(existsSync('app/pwa-icons/[icon]/route.tsx'), 'generated icon route exists');
-assert.ok(existsSync('lib/pwa/iconConfig.ts'), 'shared icon configuration exists');
+assert.match(manifest, /src:\s*"\/pwa-icons\/v1\/192"[\s\S]*purpose:\s*"any"/, 'manifest references approved versioned 192 icon');
+assert.match(manifest, /src:\s*"\/pwa-icons\/v1\/512"[\s\S]*purpose:\s*"any"/, 'manifest references approved versioned 512 icon');
+assert.match(manifest, /src:\s*"\/pwa-icons\/v1\/maskable"[\s\S]*purpose:\s*"maskable"/, 'manifest references distinct versioned maskable icon');
+assert.ok(existsSync('app/pwa-icons/v1/[icon]/route.tsx'), 'versioned approved icon route exists');
+assert.ok(!existsSync('app/pwa-icons/[icon]/route.tsx'), 'obsolete unversioned icon route is removed');
+assert.ok(existsSync('lib/pwa/iconConfig.ts'), 'shared icon size and safe-padding configuration exists');
+assert.ok(existsSync('lib/pwa/approvedIconArtwork.ts'), 'approved CPL logo artwork exists as reviewable text');
 
-const iconRoute = readFileSync('app/pwa-icons/[icon]/route.tsx', 'utf8');
+const iconRoute = readFileSync('app/pwa-icons/v1/[icon]/route.tsx', 'utf8');
+const iconArtwork = readFileSync('lib/pwa/approvedIconArtwork.ts', 'utf8');
 assert.match(iconRoute, /ImageResponse/, 'icon route generates PNG image responses');
-assert.match(iconRoute, /width:\s*size, height:\s*size/, 'icon response dimensions come from route config');
-assert.match(iconRoute, /#05070b|#0d141d/, 'icon uses dark brand background');
-assert.match(iconRoute, /#d8a53a|#f5cf6a/, 'icon uses champagne/gold brand colors');
+assert.match(iconRoute, /width:\s*size,[\s\S]*height:\s*size/, 'icon response dimensions come from route config');
+assert.match(iconRoute, /CPL_APPROVED_ICON_PATH/, 'icon route renders the approved CP and clay artwork');
+assert.match(iconRoute, /CPL_APPROVED_ICON_VIEW_BOX/, 'icon route uses the approved artwork crop');
+assert.match(iconRoute, /Cache-Control[\s\S]*immutable/, 'versioned icon responses are immutable-cacheable');
+assert.match(iconRoute, /#030405/, 'icon uses the approved black background');
+assert.match(iconRoute, /#d89b2b|#fff0a0/, 'icon uses metallic gold branding');
+assert.match(iconArtwork, /CPL_APPROVED_ICON_PATH = `M /, 'approved artwork contains vector path data');
+assert.ok(iconArtwork.length > 2500, 'approved artwork is substantive rather than a placeholder monogram');
+assert.doesNotMatch(iconArtwork, />LAB<|CP\/LAB|subtitle/i, 'approved app icon does not include the old LAB text lockup');
 
 const layout = readFileSync('app/layout.tsx', 'utf8');
 const provider = readFileSync('app/components/PwaInstallProvider.tsx', 'utf8');
 const installCard = readFileSync('app/components/InstallAppCard.tsx', 'utf8');
 const authHeader = readFileSync('app/components/AuthHeader.tsx', 'utf8');
 assert.match(layout, /statusBarStyle:\s*"black"/, 'installed iOS app uses a non-translucent status bar to prevent visible scroll-underlap');
+assert.match(layout, /url:\s*"\/pwa-icons\/v1\/192"/, 'browser icon metadata uses the approved versioned icon');
+assert.match(layout, /url:\s*"\/pwa-icons\/v1\/apple"[\s\S]*180x180/, 'Apple touch icon metadata uses the approved versioned icon');
+assert.match(layout, /shortcut:[\s\S]*\/pwa-icons\/v1\/192/, 'shortcut icon metadata uses the approved branding');
 assert.match(layout, /<PwaInstallProvider>[\s\S]*<ProfileGate>/, 'root layout mounts the PWA install provider before Settings can mount');
 assert.match(provider, /window\.addEventListener\("beforeinstallprompt", capturePrompt\)/, 'beforeinstallprompt is captured globally');
 assert.match(provider, /event\.preventDefault\(\)/, 'global beforeinstallprompt capture prevents the browser mini-infobar');
@@ -54,19 +66,28 @@ assert.match(css, /@media all and \(display-mode: standalone\)[\s\S]*body::befor
 
 const sw = readFileSync('public/sw.js', 'utf8');
 assert.match(sw, /const CACHE_PREFIX = "cpl-pwa-";/, 'service worker owns only cpl-pwa-* caches');
+assert.match(sw, /const CACHE_VERSION = "v2";/, 'service worker cache version is bumped for new icon branding');
 assert.match(sw, /key\.startsWith\(CACHE_PREFIX\) && key !== STATIC_CACHE/, 'service worker cleanup only targets old owned caches');
 assert.doesNotMatch(sw, /!key\.startsWith\(CACHE_VERSION\)/, 'service worker no longer deletes unrelated caches');
 for (const unrelated of ['workbox-precache-v9', 'future-offline-sync', 'supabase-cache']) {
   const CACHE_PREFIX = 'cpl-pwa-';
-  const STATIC_CACHE = 'cpl-pwa-v1-static';
+  const STATIC_CACHE = 'cpl-pwa-v2-static';
   const shouldDelete = unrelated.startsWith(CACHE_PREFIX) && unrelated !== STATIC_CACHE;
   assert.equal(shouldDelete, false, `unrelated cache ${unrelated} is never deleted`);
 }
-assert.equal('cpl-pwa-v0-static'.startsWith('cpl-pwa-') && 'cpl-pwa-v0-static' !== 'cpl-pwa-v1-static', true, 'old cpl-pwa cache is eligible for cleanup');
+assert.equal('cpl-pwa-v1-static'.startsWith('cpl-pwa-') && 'cpl-pwa-v1-static' !== 'cpl-pwa-v2-static', true, 'old CPL cache is eligible for cleanup');
 assert.match(sw, /cache\.addAll\(REQUIRED_STATIC_ASSETS\)/, 'offline fallback is required during install');
-assert.match(sw, /Promise\.allSettled\(OPTIONAL_STATIC_ASSETS\.map/, 'optional generated icons do not fail the whole install');
+assert.match(sw, /Promise\.allSettled\(OPTIONAL_STATIC_ASSETS\.map/, 'optional icons do not fail the whole install');
+for (const path of ['/pwa-icons/v1/192', '/pwa-icons/v1/512', '/pwa-icons/v1/maskable', '/pwa-icons/v1/apple']) {
+  assert.ok(sw.includes(`"${path}"`), `service worker precaches ${path}`);
+}
+assert.match(sw, /icon:\s*"\/pwa-icons\/v1\/192"[\s\S]*badge:\s*"\/pwa-icons\/v1\/192"/, 'Web Push uses the approved app icon');
+assert.doesNotMatch([manifest, layout, sw].join('\n'), /\/pwa-icons\/(192|512|maskable|apple)"/, 'old unversioned icon paths are no longer referenced');
 assert.match(sw, /pathname\.startsWith\("\/api\/"\)/, 'service worker excludes app API routes');
 assert.match(sw, /hostname\.includes\("supabase\.co"\)/, 'service worker excludes Supabase routes');
 assert.doesNotMatch(sw, /cache\.put\(request|caches\.open\([^)]*\)[\s\S]*fetch\(request\)[\s\S]*cache\.put/, 'service worker does not runtime-cache fetched user data');
+
+const whatsNew = readFileSync('lib/updates/whatsNew.ts', 'utf8');
+assert.match(whatsNew, /id:\s*"v4\.08\.26"[\s\S]*Official CPL app icon/, 'What’s new includes the app-icon branding release');
 
 console.log('PWA checks passed');
