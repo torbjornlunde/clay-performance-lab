@@ -48,8 +48,8 @@ assert.doesNotMatch(scorecardImport,/CompetitionTemplateSuggestions|applyTemplat
 assert.match(migration,/delete from public\.session_courses where session_id = p_session_id/, 'empty placeholder course rows can be replaced atomically');
 assert.match(migration,/fitasc_scheme is not null or x\.shooter_number is not null or x\.start_plate is not null/, 'meaningful course rows block apply');
 assert.match(migration,/public\.scorecard_imports/, 'finished scorecard imports block apply');
-assert.match(newResult,/templateApplyFailed=result/, 'result-only apply failure is visible after navigation');
-assert.match(newSession,/templateApplyFailed=session/, 'normal creation apply failure is visible after navigation');
+assert.match(newResult,/(?:templateApplyFailed=result|params\.set\("templateApplyFailed", "result"\))/, 'result-only apply failure is visible after navigation');
+assert.match(newSession,/(?:templateApplyFailed=session|\?templateApplyFailed=session)/, 'normal creation apply failure is visible after navigation');
 assert.match(newSession,/Using a shared setup requires a network connection\. You can continue without it\./, 'offline blocks only template apply in normal creation');
 assert.match(newResult,/Using a shared setup requires a network connection\. You can continue without it\./, 'offline blocks only template apply in result-only creation');
 assert.match(sessionPage,/Resultatet ble lagret, men det delte dueoppsettet kunne ikke legges til/, 'session page shows result apply failure after redirect');

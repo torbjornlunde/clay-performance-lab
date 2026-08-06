@@ -50,6 +50,8 @@ export type ExportCourse = {
   session_id: string;
   course_number: number;
   fitasc_scheme?: number | null;
+  compak_programme_type?: string | null;
+  compak_conflict_resolution?: string | null;
   shooter_number?: number | null;
   start_plate?: number | null;
 };
@@ -319,6 +321,8 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
         sessionsById.get(course.session_id)?.shooting_ground || null,
       "Course number": course.course_number,
       "FITASC scheme": course.fitasc_scheme ?? null,
+      "Compak programme type": course.compak_programme_type ?? null,
+      "Compak discrepancy choice": course.compak_conflict_resolution ?? null,
       "Shooter number": course.shooter_number ?? null,
       "Start plate": course.start_plate ?? null,
     })),
@@ -327,6 +331,8 @@ export function createUserDataWorkbook(input: ExportUserDataInput) {
       "Shooting ground",
       "Course number",
       "FITASC scheme",
+      "Compak programme type",
+      "Compak discrepancy choice",
       "Shooter number",
       "Start plate",
     ],

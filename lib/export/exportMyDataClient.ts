@@ -34,7 +34,7 @@ export async function exportMyDataForCurrentUser() {
       await Promise.all([
         supabase
           .from("session_courses")
-          .select("session_id,course_number,fitasc_scheme,shooter_number,start_plate")
+          .select("session_id,course_number,fitasc_scheme,compak_programme_type,compak_conflict_resolution,shooter_number,start_plate")
           .in("session_id", sessionIds)
           .order("course_number")
           .returns<ExportCourse[]>(),
