@@ -10,6 +10,10 @@ import { supabase } from "@/lib/supabase/client";
 import { exportMyDataForCurrentUser } from "@/lib/export/exportMyDataClient";
 import { openOnboardingHelp } from "@/app/components/OnboardingHelp";
 import { usePwaInstallPrompt } from "@/app/components/PwaInstallProvider";
+import { latestWhatsNewEntry, WHATS_NEW_ENTRIES } from "@/lib/updates/whatsNew";
+import { readWhatsNewUnseen, WHATS_NEW_SEEN_EVENT, WHATS_NEW_SEEN_STORAGE_KEY } from "@/lib/updates/whatsNewSeen";
+
+const latestWhatsNewId = latestWhatsNewEntry(WHATS_NEW_ENTRIES)?.id ?? "";
 
 function ClayTargetIcon() {
   return (
@@ -62,7 +66,23 @@ export default function AuthHeader() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [whatsNewUnseen, setWhatsNewUnseen] = useState(false);
   const { installAvailable, openInstallExperience } = usePwaInstallPrompt();
+
+  useEffect(() => {
+    if (!latestWhatsNewId) return;
+    const refresh = () => setWhatsNewUnseen(readWhatsNewUnseen(window.localStorage, latestWhatsNewId));
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === WHATS_NEW_SEEN_STORAGE_KEY) refresh();
+    };
+    refresh();
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener(WHATS_NEW_SEEN_EVENT, refresh);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(WHATS_NEW_SEEN_EVENT, refresh);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -252,6 +272,9 @@ export default function AuthHeader() {
                   <div className="globalMenuSection" role="group" aria-label="Support">
                     <div className="globalMenuSectionLabel">Support</div>
                     <button role="menuitem" type="button" onClick={() => { closeMenu({ restoreFocus: true }); openOnboardingHelp(); }}>Help / Getting started</button>
+                    <Link role="menuitem" href="/whats-new" onClick={() => closeMenu()}>
+                      <span>What’s new</span>{whatsNewUnseen ? <span className="whatsNewBadge">New</span> : null}
+                    </Link>
                     {feedbackHref && <Link role="menuitem" href={feedbackHref} onClick={() => closeMenu()}>Send feedback</Link>}
                     <Link role="menuitem" href="/fitasc" onClick={() => closeMenu()}>FITASC schemes</Link>
                   </div>

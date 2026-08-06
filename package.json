@@ -41,6 +41,7 @@
     "test:equipment-last-serviced": "node scripts/run-equipment-last-serviced-tests.mjs",
     "test:auth-entry": "node scripts/run-auth-entry-tests.mjs",
     "test:notifications": "node scripts/run-notification-tests.mjs",
+    "test:whats-new": "node scripts/run-whats-new-tests.mjs",
     "test:simple-training-upgrade": "node scripts/run-simple-training-upgrade-tests.mjs",
     "test:leirdue-import-edit": "node scripts/run-leirdue-import-edit-tests.mjs"
   },
