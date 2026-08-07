@@ -1,0 +1,19 @@
+import { NextResponse } from "next/server";
+import { analyzeScorecardImage, AiConfigError, AiMalformedOutputError, AiRateLimitError, AiTimeoutError } from "@/lib/ai/openaiScorecard";
+import { courseCandidateProposal } from "@/lib/scorecards/courseScorecardReview";
+import { COURSE_ANALYSIS_MAX_BYTES, loadCanonicalCourseEvidence, requestSupabase } from "@/lib/scorecards/courseEvidenceServer";
+import { createEntitlementUserContext } from "@/lib/entitlements/userContext";
+import { getBillingMode } from "@/lib/entitlements/check";
+import { FeatureAccessError, recordFeatureUsage, requirePaidCostAccess } from "@/lib/entitlements/server";
+export const dynamic="force-dynamic"; export const maxDuration=70;
+const out=(category:string,message:string,status=400)=>NextResponse.json({error:{category,message}},{status});
+export async function POST(request:Request,{params}:{params:Promise<{id:string;evidenceId:string}>}){try{
+ const {id,evidenceId}=await params,supabase=requestSupabase(request); const {data:u}=await supabase.auth.getUser(); if(!u.user)return out("login_required","Log in to analyze this course.",401);
+ const [{data:profile},{data:entitlement}]=await Promise.all([supabase.from("user_access_profiles").select("user_id,access_status,system_role").eq("user_id",u.user.id).maybeSingle(),supabase.from("user_entitlements").select("plan,status,valid_until").eq("user_id",u.user.id).maybeSingle()]);
+ try{requirePaidCostAccess("ai.scorecard_photo_import",createEntitlementUserContext({userId:u.user.id,accessProfile:profile||null,entitlement:entitlement||null,billingMode:getBillingMode(process.env)}));}catch(e){if(e instanceof FeatureAccessError)return out("forbidden",e.message,e.status);throw e;}
+ const source=await loadCanonicalCourseEvidence(supabase,u.user.id,id,evidenceId); if(source.blob.size>COURSE_ANALYSIS_MAX_BYTES)return out("image_too_large","This saved photo is too large to analyze. The original photo is still attached to the Competition.",413);
+ const analysis=await analyzeScorecardImage(source.blob,{postCount:1,targetsPerPost:25,targetsPerPostByPost:[25],totalTargets:25,allowPostTotalResolution:false});
+ await recordFeatureUsage(supabase,"ai.scorecard_photo_import",u.user.id,{route:"/api/sessions/[id]/scorecard-evidence/[evidenceId]/analyze"});
+ const candidates=analysis.shooterRows.map((row)=>{const candidate=courseCandidateProposal(row);return {...candidate,warnings:[...analysis.warnings,...candidate.warnings]};}), selected=candidates.length===1?candidates[0]:null;
+ return NextResponse.json({proposal:{evidenceId,courseNumber:source.evidence.course_number,sourceImageFingerprint:source.fingerprint,sourceEvidenceUpdatedAt:source.evidence.updated_at,warnings:analysis.warnings,candidates,selectedCandidateId:selected?.candidateId||null,...(selected||{})}});
+}catch(e){const code=(e as Error).message;if(["forbidden","unsupported_session","evidence_mismatch","course_required","course_not_found","source_unavailable","unsupported_image"].includes(code))return out(code,code==="course_required"?"Assign this photo to a course before analysis.":code==="course_not_found"?"This photo is assigned to a course that no longer exists.":"This saved course photo cannot be analyzed.",code==="forbidden"?403:422);if(e instanceof AiConfigError)return out("ai_not_configured","AI analysis is not configured.",422);if(e instanceof AiRateLimitError)return out("rate_limited","Course analysis is temporarily rate limited.",429);if(e instanceof AiTimeoutError)return out("timed_out","Course analysis needs an internet connection. Your saved scorecard photo is still available.",504);if(e instanceof AiMalformedOutputError)return out("unreadable_scorecard","The saved course photo could not be read safely.",422);return out("analysis_failed","Course analysis needs an internet connection. Your saved scorecard photo is still available.",500);}}

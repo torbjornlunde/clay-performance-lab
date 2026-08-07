@@ -232,7 +232,7 @@ export function summarizeGrid(grid: ScorecardCell[]) {
 }
 export function normalizeScorecardAnalysis(
   input: any,
-  setup: { postCount?: number | null; targetsPerPost?: number | null; targetsPerPostByPost?: number[]; totalTargets?: number | null; allowStructureDiscovery?: boolean },
+  setup: { postCount?: number | null; targetsPerPost?: number | null; targetsPerPostByPost?: number[]; totalTargets?: number | null; allowStructureDiscovery?: boolean; allowPostTotalResolution?: boolean },
 ): NormalizedScorecardAnalysis {
   if (!input || typeof input !== "object")
     throw new Error("Malformed scorecard analysis.");
@@ -368,7 +368,7 @@ export function normalizeScorecardAnalysis(
         const detectedPostScore = Number.isInteger(postInput?.detectedPostScore) ? Number(postInput.detectedPostScore) : null;
         const detectedPostScoreConfidence = cleanConfidence(postInput?.detectedPostScoreConfidence) && postInput?.detectedPostScoreConfidence ? cleanConfidence(postInput.detectedPostScoreConfidence) : null;
         const detectedPostScoreRawText = cleanString(postInput?.detectedPostScoreRawText, 40);
-        const rec = reconcileScorecardPost({ cells: reconciledGrid.filter((c) => c.postNumber === p), detectedPostScore, detectedPostScoreConfidence, expectedTargetCount: targetsPerPostByPost[p - 1] });
+        const rec = reconcileScorecardPost({ cells: reconciledGrid.filter((c) => c.postNumber === p), detectedPostScore, detectedPostScoreConfidence, expectedTargetCount: targetsPerPostByPost[p - 1], allowPostTotalResolution: setup.allowPostTotalResolution !== false });
         reconciledGrid = reconciledGrid.map((c) => c.postNumber === p ? rec.cells.find((x) => x.targetNumber === c.targetNumber) || c : c);
         if (rec.reconciliationWarning) warnings.push(`Post ${p}: ${rec.reconciliationWarning}`);
         reconciledPosts.push({ postNumber: p, detectedPostScore, detectedPostScoreConfidence, detectedPostScoreRawText, reconciledPostScore: rec.reconciledPostScore, reconciliationStatus: rec.reconciliationStatus, reconciliationWarning: rec.reconciliationWarning, targets: rec.cells });
@@ -428,7 +428,7 @@ function evidenceScore(cell: ScorecardCell, result: Exclude<ScorecardOutcome, "u
   else if (cell.result !== "unknown") score -= cell.confidence === "high" ? 4 : cell.confidence === "medium" ? 2 : 1;
   return score;
 }
-export function reconcileScorecardPost({ cells, detectedPostScore, detectedPostScoreConfidence, expectedTargetCount }: { cells: ScorecardCell[]; detectedPostScore: number | null; detectedPostScoreConfidence?: Confidence | null; expectedTargetCount: number }): { cells: ScorecardCell[]; detectedPostScore: number | null; detectedPostScoreConfidence: Confidence | null; reconciledPostScore: number; reconciliationStatus: ReconciliationStatus; reconciliationWarning: string | null } {
+export function reconcileScorecardPost({ cells, detectedPostScore, detectedPostScoreConfidence, expectedTargetCount, allowPostTotalResolution = true }: { cells: ScorecardCell[]; detectedPostScore: number | null; detectedPostScoreConfidence?: Confidence | null; expectedTargetCount: number; allowPostTotalResolution?: boolean }): { cells: ScorecardCell[]; detectedPostScore: number | null; detectedPostScoreConfidence: Confidence | null; reconciledPostScore: number; reconciliationStatus: ReconciliationStatus; reconciliationWarning: string | null } {
   const normalized = cells.slice(0, expectedTargetCount).map((cell) => ({ ...cell }));
   const detected = Number.isInteger(detectedPostScore) ? Number(detectedPostScore) : null;
   const totalConfidence: Confidence | null = detectedPostScoreConfidence === "high" || detectedPostScoreConfidence === "medium" || detectedPostScoreConfidence === "low" ? detectedPostScoreConfidence : null;
@@ -439,6 +439,7 @@ export function reconcileScorecardPost({ cells, detectedPostScore, detectedPostS
   const fixedMisses = fixed.filter((c) => c.result === "miss").length;
   if (fixedHits > detected || fixedMisses > requiredMisses) return { cells: normalized, detectedPostScore: detected, detectedPostScoreConfidence: totalConfidence, reconciledPostScore: summarizeGrid(normalized).score, reconciliationStatus: "conflict" as ReconciliationStatus, reconciliationWarning: `Fixed high-confidence or reviewed marks conflict with detected post total ${detected}/${expectedTargetCount}.` };
   const current = summarizeGrid(normalized);
+  if (!allowPostTotalResolution) return { cells: normalized, detectedPostScore: detected, detectedPostScoreConfidence: totalConfidence, reconciledPostScore: current.score, reconciliationStatus: current.unknowns ? "needs_review" : current.score === detected ? "matched" : "conflict", reconciliationWarning: current.unknowns ? `Post total ${detected}/${expectedTargetCount} is kept separately; unresolved target positions require review.` : current.score === detected ? null : `Reviewed marks differ from detected post total ${detected}/${expectedTargetCount}.` };
   const protectedUncertain = normalized.filter((cell) => isProtectedAiUncertain(cell) && cell.result === "unknown");
   if (current.unknowns === 0 && current.score === detected) return { cells: normalized, detectedPostScore: detected, detectedPostScoreConfidence: totalConfidence, reconciledPostScore: detected, reconciliationStatus: "matched" as ReconciliationStatus, reconciliationWarning: null };
   if (protectedUncertain.length) return { cells: normalized, detectedPostScore: detected, detectedPostScoreConfidence: totalConfidence, reconciledPostScore: current.score, reconciliationStatus: "needs_review" as ReconciliationStatus, reconciliationWarning: `${protectedUncertain.length} AI-uncertain target${protectedUncertain.length === 1 ? "" : "s"} must be reviewed manually.` };

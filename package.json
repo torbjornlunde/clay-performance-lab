@@ -45,7 +45,8 @@
     "test:simple-training-upgrade": "node scripts/run-simple-training-upgrade-tests.mjs",
     "test:leirdue-import-edit": "node scripts/run-leirdue-import-edit-tests.mjs",
     "test:compak-partial-programme": "node scripts/run-compak-partial-programme-tests.mjs"
-    ,"test:scorecard-evidence": "node scripts/run-scorecard-evidence-tests.mjs"
+    ,"test:scorecard-evidence": "node scripts/run-scorecard-evidence-tests.mjs",
+    "test:course-scorecard-review": "node scripts/run-course-scorecard-review-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",
