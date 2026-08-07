@@ -73,8 +73,9 @@ export function courseReviewSourceLabel(state: CourseReviewSourceState) {
 
 export function courseCandidateProposal(candidate: any) {
   const post = candidate?.posts?.[0];
-  const reliableScore = post?.detectedPostScoreConfidence === "high" && Number.isInteger(post?.detectedPostScore) ? Number(post.detectedPostScore) : null;
-  return { candidateId: String(candidate?.candidateId || ""), displayName: candidate?.displayName || candidate?.rowLabel || null, grid: courseGridFromAnalysis(candidate?.grid || []), reviewedScore: reliableScore, warnings: [...(candidate?.warnings || []), ...(post?.reconciliationWarning ? [post.reconciliationWarning] : [])].filter(Boolean) };
+  const detectedScore = Number.isInteger(post?.detectedPostScore) ? Number(post.detectedPostScore) : null;
+  const detectedScoreConfidence: Confidence | null = ["high", "medium", "low"].includes(post?.detectedPostScoreConfidence) ? post.detectedPostScoreConfidence : null;
+  return { candidateId: String(candidate?.candidateId || ""), displayName: candidate?.displayName || candidate?.rowLabel || null, grid: courseGridFromAnalysis(candidate?.grid || []), detectedScore, detectedScoreConfidence, reviewedScore: null, warnings: [...(candidate?.warnings || []), ...(post?.reconciliationWarning ? [post.reconciliationWarning] : [])].filter(Boolean) };
 }
 export function selectCourseCandidate(candidates: any[]) { return candidates.length === 1 ? courseCandidateProposal(candidates[0]) : null; }
 
