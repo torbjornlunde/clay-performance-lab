@@ -11,8 +11,8 @@ create table public.competition_course_scorecard_reviews (
  check(reviewed_score is null or reviewed_unknowns<>0 or reviewed_score=reviewed_hits)
 );
 alter table public.competition_course_scorecard_reviews enable row level security;
-revoke all on public.competition_course_scorecard_reviews from public, anon;
-grant select on public.competition_course_scorecard_reviews to authenticated;
+revoke all privileges on table public.competition_course_scorecard_reviews from public, anon, authenticated;
+grant select on table public.competition_course_scorecard_reviews to authenticated;
 create policy competition_course_scorecard_reviews_select_own on public.competition_course_scorecard_reviews for select to authenticated
  using(user_id=auth.uid() and public.has_approved_access(auth.uid()) and exists(select 1 from public.sessions s where s.id=session_id and s.user_id=auth.uid() and s.session_type='Competition'));
 create trigger competition_course_scorecard_reviews_set_updated_at before update on public.competition_course_scorecard_reviews for each row execute function public.set_updated_at();

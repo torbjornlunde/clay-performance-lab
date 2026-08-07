@@ -89,3 +89,17 @@ export function nextUncertainCourseTarget(grid:CourseScorecardReviewCell[], afte
   const uncertain=grid.filter(c=>c.result==="unknown"||c.confidence==="low"||Boolean(c.warning)).map(c=>c.targetNumber);
   return uncertain.find(n=>n>(after||0))||uncertain[0]||null;
 }
+
+export function parseReviewedCourseScore(value: unknown) {
+  if (value === null) return { ok: true as const, value: null };
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 25) return { ok: false as const, error: "Course score must be blank or a whole number from 0 to 25." };
+  return { ok: true as const, value };
+}
+
+export type CourseReviewLoadState<T> = { status:"loading" } | { status:"ready";reviews:T[] } | { status:"error";message:string };
+export function courseReviewForCourse<T extends {course_number:number}>(state:CourseReviewLoadState<T>,courseNumber:number) {
+  return state.status === "ready" ? state.reviews.find(review=>review.course_number===courseNumber) || null : undefined;
+}
+export function canAnalyzeCourseFromReviewState<T extends {course_number:number}>(state:CourseReviewLoadState<T>,courseNumber:number) {
+  return state.status === "ready" && !courseReviewForCourse(state,courseNumber);
+}
