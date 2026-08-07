@@ -7,6 +7,7 @@ import { buildCompetitionActivitySummary } from "@/lib/competitionActivity";
 import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
 import { isQuickScoreNotes, parseQuickScoreMetadata } from "@/lib/quick-score/metadata";
+import { deleteSessionWithEvidenceCleanup } from "@/lib/sessionDeletion";
 
 type ResultFilter = "all" | "competition" | "imported" | "manual" | "draft";
 
@@ -195,7 +196,9 @@ export default function ResultsPage() {
 
     setDeletingId(session.id);
     setErr("");
-    const { error } = await supabase.from("sessions").delete().eq("id", session.id);
+    let error: Error | null = null;
+    try { await deleteSessionWithEvidenceCleanup(supabase, session.id); }
+    catch (caught) { error = caught as Error; }
     setDeletingId(null);
 
     if (error) {
