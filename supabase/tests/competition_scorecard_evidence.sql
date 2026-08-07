@@ -32,6 +32,7 @@ delete from public.competition_scorecard_evidence where id='25700000-0000-4000-8
 do $$ begin if exists(select 1 from public.competition_scorecard_evidence where id='25700000-0000-4000-8000-000000000022') then raise exception 'owner can delete own metadata failed'; end if; end $$;
 insert into storage.objects(bucket_id,name,owner_id) values ('competition-scorecard-evidence','25700000-0000-4000-8000-000000000001/25700000-0000-4000-8000-000000000010/550e8400-e29b-41d4-a716-446655440001.jpg','25700000-0000-4000-8000-000000000001');
 do $$ begin
+  if (select count(*) from storage.objects where bucket_id='competition-scorecard-evidence') <> 1 then raise exception 'owner cannot read own storage object'; end if;
   begin insert into storage.objects(bucket_id,name,owner_id) values ('competition-scorecard-evidence','25700000-0000-4000-8000-000000000002/25700000-0000-4000-8000-000000000010/550e8400-e29b-41d4-a716-446655440099.jpg','25700000-0000-4000-8000-000000000001'); raise exception 'owner created object in another user folder'; exception when insufficient_privilege then null; end;
 end $$;
 
@@ -44,17 +45,20 @@ do $$ declare affected integer; begin
   if exists(select 1 from storage.objects where bucket_id='competition-scorecard-evidence') then raise exception 'other user read owner object'; end if;
   begin insert into storage.objects(bucket_id,name,owner_id) values ('competition-scorecard-evidence','25700000-0000-4000-8000-000000000001/25700000-0000-4000-8000-000000000010/550e8400-e29b-41d4-a716-446655440097.jpg','25700000-0000-4000-8000-000000000002'); raise exception 'other inserted into owner folder'; exception when insufficient_privilege then null; end;
   update storage.objects set name=name||'.moved' where bucket_id='competition-scorecard-evidence'; get diagnostics affected=row_count; if affected<>0 then raise exception 'other updated owner object'; end if;
-  delete from storage.objects where bucket_id='competition-scorecard-evidence'; get diagnostics affected=row_count; if affected<>0 then raise exception 'other deleted owner object'; end if;
 end $$;
 reset role;
 
--- Supplemental schema/policy assertions.
-do $$ declare policy_count integer; begin
+-- Supabase's storage.protect_delete() intentionally blocks direct SQL DELETE on
+-- storage.objects, so delete-policy behavior is verified structurally here and
+-- exercised through the Storage API in application-level helper tests.
+do $$ declare policy_count integer; delete_qual text; begin
  select count(*) into policy_count from pg_policies where schemaname='public' and tablename='competition_scorecard_evidence'; if policy_count<>4 then raise exception 'expected four metadata policies'; end if;
  if exists(select 1 from pg_policies where schemaname='public' and tablename='competition_scorecard_evidence' and coalesce(qual,with_check,'') not like '%auth.uid()%') then raise exception 'metadata policy missing auth.uid'; end if;
  if not (select relrowsecurity from pg_class where oid='public.competition_scorecard_evidence'::regclass) then raise exception 'metadata RLS disabled'; end if;
  if (select public from storage.buckets where id='competition-scorecard-evidence') then raise exception 'bucket public'; end if;
  if (select file_size_limit from storage.buckets where id='competition-scorecard-evidence')<>10485760 then raise exception 'wrong size limit'; end if;
  if (select count(*) from pg_policies where schemaname='storage' and tablename='objects' and policyname like 'competition_scorecard_storage_%')<>4 then raise exception 'storage policies missing'; end if;
+ select qual into delete_qual from pg_policies where schemaname='storage' and tablename='objects' and policyname='competition_scorecard_storage_delete_own';
+ if delete_qual not like '%competition-scorecard-evidence%' or delete_qual not like '%auth.uid()%' or delete_qual not like '%foldername%' then raise exception 'storage delete policy is not owner scoped'; end if;
 end $$;
 rollback;
