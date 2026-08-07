@@ -31,7 +31,14 @@ begin
  if e.updated_at is distinct from p_expected_evidence_updated_at then raise exception 'stale_evidence'; end if;
  if p_source_image_fingerprint !~ '^[a-f0-9]{64}$' then raise exception 'invalid_fingerprint'; end if;
  if jsonb_typeof(p_reviewed_grid)<>'array' or jsonb_array_length(p_reviewed_grid)<>25 then raise exception 'invalid_grid'; end if;
- if exists(select 1 from jsonb_array_elements(p_reviewed_grid) x where (x-'targetNumber'-'result'-'confidence'-'observedMarkCategory'-'warning') <> '{}'::jsonb or (x->>'targetNumber')!~ '^([1-9]|1[0-9]|2[0-5])$' or x->>'result' not in ('hit','miss','unknown')) then raise exception 'invalid_grid'; end if;
+ if exists(select 1 from jsonb_array_elements(p_reviewed_grid) x where
+   jsonb_typeof(x)<>'object' or (x-'targetNumber'-'result'-'confidence'-'observedMarkCategory'-'warning') <> '{}'::jsonb
+   or jsonb_typeof(x->'targetNumber')<>'number' or (x->>'targetNumber')!~ '^([1-9]|1[0-9]|2[0-5])$'
+   or jsonb_typeof(x->'result')<>'string' or x->>'result' not in ('hit','miss','unknown')
+   or (x ? 'confidence' and (jsonb_typeof(x->'confidence')<>'string' or x->>'confidence' not in ('high','medium','low')))
+   or (x ? 'observedMarkCategory' and x->'observedMarkCategory'<>'null'::jsonb and (jsonb_typeof(x->'observedMarkCategory')<>'string' or x->>'observedMarkCategory' not in ('diagonal_stroke','vertical_stroke','check_mark','circle','zero','horizontal_dash','cross','blank','other','unreadable')))
+   or (x ? 'warning' and x->'warning'<>'null'::jsonb and (jsonb_typeof(x->'warning')<>'string' or char_length(x->>'warning')>160))
+ ) then raise exception 'invalid_grid'; end if;
  if (select count(distinct (x->>'targetNumber')::int) from jsonb_array_elements(p_reviewed_grid)x)<>25 then raise exception 'invalid_grid'; end if;
  select count(*) filter(where x->>'result'='hit'),count(*) filter(where x->>'result'='miss'),count(*) filter(where x->>'result'='unknown') into hits,misses_count,unknowns from jsonb_array_elements(p_reviewed_grid)x;
  if p_reviewed_score is not null and (p_reviewed_score<0 or p_reviewed_score>25 or p_reviewed_score<hits or p_reviewed_score>hits+unknowns) then raise exception 'invalid_score'; end if;

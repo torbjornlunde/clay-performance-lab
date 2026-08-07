@@ -24,12 +24,16 @@ export function validateCourseScorecardReviewGrid(input: unknown, reviewedScore:
     if (seen.has(targetNumber)) errors.push(`Target ${targetNumber} appears more than once.`);
     seen.add(targetNumber);
     if (!results.has(result)) errors.push(`Target ${targetNumber} has an invalid result.`);
+    if (!raw || typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).some((key) => !["targetNumber","result","confidence","observedMarkCategory","warning"].includes(key))) errors.push(`Target ${targetNumber} contains unsupported review data.`);
+    if (raw?.confidence !== undefined && !confidences.has(raw.confidence)) errors.push(`Target ${targetNumber} has invalid confidence.`);
+    if (raw?.observedMarkCategory !== undefined && raw.observedMarkCategory !== null && !marks.has(raw.observedMarkCategory)) errors.push(`Target ${targetNumber} has an invalid observed mark.`);
+    if (raw?.warning !== undefined && raw.warning !== null && (typeof raw.warning !== "string" || raw.warning.length > 160)) errors.push(`Target ${targetNumber} has an invalid warning.`);
     return {
       targetNumber,
       result,
       ...(confidences.has(raw?.confidence) ? { confidence: raw.confidence } : {}),
       ...(raw?.observedMarkCategory === null || marks.has(raw?.observedMarkCategory) ? { observedMarkCategory: raw.observedMarkCategory } : {}),
-      ...(typeof raw?.warning === "string" && raw.warning.trim() ? { warning: raw.warning.trim().slice(0, 160) } : {}),
+      ...(typeof raw?.warning === "string" && raw.warning.trim() ? { warning: raw.warning.trim() } : {}),
     };
   }).sort((a, b) => a.targetNumber - b.targetNumber);
   for (let n = 1; n <= 25; n++) if (!seen.has(n)) errors.push(`Target ${n} is missing.`);
@@ -52,4 +56,35 @@ export function courseGridFromAnalysis(grid: ScorecardCell[]): CourseScorecardRe
 
 export async function fingerprintScorecardEvidenceBlob(blob: Blob) {
   return Buffer.from(await crypto.subtle.digest("SHA-256", await blob.arrayBuffer())).toString("hex");
+}
+
+export type CourseReviewSourceState = "current" | "source_changed" | "source_reassigned" | "source_removed" | "different_source";
+export function resolveCourseReviewSourceState(review: { course_number:number; evidence_id:string|null; source_evidence_updated_at:string }, evidence?: { id:string; course_number:number|null; updated_at:string } | null): CourseReviewSourceState {
+  if (!review.evidence_id || !evidence) return "source_removed";
+  if (review.evidence_id !== evidence.id) return "different_source";
+  if (evidence.course_number !== review.course_number) return "source_reassigned";
+  if (evidence.updated_at !== review.source_evidence_updated_at) return "source_changed";
+  return "current";
+}
+
+export function courseReviewSourceLabel(state: CourseReviewSourceState) {
+  return state === "source_changed" ? "Source photo changed" : state === "source_reassigned" ? "Source photo reassigned" : state === "source_removed" ? "Source photo removed" : state === "different_source" ? "Different source photo" : null;
+}
+
+export function courseCandidateProposal(candidate: any) {
+  const post = candidate?.posts?.[0];
+  const reliableScore = post?.detectedPostScoreConfidence === "high" && Number.isInteger(post?.detectedPostScore) ? Number(post.detectedPostScore) : null;
+  return { candidateId: String(candidate?.candidateId || ""), displayName: candidate?.displayName || candidate?.rowLabel || null, grid: courseGridFromAnalysis(candidate?.grid || []), reviewedScore: reliableScore, warnings: [...(candidate?.warnings || []), ...(post?.reconciliationWarning ? [post.reconciliationWarning] : [])].filter(Boolean) };
+}
+export function selectCourseCandidate(candidates: any[]) { return candidates.length === 1 ? courseCandidateProposal(candidates[0]) : null; }
+
+export type CourseReviewDraft = { userId:string;sessionId:string;evidenceId:string;sourceImageFingerprint:string;sourceEvidenceUpdatedAt:string;selectedCandidateId:string;reviewedScore:number|null;grid:CourseScorecardReviewCell[];warnings:string[] };
+export function courseReviewDraftKey(d: Pick<CourseReviewDraft,"userId"|"sessionId"|"evidenceId"|"sourceImageFingerprint">) { return `course-scorecard-review:${d.userId}:${d.sessionId}:${d.evidenceId}:${d.sourceImageFingerprint}`; }
+export function restoreCourseReviewDraft(raw:string|null, expected:Pick<CourseReviewDraft,"userId"|"sessionId"|"evidenceId"|"sourceImageFingerprint"|"sourceEvidenceUpdatedAt">) {
+  try { const draft=JSON.parse(raw||"") as CourseReviewDraft; return draft.userId===expected.userId&&draft.sessionId===expected.sessionId&&draft.evidenceId===expected.evidenceId&&draft.sourceImageFingerprint===expected.sourceImageFingerprint&&draft.sourceEvidenceUpdatedAt===expected.sourceEvidenceUpdatedAt&&validateCourseScorecardReviewGrid(draft.grid,draft.reviewedScore).ok?draft:null; } catch { return null; }
+}
+
+export function nextUncertainCourseTarget(grid:CourseScorecardReviewCell[], after?:number|null) {
+  const uncertain=grid.filter(c=>c.result==="unknown"||c.confidence==="low"||Boolean(c.warning)).map(c=>c.targetNumber);
+  return uncertain.find(n=>n>(after||0))||uncertain[0]||null;
 }
