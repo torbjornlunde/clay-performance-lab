@@ -13,14 +13,23 @@ create table public.competition_scorecard_evidence (
   content_type text not null,
   size_bytes integer not null,
   created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
   constraint competition_scorecard_evidence_course_check check (course_number is null or course_number > 0),
   constraint competition_scorecard_evidence_type_check check (content_type in ('image/jpeg','image/png','image/webp')),
   constraint competition_scorecard_evidence_size_check check (size_bytes > 0 and size_bytes <= 10485760),
-  constraint competition_scorecard_evidence_path_check check (storage_path = user_id::text || '/' || session_id::text || '/' || split_part(storage_path, '/', 3))
+  constraint competition_scorecard_evidence_path_check check (
+    storage_path ~ ('^' || user_id::text || '/' || session_id::text || '/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|png|webp)$')
+    and right(storage_path, 4) = case content_type when 'image/jpeg' then '.jpg' when 'image/png' then '.png' when 'image/webp' then 'webp' end
+  )
 );
 create index competition_scorecard_evidence_session_idx on public.competition_scorecard_evidence(session_id, created_at);
 alter table public.competition_scorecard_evidence enable row level security;
+revoke all on public.competition_scorecard_evidence from anon;
 grant select, insert, update, delete on public.competition_scorecard_evidence to authenticated;
+
+drop trigger if exists competition_scorecard_evidence_set_updated_at on public.competition_scorecard_evidence;
+create trigger competition_scorecard_evidence_set_updated_at before update on public.competition_scorecard_evidence
+for each row execute function public.set_updated_at();
 
 create policy "competition_scorecard_evidence_select_own" on public.competition_scorecard_evidence for select to authenticated
 using (user_id = auth.uid() and exists(select 1 from public.sessions s where s.id=session_id and s.user_id=auth.uid() and s.session_type='Competition'));
