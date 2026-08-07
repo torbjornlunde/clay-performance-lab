@@ -17,6 +17,37 @@ export function validateScorecardEvidenceFile(file: Pick<File, "type" | "size">)
   return null;
 }
 
+export type ScorecardEvidenceBatchResult = {
+  total: number;
+  successful: number;
+  message: string;
+};
+
+export async function uploadScorecardEvidenceBatch(
+  files: readonly File[],
+  upload: (file: File) => Promise<unknown>,
+  reconcile: () => Promise<unknown>,
+): Promise<ScorecardEvidenceBatchResult> {
+  const invalid = files.map((file) => validateScorecardEvidenceFile(file)).find(Boolean);
+  if (invalid) return { total: files.length, successful: 0, message: invalid };
+
+  let successful = 0;
+  let failure = "";
+  for (const file of files) {
+    try {
+      await upload(file);
+      successful += 1;
+    } catch (error) {
+      failure = (error as { message?: string } | null)?.message || "Unknown upload error.";
+      break;
+    }
+  }
+  if (successful > 0) await reconcile();
+  if (!failure) return { total: files.length, successful, message: `${successful} photo${successful === 1 ? "" : "s"} attached.` };
+  if (successful === 0) return { total: files.length, successful, message: `Photo upload failed: ${failure}` };
+  return { total: files.length, successful, message: `${successful} of ${files.length} photos attached. The next photo could not be uploaded: ${failure}` };
+}
+
 export function scorecardEvidencePath(userId: string, sessionId: string, mimeType: string, id = crypto.randomUUID()) {
   if (!userId || !sessionId || userId.includes("/") || sessionId.includes("/")) throw new Error("Invalid evidence owner or session.");
   const extension = MIME_EXTENSIONS[mimeType];

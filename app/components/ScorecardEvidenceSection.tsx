@@ -6,6 +6,7 @@ import {
   createEvidenceMutationGuard, createScorecardEvidenceSignedUrl,
   deleteScorecardEvidence, reassignScorecardEvidence, replaceScorecardEvidence,
   SCORECARD_EVIDENCE_TYPES, type ScorecardEvidence, uploadScorecardEvidence,
+  uploadScorecardEvidenceBatch,
 } from "@/lib/scorecardEvidence";
 
 type DisplayEvidence = ScorecardEvidence & { signedUrl?: string };
@@ -44,10 +45,12 @@ export default function ScorecardEvidenceSection({ sessionId, userId, courseCoun
     if (!files.length || mutationGuard.current.active) return;
     void runMutation(async () => {
       setMessage("");
-      try {
-        for (const file of files) await uploadScorecardEvidence(supabase, { userId, sessionId, courseNumber, file });
-        setMessage(`${files.length} photo${files.length === 1 ? "" : "s"} attached.`); await load();
-      } catch (error) { setMessage((error as Error).message || "Photo upload failed."); }
+      const result = await uploadScorecardEvidenceBatch(
+        files,
+        (file) => uploadScorecardEvidence(supabase, { userId, sessionId, courseNumber, file }),
+        load,
+      );
+      setMessage(result.message);
     });
   }
 
