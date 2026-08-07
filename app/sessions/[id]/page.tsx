@@ -28,6 +28,8 @@ import {
   parseQuickScoreMetadata,
 } from "@/lib/quick-score/metadata";
 import { equipmentSnapshotLines } from "@/lib/equipment/logSnapshots";
+import ScorecardEvidenceSection from "@/app/components/ScorecardEvidenceSection";
+import { deleteSessionWithEvidenceCleanup } from "@/lib/sessionDeletion";
 
 type Miss = {
   id: string;
@@ -626,10 +628,12 @@ export default function Page() {
 
     setDeleting(true);
     setErr("");
-    const { error } = await supabase
-      .from("sessions")
-      .delete()
-      .eq("id", session.id);
+    let error: Error | null = null;
+    try {
+      await deleteSessionWithEvidenceCleanup(supabase, session.id);
+    } catch (caught) {
+      error = caught as Error;
+    }
     setDeleting(false);
 
     if (error) {
@@ -1008,6 +1012,10 @@ export default function Page() {
         </details>
       </div>
 
+
+      {session.session_type === "Competition" && currentUserId && (
+        <ScorecardEvidenceSection sessionId={session.id} userId={currentUserId} courseCount={session.course_count || courses.length || 0} />
+      )}
 
       <div className="card privateNotesCard">
         <details className="detailAccordion">
