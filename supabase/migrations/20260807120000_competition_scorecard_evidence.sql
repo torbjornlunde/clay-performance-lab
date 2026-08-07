@@ -42,19 +42,20 @@ create policy "competition_scorecard_evidence_delete_own" on public.competition_
 using (user_id = auth.uid() and exists(select 1 from public.sessions s where s.id=session_id and s.user_id=auth.uid() and s.session_type='Competition'));
 
 -- Uploads require both the owner's top-level folder and a Competition owned by
--- that user in the second folder. Select/update are similarly session-scoped.
+-- that user in the second folder. Qualify storage.objects.name inside the
+-- sessions subquery so it cannot be shadowed by sessions.name.
 create policy "competition_scorecard_storage_insert_own_session" on storage.objects for insert to authenticated with check (
-  bucket_id='competition-scorecard-evidence' and (storage.foldername(name))[1]=auth.uid()::text
-  and exists(select 1 from public.sessions s where s.id::text=(storage.foldername(name))[2] and s.user_id=auth.uid() and s.session_type='Competition'));
+  bucket_id='competition-scorecard-evidence' and (storage.foldername(storage.objects.name))[1]=auth.uid()::text
+  and exists(select 1 from public.sessions s where s.id::text=(storage.foldername(storage.objects.name))[2] and s.user_id=auth.uid() and s.session_type='Competition'));
 create policy "competition_scorecard_storage_select_own_session" on storage.objects for select to authenticated using (
-  bucket_id='competition-scorecard-evidence' and (storage.foldername(name))[1]=auth.uid()::text
-  and exists(select 1 from public.sessions s where s.id::text=(storage.foldername(name))[2] and s.user_id=auth.uid() and s.session_type='Competition'));
+  bucket_id='competition-scorecard-evidence' and (storage.foldername(storage.objects.name))[1]=auth.uid()::text
+  and exists(select 1 from public.sessions s where s.id::text=(storage.foldername(storage.objects.name))[2] and s.user_id=auth.uid() and s.session_type='Competition'));
 create policy "competition_scorecard_storage_update_own_session" on storage.objects for update to authenticated using (
-  bucket_id='competition-scorecard-evidence' and (storage.foldername(name))[1]=auth.uid()::text
-  and exists(select 1 from public.sessions s where s.id::text=(storage.foldername(name))[2] and s.user_id=auth.uid() and s.session_type='Competition'));
+  bucket_id='competition-scorecard-evidence' and (storage.foldername(storage.objects.name))[1]=auth.uid()::text
+  and exists(select 1 from public.sessions s where s.id::text=(storage.foldername(storage.objects.name))[2] and s.user_id=auth.uid() and s.session_type='Competition'));
 -- Owner-folder-only delete deliberately permits post-session-delete orphan cleanup;
 -- it grants no read or write access and cannot reach another user's objects.
 create policy "competition_scorecard_storage_delete_own" on storage.objects for delete to authenticated using (
-  bucket_id='competition-scorecard-evidence' and (storage.foldername(name))[1]=auth.uid()::text);
+  bucket_id='competition-scorecard-evidence' and (storage.foldername(storage.objects.name))[1]=auth.uid()::text);
 
 comment on table public.competition_scorecard_evidence is 'Owner-only metadata for permanent private Competition scorecard originals; never analysis input.';
