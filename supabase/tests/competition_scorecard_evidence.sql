@@ -3,9 +3,19 @@ begin;
 insert into auth.users(id,email) values
  ('25700000-0000-4000-8000-000000000001','evidence-owner@example.test'),
  ('25700000-0000-4000-8000-000000000002','evidence-other@example.test');
-insert into public.user_access_profiles(user_id,email,access_status,system_role,approved_at) values
- ('25700000-0000-4000-8000-000000000001','evidence-owner@example.test','approved','user',now()),
- ('25700000-0000-4000-8000-000000000002','evidence-other@example.test','approved','user',now());
+-- auth.users has an AFTER INSERT trigger that creates user_access_profiles.
+-- Approve those generated profiles instead of inserting duplicate primary keys.
+update public.user_access_profiles
+set access_status='approved', system_role='user', approved_at=now()
+where user_id in (
+ '25700000-0000-4000-8000-000000000001',
+ '25700000-0000-4000-8000-000000000002'
+);
+do $$ begin
+ if (select count(*) from public.user_access_profiles where user_id in ('25700000-0000-4000-8000-000000000001','25700000-0000-4000-8000-000000000002')) <> 2 then
+  raise exception 'auth access-profile trigger fixture failed';
+ end if;
+end $$;
 insert into public.sessions(id,user_id,name,discipline,session_type,competition_date) values
  ('25700000-0000-4000-8000-000000000010','25700000-0000-4000-8000-000000000001','Evidence test','Sporting','Competition',current_date);
 
