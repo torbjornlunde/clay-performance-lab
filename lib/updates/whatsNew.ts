@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v7.08.26", title: "Review one course from a saved scorecard photo", bullets: ["Analyze a saved scorecard photo for one Compak course without requiring the full Competition card.", "Keep other courses unknown while saving the course score and reviewed target detail you actually know.", "Your overall Competition result stays unchanged while you add course detail later."] },
   { id: "v6.08.26", title: "Keep scorecard photos with your result", bullets: ["Attach multiple scorecard photos directly to a Competition.", "Link each photo to a course or keep it with the whole session.", "Open, reassign, replace or remove your private scorecard evidence later."] },
   { id: "v5.08.26", title: "Save partial Compak programmes", bullets: ["Save a known Compak presentation pattern without choosing a guessed FITASC scheme.", "Keep each course clearly marked as Exact, Partial or Unknown.", "Add an exact scheme later without losing the programme information you remembered."] },
   { id: "v4.08.26", title: "Official CPL app icon", bullets: ["Clay Performance Lab now uses the gold CP and clay mark as its app icon.", "Fresh home-screen installations and browser tabs use the new branding.", "Existing iPhone installations may need to be removed and added again to refresh the icon."] },
