@@ -42,6 +42,7 @@ assert.equal(policy.shouldCreatePersonalSessionForScoreSheet('competition'),fals
 assert.equal(policy.canWriteOwnedScoreSheet('owner','owner'),true); assert.equal(policy.canWriteOwnedScoreSheet('other','owner'),false);
 const route = readFileSync('app/training-score-sheets/[id]/page.tsx','utf8');
 assert.match(route, /@\/lib\/scoreSheets\/core/); assert.doesNotMatch(route, /competitionScoring/);
+assert.match(route, /\.eq\("id", sheetId\)\s*\.in\("session_type", \["training", "shared_training"\]\)/, 'Training detail route rejects competition score sheets in its canonical query');
 const stats = readFileSync('app/stats/page.tsx','utf8'); assert.match(stats, /\.in\("session_type", \["training", "shared_training"\]\)/);
 const dashboard = readFileSync('app/dashboard/page.tsx','utf8'); assert.match(dashboard, /\.in\("session_type", \["training", "shared_training"\]\)/);
 const migration = readFileSync('supabase/migrations/20260807180000_shared_score_sheet_kind.sql','utf8'); assert.match(migration,/training.*shared_training.*competition/);

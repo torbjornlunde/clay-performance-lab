@@ -1143,6 +1143,7 @@ export default function TrainingScoreSheetPage() {
         "id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,expected_targets_by_post,updated_at,compak_scheme_id,compak_shooting_mode,compak_rotation_mode",
       )
       .eq("id", sheetId)
+      .in("session_type", ["training", "shared_training"])
       .single<ScoreSheetRow>();
 
     if (sheetError || !sheet) {
