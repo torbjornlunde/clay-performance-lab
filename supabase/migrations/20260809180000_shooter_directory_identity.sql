@@ -5,9 +5,10 @@ alter table public.shooter_profiles
 comment on column public.shooter_profiles.shooter_directory_visible is
   'Explicit opt-in to authenticated name-and-country score-sheet directory searches.';
 
-create unique index training_score_sheet_shooters_sheet_linked_user_unique_idx
-  on public.training_score_sheet_shooters(score_sheet_id, linked_user_id)
-  where linked_user_id is not null;
+alter table public.training_score_sheet_shooters
+  add constraint training_score_sheet_shooters_sheet_linked_user_unique
+  unique (score_sheet_id, linked_user_id)
+  deferrable initially immediate;
 
 create or replace function public.search_shooter_directory(
   search_text text,
@@ -25,6 +26,9 @@ declare
 begin
   if auth.uid() is null then
     raise exception using errcode = '42501', message = 'Authentication required.';
+  end if;
+  if not public.has_approved_access(auth.uid()) then
+    raise exception using errcode = '42501', message = 'Access denied.';
   end if;
   if char_length(normalized_query) < 2 then return; end if;
 

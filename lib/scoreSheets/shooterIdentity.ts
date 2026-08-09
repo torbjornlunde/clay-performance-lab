@@ -21,12 +21,30 @@ export function canSearchShooterDirectory(value: string) {
   return normalizeShooterDirectoryQuery(value).length >= SHOOTER_DIRECTORY_MIN_QUERY;
 }
 
+export function shooterIdentitySearchEnabled(options: {
+  disabled: boolean;
+  linkedUserId: string | null;
+  activeSearch: boolean;
+  changeLink: boolean;
+}) {
+  if (options.disabled || !options.activeSearch) return false;
+  return options.linkedUserId ? options.changeLink : true;
+}
+
 export function capShooterDirectoryLimit(value: number) {
   return Math.min(Math.max(Math.trunc(Number(value) || SHOOTER_DIRECTORY_DEFAULT_LIMIT), 1), SHOOTER_DIRECTORY_MAX_LIMIT);
 }
 
 export function normalizeLinkedUserId(value: unknown) {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+export function restoreShooterIdentityDrafts<T extends { linkedUserId?: unknown }>(shooters: T[]) {
+  return shooters.map((shooter) => ({ ...shooter, linkedUserId: normalizeLinkedUserId(shooter.linkedUserId) }));
+}
+
+export function isCurrentShooterDirectoryRequest(request: number, currentRequest: number) {
+  return request === currentRequest;
 }
 
 export function applyShooterIdentity<T extends IdentityShooterDraft>(shooter: T, suggestion: ShooterDirectorySuggestion): T {

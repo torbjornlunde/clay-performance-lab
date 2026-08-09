@@ -13,6 +13,11 @@ assert.equal(profile.shooterProfileDisplayName({first_name:'Ada',last_name:null,
 assert.equal(identity.canSearchShooterDirectory(''), false);
 assert.equal(identity.canSearchShooterDirectory(' a '), false);
 assert.equal(identity.canSearchShooterDirectory('ab'), true);
+assert.equal(identity.shooterIdentitySearchEnabled({disabled:false,linkedUserId:null,activeSearch:false,changeLink:false}),false,'existing guest does not search on mount');
+assert.equal(identity.shooterIdentitySearchEnabled({disabled:false,linkedUserId:null,activeSearch:true,changeLink:false}),true,'intentional guest focus/edit activates search');
+assert.equal(identity.shooterIdentitySearchEnabled({disabled:false,linkedUserId:'linked',activeSearch:true,changeLink:false}),false,'linked snapshot editing does not continuously search');
+assert.equal(identity.shooterIdentitySearchEnabled({disabled:false,linkedUserId:'linked',activeSearch:true,changeLink:true}),true,'explicit Change link activates search');
+assert.equal(identity.shooterIdentitySearchEnabled({disabled:true,linkedUserId:null,activeSearch:true,changeLink:false}),false,'finalized/disabled rows never search');
 assert.equal(identity.normalizeShooterDirectoryQuery('  %%  '), '%%');
 assert.equal(identity.capShooterDirectoryLimit(99), 10);
 const base={name:'Guest Name',linkedUserId:null,scores:[0]};
@@ -27,6 +32,11 @@ assert.equal(own?.isOwnProfile,true); assert.equal(identity.mergeOwnProfileSugge
 assert.equal(identity.identityAlreadyLinked('user-1',[{linkedUserId:'user-1'}]),true);
 assert.equal(identity.identityAlreadyLinked('user-1',[{linkedUserId:null}]),false);
 assert.equal(identity.normalizeLinkedUserId(undefined),null);
+assert.equal(identity.isCurrentShooterDirectoryRequest(2,2),true);
+assert.equal(identity.isCurrentShooterDirectoryRequest(1,2),false,'stale directory response cannot replace a newer request');
+const draftRoundTrip=JSON.parse(JSON.stringify([{localId:'linked',name:'Event snapshot',scores:[1],linkedUserId:'user-1'}]));
+assert.equal(identity.restoreShooterIdentityDrafts(draftRoundTrip)[0].linkedUserId,'user-1','linked identity survives draft roundtrip');
+assert.equal(identity.restoreShooterIdentityDrafts([{localId:'legacy',name:'Guest',scores:[0]}])[0].linkedUserId,null,'legacy draft restores missing link as null');
 assert.equal(drafts.scoreSheetDraftKey('training','same'),'training_score_sheet_draft:same');
 assert.equal(drafts.scoreSheetDraftKey('competition','same'),'score_sheet_draft:competition:same');
 
@@ -35,10 +45,15 @@ const picker=readFileSync('app/components/scoreSheets/ShooterIdentityPicker.tsx'
 const migration=readFileSync('supabase/migrations/20260809180000_shooter_directory_identity.sql','utf8');
 const csv=readFileSync('lib/scoreSheets/resultCsv.ts','utf8');
 assert.match(editor,/ShooterIdentityPicker/); assert.match(editor,/linked_user_id: shooter\.linkedUserId/);
+assert.match(editor,/\.upsert\(shooterRows, \{ onConflict: "id" \}\)/,'shooter upsert explicitly targets the primary key');
 assert.match(editor,/linkedUserId: normalizeLinkedUserId\(shooter\.linked_user_id\)/);
 assert.match(picker,/search_shooter_directory/); assert.match(picker,/Change link/); assert.match(picker,/Unlink/);
+assert.match(picker,/onFocus=.*setActiveSearch/s,'focus activates unlinked identity search');
+assert.match(picker,/setSearching\(false\);\s*setMessage\(""\)/,'inactive/short search clears loading and message state');
+assert.match(picker,/navigator\.onLine[\s\S]*setSearching\(false\)/,'offline search cannot remain stuck on Searching');
 assert.match(picker,/disabled=\{props\.disabled\}/); assert.doesNotMatch(picker,/email|phone/i);
 assert.match(migration,/default false/); assert.match(migration,/security definer/); assert.match(migration,/strpos/);
+assert.match(migration,/has_approved_access\(auth\.uid\(\)\)/); assert.match(migration,/deferrable initially immediate/);
 assert.match(migration,/revoke all .* from public, anon/); assert.match(migration,/limit capped_limit/);
 assert.doesNotMatch(csv,/linked_user_id/);
 assert.equal(existsSync('app/shooters/page.tsx'),false); assert.equal(existsSync('app/profiles/[id]/page.tsx'),false);

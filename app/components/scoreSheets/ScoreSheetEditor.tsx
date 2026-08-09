@@ -65,7 +65,7 @@ import { TRAINING_SCORE_SHEET_QUICK_START_STEPS } from "@/lib/trainingScoreSheet
 import { userFacingDeleteError, userFacingLoadError, userFacingSaveError } from "@/lib/userFacingErrors";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 import ShooterIdentityPicker from "@/app/components/scoreSheets/ShooterIdentityPicker";
-import { applyShooterIdentity, normalizeLinkedUserId, ownProfileSuggestion, unlinkShooterIdentity, type ShooterDirectorySuggestion } from "@/lib/scoreSheets/shooterIdentity";
+import { applyShooterIdentity, normalizeLinkedUserId, ownProfileSuggestion, restoreShooterIdentityDrafts, unlinkShooterIdentity, type ShooterDirectorySuggestion } from "@/lib/scoreSheets/shooterIdentity";
 
 type ShooterDraft = {
   localId: string;
@@ -273,7 +273,7 @@ function parseLocalDraft(rawDraft: string | null) {
     if (draft.version !== 1 || !draft.sheetId || !draft.updatedAt) return null;
     const sessionType = scoreSheetKindFromDraft(draft.sessionType);
     if (!sessionType) return null;
-    const shooters = Array.isArray(draft.shooters) ? draft.shooters.map((shooter) => ({ ...shooter, linkedUserId: normalizeLinkedUserId(shooter?.linkedUserId) })) : [];
+    const shooters = Array.isArray(draft.shooters) ? restoreShooterIdentityDrafts(draft.shooters) : [];
     return {
       ...draft,
       shooters,
