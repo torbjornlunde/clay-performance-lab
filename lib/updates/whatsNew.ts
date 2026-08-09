@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v9.08.26", title: "Finalize competition results", bullets: ["Review scoring coverage before locking a Competition Score Sheet.", "Finalize the result as read-only, with incomplete targets clearly flagged when you explicitly accept them.", "Reopen deliberately for corrections, then finalize again when the result is ready."] },
   { id: "v8.08.26", title: "Score competitions live", bullets: ["Create a Competition Score Sheet and score shooters target by target from your phone or tablet.", "Use fast Field Mode, Compak sequencing and automatic running totals.", "Keep scoring through temporary connection loss with Competition-specific local recovery."] },
   { id: "v7.08.26", title: "Review one course from a saved scorecard photo", bullets: ["Analyze a saved scorecard photo for one Compak course without requiring the full Competition card.", "Keep other courses unknown while saving the course score and reviewed target detail you actually know.", "Your overall Competition result stays unchanged while you add course detail later."] },
   { id: "v6.08.26", title: "Keep scorecard photos with your result", bullets: ["Attach multiple scorecard photos directly to a Competition.", "Link each photo to a course or keep it with the whole session.", "Open, reassign, replace or remove your private scorecard evidence later."] },
