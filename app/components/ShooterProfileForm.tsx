@@ -133,6 +133,23 @@ export default function ShooterProfileForm({
             </div>
           </div>
 
+          <div className="profileFieldGroup">
+            <label className="disciplineChoice">
+              <input
+                type="checkbox"
+                checked={form.shooterDirectoryVisible}
+                onChange={(event) => {
+                  clearSuccess();
+                  setForm((current) => ({ ...current, shooterDirectoryVisible: event.target.checked }));
+                }}
+              />
+              <span>Let other CPL users find me by name when adding shooters to score sheets.</span>
+            </label>
+            <p className="small muted">
+              Only signed-in CPL users can search, and only your name and country are shown. This helps organizers select the correct shooter. Turning it off removes you from future searches, but does not delete links already deliberately added to score sheets.
+            </p>
+          </div>
+
           {success && <div className="success">{success}</div>}
           {error && <div className="error">{error}</div>}
 

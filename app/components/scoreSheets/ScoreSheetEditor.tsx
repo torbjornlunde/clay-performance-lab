@@ -64,11 +64,14 @@ import { competitionCoverage, competitionFinalizeBlockReason, competitionIsReadO
 import { TRAINING_SCORE_SHEET_QUICK_START_STEPS } from "@/lib/trainingScoreSheets/feedback";
 import { userFacingDeleteError, userFacingLoadError, userFacingSaveError } from "@/lib/userFacingErrors";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
+import ShooterIdentityPicker from "@/app/components/scoreSheets/ShooterIdentityPicker";
+import { applyShooterIdentity, normalizeLinkedUserId, ownProfileSuggestion, unlinkShooterIdentity, type ShooterDirectorySuggestion } from "@/lib/scoreSheets/shooterIdentity";
 
 type ShooterDraft = {
   localId: string;
   name: string;
   scores: number[];
+  linkedUserId: string | null;
 };
 
 type InputHistoryItem = {
@@ -106,6 +109,7 @@ type ShooterRow = {
   shooter_name: string;
   display_order: number | null;
   total_score: number | null;
+  linked_user_id: string | null;
 };
 
 type ScoreRow = {
@@ -269,8 +273,10 @@ function parseLocalDraft(rawDraft: string | null) {
     if (draft.version !== 1 || !draft.sheetId || !draft.updatedAt) return null;
     const sessionType = scoreSheetKindFromDraft(draft.sessionType);
     if (!sessionType) return null;
+    const shooters = Array.isArray(draft.shooters) ? draft.shooters.map((shooter) => ({ ...shooter, linkedUserId: normalizeLinkedUserId(shooter?.linkedUserId) })) : [];
     return {
       ...draft,
+      shooters,
       sessionType,
       scoreSheetId: draft.scoreSheetId || (draft.sheetId?.startsWith("new:") ? null : draft.sheetId || null),
       localDraftId: draft.localDraftId || draft.sheetId,
@@ -547,6 +553,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   const [discipline, setDiscipline] = useState(LEIRDUESTI);
   const [myDisciplines, setMyDisciplines] = useState<string[]>([]);
   const [shooterCountry, setShooterCountry] = useState("");
+  const [ownShooterSuggestion, setOwnShooterSuggestion] = useState<ShooterDirectorySuggestion | null>(null);
   const [sessionType, setSessionType] = useState<ScoreSheetKind>(kind);
   const [numberOfPosts, setNumberOfPosts] = useState(5);
   const [targetsPerPost, setTargetsPerPost] = useState(10);
@@ -613,10 +620,11 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     async function loadProfileDisciplines() {
       const { data: userData } = await supabase.auth.getUser();
       if (!active || !userData.user) return;
-      const { data } = await supabase.from("shooter_profiles").select("country,my_disciplines").eq("user_id", userData.user.id).maybeSingle<Pick<ShooterProfile, "country" | "my_disciplines">>();
+      const { data } = await supabase.from("shooter_profiles").select("user_id,shooter_name,first_name,last_name,country,my_disciplines,shooter_directory_visible").eq("user_id", userData.user.id).maybeSingle<ShooterProfile>();
       if (active) {
         setMyDisciplines(normalizeDisciplines(data?.my_disciplines));
         setShooterCountry(data?.country || "");
+        setOwnShooterSuggestion(ownProfileSuggestion(data));
       }
     }
     loadProfileDisciplines();
@@ -1191,7 +1199,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
 
     const { data: shooterRows, error: shooterError } = await supabase
       .from("training_score_sheet_shooters")
-      .select("id,shooter_name,display_order,total_score")
+      .select("id,shooter_name,display_order,total_score,linked_user_id")
       .eq("score_sheet_id", sheetId)
       .order("display_order")
       .returns<ShooterRow[]>();
@@ -1280,6 +1288,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
         localId: shooter.id,
         name: formatShooterName(shooter.shooter_name),
         scores,
+        linkedUserId: normalizeLinkedUserId(shooter.linked_user_id),
       };
     });
 
@@ -1568,10 +1577,10 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     });
   }
 
-  function addShooter() {
+  function addShooter(suggestion?: ShooterDirectorySuggestion) {
     if (lifecycleReadOnly) return;
     setHasUserEditedSinceHydration(true);
-    const name = formatShooterName(newShooterName);
+    const name = suggestion?.displayName || formatShooterName(newShooterName);
     if (!name) {
       setErr("Enter a shooter name before adding a new shooter.");
       return;
@@ -1579,7 +1588,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     setErr("");
     setShooters((current) => [
       ...current,
-      { localId: crypto.randomUUID(), name, scores: makeScores(numberOfPosts) },
+      { localId: crypto.randomUUID(), name, scores: makeScores(numberOfPosts), linkedUserId: suggestion?.userId || null },
     ]);
     setNewShooterName("");
   }
@@ -2165,6 +2174,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
       shooter_name: shooter.displayName,
       display_order: index + 1,
       total_score: totalFor(shooter, targetResults),
+      linked_user_id: shooter.linkedUserId,
     }));
 
     const { error: shooterError } = await supabase
@@ -2418,6 +2428,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
       shooter_name: shooter.displayName,
       display_order: index + 1,
       total_score: 0,
+      linked_user_id: shooter.linkedUserId,
     }));
 
     if (namedShooters.length > 0) {
@@ -3071,21 +3082,18 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
             </p>
           </div>
           <div className="addShooterRow">
-            <label>
-              New shooter name
-              <input
-                value={newShooterName}
-                onChange={(event) => setNewShooterName(event.target.value)}
-                placeholder="Type a new shooter name"
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    addShooter();
-                  }
-                }}
-              />
-            </label>
-            <button type="button" className="secondary" onClick={addShooter}>
+            <ShooterIdentityPicker
+              label="New shooter name"
+              value={newShooterName}
+              linkedUserId={null}
+              ownSuggestion={ownShooterSuggestion}
+              shooters={shooters}
+              placeholder="Type a new shooter name"
+              onNameChange={setNewShooterName}
+              onSelect={(suggestion) => addShooter(suggestion)}
+              onEnter={() => addShooter()}
+            />
+            <button type="button" className="secondary" onClick={() => addShooter()}>
               Add shooter
             </button>
           </div>
@@ -3110,17 +3118,25 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                       <small>{compakStartPlateForOrder(index + 1, compakRotationMode)}</small>
                     )}
                   </span>
-                  <label>
-                    Existing shooter {index + 1}
-                    <input
-                      value={shooter.name}
-                      onChange={(event) =>
-                        updateShooterName(shooter.localId, event.target.value)
-                      }
-                      onBlur={() => formatShooterNameInList(shooter.localId)}
-                      placeholder={`Edit shooter ${index + 1} name`}
-                    />
-                  </label>
+                  <ShooterIdentityPicker
+                    label={`Existing shooter ${index + 1}`}
+                    value={shooter.name}
+                    linkedUserId={shooter.linkedUserId}
+                    ownSuggestion={ownShooterSuggestion}
+                    shooters={shooters}
+                    localId={shooter.localId}
+                    disabled={lifecycleReadOnly}
+                    placeholder={`Edit shooter ${index + 1} name`}
+                    onNameChange={(name) => updateShooterName(shooter.localId, name)}
+                    onSelect={(suggestion) => {
+                      setHasUserEditedSinceHydration(true);
+                      setShooters((current) => current.map((item) => item.localId === shooter.localId ? applyShooterIdentity(item, suggestion) : item));
+                    }}
+                    onUnlink={() => {
+                      setHasUserEditedSinceHydration(true);
+                      setShooters((current) => current.map((item) => item.localId === shooter.localId ? unlinkShooterIdentity(item) : item));
+                    }}
+                  />
                   <div className="shooterOrderControls">
                     <button
                       type="button"
