@@ -621,6 +621,7 @@ export default function DashboardPage() {
     const { data: scoreSheets } = await supabase
       .from("training_score_sheets")
       .select("id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,created_at")
+      .in("session_type", ["training", "shared_training"])
       .order("session_date", { ascending: false })
       .order("created_at", { ascending: false })
       .returns<TrainingScoreSheetRow[]>();

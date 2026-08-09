@@ -9,7 +9,6 @@ import {
   type CompakSchemeRow,
   getAllSchemeNumbers,
   getCompakSchemeType,
-  getExpectedPresentationRows,
   getMachineLabelFromRow,
   getPresentationLabel,
 } from "@/lib/fitasc/compakSchemes";
@@ -34,7 +33,30 @@ import {
   trimTargetResults,
   type TargetResultMap,
   type TargetResultValue,
-} from "@/lib/trainingScoreSheets/safety";
+} from "@/lib/scoreSheets/core";
+import {
+  buildCompakRoundProgram,
+  buildCompakStandSequences,
+  compakStartPlateForOrderNumber,
+  normalizeCompakRotationMode,
+  normalizeCompakShootingMode,
+  orderedShootersForPost,
+  COMPAK_DEFAULT_STANDS,
+  COMPAK_TARGETS_PER_STAND,
+  type CompakRotationMode,
+  type CompakSequence,
+  type CompakSequenceTarget,
+} from "@/lib/scoreSheets/compak";
+import {
+  LEGACY_TRAINING_DRAFT_PREFIX,
+  canRestoreDraftInTraining,
+  legacyTrainingDraftKey,
+  migrateLegacyTrainingDraft,
+  scoreSheetKindFromDraft,
+  scoreSheetDraftKey,
+} from "@/lib/scoreSheets/drafts";
+import { parseScoreSheetKind, scoreSheetKindLabel, type ScoreSheetKind } from "@/lib/scoreSheets/kind";
+import { canSaveTrainingScoreSheet } from "@/lib/scoreSheets/policy";
 import { TRAINING_SCORE_SHEET_QUICK_START_STEPS } from "@/lib/trainingScoreSheets/feedback";
 import { userFacingDeleteError, userFacingLoadError, userFacingSaveError } from "@/lib/userFacingErrors";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
@@ -58,7 +80,7 @@ type ScoreSheetRow = {
   session_date: string;
   location: string | null;
   discipline: string;
-  session_type: string;
+  session_type: ScoreSheetKind;
   number_of_posts: number;
   targets_per_post: number;
   total_targets: number;
@@ -90,7 +112,6 @@ type TargetResultRow = {
 };
 
 type CompakShootingMode = "Squad" | "Inline";
-type CompakRotationMode = "waiting_shooter" | "continuous_rotation";
 type QuickStartPreset = "compak" | "leirduesti" | "custom";
 
 
@@ -122,7 +143,7 @@ type LocalScoreSheetDraft = {
   sessionDate: string;
   location: string;
   discipline: string;
-  sessionType: string;
+  sessionType: ScoreSheetKind;
   numberOfPosts: number;
   targetsPerPost: number;
   expectedTargetsByPost?: number[] | null;
@@ -144,25 +165,8 @@ type RecoveryPromptState = {
   serverIsNewer: boolean;
 };
 
-type CompakSequenceTarget = {
-  targetNumber: number;
-  targetInSequence: number;
-  machine: string | null;
-};
 
-type CompakSequence = {
-  sequenceIndex: number;
-  standNumber: number;
-  eventNumber: number;
-  presentation: string | null;
-  firstMachine: string | null;
-  secondMachine: string | null;
-  hasSchemeData: boolean;
-  targets: CompakSequenceTarget[];
-};
 
-const COMPAK_DEFAULT_STANDS = 5;
-const COMPAK_TARGETS_PER_STAND = 5;
 const COMPAK_TOTAL_TARGETS = COMPAK_DEFAULT_STANDS * COMPAK_TARGETS_PER_STAND;
 const DEFAULT_COMPAK_SCHEME = 1;
 const QUICK_START_PRESET_LABELS: Record<Exclude<QuickStartPreset, "custom">, string> = {
@@ -184,123 +188,6 @@ function normalizeCompakSchemeId(value: string | number | null | undefined) {
   const parsed = Number(value);
   return getAllSchemeNumbers().includes(parsed) ? parsed : DEFAULT_COMPAK_SCHEME;
 }
-
-function targetsInPresentation(presentation: string | null | undefined) {
-  return presentation?.toLowerCase() === "report_pair" || presentation?.toLowerCase() === "simo_pair" ? 2 : 1;
-}
-
-function normalizeCompakShootingMode(value: string | null | undefined): CompakShootingMode {
-  return value === "Inline" ? "Inline" : "Squad";
-}
-
-function normalizeCompakRotationMode(value: string | null | undefined): CompakRotationMode {
-  if (value === "continuous_rotation" || value === "Continuous rotation") return "continuous_rotation";
-  return "waiting_shooter";
-}
-
-function compakRotationModeLabel(value: CompakRotationMode) {
-  return value === "continuous_rotation" ? "Continuous rotation" : "Waiting shooter";
-}
-
-function buildCompakStandSequences(
-  schemeNumber: number,
-  standNumber: number,
-  schemeRows: CompakSchemeRow[],
-): CompakSequence[] {
-  const rowsForStand = schemeRows
-    .filter((row) => row.scheme_number === schemeNumber && row.plate_number === standNumber)
-    .sort((a, b) => a.event_number - b.event_number);
-  const hasSchemeData = rowsForStand.length > 0;
-  const sourceRows = hasSchemeData
-    ? rowsForStand
-    : getExpectedPresentationRows(schemeNumber).map((presentation, index) => ({
-        scheme_number: schemeNumber,
-        plate_number: standNumber,
-        event_number: index + 1,
-        presentation,
-        first_machine: null,
-        second_machine: null,
-        is_verified: null,
-      }));
-
-  let nextTargetNumber = 1;
-  const sequences = sourceRows.flatMap((row) => {
-    if (nextTargetNumber > COMPAK_TARGETS_PER_STAND) return [];
-    const targetCount = Math.min(
-      targetsInPresentation(row.presentation),
-      COMPAK_TARGETS_PER_STAND - nextTargetNumber + 1,
-    );
-    const targets = Array.from({ length: targetCount }, (_, index) => ({
-      targetNumber: nextTargetNumber + index,
-      targetInSequence: index + 1,
-      machine: index === 0 ? row.first_machine : row.second_machine,
-    }));
-    nextTargetNumber += targetCount;
-    return [{
-      sequenceIndex: 0,
-      standNumber,
-      eventNumber: row.event_number,
-      presentation: row.presentation,
-      firstMachine: row.first_machine,
-      secondMachine: row.second_machine,
-      hasSchemeData,
-      targets,
-    }];
-  });
-
-  while (nextTargetNumber <= COMPAK_TARGETS_PER_STAND) {
-    sequences.push({
-      sequenceIndex: 0,
-      standNumber,
-      eventNumber: sequences.length + 1,
-      presentation: "unknown",
-      firstMachine: null,
-      secondMachine: null,
-      hasSchemeData: false,
-      targets: [
-        {
-          targetNumber: nextTargetNumber,
-          targetInSequence: 1,
-          machine: null,
-        },
-      ],
-    });
-    nextTargetNumber += 1;
-  }
-
-  return sequences;
-}
-
-function buildCompakRoundProgram(
-  schemeNumber: number,
-  startStand: number,
-  schemeRows: CompakSchemeRow[],
-): CompakSequence[] {
-  return plateRotation(startStand)
-    .flatMap((standNumber) =>
-      buildCompakStandSequences(schemeNumber, standNumber, schemeRows),
-    )
-    .map((sequence, index) => ({ ...sequence, sequenceIndex: index }));
-}
-
-function plateRotation(start: number) {
-  return Array.from(
-    { length: COMPAK_DEFAULT_STANDS },
-    (_, index) => ((start - 1 + index) % COMPAK_DEFAULT_STANDS) + 1,
-  );
-}
-
-function compakStartPlateForOrderNumber(
-  orderNumber: number,
-  rotationMode: CompakRotationMode = "waiting_shooter",
-) {
-  if (orderNumber >= 1 && orderNumber <= COMPAK_DEFAULT_STANDS) return orderNumber;
-  if (rotationMode === "continuous_rotation") {
-    return ((Math.max(orderNumber, 1) - 1) % COMPAK_DEFAULT_STANDS) + 1;
-  }
-  return 1;
-}
-
 
 function compakTargetLabel(target: CompakSequenceTarget | null | undefined) {
   if (!target) return "—";
@@ -349,17 +236,10 @@ function compakStartPlateForOrder(
 }
 
 
-const LOCAL_DRAFT_PREFIX = "training_score_sheet_draft:";
-const LEGACY_LOCAL_DRAFT_PREFIX = "training-score-sheet:";
 const SYNCED_DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-function localDraftKey(sheetId: string) {
-  return `${LOCAL_DRAFT_PREFIX}${sheetId}`;
-}
-
-function legacyLocalDraftKey(sheetId: string) {
-  return `${LEGACY_LOCAL_DRAFT_PREFIX}${sheetId}:autosave`;
-}
+function localDraftKey(sheetId: string) { return scoreSheetDraftKey("training", sheetId); }
+function legacyLocalDraftKey(sheetId: string) { return legacyTrainingDraftKey(sheetId); }
 
 function getOrCreateNewLocalDraftId() {
   if (typeof window === "undefined") return "new";
@@ -376,8 +256,11 @@ function parseLocalDraft(rawDraft: string | null) {
   try {
     const draft = JSON.parse(rawDraft) as Partial<LocalScoreSheetDraft>;
     if (draft.version !== 1 || !draft.sheetId || !draft.updatedAt) return null;
+    const sessionType = scoreSheetKindFromDraft(draft.sessionType);
+    if (!sessionType) return null;
     return {
       ...draft,
+      sessionType,
       scoreSheetId: draft.scoreSheetId || (draft.sheetId?.startsWith("new:") ? null : draft.sheetId || null),
       localDraftId: draft.localDraftId || draft.sheetId,
       synced: Boolean(draft.synced),
@@ -386,6 +269,11 @@ function parseLocalDraft(rawDraft: string | null) {
   } catch {
     return null;
   }
+}
+
+function parseTrainingLocalDraft(rawDraft: string | null) {
+  const draft = parseLocalDraft(rawDraft);
+  return draft && canRestoreDraftInTraining(draft.sessionType) ? draft : null;
 }
 
 function localDraftIsNewer(draft: LocalScoreSheetDraft, serverUpdatedAt: string | null) {
@@ -399,7 +287,7 @@ function removeLocalDraftsForScoreSheet(scoreSheetId: string) {
   window.localStorage.removeItem(localDraftKey(scoreSheetId));
   window.localStorage.removeItem(legacyLocalDraftKey(scoreSheetId));
   Object.keys(window.localStorage).forEach((key) => {
-    if (!key.startsWith(LOCAL_DRAFT_PREFIX)) return;
+    if (!key.startsWith(LEGACY_TRAINING_DRAFT_PREFIX)) return;
     const draft = parseLocalDraft(window.localStorage.getItem(key));
     if (draft?.scoreSheetId === scoreSheetId || draft?.sheetId === scoreSheetId) {
       window.localStorage.removeItem(key);
@@ -411,7 +299,7 @@ function cleanupOldSyncedDrafts() {
   if (typeof window === "undefined") return;
   const now = Date.now();
   Object.keys(window.localStorage).forEach((key) => {
-    if (!key.startsWith(LOCAL_DRAFT_PREFIX)) return;
+    if (!key.startsWith(LEGACY_TRAINING_DRAFT_PREFIX)) return;
     const draft = parseLocalDraft(window.localStorage.getItem(key));
     if (!draft?.synced) return;
     if (now - new Date(draft.updatedAt).getTime() > SYNCED_DRAFT_MAX_AGE_MS) {
@@ -479,8 +367,8 @@ function formatShooterName(name: string) {
     .join(" ");
 }
 
-function sessionTypeLabel(value: string) {
-  return value === "shared_training" ? "Shared training" : "Training";
+function sessionTypeLabel(value: ScoreSheetKind) {
+  return scoreSheetKindLabel(value);
 }
 
 function countAllTargetResults(targetResults: TargetResultMap) {
@@ -503,12 +391,6 @@ function localDraftHasMeaningfulSetup(draft: LocalScoreSheetDraft) {
     Boolean(draft.location?.trim()) ||
     draft.titleAutoGenerated === false
   );
-}
-
-function orderedShootersForPost<T>(shooters: T[], postNumber: number) {
-  if (shooters.length === 0) return shooters;
-  const startIndex = (Math.max(postNumber, 1) - 1) % shooters.length;
-  return shooters.slice(startIndex).concat(shooters.slice(0, startIndex));
 }
 
 function targetStatsForShooter(
@@ -659,7 +541,7 @@ export default function TrainingScoreSheetPage() {
   const [discipline, setDiscipline] = useState(LEIRDUESTI);
   const [myDisciplines, setMyDisciplines] = useState<string[]>([]);
   const [shooterCountry, setShooterCountry] = useState("");
-  const [sessionType, setSessionType] = useState("training");
+  const [sessionType, setSessionType] = useState<ScoreSheetKind>("training");
   const [numberOfPosts, setNumberOfPosts] = useState(5);
   const [targetsPerPost, setTargetsPerPost] = useState(10);
   const [expectedTargetsByPost, setExpectedTargetsByPost] = useState<number[] | null>(null);
@@ -1047,15 +929,7 @@ export default function TrainingScoreSheetPage() {
 
   function findLocalDraft(draftSheetId: string) {
     if (typeof window === "undefined") return null;
-    const currentDraft = parseLocalDraft(window.localStorage.getItem(localDraftKey(draftSheetId)));
-    if (currentDraft) return currentDraft;
-    const legacyDraft = parseLocalDraft(window.localStorage.getItem(legacyLocalDraftKey(draftSheetId)));
-    if (legacyDraft) {
-      window.localStorage.setItem(localDraftKey(draftSheetId), JSON.stringify(legacyDraft));
-      window.localStorage.removeItem(legacyLocalDraftKey(draftSheetId));
-      return legacyDraft;
-    }
-    return null;
+    return migrateLegacyTrainingDraft(window.localStorage, draftSheetId, parseTrainingLocalDraft);
   }
 
   function keepServerVersion() {
@@ -1280,6 +1154,7 @@ export default function TrainingScoreSheetPage() {
         "id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,expected_targets_by_post,updated_at,compak_scheme_id,compak_shooting_mode,compak_rotation_mode",
       )
       .eq("id", sheetId)
+      .in("session_type", ["training", "shared_training"])
       .single<ScoreSheetRow>();
 
     if (sheetError || !sheet) {
@@ -1319,7 +1194,7 @@ export default function TrainingScoreSheetPage() {
     setSessionDate((sheet.session_date || todayValue()).slice(0, 10));
     setLocation(sheet.location || "");
     setDiscipline(sheet.discipline || LEIRDUESTI);
-    setSessionType(sheet.session_type || "training");
+    setSessionType(parseScoreSheetKind(sheet.session_type || "training"));
     const loadedExpectedTargetsByPost = Array.isArray(sheet.expected_targets_by_post) ? sheet.expected_targets_by_post : null;
     setNumberOfPosts(sheet.number_of_posts || 5);
     setTargetsPerPost(sheet.targets_per_post || 10);
@@ -2094,6 +1969,10 @@ export default function TrainingScoreSheetPage() {
     const isAutomaticRetry = options.automaticRetry ?? false;
     setErr("");
     setSavedMessage("");
+    if (!canSaveTrainingScoreSheet(sessionType)) {
+      setErr("Competition score sheets cannot be edited from the Training Score Sheet page.");
+      return null;
+    }
     const validationError = validate();
     if (validationError) {
       setErr(validationError);
@@ -2850,7 +2729,7 @@ export default function TrainingScoreSheetPage() {
                 <label>Session type</label>
                 <select
                   value={sessionType}
-                  onChange={(event) => setSessionType(event.target.value)}
+                  onChange={(event) => setSessionType(parseScoreSheetKind(event.target.value))}
                 >
                   <option value="training">Training</option>
                   <option value="shared_training">Shared training</option>
