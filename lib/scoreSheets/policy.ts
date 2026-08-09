@@ -8,6 +8,10 @@ export function canWriteOwnedScoreSheet(actorUserId: string, ownerUserId: string
   return Boolean(actorUserId) && actorUserId === ownerUserId;
 }
 
+export function canSaveCompetitionScoreSheet(kind: ScoreSheetKind) {
+  return kind === "competition";
+}
+
 export function canSaveTrainingScoreSheet(kind: ScoreSheetKind) {
   return isTrainingScoreSheetKind(kind);
 }

@@ -84,11 +84,15 @@ assert.equal(policy.canWriteOwnedScoreSheet('owner', 'owner'), true);
 assert.equal(policy.canWriteOwnedScoreSheet('other', 'owner'), false);
 
 // Focused integration wiring assertions.
-const route = readFileSync('app/training-score-sheets/[id]/page.tsx', 'utf8');
-assert.match(route, /@\/lib\/scoreSheets\/core/);
-assert.doesNotMatch(route, /competitionScoring/);
-assert.match(route, /\.eq\("id", sheetId\)\s*\.in\("session_type", \["training", "shared_training"\]\)/, 'Training detail route rejects competition score sheets in its canonical query');
-assert.match(route, /async function save[\s\S]*if \(!canSaveTrainingScoreSheet\(sessionType\)\)[\s\S]*return null;[\s\S]*\.from\("training_score_sheets"\)/, 'Training canonical save aborts through the shared kind guard before its parent mutation');
+const trainingRoute = readFileSync('app/training-score-sheets/[id]/page.tsx', 'utf8');
+const competitionRoute = readFileSync('app/competition-score-sheets/[id]/page.tsx', 'utf8');
+const editor = readFileSync('app/components/scoreSheets/ScoreSheetEditor.tsx', 'utf8');
+assert.match(trainingRoute, /ScoreSheetEditor kind="training"/);
+assert.match(competitionRoute, /ScoreSheetEditor kind="competition"/);
+assert.match(editor, /@\/lib\/scoreSheets\/core/);
+assert.doesNotMatch(editor, /competitionScoring/);
+assert.match(editor, /isCompetition \? \["competition"\] : \["training", "shared_training"\]/);
+assert.match(editor, /sessionType !== "competition"/);
 const list = readFileSync('app/training-score-sheets/page.tsx', 'utf8'); assert.match(list, /\.in\("session_type", \["training", "shared_training"\]\)/);
 const stats = readFileSync('app/stats/page.tsx', 'utf8'); assert.match(stats, /\.in\("session_type", \["training", "shared_training"\]\)/);
 const dashboard = readFileSync('app/dashboard/page.tsx', 'utf8'); assert.match(dashboard, /\.in\("session_type", \["training", "shared_training"\]\)/);
