@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { appBuildLabel } from "@/lib/appBuildInfo";
@@ -59,6 +60,7 @@ import {
 import { deleteScoreSheetConfirmation, serverChangedSinceDraft, syncActionLabel, syncBlockedByRecovery, targetResultIdsToDelete } from "@/lib/scoreSheets/liveSafety";
 import { parseScoreSheetKind, scoreSheetKindLabel, type ScoreSheetKind } from "@/lib/scoreSheets/kind";
 import { canSaveTrainingScoreSheet } from "@/lib/scoreSheets/policy";
+import { competitionCoverage, competitionFinalizeBlockReason, competitionIsReadOnly, parseCompetitionStatus, shouldAutosaveScoreSheet, type CompetitionStatus } from "@/lib/scoreSheets/competitionLifecycle";
 import { TRAINING_SCORE_SHEET_QUICK_START_STEPS } from "@/lib/trainingScoreSheets/feedback";
 import { userFacingDeleteError, userFacingLoadError, userFacingSaveError } from "@/lib/userFacingErrors";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
@@ -91,6 +93,12 @@ type ScoreSheetRow = {
   compak_scheme_id: string | null;
   compak_shooting_mode: CompakShootingMode | null;
   compak_rotation_mode: CompakRotationMode | null;
+  competition_status: CompetitionStatus | null;
+  competition_finalized_at: string | null;
+  competition_finalized_with_incomplete: boolean | null;
+  competition_finalized_unscored_targets: number | null;
+  competition_reopened_at: string | null;
+  competition_reopen_count: number;
 };
 
 type ShooterRow = {
@@ -584,6 +592,17 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   const [localDraftLoaded, setLocalDraftLoaded] = useState(false);
   const [hasUnsyncedLocalDraft, setHasUnsyncedLocalDraft] = useState(false);
   const [copyMessage, setCopyMessage] = useState("");
+  const [competitionStatus, setCompetitionStatus] = useState<CompetitionStatus | null>(isCompetition ? "live" : null);
+  const [competitionFinalizedAt, setCompetitionFinalizedAt] = useState<string | null>(null);
+  const [competitionFinalizedWithIncomplete, setCompetitionFinalizedWithIncomplete] = useState(false);
+  const [competitionFinalizedUnscoredTargets, setCompetitionFinalizedUnscoredTargets] = useState(0);
+  const [competitionReopenedAt, setCompetitionReopenedAt] = useState<string | null>(null);
+  const [competitionReopenCount, setCompetitionReopenCount] = useState(0);
+  const [showFinalizationReview, setShowFinalizationReview] = useState(false);
+  const [hasUserEditedSinceHydration, setHasUserEditedSinceHydration] = useState(isNew);
+  const finalizationDialogRef = useRef<HTMLElement | null>(null);
+  const [allowIncompleteFinalization, setAllowIncompleteFinalization] = useState(false);
+  const lifecycleReadOnly = competitionIsReadOnly(sessionType, competitionStatus);
   const disciplineOptions = useMemo(
     () => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, !isNew && myDisciplines.length === 0 ? [discipline] : myDisciplines, shooterCountry),
     [discipline, isNew, myDisciplines, shooterCountry],
@@ -645,8 +664,9 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   const resultsSummaryOpen = !liveMode || showResultsSummaryDuringLive;
 
   useEffect(() => {
-    setWakeLockEnabled(liveMode);
-  }, [liveMode, setWakeLockEnabled]);
+    if (lifecycleReadOnly && liveMode) setLiveMode(false);
+    setWakeLockEnabled(liveMode && !lifecycleReadOnly);
+  }, [liveMode, lifecycleReadOnly, setWakeLockEnabled]);
 
   const hasEnteredScores = shooters.some((shooter) =>
     shooter.scores.some(
@@ -925,6 +945,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     setCurrentCompakTargetInSequence(draft.currentCompakTargetInSequence);
     setInputHistory([]);
     setHasUnsyncedLocalDraft(!draft.synced);
+    if (!draft.synced) setHasUserEditedSinceHydration(true);
   }
 
   function findLocalDraft(draftSheetId: string) {
@@ -942,6 +963,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     setRecoveryAutosavePaused(false);
     setRecoveryPrompt(null);
     setHasUnsyncedLocalDraft(false);
+    setHasUserEditedSinceHydration(false);
     setLocalSaveStatus("synced");
   }
 
@@ -1074,7 +1096,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
 
 
   useEffect(() => {
-    if (!localDraftLoaded || recoveryPrompt || recoveryAutosavePaused) return;
+    if (recoveryPrompt || recoveryAutosavePaused) return;
+    if (!shouldAutosaveScoreSheet({ isNew, localDraftLoaded, hasUnsyncedRecovery: hasUnsyncedLocalDraft, hasUserEditedSinceHydration, lifecycleReadOnly })) return;
     writeLocalDraft(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -1098,6 +1121,10 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     currentCompakSequenceIndex,
     currentCompakTargetInSequence,
     localDraftLoaded,
+    hasUserEditedSinceHydration,
+    hasUnsyncedLocalDraft,
+    lifecycleReadOnly,
+    isNew,
   ]);
 
   useEffect(() => {
@@ -1150,7 +1177,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     const { data: sheet, error: sheetError } = await supabase
       .from("training_score_sheets")
       .select(
-        "id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,expected_targets_by_post,updated_at,compak_scheme_id,compak_shooting_mode,compak_rotation_mode",
+        "id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,expected_targets_by_post,updated_at,compak_scheme_id,compak_shooting_mode,compak_rotation_mode,competition_status,competition_finalized_at,competition_finalized_with_incomplete,competition_finalized_unscored_targets,competition_reopened_at,competition_reopen_count",
       )
       .eq("id", sheetId)
       .in("session_type", isCompetition ? ["competition"] : ["training", "shared_training"])
@@ -1187,6 +1214,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
       return;
     }
 
+    setHasUserEditedSinceHydration(false);
     setPersistedSheetId(sheet.id);
     setLastKnownServerUpdatedAt(sheet.updated_at);
     setTitleAutoGenerated(false);
@@ -1208,6 +1236,12 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     setCompakSchemeId(normalizeCompakSchemeId(sheet.compak_scheme_id));
     setCompakShootingMode(normalizeCompakShootingMode(sheet.compak_shooting_mode));
     setCompakRotationMode(normalizeCompakRotationMode(sheet.compak_rotation_mode));
+    setCompetitionStatus(isCompetition ? parseCompetitionStatus(sheet.competition_status || "live") : null);
+    setCompetitionFinalizedAt(sheet.competition_finalized_at);
+    setCompetitionFinalizedWithIncomplete(Boolean(sheet.competition_finalized_with_incomplete));
+    setCompetitionFinalizedUnscoredTargets(sheet.competition_finalized_unscored_targets || 0);
+    setCompetitionReopenedAt(sheet.competition_reopened_at);
+    setCompetitionReopenCount(sheet.competition_reopen_count || 0);
 
     const loadedTargetResults: TargetResultMap = {};
     (targetRows || []).forEach((target) => {
@@ -1329,11 +1363,15 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function updateTrainingTitle(nextTitle: string) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     setTitle(nextTitle);
     setTitleAutoGenerated(false);
   }
 
   function updateDiscipline(nextDiscipline: string) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     if (isCompakSporting(nextDiscipline)) {
       const applied = applyCompakDefaults();
       if (!applied) return;
@@ -1345,12 +1383,16 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function updateCompakScheme(nextScheme: number) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     const safeScheme = normalizeCompakSchemeId(nextScheme);
     setCompakSchemeId(safeScheme);
     loadCompakSchemeRows(safeScheme);
   }
 
   function updateSetupDraft(field: keyof SetupDraft, value: string) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     setSetupApplyMessage("");
     setSetupDraft((current) => {
       const next = { ...current, [field]: value } as SetupDraft;
@@ -1366,6 +1408,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function updateCustomTargetDraft(postIndex: number, value: string) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     setSetupApplyMessage("");
     setSetupDraft((current) => ({
       ...current,
@@ -1377,6 +1421,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function setAllCustomTargetDrafts(value: number) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     setSetupApplyMessage("");
     const count = parsePositiveIntegerDraft(setupDraft.numberOfPosts, 1, 20) || numberOfPosts;
     setSetupDraft((current) => ({
@@ -1387,6 +1433,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function clearCustomTargetDrafts() {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     setSetupApplyMessage("");
     const count = parsePositiveIntegerDraft(setupDraft.numberOfPosts, 1, 20) || numberOfPosts;
     const fallback = parsePositiveIntegerDraft(setupDraft.targetsPerPost, 1, 100) || targetsPerPost;
@@ -1398,6 +1446,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function applySetupDraftChanges() {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     const nextPostCount = parsePositiveIntegerDraft(setupDraft.numberOfPosts, 1, 20);
     const nextTargetsPerPost = parsePositiveIntegerDraft(setupDraft.targetsPerPost, 1, 100);
     if (!nextPostCount || !nextTargetsPerPost) {
@@ -1454,6 +1504,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function updateShooterName(localId: string, name: string) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     setShooters((current) =>
       current.map((shooter) =>
         shooter.localId === localId ? { ...shooter, name } : shooter,
@@ -1462,6 +1514,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function formatShooterNameInList(localId: string) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     setShooters((current) =>
       current.map((shooter) =>
         shooter.localId === localId
@@ -1480,6 +1534,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function updateScore(localId: string, postIndex: number, value: string) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     const postNumber = postIndex + 1;
     if (hasTargetResults(targetResults, localId, postNumber)) return;
     const score = value === "" ? 0 : clampScore(Number(value), getExpectedTargetsForPost(expectedTargetSetup, postNumber));
@@ -1494,6 +1550,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function moveShooter(localId: string, direction: 1 | -1) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     if (hasEnteredScores) {
       const confirmed = window.confirm(
         "Scores stay attached to each shooter, but this changes the display order and Compak shooter numbers. Continue?",
@@ -1511,6 +1569,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function addShooter() {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     const name = formatShooterName(newShooterName);
     if (!name) {
       setErr("Enter a shooter name before adding a new shooter.");
@@ -1525,6 +1585,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function removeShooter(localId: string) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     const shooter = shooters.find((item) => item.localId === localId);
     if (!shooter) return;
 
@@ -1572,6 +1634,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function setPostAndStartingShooter(postNumber: number) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     setPostComplete(null);
     const safePost = Math.min(Math.max(postNumber, 1), numberOfPosts);
     setCurrentPost(safePost);
@@ -1669,6 +1733,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function toggleLiveMode() {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     setLiveMode((value) => {
       const nextValue = !value;
       setShowSetupDuringLive(false);
@@ -1697,6 +1763,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function markTarget(result: TargetResultValue) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     if (!currentShooter || postComplete || (isCompak && isCompakRoundComplete)) return;
     const postNumber = activePostNumber;
     const targetNumber = activeTargetNumber;
@@ -1767,6 +1835,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function startDetailedScoring(shooterId: string, postNumber: number) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     const shooter = shooters.find((item) => item.localId === shooterId);
     if (!shooter || !isLegacyTotalOnlyPost(shooter, postNumber)) return;
     const confirmed = window.confirm(
@@ -1792,6 +1862,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     postNumber: number,
     targetNumber: number,
   ) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     const shooter = shooters.find((item) => item.localId === shooterId);
     if (shooter && !canToggleTargetResult(targetResults, shooter, postNumber)) return;
     const previousResult = targetResults[shooterId]?.[postNumber]?.[targetNumber] || null;
@@ -1813,6 +1885,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     postNumber: number,
     targetNumber: number,
   ) {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     setPostComplete(null);
     setCurrentShooterId(shooterId);
     if (isCompak) {
@@ -1843,6 +1917,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   function undoLastInput() {
+    if (lifecycleReadOnly) return;
+    setHasUserEditedSinceHydration(true);
     const lastInput = inputHistory[inputHistory.length - 1];
     if (!lastInput) return;
     if (!validShooters.some((shooter) => shooter.localId === lastInput.shooterId)) {
@@ -1964,6 +2040,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   async function save(options: { navigate?: boolean; reload?: boolean; automaticRetry?: boolean } = {}) {
+    if (lifecycleReadOnly) { setErr("Reopen this finalized result before making or saving changes."); return null; }
     const shouldNavigate = options.navigate ?? true;
     const shouldReload = options.reload ?? true;
     const isAutomaticRetry = options.automaticRetry ?? false;
@@ -2204,13 +2281,38 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     writeLocalDraft(true, savedSheet.id);
     cleanupOldSyncedDrafts();
     if (!isCompetition) void recordAnalyticsEvent(supabase, isCreatingSheet ? "training_score_sheet_created" : "training_score_sheet_saved", { route: "/training-score-sheets/[id]", feature: "training_score_sheet", discipline, sessionId: savedSheet.id, metadata: { targetCount: sheetTotalTargets } });
+    setHasUserEditedSinceHydration(false);
     setSavedMessage(`${areaLabel} Score Sheet saved.`);
     if (isNew && shouldNavigate) router.replace(`${routeBase}/${savedSheet.id}`);
     else if (shouldReload) setSavedMessage(`${areaLabel} Score Sheet saved.`);
     return savedSheet.id;
   }
 
+  const reviewCoverage = competitionCoverage(validShooters.map((shooter) => shooter.localId), sheetTotalTargets, targetResults);
+  const finalizationBlockReason = competitionFinalizeBlockReason({ online: isOnline, hasUnsyncedLocalDraft, localSaveStatus, recoveryPrompt: Boolean(recoveryPrompt), recoveryAutosavePaused, saving, lastKnownServerUpdatedAt, shooterCount: validShooters.length });
+
+  async function finalizeCompetition() {
+    if (!isCompetition || !effectiveSheetId || !lastKnownServerUpdatedAt) return;
+    const blocked = competitionFinalizeBlockReason({ online: isOnline, hasUnsyncedLocalDraft, localSaveStatus, recoveryPrompt: Boolean(recoveryPrompt), recoveryAutosavePaused, saving, lastKnownServerUpdatedAt, shooterCount: validShooters.length });
+    if (blocked) { setErr(blocked); return; }
+    setSaving(true); setErr("");
+    const { data, error } = await supabase.rpc("finalize_competition_score_sheet", { p_score_sheet_id: effectiveSheetId, p_expected_updated_at: lastKnownServerUpdatedAt, p_allow_incomplete: allowIncompleteFinalization });
+    const row = Array.isArray(data) ? data[0] : data;
+    if (error || !row) { const message = error?.message || "Could not finalize this result."; setErr(message.includes("revision conflict") ? "This score sheet changed on another device. Reload and review it before finalizing." : message.includes("incomplete target coverage") ? "Some targets are still unscored. Explicitly accept incomplete targets to finalize." : message); setSaving(false); return; }
+    setCompetitionStatus("finalized"); setCompetitionFinalizedAt(row.competition_finalized_at); setCompetitionFinalizedWithIncomplete(row.competition_finalized_with_incomplete); setCompetitionFinalizedUnscoredTargets(row.competition_finalized_unscored_targets); setLastKnownServerUpdatedAt(row.updated_at); setHasUnsyncedLocalDraft(false); setHasUserEditedSinceHydration(false); setLocalSaveStatus("synced"); setLiveMode(false); setShowFinalizationReview(false); setAllowIncompleteFinalization(false); setSavedMessage("Competition result finalized and locked read-only."); setSaving(false);
+  }
+
+  async function reopenCompetition() {
+    if (!isCompetition || !effectiveSheetId || !lastKnownServerUpdatedAt || !window.confirm("Reopen this result for correction? The result will become editable again and this correction will be recorded.")) return;
+    setSaving(true); setErr("");
+    const { data, error } = await supabase.rpc("reopen_competition_score_sheet", { p_score_sheet_id: effectiveSheetId, p_expected_updated_at: lastKnownServerUpdatedAt });
+    const row = Array.isArray(data) ? data[0] : data;
+    if (error || !row) { setErr(error?.message?.includes("revision conflict") ? "This result changed on another device. Reload before reopening it." : (error?.message || "Could not reopen this result.")); setSaving(false); return; }
+    setCompetitionStatus("live"); setCompetitionReopenedAt(row.competition_reopened_at); setCompetitionReopenCount(row.competition_reopen_count); setLastKnownServerUpdatedAt(row.updated_at); setHasUnsyncedLocalDraft(Boolean(recoveryPrompt)); setHasUserEditedSinceHydration(false); setLocalSaveStatus(recoveryPrompt ? (isOnline ? "saved_local" : "offline") : "synced"); setSavedMessage(recoveryPrompt ? "Result reopened. Choose whether to restore the preserved local draft or keep the server version." : "Result reopened for correction."); setSaving(false);
+  }
+
   async function deleteTrainingScoreSheet() {
+    if (lifecycleReadOnly) { setErr("Reopen this finalized result before deleting it."); return; }
     const sheetToDelete = effectiveSheetId;
     if (!sheetToDelete) return;
     const confirmed = window.confirm(deleteScoreSheetConfirmation(kind));
@@ -2348,6 +2450,16 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     router.push(`${routeBase}/${newSheet.id}`);
   }
 
+  useEffect(() => {
+    if (!showFinalizationReview) return;
+    finalizationDialogRef.current?.focus();
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape" && !saving) setShowFinalizationReview(false);
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [showFinalizationReview, saving]);
+
   if (loading) {
     return (
       <main>
@@ -2374,8 +2486,14 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
               {sessionTypeLabel(sessionType)}
             </span>
             <span className="badge">{localStatusLabel(localSaveStatus)}</span>
+            {isCompetition && <span className={`badge ${lifecycleReadOnly ? "badgeGold" : "badgeGreen"}`}>{lifecycleReadOnly ? (competitionReopenCount > 0 ? "Finalized after correction" : "Finalized") : "Live"}</span>}
+
           </div>
         </div>
+
+
+        {isCompetition && lifecycleReadOnly && <div className="subcard" role="status"><strong>Finalized</strong><p className="small muted">This authoritative result is read-only{competitionFinalizedAt ? ` since ${new Date(competitionFinalizedAt).toLocaleString()}` : ""}. Reopen it explicitly before correcting or deleting it.</p>{competitionFinalizedWithIncomplete && <p className="small"><strong>Finalized incomplete:</strong> {competitionFinalizedUnscoredTargets} targets remained unscored.</p>}{competitionReopenCount > 0 && <p className="small">Corrected/reopened {competitionReopenCount} {competitionReopenCount === 1 ? "time" : "times"}.</p>}<button type="button" onClick={reopenCompetition} disabled={saving}>Reopen for correction</button></div>}
+        {isCompetition && !lifecycleReadOnly && competitionReopenCount > 0 && <p className="badge badgeGold">Reopened for correction · {competitionReopenCount} {competitionReopenCount === 1 ? "reopen" : "reopens"}{competitionReopenedAt ? ` · ${new Date(competitionReopenedAt).toLocaleString()}` : ""}</p>}
 
         {!liveMode && !isCompetition && (
           <>
@@ -2403,14 +2521,14 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                   : " Local draft appears newer than the server copy."}
               </p>
             </div>
-            <div className="btns compactLiveTools">
+            {lifecycleReadOnly ? <p className="small"><strong>This server result is finalized.</strong> The local draft is preserved, but cannot sync until you explicitly reopen for correction.</p> : <div className="btns compactLiveTools">
               <button type="button" onClick={restoreRecoveryDraft}>
                 Restore local draft
               </button>
               <button type="button" className="secondary smallButton" onClick={keepServerVersion}>
                 Keep server version
               </button>
-            </div>
+            </div>}
           </div>
         )}
 
@@ -2592,6 +2710,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
           </section>
         )}
 
+        {!lifecycleReadOnly && <div onChangeCapture={() => setHasUserEditedSinceHydration(true)}>
         {liveMode && (
           <details className="compactMoreActions">
             <summary>Options</summary>
@@ -3841,6 +3960,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
           </div>
         </details>
 
+        </div>}
         {err && <div className="error">{err}</div>}
         {savedMessage && <div className="successMessage">{savedMessage}</div>}
         <div className="localAutosaveStatus" role="status">
@@ -3857,13 +3977,30 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
           )}
         </div>
         <div className="btns stackedOnMobile">
-          <button type="button" onClick={() => save()} disabled={saving || syncBlockedByRecovery(Boolean(recoveryPrompt), recoveryAutosavePaused)}>
+          {!lifecycleReadOnly && <button type="button" onClick={() => save()} disabled={saving || syncBlockedByRecovery(Boolean(recoveryPrompt), recoveryAutosavePaused)}>
             {saving ? "Saving..." : `Save ${areaLabel} Score Sheet`}
-          </button>
+          </button>}
+          {isCompetition && !lifecycleReadOnly && !isNew && <button type="button" className="secondary" onClick={() => { setAllowIncompleteFinalization(false); setShowFinalizationReview(true); }}>Review &amp; finalize</button>}
           <Link href="/dashboard" className="button secondary">
             Dashboard
           </Link>
         </div>
+
+        {showFinalizationReview && isCompetition && !lifecycleReadOnly && typeof document !== "undefined" && createPortal(
+          <div className="competitionFinalizationBackdrop" role="presentation">
+            <section className="card competitionFinalizationDialog" role="dialog" aria-modal="true" aria-labelledby="finalize-heading" tabIndex={-1} ref={finalizationDialogRef}>
+              <div className="sectionHeader compactSectionHeader"><div><p className="eyebrow">Competition result</p><h3 id="finalize-heading">Review &amp; finalize</h3></div><button type="button" className="secondary smallButton" onClick={() => setShowFinalizationReview(false)} disabled={saving}>Close</button></div>
+              <div className="competitionFinalizationScroll">
+                <div className="resultsSummaryMeta"><div><span>Competition</span><strong>{title}</strong></div><div><span>Date</span><strong>{formatTitleDate(sessionDate)}</strong></div><div><span>Discipline</span><strong>{discipline}</strong></div><div><span>Scored targets</span><strong>{reviewCoverage.scored}</strong></div><div><span>Unscored targets</span><strong>{reviewCoverage.unscored}</strong></div></div>
+                {rankedShooters.map((shooter) => <div className="subcard" key={shooter.localId}><strong>{shooter.name} · {totalFor(shooter, targetResults)}/{sheetTotalTargets}</strong><p className="small muted">{postNumbers.map((post) => `${isCompak ? "Stand" : "Post"} ${post}: ${displayedPostScore(shooter, post - 1, targetResults)}/${expectedTargetsPerPost[post - 1]}`).join(" · ")}</p></div>)}
+                <p><strong>{reviewCoverage.complete ? "Complete" : `Incomplete — ${reviewCoverage.unscored} targets remain unscored`}</strong></p>
+                {reviewCoverage.unscored > 0 && <label className="checkboxRow"><input type="checkbox" checked={allowIncompleteFinalization} onChange={(event) => setAllowIncompleteFinalization(event.target.checked)} /> Finalize with incomplete targets</label>}
+                {finalizationBlockReason && <div className="error">{finalizationBlockReason}</div>}
+              </div>
+              <div className="btns"><button type="button" onClick={finalizeCompetition} disabled={saving || Boolean(finalizationBlockReason) || (reviewCoverage.unscored > 0 && !allowIncompleteFinalization)}>{saving ? "Finalizing..." : "Finalize result"}</button><button type="button" className="secondary" onClick={() => setShowFinalizationReview(false)} disabled={saving}>Cancel</button></div>
+            </section>
+          </div>, document.body,
+        )}
       </div>
     </main>
   );
