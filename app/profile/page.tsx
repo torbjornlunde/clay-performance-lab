@@ -61,7 +61,7 @@ export default function ShooterProfilePage() {
 
     const { data, error: profileError } = await supabase
       .from("shooter_profiles")
-      .select("id,user_id,shooter_name,first_name,last_name,country,my_disciplines,created_at,updated_at")
+      .select("id,user_id,shooter_name,first_name,last_name,country,my_disciplines,shooter_directory_visible,created_at,updated_at")
       .eq("user_id", userData.user.id)
       .maybeSingle<ShooterProfile>();
 
@@ -101,6 +101,7 @@ export default function ShooterProfilePage() {
         shooter_name: composeCanonicalShooterName(form.firstName, form.lastName),
         country: normalizeCountryCode(form.country) || null,
         my_disciplines: form.myDisciplines,
+        shooter_directory_visible: form.shooterDirectoryVisible,
       },
       { onConflict: "user_id" },
     );
