@@ -47,7 +47,8 @@
     "test:compak-partial-programme": "node scripts/run-compak-partial-programme-tests.mjs",
     "test:scorecard-evidence": "node scripts/run-scorecard-evidence-tests.mjs",
     "test:course-scorecard-review": "node scripts/run-course-scorecard-review-tests.mjs",
-    "test:shared-score-sheet-core": "node scripts/run-shared-score-sheet-core-tests.mjs"
+    "test:shared-score-sheet-core": "node scripts/run-shared-score-sheet-core-tests.mjs",
+    "test:competition-score-sheet-live": "node scripts/run-competition-score-sheet-live-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",

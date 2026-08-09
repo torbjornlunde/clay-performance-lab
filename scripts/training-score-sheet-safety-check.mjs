@@ -233,7 +233,7 @@ assert.equal(displayedPostScore({ localId: "legacy", scores: [8] }, 0, {}), 8, "
 assert.equal(targetResultUpsertKey("sheet", "shooter", 2, 4), targetResultUpsertKey("sheet", "shooter", 2, 4), "target-result upsert keys are stable and duplicate-safe");
 assert.deepEqual(setTargetResult(detailed, "shooter-1", 1, 2, "hit")["shooter-1"][1], { 1: "hit", 2: "hit", 3: "hit" }, "corrections update existing target results immediately");
 
-const pageSource = readFileSync("app/training-score-sheets/[id]/page.tsx", "utf8");
+const pageSource = readFileSync("app/components/scoreSheets/ScoreSheetEditor.tsx", "utf8");
 assert.match(pageSource, /Custom targets per post/, "setup UI exposes custom targets per post section");
 assert.match(pageSource, /expected_targets_by_post: expectedTargetsByPost/, "save payload preserves expectedTargetsByPost");
 assert.match(pageSource, /expectedTargetsByPost,/, "local draft includes expectedTargetsByPost");
