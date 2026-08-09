@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { appBuildLabel } from "@/lib/appBuildInfo";
-import { COMPAK_SPORTING, DISCIPLINE_OPTIONS, LEIRDUESTI } from "@/lib/disciplines";
+import { COMPAK_SPORTING, DISCIPLINE_OPTIONS, LEIRDUESTI, getDisciplineDefinition, usesCompakScoreSheetEngine, type DisciplineQuickStartKey } from "@/lib/disciplines";
 import {
   type CompakSchemeRow,
   getAllSchemeNumbers,
@@ -126,7 +126,7 @@ type TargetResultRow = {
 };
 
 type CompakShootingMode = "Squad" | "Inline";
-type QuickStartPreset = "compak" | "leirduesti" | "custom";
+type QuickStartPreset = DisciplineQuickStartKey | "custom";
 
 
 type LocalSaveStatus = "idle" | "saved_local" | "syncing" | "synced" | "sync_failed" | "offline";
@@ -184,10 +184,11 @@ type RecoveryPromptState = {
 
 const COMPAK_TOTAL_TARGETS = COMPAK_DEFAULT_STANDS * COMPAK_TARGETS_PER_STAND;
 const DEFAULT_COMPAK_SCHEME = 1;
-const QUICK_START_PRESET_LABELS: Record<Exclude<QuickStartPreset, "custom">, string> = {
-  compak: "Compak Sporting training",
-  leirduesti: "Leirduesti training",
-};
+const QUICK_START_PRESET_LABELS = Object.fromEntries(
+  DISCIPLINE_OPTIONS.map(getDisciplineDefinition)
+    .filter((definition) => definition.quickStartKey && definition.quickStartLabel)
+    .map((definition) => [definition.quickStartKey, definition.quickStartLabel]),
+) as Record<DisciplineQuickStartKey, string>;
 
 function normalizeQuickStartPreset(value: string | null): QuickStartPreset {
   if (value === "compak" || value === "leirduesti") return value;
@@ -195,9 +196,6 @@ function normalizeQuickStartPreset(value: string | null): QuickStartPreset {
 }
 
 
-function isCompakSporting(discipline: string) {
-  return discipline.trim().toLowerCase() === COMPAK_SPORTING.toLowerCase();
-}
 
 function normalizeCompakSchemeId(value: string | number | null | undefined) {
   const parsed = Number(value);
@@ -610,10 +608,11 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   const finalizationDialogRef = useRef<HTMLElement | null>(null);
   const [allowIncompleteFinalization, setAllowIncompleteFinalization] = useState(false);
   const lifecycleReadOnly = competitionIsReadOnly(sessionType, competitionStatus);
-  const disciplineOptions = useMemo(
-    () => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, !isNew && myDisciplines.length === 0 ? [discipline] : myDisciplines, shooterCountry),
-    [discipline, isNew, myDisciplines, shooterCountry],
-  );
+  const disciplineOptions = useMemo(() => {
+    const options = prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, !isNew && myDisciplines.length === 0 ? [discipline] : myDisciplines, shooterCountry);
+    const storedDiscipline = discipline.trim();
+    return storedDiscipline && !DISCIPLINE_OPTIONS.includes(storedDiscipline) ? [storedDiscipline, ...options] : options;
+  }, [discipline, isNew, myDisciplines, shooterCountry]);
 
   useEffect(() => {
     let active = true;
@@ -646,7 +645,12 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     () => Array.from({ length: numberOfPosts }, (_, index) => index + 1),
     [numberOfPosts],
   );
-  const isCompak = isCompakSporting(discipline);
+  const disciplineDefinition = getDisciplineDefinition(discipline);
+  const isCompak = disciplineDefinition.scoreSheetEngine === "compak";
+  const areaSingular = disciplineDefinition.areaSingular;
+  const areaPlural = disciplineDefinition.areaPlural;
+  const areaSingularLower = areaSingular.toLowerCase();
+  const areaPluralLower = areaPlural.toLowerCase();
   const expectedTargetSetup = { postCount: numberOfPosts, targetsPerPost, expectedTargetsByPost };
   const expectedTargetsPerPost = useMemo(() => Array.from({ length: numberOfPosts }, (_, index) => getExpectedTargetsForPost(expectedTargetSetup, index + 1)), [numberOfPosts, targetsPerPost, expectedTargetsByPost]);
   const sheetTotalTargets = getTotalExpectedTargets(expectedTargetSetup);
@@ -831,8 +835,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     [sheetTotalTargets, targetResults, validShooters],
   );
   const hasMissCounts = rankedShooters.some((shooter) => shooter.scored > 0);
-  const resultPostLabel = isCompak ? "plate" : "post";
-  const resultPostLabels = postNumbers.map((post) => `P${post}`);
+  const resultPostLabel = areaSingularLower;
+  const resultPostLabels = postNumbers.map((post) => `${areaSingular} ${post}`);
   const isCompakRoundComplete = Boolean(
     isCompak &&
       validShooters.length > 0 &&
@@ -981,7 +985,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     if (!recoveryPrompt) return;
     const draft = recoveryPrompt.draft;
     applyLocalDraft(draft);
-    if (isCompakSporting(draft.discipline)) {
+    if (usesCompakScoreSheetEngine(draft.discipline)) {
       void loadCompakSchemeRows(normalizeCompakSchemeId(draft.compakSchemeId));
     }
     setRecoveryAutosavePaused(false);
@@ -1319,7 +1323,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     const schemeToLoad = draftForScheme
       ? draftForScheme.compakSchemeId
       : normalizeCompakSchemeId(sheet.compak_scheme_id);
-    if (isCompakSporting(disciplineToLoad)) {
+    if (usesCompakScoreSheetEngine(disciplineToLoad)) {
       await loadCompakSchemeRows(normalizeCompakSchemeId(schemeToLoad));
     }
     setLocalDraftLoaded(true);
@@ -1348,7 +1352,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
         targetResults,
         nextPostCount: COMPAK_DEFAULT_STANDS,
         nextTargetsPerPost: COMPAK_TARGETS_PER_STAND,
-        postLabel: "stand",
+        postLabel: getDisciplineDefinition(COMPAK_SPORTING).areaSingular.toLowerCase(),
       })))
     ) {
       return false;
@@ -1381,7 +1385,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   function updateDiscipline(nextDiscipline: string) {
     if (lifecycleReadOnly) return;
     setHasUserEditedSinceHydration(true);
-    if (isCompakSporting(nextDiscipline)) {
+    if (usesCompakScoreSheetEngine(nextDiscipline)) {
       const applied = applyCompakDefaults();
       if (!applied) return;
       setCompakShootingMode("Squad");
@@ -1461,12 +1465,12 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     const nextTargetsPerPost = parsePositiveIntegerDraft(setupDraft.targetsPerPost, 1, 100);
     if (!nextPostCount || !nextTargetsPerPost) {
       setSetupApplyMessage(
-        `Enter a complete valid setup before applying: ${isCompak ? "1–20 stands" : "1–20 posts"} and 1–100 targets.`,
+        `Enter a complete valid setup before applying: 1–20 ${areaPluralLower} and 1–100 targets.`,
       );
       return;
     }
     if (!normalizedDraftCustomTargets.ok) {
-      setSetupApplyMessage("Every custom post count must be a whole number from 1 to 100.");
+      setSetupApplyMessage(`Every custom ${areaSingularLower} count must be a whole number from 1 to 100.`);
       return;
     }
     const nextExpectedTargetsByPost = normalizedDraftCustomTargets.counts;
@@ -1488,7 +1492,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
         targetResults,
         nextPostCount,
         nextTargetsPerPost: nextTargetMax,
-        postLabel: isCompak ? "stand" : "post",
+        postLabel: areaSingularLower,
       });
       if (!window.confirm(setupTrimWarning(details))) {
         setSetupApplyMessage("Setup changes were not applied; existing scoring data is unchanged.");
@@ -1507,8 +1511,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     );
     setSetupApplyMessage(
       nextExpectedTargetsByPost
-        ? `${isCompak ? "Stand" : "Post"} setup applied: ${nextPostCount} custom counts, ${nextExpectedTargetsByPost.reduce((sum, count) => sum + count, 0)} targets per shooter.`
-        : `${isCompak ? "Stand" : "Post"} setup applied: ${nextPostCount} × ${nextTargetsPerPost}. Existing in-range scores were preserved.`,
+        ? `${areaSingular} setup applied: ${nextPostCount} custom counts, ${nextExpectedTargetsByPost.reduce((sum, count) => sum + count, 0)} targets per shooter.`
+        : `${areaSingular} setup applied: ${nextPostCount} × ${nextTargetsPerPost}. Existing in-range scores were preserved.`,
     );
   }
 
@@ -1986,7 +1990,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     });
 
     if (rankedShooters.length > 0 && numberOfPosts <= 10 && rankedShooters.length <= 12) {
-      lines.push("", `${isCompak ? "Plate" : "Post"} breakdown:`);
+      lines.push("", `${areaSingular} breakdown:`);
       rankedShooters.forEach((shooter) => {
         const breakdown = postNumbers
           .map((post, index) => `${resultPostLabels[index]} ${displayedPostScore(shooter, index, targetResults)}`)
@@ -2029,8 +2033,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     if (!title.trim()) return `Add a ${isCompetition ? "competition event" : "training"} name.`;
     if (!sessionDate) return "Choose a date.";
     if (!discipline) return "Choose a discipline.";
-    if (numberOfPosts < 1) return isCompak ? "Add at least one stand." : "Add at least one post.";
-    if (targetsPerPost < 1) return isCompak ? "Targets per stand must be at least 1." : "Targets per post must be at least 1.";
+    if (numberOfPosts < 1) return `Add at least one ${areaSingularLower}.`;
+    if (targetsPerPost < 1) return `Targets per ${areaSingularLower} must be at least 1.`;
     if (namedShooters.length === 0) return "Add at least one shooter.";
     for (const shooter of namedShooters) {
       for (
@@ -2041,7 +2045,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
         if (
           displayedPostScore(shooter, postIndex, targetResults) > expectedTargetsPerPost[postIndex]
         ) {
-          return `${formatShooterName(shooter.name)} has a score above the expected target count for a post.`;
+          return `${formatShooterName(shooter.name)} has a score above the expected target count for a ${areaSingularLower}.`;
         }
       }
     }
@@ -2383,7 +2387,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     }
 
     const nextDiscipline = changeDiscipline ? "Sporting" : discipline;
-    const nextIsCompak = isCompakSporting(nextDiscipline);
+    const nextIsCompak = usesCompakScoreSheetEngine(nextDiscipline);
     const fallbackTitle = generateTrainingScoreSheetTitle(
       nextDiscipline,
       location,
@@ -2636,7 +2640,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
             </div>
 
             <div className="resultsTableBlock resultsBreakdownBlock">
-              <h4>{isCompak ? "Plate breakdown" : "Post breakdown"}</h4>
+              <h4>{areaSingular} breakdown</h4>
               <div className="scoreSheetScroller compactScoreScroller desktopResultsTable" role="region" aria-label={`Compact ${resultPostLabel} breakdown`}>
                 <table className="resultsSummaryTable breakdownTable">
                   <thead>
@@ -2945,7 +2949,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
             <>
               <div className="row">
                 <div>
-                  <label>Number of posts / stations</label>
+                  <label>Number of {areaPluralLower}</label>
                   <input
                     value={setupDraft.numberOfPosts}
                     onChange={(event) =>
@@ -2958,7 +2962,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                   />
                 </div>
                 <div>
-                  <label>Targets per post</label>
+                  <label>Targets per {areaSingularLower}</label>
                   <input
                     value={setupDraft.targetsPerPost}
                     onChange={(event) =>
@@ -2972,13 +2976,13 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                 </div>
               </div>
               <details className="compactMoreActions customTargetsPanel">
-                <summary>Custom targets per post</summary>
+                <summary>Custom targets per {areaSingularLower}</summary>
                 <div className="customTargetsSummary">
-                  <p className="small muted">Default: {draftTargetsPerPost || targetsPerPost} targets per post</p>
+                  <p className="small muted">Default: {draftTargetsPerPost || targetsPerPost} targets per {areaSingularLower}</p>
                   <p className="small muted">Custom total: {draftTotalTargets || sheetTotalTargets} targets</p>
                 </div>
                 <div className="btns">
-                  <button type="button" className="secondary smallButton" onClick={() => setAllCustomTargetDrafts(draftTargetsPerPost || targetsPerPost)}>Use same for all posts</button>
+                  <button type="button" className="secondary smallButton" onClick={() => setAllCustomTargetDrafts(draftTargetsPerPost || targetsPerPost)}>Use same for all {areaPluralLower}</button>
                   <button type="button" className="secondary smallButton" onClick={clearCustomTargetDrafts}>Clear custom counts</button>
                   <button type="button" className="secondary smallButton" onClick={() => setAllCustomTargetDrafts(8)}>Set all to 8</button>
                   <button type="button" className="secondary smallButton" onClick={() => setAllCustomTargetDrafts(10)}>Set all to 10</button>
@@ -2986,7 +2990,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                 <div className="customTargetsGrid">
                   {Array.from({ length: draftPostCount || numberOfPosts }, (_, index) => (
                     <label key={index}>
-                      Post {index + 1}
+                      {areaSingular} {index + 1}
                       <input
                         type="number"
                         min="1"
@@ -2999,10 +3003,10 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                   ))}
                 </div>
                 {!normalizedDraftCustomTargets.ok && (
-                  <p className="warning small" role="alert">Every custom post count must be a positive whole number from 1 to 100, and there must be one count for each post.</p>
+                  <p className="warning small" role="alert">Every custom {areaSingularLower} count must be a positive whole number from 1 to 100, and there must be one count for each {areaSingularLower}.</p>
                 )}
                 {normalizedDraftCustomTargets.ok && !normalizedDraftCustomTargets.active && (
-                  <p className="small muted">All posts match the default, so custom counts will be cleared when applied.</p>
+                  <p className="small muted">All {areaPluralLower} match the default, so custom counts will be cleared when applied.</p>
                 )}
               </details>
               <div className="setupApplyPanel">
@@ -3010,7 +3014,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                   <strong>Setup changes are staged until applied.</strong>
                   <p className="small muted">Typing partial values like “1” while entering “10” will not resize posts, targets, target results, or the live cursor.</p>
                   {setupDraftDirty && setupDraftValid && draftPostCount && draftTargetsPerPost && (
-                    <p className="small muted">Pending setup: {draftExpectedTargetsByPost ? `${draftPostCount} posts with custom counts (${draftTotalTargets} targets per shooter)` : `${draftPostCount} × ${draftTargetsPerPost} (${draftTotalTargets} targets per shooter)`}.</p>
+                    <p className="small muted">Pending setup: {draftExpectedTargetsByPost ? `${draftPostCount} ${areaPluralLower} with custom counts (${draftTotalTargets} targets per shooter)` : `${draftPostCount} × ${draftTargetsPerPost} (${draftTotalTargets} targets per shooter)`}.</p>
                   )}
                   {setupApplyMessage && <p className="small muted" role="status">{setupApplyMessage}</p>}
                 </div>
@@ -3174,7 +3178,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
               <h3>Field Mode</h3>
               <p className="small muted">
                 Mark every target as hit or miss. Target-by-target results
-                become the source of truth for that shooter and {isCompak ? "stand" : "post"}.
+                become the source of truth for that shooter and {areaSingularLower}.
               </p>
             </div>
             <button
@@ -3189,7 +3193,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
             <div className="liveScoringPanel">
               <div className="liveContextHeader">
                 <div>
-                  <span className="small muted">{isCompak ? "Stand" : "Post"}</span>
+                  <span className="small muted">{areaSingular}</span>
                   <strong>{activePostNumber} / {numberOfPosts}</strong>
                 </div>
                 <div>
@@ -3364,7 +3368,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
               <div className="liveScoreOverview" aria-label="Compact score overview">
                 <div className="compactPanelHeader">
                   <h4>{isCompak ? "Compak score overview" : "Compact score overview"}</h4>
-                  <span className="small muted">{isCompak ? "Tap a target dot to correct." : "Tap a post cell to correct."}</span>
+                  <span className="small muted">{isCompak ? "Tap a target dot to correct." : `Tap a ${areaSingularLower} cell to correct.`}</span>
                 </div>
                 {isCompak ? (
                   <div className="compakCompactOverviewList">
@@ -3502,15 +3506,15 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                 </ol>
               </div>
               {!isCompak && (
-                <div className="postScorecardPanel" aria-label={`Post ${activePostNumber} live target scorecard`}>
+                <div className="postScorecardPanel" aria-label={`${areaSingular} ${activePostNumber} live target scorecard`}>
                   <div className="compactPanelHeader">
-                    <h4>Post {activePostNumber} live scorecard</h4>
+                    <h4>{areaSingular} {activePostNumber} live scorecard</h4>
                     <span className="small muted">Tap each target: Hit → Miss → Clear.</span>
                   </div>
-                  <div className="postScorecardNav" aria-label="Post navigation">
-                    <button type="button" className="secondary smallButton" onClick={() => setPostAndStartingShooter(currentPost - 1)} disabled={currentPost <= 1}>Previous post</button>
-                    <span className="badge">Post {currentPost} of {numberOfPosts}</span>
-                    <button type="button" className="secondary smallButton" onClick={() => setPostAndStartingShooter(currentPost + 1)} disabled={currentPost >= numberOfPosts}>Next post</button>
+                  <div className="postScorecardNav" aria-label={`${areaSingular} navigation`}>
+                    <button type="button" className="secondary smallButton" onClick={() => setPostAndStartingShooter(currentPost - 1)} disabled={currentPost <= 1}>Previous {areaSingularLower}</button>
+                    <span className="badge">{areaSingular} {currentPost} of {numberOfPosts}</span>
+                    <button type="button" className="secondary smallButton" onClick={() => setPostAndStartingShooter(currentPost + 1)} disabled={currentPost >= numberOfPosts}>Next {areaSingularLower}</button>
                   </div>
                   {(() => {
                     const legacyTotalOnlyCount = validShooters.filter((shooter) =>
@@ -3552,7 +3556,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                           </div>
                           {legacyTotalOnly && (
                             <div className="legacyTotalOnlyNotice">
-                              <p className="small muted">Detailed target results were not recorded for this post.</p>
+                              <p className="small muted">Detailed target results were not recorded for this {areaSingularLower}.</p>
                               <button
                                 type="button"
                                 className="secondary smallButton"
@@ -3562,7 +3566,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                               </button>
                             </div>
                           )}
-                          <div className="postScorecardTargets" aria-label={`${shooter.displayName} post ${activePostNumber} targets`}>
+                          <div className="postScorecardTargets" aria-label={`${shooter.displayName} ${areaSingularLower} ${activePostNumber} targets`}>
                             {Array.from({ length: expected }, (_, index) => index + 1).map((targetNumber) => {
                               const result = targetResults[shooter.localId]?.[activePostNumber]?.[targetNumber];
                               return (
@@ -3590,7 +3594,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
               )}
               <div className="liveScoringSelectors compactSelectors">
                 <label>
-                  {isCompak ? "Scheme sequence" : "Post"}
+                  {isCompak ? "Scheme sequence" : areaSingular}
                   {isCompak ? (
                     <select
                       value={currentCompakSequenceIndex}
@@ -3625,8 +3629,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
               {postComplete && postCompleteShooter ? (
                 <div className="postCompleteCard" role="status">
                   <span className="small muted">{postCompleteShooter.displayName}</span>
-                  <strong>{isCompak ? "Stand" : "Post"} {postComplete.postNumber} complete</strong>
-                  <p>{isCompak ? "Plate" : "Post"} score: {postCompleteScore}/{postComplete ? getExpectedTargetsForPost(expectedTargetSetup, postComplete.postNumber) : targetsPerPost}</p>
+                  <strong>{areaSingular} {postComplete.postNumber} complete</strong>
+                  <p>{areaSingular} score: {postCompleteScore}/{postComplete ? getExpectedTargetsForPost(expectedTargetSetup, postComplete.postNumber) : targetsPerPost}</p>
                   <p>Total so far: {postCompleteTotalSoFar}/{postCompleteTargetsSoFar}</p>
                   <p className="small muted">
                     Missed: {postCompleteMisses.length > 0
@@ -3642,7 +3646,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                       className="secondary smallButton"
                       onClick={editCurrentPost}
                     >
-                      {isCompak ? "Correct plate" : "Correct post"}
+                      {`Correct ${areaSingularLower}`}
                     </button>
                   </div>
                 </div>
@@ -3868,12 +3872,12 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
           open={fullScoreTableOpen}
         >
           <summary>
-            <span>{isCompak ? "Edit scores by stand" : "Edit scores by post"}</span>
+            <span>{`Edit scores by ${areaSingularLower}`}</span>
             <span className="small muted">Open for corrections</span>
           </summary>
           <div className="sectionHeader compactSectionHeader">
             <div>
-              <h3>{isCompak ? "Edit scores by stand" : "Edit scores by post"}</h3>
+              <h3>{`Edit scores by ${areaSingularLower}`}</h3>
               <p className="small muted">
                 Enter manual totals or correct live target results in Field Mode.
               </p>
@@ -3915,14 +3919,14 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                           shooter.localId,
                           post,
                         );
-                        const inputLabel = `${shooter.displayName} ${isCompak ? "stand" : "post"} ${post}${isLiveScore ? ", calculated from live target results" : ""}`;
+                        const inputLabel = `${shooter.displayName} ${areaSingularLower} ${post}${isLiveScore ? ", calculated from live target results" : ""}`;
                         return (
                           <div
                             className={`shooterPostCell${isLiveScore ? " liveCalculated" : ""}`}
                             key={post}
                           >
                             <div className="shooterPostCellHeader">
-                              <span>{isCompak ? `S${post}` : `P${post}`}</span>
+                              <span>{`${areaSingular.charAt(0)}${post}`}</span>
                               {isLiveScore && (
                                 <span className="liveScoreBadge" aria-label="Calculated from live target results">
                                   LIVE
@@ -3950,7 +3954,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                               title={
                                 isLiveScore
                                   ? "Calculated from live target results"
-                                  : "Manual post-total score"
+                                  : `Manual ${areaSingularLower}-total score`
                               }
                               onKeyDown={(event) => {
                                 if (event.key === "Enter") {
@@ -4008,7 +4012,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
               <div className="sectionHeader compactSectionHeader"><div><p className="eyebrow">Competition result</p><h3 id="finalize-heading">Review &amp; finalize</h3></div><button type="button" className="secondary smallButton" onClick={() => setShowFinalizationReview(false)} disabled={saving}>Close</button></div>
               <div className="competitionFinalizationScroll">
                 <div className="resultsSummaryMeta"><div><span>Competition</span><strong>{title}</strong></div><div><span>Date</span><strong>{formatTitleDate(sessionDate)}</strong></div><div><span>Discipline</span><strong>{discipline}</strong></div><div><span>Scored targets</span><strong>{reviewCoverage.scored}</strong></div><div><span>Unscored targets</span><strong>{reviewCoverage.unscored}</strong></div></div>
-                {rankedShooters.map((shooter) => <div className="subcard" key={shooter.localId}><strong>{shooter.name} · {totalFor(shooter, targetResults)}/{sheetTotalTargets}</strong><p className="small muted">{postNumbers.map((post) => `${isCompak ? "Stand" : "Post"} ${post}: ${displayedPostScore(shooter, post - 1, targetResults)}/${expectedTargetsPerPost[post - 1]}`).join(" · ")}</p></div>)}
+                {rankedShooters.map((shooter) => <div className="subcard" key={shooter.localId}><strong>{shooter.name} · {totalFor(shooter, targetResults)}/{sheetTotalTargets}</strong><p className="small muted">{postNumbers.map((post) => `${areaSingular} ${post}: ${displayedPostScore(shooter, post - 1, targetResults)}/${expectedTargetsPerPost[post - 1]}`).join(" · ")}</p></div>)}
                 <p><strong>{reviewCoverage.complete ? "Complete" : `Incomplete — ${reviewCoverage.unscored} targets remain unscored`}</strong></p>
                 {reviewCoverage.unscored > 0 && <label className="checkboxRow"><input type="checkbox" checked={allowIncompleteFinalization} onChange={(event) => setAllowIncompleteFinalization(event.target.checked)} /> Finalize with incomplete targets</label>}
                 {finalizationBlockReason && <div className="error">{finalizationBlockReason}</div>}
