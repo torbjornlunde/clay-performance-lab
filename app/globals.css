@@ -10192,3 +10192,36 @@ select {
   .competitionFinalizationBackdrop { align-items: end; padding: max(8px, env(safe-area-inset-top)) 0 0; }
   .competitionFinalizationDialog { width: 100%; max-height: calc(100dvh - max(8px, env(safe-area-inset-top))); border-radius: 20px 20px 0 0; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
 }
+/* Finalized Competition result: isolated screen and paper presentation. */
+.competitionResultPage { max-width: 1180px; overflow-x: hidden; }
+.competitionResultHeader { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; }
+.competitionResultStatuses, .competitionResultActions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.competitionResultActions { margin: 18px 0; }
+.competitionResultTableWrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.competitionResultTable { width: 100%; border-collapse: collapse; min-width: 680px; }
+.competitionResultTable th, .competitionResultTable td { padding: 10px; border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap; }
+.competitionResultTable th:first-child { text-align: left; white-space: normal; min-width: 150px; overflow-wrap: anywhere; }
+.competitionResultTable th:first-child .badge { display: table; margin-top: 5px; }
+.competitionResultTable .resultTotal { font-size: 1.1rem; font-weight: 800; }
+.competitionResultPrint { display: none; }
+@media (max-width: 520px) {
+  .competitionResultHeader { display: block; }
+  .competitionResultStatuses { margin-top: 10px; }
+  .competitionResultActions > * { flex: 1 1 100%; min-height: 46px; }
+  .competitionResultDocument { padding-inline: 14px; }
+}
+@media print {
+  body:has(.competitionResultPage) > div > header,
+  body:has(.competitionResultPage) header,
+  body:has(.competitionResultPage) nav,
+  .competitionResultPage .printHidden { display: none !important; }
+  body:has(.competitionResultPage), .competitionResultPage, .competitionResultDocument { background: #fff !important; color: #000 !important; max-width: none !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; }
+  .competitionResultPage .muted { color: #333 !important; }
+  .competitionResultPage .competitionResultTableWrap { display: none !important; }
+  .competitionResultPage .competitionResultPrint { display: block; }
+  .competitionResultPage .competitionResultPrintCard { border: 1px solid #777; padding: 10px; margin: 10px 0; break-inside: avoid; }
+  .competitionResultPage .competitionResultPrintShooter { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .competitionResultPage .competitionResultPrintPosts { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 5px 12px; }
+  .competitionResultPage .competitionResultPrintTotals { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 9px; padding-top: 7px; border-top: 1px solid #999; }
+  .competitionResultPage .badge, .competitionResultPage .warning { background: transparent !important; color: #000 !important; border: 1px solid #555 !important; }
+}
