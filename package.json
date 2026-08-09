@@ -49,7 +49,8 @@
     "test:course-scorecard-review": "node scripts/run-course-scorecard-review-tests.mjs",
     "test:shared-score-sheet-core": "node scripts/run-shared-score-sheet-core-tests.mjs",
     "test:competition-score-sheet-live": "node scripts/run-competition-score-sheet-live-tests.mjs",
-    "test:competition-finalization": "node scripts/run-competition-finalization-tests.mjs"
+    "test:competition-finalization": "node scripts/run-competition-finalization-tests.mjs",
+    "test:competition-result-export": "node scripts/run-competition-result-export-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",
