@@ -21,9 +21,22 @@ export function targetResultIdsToDelete(rows: PersistedTargetPosition[], keptSho
 export function formatDateOnly(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return value;
-  return `${match[2]}/${match[3]}/${match[1]}`;
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(match[2]) - 1];
+  return `${Number(match[3])} ${month} ${match[1]}`;
 }
 
 export function deleteScoreSheetConfirmation(kind: "training" | "competition") {
   return `Delete this ${kind} score sheet? This will remove shooters, scores, and target results. This cannot be undone.`;
+}
+
+export function serverChangedSinceDraft(options: {
+  baseServerUpdatedAt?: string | null;
+  draftUpdatedAt: string;
+  serverUpdatedAt: string | null;
+}) {
+  if (options.baseServerUpdatedAt) {
+    return options.baseServerUpdatedAt !== options.serverUpdatedAt;
+  }
+  if (!options.serverUpdatedAt) return false;
+  return new Date(options.serverUpdatedAt).getTime() >= new Date(options.draftUpdatedAt).getTime();
 }

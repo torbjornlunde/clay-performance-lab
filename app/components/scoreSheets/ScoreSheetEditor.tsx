@@ -56,7 +56,7 @@ import {
   scoreSheetDraftKey,
   shouldAgeOutSyncedDraft,
 } from "@/lib/scoreSheets/drafts";
-import { deleteScoreSheetConfirmation, syncActionLabel, syncBlockedByRecovery, targetResultIdsToDelete } from "@/lib/scoreSheets/liveSafety";
+import { deleteScoreSheetConfirmation, serverChangedSinceDraft, syncActionLabel, syncBlockedByRecovery, targetResultIdsToDelete } from "@/lib/scoreSheets/liveSafety";
 import { parseScoreSheetKind, scoreSheetKindLabel, type ScoreSheetKind } from "@/lib/scoreSheets/kind";
 import { canSaveTrainingScoreSheet } from "@/lib/scoreSheets/policy";
 import { TRAINING_SCORE_SHEET_QUICK_START_STEPS } from "@/lib/trainingScoreSheets/feedback";
@@ -278,12 +278,6 @@ function parseTrainingLocalDraft(rawDraft: string | null) {
   const draft = parseLocalDraft(rawDraft);
   return draft && canRestoreDraftInTraining(draft.sessionType) ? draft : null;
 }
-
-function localDraftIsNewer(draft: LocalScoreSheetDraft, serverUpdatedAt: string | null) {
-  if (!serverUpdatedAt) return true;
-  return new Date(draft.updatedAt).getTime() > new Date(serverUpdatedAt).getTime();
-}
-
 
 function removeLocalDraftsForScoreSheet(scoreSheetId: string, kind: ScoreSheetKind) {
   if (typeof window === "undefined") return;
@@ -1262,7 +1256,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     let draftForScheme: LocalScoreSheetDraft | null = null;
     const draft = findLocalDraft(sheetId);
     if (draft && !draft.synced) {
-      const serverIsNewer = !localDraftIsNewer(draft, sheet.updated_at);
+      const serverIsNewer = serverChangedSinceDraft({ baseServerUpdatedAt: draft.baseServerUpdatedAt, draftUpdatedAt: draft.updatedAt, serverUpdatedAt: sheet.updated_at });
       setRecoveryAutosavePaused(true);
       setRecoveryPrompt({
         draft,
@@ -2405,7 +2399,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
               <p className="small muted">
                 Local draft saved {new Date(recoveryPrompt.draft.updatedAt).toLocaleString()}.
                 {recoveryPrompt.serverIsNewer
-                  ? " Server data appears newer, so review before overwriting."
+                  ? " The saved server copy changed after this local draft was started. Choose which version to keep before syncing."
                   : " Local draft appears newer than the server copy."}
               </p>
             </div>

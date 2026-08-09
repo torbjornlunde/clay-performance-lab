@@ -22,6 +22,49 @@ do $$ begin
   exception when check_violation then null; end;
 end $$;
 
+-- The parent updated_at value is the optimistic-concurrency revision token.
+do $$
+declare
+  t1 timestamptz;
+  t2 timestamptz;
+  t3 timestamptz;
+  affected integer;
+begin
+  select updated_at into t1
+  from public.training_score_sheets
+  where id = '10000000-0000-0000-0000-000000000001';
+
+  update public.training_score_sheets
+  set title = 'Competition live revision 2'
+  where id = '10000000-0000-0000-0000-000000000001';
+  get diagnostics affected = row_count;
+  if affected <> 1 then raise exception 'initial revision update did not update exactly one row'; end if;
+
+  select updated_at into t2
+  from public.training_score_sheets
+  where id = '10000000-0000-0000-0000-000000000001';
+  if t2 <= t1 then raise exception 'parent revision did not advance from T1 to T2'; end if;
+
+  update public.training_score_sheets
+  set title = 'Stale revision must fail'
+  where id = '10000000-0000-0000-0000-000000000001'
+    and updated_at = t1;
+  get diagnostics affected = row_count;
+  if affected <> 0 then raise exception 'stale T1 revision updated the parent'; end if;
+
+  update public.training_score_sheets
+  set title = 'Competition live revision 3'
+  where id = '10000000-0000-0000-0000-000000000001'
+    and updated_at = t2;
+  get diagnostics affected = row_count;
+  if affected <> 1 then raise exception 'current T2 revision did not update exactly one row'; end if;
+
+  select updated_at into t3
+  from public.training_score_sheets
+  where id = '10000000-0000-0000-0000-000000000001';
+  if t3 <= t2 then raise exception 'parent revision did not advance from T2 to T3'; end if;
+end $$;
+
 insert into public.training_score_sheet_shooters (id, score_sheet_id, shooter_name, display_order)
 values ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'Owner', 1);
 insert into public.training_score_sheet_target_results (score_sheet_id, shooter_id, post_number, target_number, result)
