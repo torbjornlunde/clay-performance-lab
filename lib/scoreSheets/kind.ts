@@ -14,3 +14,12 @@ export function parseScoreSheetKind(value: unknown): ScoreSheetKind {
 export function isTrainingScoreSheetKind(kind: ScoreSheetKind): kind is "training" | "shared_training" {
   return kind === "training" || kind === "shared_training";
 }
+
+export function scoreSheetKindLabel(kind: ScoreSheetKind) {
+  const labels: Record<ScoreSheetKind, string> = {
+    training: "Training",
+    shared_training: "Shared training",
+    competition: "Competition",
+  };
+  return labels[kind];
+}

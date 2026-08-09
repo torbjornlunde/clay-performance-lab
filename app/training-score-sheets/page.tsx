@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { appBuildLabel } from "@/lib/appBuildInfo";
 import { supabase } from "@/lib/supabase/client";
-import type { ScoreSheetKind } from "@/lib/scoreSheets/kind";
+import { canRestoreDraftInTraining, scoreSheetKindFromDraft } from "@/lib/scoreSheets/drafts";
+import { scoreSheetKindLabel, type ScoreSheetKind } from "@/lib/scoreSheets/kind";
 import { TRAINING_SCORE_SHEET_QUICK_START_STEPS } from "@/lib/trainingScoreSheets/feedback";
 import { userFacingDeleteError, userFacingLoadError } from "@/lib/userFacingErrors";
 import { ContextualHelpCard } from "@/app/components/OnboardingHelp";
@@ -41,7 +42,7 @@ type LocalDraft = {
   sessionDate: string;
   location: string;
   discipline: string;
-  sessionType: string;
+  sessionType: ScoreSheetKind;
   numberOfPosts: number;
   targetsPerPost: number;
   shooters: Array<{ localId: string; name: string; scores: number[] }>;
@@ -58,7 +59,7 @@ type SheetListItem = {
   sessionDate: string;
   location: string | null;
   discipline: string;
-  sessionType: string;
+  sessionType: ScoreSheetKind;
   shooterCount: number;
   scoreCount: number;
   targetResultCount: number;
@@ -98,8 +99,8 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value));
 }
 
-function sessionTypeLabel(value: string) {
-  return value === "shared_training" ? "Shared training" : "Training";
+function sessionTypeLabel(value: ScoreSheetKind) {
+  return scoreSheetKindLabel(value);
 }
 
 function localDraftKey(sheetId: string) {
@@ -115,6 +116,8 @@ function parseLocalDraft(rawDraft: string | null) {
   try {
     const draft = JSON.parse(rawDraft) as Partial<LocalDraft>;
     if (draft.version !== 1 || !draft.sheetId || !draft.updatedAt) return null;
+    const sessionType = scoreSheetKindFromDraft(draft.sessionType);
+    if (!sessionType || !canRestoreDraftInTraining(sessionType)) return null;
     return {
       ...draft,
       scoreSheetId: draft.scoreSheetId || (draft.sheetId.startsWith("new:") ? null : draft.sheetId),
@@ -125,7 +128,7 @@ function parseLocalDraft(rawDraft: string | null) {
       sessionDate: draft.sessionDate || new Date().toISOString().slice(0, 10),
       location: draft.location || "",
       discipline: draft.discipline || "Training",
-      sessionType: draft.sessionType || "training",
+      sessionType,
       numberOfPosts: draft.numberOfPosts || 0,
       targetsPerPost: draft.targetsPerPost || 0,
       shooters: draft.shooters || [],

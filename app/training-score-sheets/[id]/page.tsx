@@ -49,11 +49,14 @@ import {
 } from "@/lib/scoreSheets/compak";
 import {
   LEGACY_TRAINING_DRAFT_PREFIX,
+  canRestoreDraftInTraining,
   legacyTrainingDraftKey,
   migrateLegacyTrainingDraft,
+  scoreSheetKindFromDraft,
   scoreSheetDraftKey,
 } from "@/lib/scoreSheets/drafts";
-import { parseScoreSheetKind, type ScoreSheetKind } from "@/lib/scoreSheets/kind";
+import { parseScoreSheetKind, scoreSheetKindLabel, type ScoreSheetKind } from "@/lib/scoreSheets/kind";
+import { canSaveTrainingScoreSheet } from "@/lib/scoreSheets/policy";
 import { TRAINING_SCORE_SHEET_QUICK_START_STEPS } from "@/lib/trainingScoreSheets/feedback";
 import { userFacingDeleteError, userFacingLoadError, userFacingSaveError } from "@/lib/userFacingErrors";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
@@ -253,8 +256,11 @@ function parseLocalDraft(rawDraft: string | null) {
   try {
     const draft = JSON.parse(rawDraft) as Partial<LocalScoreSheetDraft>;
     if (draft.version !== 1 || !draft.sheetId || !draft.updatedAt) return null;
+    const sessionType = scoreSheetKindFromDraft(draft.sessionType);
+    if (!sessionType) return null;
     return {
       ...draft,
+      sessionType,
       scoreSheetId: draft.scoreSheetId || (draft.sheetId?.startsWith("new:") ? null : draft.sheetId || null),
       localDraftId: draft.localDraftId || draft.sheetId,
       synced: Boolean(draft.synced),
@@ -263,6 +269,11 @@ function parseLocalDraft(rawDraft: string | null) {
   } catch {
     return null;
   }
+}
+
+function parseTrainingLocalDraft(rawDraft: string | null) {
+  const draft = parseLocalDraft(rawDraft);
+  return draft && canRestoreDraftInTraining(draft.sessionType) ? draft : null;
 }
 
 function localDraftIsNewer(draft: LocalScoreSheetDraft, serverUpdatedAt: string | null) {
@@ -357,7 +368,7 @@ function formatShooterName(name: string) {
 }
 
 function sessionTypeLabel(value: ScoreSheetKind) {
-  return value === "shared_training" ? "Shared training" : "Training";
+  return scoreSheetKindLabel(value);
 }
 
 function countAllTargetResults(targetResults: TargetResultMap) {
@@ -918,7 +929,7 @@ export default function TrainingScoreSheetPage() {
 
   function findLocalDraft(draftSheetId: string) {
     if (typeof window === "undefined") return null;
-    return migrateLegacyTrainingDraft(window.localStorage, draftSheetId, parseLocalDraft);
+    return migrateLegacyTrainingDraft(window.localStorage, draftSheetId, parseTrainingLocalDraft);
   }
 
   function keepServerVersion() {
@@ -1958,6 +1969,10 @@ export default function TrainingScoreSheetPage() {
     const isAutomaticRetry = options.automaticRetry ?? false;
     setErr("");
     setSavedMessage("");
+    if (!canSaveTrainingScoreSheet(sessionType)) {
+      setErr("Competition score sheets cannot be edited from the Training Score Sheet page.");
+      return null;
+    }
     const validationError = validate();
     if (validationError) {
       setErr(validationError);

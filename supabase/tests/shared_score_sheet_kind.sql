@@ -37,13 +37,47 @@ end $$;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000246', true);
 do $$ begin
   if exists (select 1 from public.training_score_sheets where id = '10000000-0000-0000-0000-000000000001') then raise exception 'cross-user sheet read allowed'; end if;
+
+  begin
+    insert into public.training_score_sheets (owner_user_id, title, session_date, discipline, session_type, number_of_posts, targets_per_post, total_targets)
+    values ('00000000-0000-0000-0000-000000000262', 'Guessed owner', current_date, 'Sporting', 'training', 1, 1, 1);
+    raise exception 'cross-user sheet insert allowed';
+  exception when insufficient_privilege then null; end;
   begin
     update public.training_score_sheets set title = 'Guessed' where id = '10000000-0000-0000-0000-000000000001';
     if found then raise exception 'cross-user sheet update allowed'; end if;
   end;
   begin
+    delete from public.training_score_sheets where id = '10000000-0000-0000-0000-000000000001';
+    if found then raise exception 'cross-user sheet delete allowed'; end if;
+  end;
+
+  begin
+    insert into public.training_score_sheet_shooters (score_sheet_id, shooter_name, display_order)
+    values ('10000000-0000-0000-0000-000000000001', 'Guessed shooter', 2);
+    raise exception 'cross-user shooter insert allowed';
+  exception when insufficient_privilege then null; end;
+  begin
+    update public.training_score_sheet_shooters set shooter_name = 'Guessed' where id = '20000000-0000-0000-0000-000000000001';
+    if found then raise exception 'cross-user shooter update allowed'; end if;
+  end;
+  begin
+    delete from public.training_score_sheet_shooters where id = '20000000-0000-0000-0000-000000000001';
+    if found then raise exception 'cross-user shooter delete allowed'; end if;
+  end;
+
+  begin
+    insert into public.training_score_sheet_target_results (score_sheet_id, shooter_id, post_number, target_number, result)
+    values ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 1, 2, 'miss');
+    raise exception 'cross-user target insert allowed';
+  exception when insufficient_privilege then null; end;
+  begin
     update public.training_score_sheet_target_results set result = 'miss' where score_sheet_id = '10000000-0000-0000-0000-000000000001';
     if found then raise exception 'cross-user target update allowed'; end if;
+  end;
+  begin
+    delete from public.training_score_sheet_target_results where score_sheet_id = '10000000-0000-0000-0000-000000000001';
+    if found then raise exception 'cross-user target delete allowed'; end if;
   end;
 end $$;
 
