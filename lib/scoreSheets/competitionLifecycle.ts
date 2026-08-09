@@ -33,3 +33,14 @@ export function competitionCoverage(shooterIds: string[], expectedTargets: numbe
   const scored = shooterIds.reduce((sum, id) => sum + Object.values(targetResults[id] || {}).reduce((postSum, rows) => postSum + Object.keys(rows).length, 0), 0);
   return { expected, scored, unscored: Math.max(expected - scored, 0), complete: expected > 0 && scored === expected };
 }
+
+export function shouldAutosaveScoreSheet(options: {
+  isNew: boolean;
+  localDraftLoaded: boolean;
+  hasUnsyncedRecovery: boolean;
+  hasUserEditedSinceHydration: boolean;
+  lifecycleReadOnly: boolean;
+}) {
+  if (!options.localDraftLoaded || options.lifecycleReadOnly) return false;
+  return options.isNew || options.hasUnsyncedRecovery || options.hasUserEditedSinceHydration;
+}

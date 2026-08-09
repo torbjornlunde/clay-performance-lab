@@ -33,7 +33,14 @@ begin
   if tg_op = 'INSERT' then
     if new.session_type = 'competition' then new.competition_status := coalesce(new.competition_status, 'live'); end if;
     if coalesce(current_setting('app.competition_lifecycle_transition', true),'') = '' and
-       (new.competition_status is distinct from case when new.session_type='competition' then 'live' else null end or new.competition_reopen_count <> 0 or new.competition_finalized_at is not null or new.competition_reopened_at is not null) then
+       (new.competition_status is distinct from case when new.session_type='competition' then 'live' else null end
+        or new.competition_finalized_at is not null
+        or new.competition_finalized_by is not null
+        or new.competition_finalized_with_incomplete is not null
+        or new.competition_finalized_unscored_targets is not null
+        or new.competition_reopened_at is not null
+        or new.competition_reopened_by is not null
+        or new.competition_reopen_count <> 0) then
       raise exception using errcode='42501', message='Competition lifecycle fields can only be changed by lifecycle operations.';
     end if;
     return new;
@@ -42,7 +49,7 @@ begin
     if old.session_type='competition' and old.competition_status='finalized' then raise exception using errcode='55000', message='Finalized Competition Score Sheets must be reopened before deletion.'; end if;
     return old;
   end if;
-  if old.session_type='competition' and new.session_type <> 'competition' then raise exception using errcode='55000', message='Competition Score Sheet type cannot be changed.'; end if;
+  if old.session_type is distinct from new.session_type and (old.session_type='competition' or new.session_type='competition') then raise exception using errcode='55000', message='Competition Score Sheet type cannot be changed.'; end if;
   if old.session_type='competition' and old.competition_status='finalized' and coalesce(current_setting('app.competition_lifecycle_transition',true),'') <> 'reopen' then raise exception using errcode='55000', message='Finalized Competition Score Sheets are read-only.'; end if;
   if coalesce(current_setting('app.competition_lifecycle_transition',true),'') = '' and
     (new.competition_status,new.competition_finalized_at,new.competition_finalized_by,new.competition_finalized_with_incomplete,new.competition_finalized_unscored_targets,new.competition_reopened_at,new.competition_reopened_by,new.competition_reopen_count)
@@ -53,12 +60,45 @@ begin
 end $$;
 create trigger competition_score_sheet_lifecycle_guard before insert or update or delete on public.training_score_sheets for each row execute function public.guard_competition_score_sheet_lifecycle();
 
+-- The parent row is the lifecycle serialization point. Child writes take
+-- deterministic FOR KEY SHARE locks before checking status; finalize/reopen take
+-- FOR UPDATE. Whichever transaction locks first completes first, so canonical
+-- coverage can never race across the live -> finalized boundary.
 create or replace function public.guard_finalized_competition_child() returns trigger language plpgsql security definer set search_path=public,pg_temp as $$
-declare sid uuid; locked boolean;
+declare
+ parent_id uuid;
+ relevant_parent_ids uuid[];
+ locked_count integer := 0;
 begin
- sid := case when tg_op='DELETE' then old.score_sheet_id else new.score_sheet_id end;
- select exists(select 1 from public.training_score_sheets where id=sid and session_type='competition' and competition_status='finalized') into locked;
- if locked then raise exception using errcode='55000', message='Finalized Competition Score Sheets are read-only.'; end if;
+ relevant_parent_ids := case
+   when tg_op = 'INSERT' then array[new.score_sheet_id]
+   when tg_op = 'DELETE' then array[old.score_sheet_id]
+   else array[old.score_sheet_id, new.score_sheet_id]
+ end;
+
+ -- Lock OLD and NEW parents (when distinct) in UUID order to avoid lock inversion.
+ for parent_id in
+   select distinct id
+   from unnest(relevant_parent_ids) as ids(id)
+   where id is not null
+   order by id
+ loop
+   perform 1 from public.training_score_sheets where id = parent_id for key share;
+   if found then locked_count := locked_count + 1; end if;
+ end loop;
+
+ if locked_count <> (select count(distinct id) from unnest(relevant_parent_ids) as ids(id) where id is not null) then
+   raise exception using errcode='23503', message='Score Sheet parent does not exist.';
+ end if;
+
+ if exists (
+   select 1 from public.training_score_sheets
+   where id = any(relevant_parent_ids)
+     and session_type = 'competition'
+     and competition_status = 'finalized'
+ ) then
+   raise exception using errcode='55000', message='Finalized Competition Score Sheets are read-only.';
+ end if;
  return case when tg_op='DELETE' then old else new end;
 end $$;
 create trigger competition_finalized_shooters_guard before insert or update or delete on public.training_score_sheet_shooters for each row execute function public.guard_finalized_competition_child();
@@ -88,6 +128,7 @@ begin
  if unscored>0 and not coalesce(p_allow_incomplete,false) then raise exception using errcode='P0001',message='Competition Score Sheet has incomplete target coverage.'; end if;
  perform set_config('app.competition_lifecycle_transition','finalize',true);
  return query update public.training_score_sheets x set competition_status='finalized',competition_finalized_at=clock_timestamp(),competition_finalized_by=auth.uid(),competition_finalized_with_incomplete=(unscored>0),competition_finalized_unscored_targets=unscored where x.id=s.id returning x.competition_status,x.competition_finalized_at,x.competition_finalized_by,x.competition_finalized_with_incomplete,x.competition_finalized_unscored_targets,x.competition_reopened_at,x.competition_reopened_by,x.competition_reopen_count,x.updated_at;
+ perform set_config('app.competition_lifecycle_transition','',true);
 end $$;
 
 create or replace function public.reopen_competition_score_sheet(p_score_sheet_id uuid,p_expected_updated_at timestamptz)
@@ -103,6 +144,7 @@ begin
  if s.updated_at is distinct from p_expected_updated_at then raise exception using errcode='40001',message='Competition Score Sheet revision conflict.'; end if;
  perform set_config('app.competition_lifecycle_transition','reopen',true);
  return query update public.training_score_sheets x set competition_status='live',competition_reopened_at=clock_timestamp(),competition_reopened_by=auth.uid(),competition_reopen_count=x.competition_reopen_count+1 where x.id=s.id returning x.competition_status,x.competition_finalized_at,x.competition_finalized_by,x.competition_finalized_with_incomplete,x.competition_finalized_unscored_targets,x.competition_reopened_at,x.competition_reopened_by,x.competition_reopen_count,x.updated_at;
+ perform set_config('app.competition_lifecycle_transition','',true);
 end $$;
 revoke execute on function public.finalize_competition_score_sheet(uuid,timestamptz,boolean) from public,anon;
 revoke execute on function public.reopen_competition_score_sheet(uuid,timestamptz) from public,anon;
