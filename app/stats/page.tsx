@@ -548,6 +548,7 @@ export default function StatsPage() {
       supabase
         .from("training_score_sheets")
         .select("id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,created_at")
+        .in("session_type", ["training", "shared_training"])
         .lte("session_date", todayValue)
         .order("session_date", { ascending: true })
         .returns<TrainingScoreSheetLog[]>(),

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { appBuildLabel } from "@/lib/appBuildInfo";
 import { supabase } from "@/lib/supabase/client";
+import type { ScoreSheetKind } from "@/lib/scoreSheets/kind";
 import { TRAINING_SCORE_SHEET_QUICK_START_STEPS } from "@/lib/trainingScoreSheets/feedback";
 import { userFacingDeleteError, userFacingLoadError } from "@/lib/userFacingErrors";
 import { ContextualHelpCard } from "@/app/components/OnboardingHelp";
@@ -16,7 +17,7 @@ type ScoreSheetRow = {
   session_date: string;
   location: string | null;
   discipline: string;
-  session_type: string;
+  session_type: ScoreSheetKind;
   number_of_posts: number;
   targets_per_post: number;
   total_targets: number;
@@ -261,6 +262,7 @@ export default function TrainingScoreSheetsPage() {
       .select(
         "id,owner_user_id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,created_at,updated_at",
       )
+      .in("session_type", ["training", "shared_training"])
       .order("session_date", { ascending: false })
       .order("updated_at", { ascending: false })
       .returns<ScoreSheetRow[]>();
