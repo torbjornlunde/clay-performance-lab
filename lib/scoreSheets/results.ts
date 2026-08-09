@@ -63,3 +63,15 @@ export function projectScoreSheetResults(input: {
 export function isAuthoritativeCompetitionResult(kind: unknown, status: unknown) {
   return kind === "competition" && status === "finalized";
 }
+
+export function isCurrentAuthoritativeResultRevision(
+  loadedRevision: string | null,
+  current: { session_type: unknown; competition_status: unknown; updated_at: string | null } | null,
+) {
+  return Boolean(
+    loadedRevision &&
+    current &&
+    isAuthoritativeCompetitionResult(current.session_type, current.competition_status) &&
+    current.updated_at === loadedRevision,
+  );
+}

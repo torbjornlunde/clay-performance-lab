@@ -10203,6 +10203,7 @@ select {
 .competitionResultTable th:first-child { text-align: left; white-space: normal; min-width: 150px; overflow-wrap: anywhere; }
 .competitionResultTable th:first-child .badge { display: table; margin-top: 5px; }
 .competitionResultTable .resultTotal { font-size: 1.1rem; font-weight: 800; }
+.competitionResultPrint { display: none; }
 @media (max-width: 520px) {
   .competitionResultHeader { display: block; }
   .competitionResultStatuses { margin-top: 10px; }
@@ -10216,9 +10217,11 @@ select {
   .competitionResultPage .printHidden { display: none !important; }
   body:has(.competitionResultPage), .competitionResultPage, .competitionResultDocument { background: #fff !important; color: #000 !important; max-width: none !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; }
   .competitionResultPage .muted { color: #333 !important; }
-  .competitionResultPage .competitionResultTableWrap { overflow: visible; }
-  .competitionResultPage .competitionResultTable { min-width: 0; font-size: 9pt; }
-  .competitionResultPage .competitionResultTable th, .competitionResultPage .competitionResultTable td { padding: 5px; border-color: #777; }
-  .competitionResultPage .competitionResultTable tr { break-inside: avoid; }
+  .competitionResultPage .competitionResultTableWrap { display: none !important; }
+  .competitionResultPage .competitionResultPrint { display: block; }
+  .competitionResultPage .competitionResultPrintCard { border: 1px solid #777; padding: 10px; margin: 10px 0; break-inside: avoid; }
+  .competitionResultPage .competitionResultPrintShooter { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .competitionResultPage .competitionResultPrintPosts { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 5px 12px; }
+  .competitionResultPage .competitionResultPrintTotals { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 9px; padding-top: 7px; border-top: 1px solid #999; }
   .competitionResultPage .badge, .competitionResultPage .warning { background: transparent !important; color: #000 !important; border: 1px solid #555 !important; }
 }
