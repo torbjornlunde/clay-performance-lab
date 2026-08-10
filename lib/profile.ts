@@ -1,3 +1,5 @@
+import { INTERNATIONAL_DISCIPLINE_OPTIONS } from "./disciplines";
+
 export type ShooterProfile = {
   id?: string;
   user_id: string;
@@ -127,25 +129,11 @@ export function isShooterProfileComplete(profile: ShooterProfileBasics) {
   );
 }
 
-const INTERNATIONAL_DISCIPLINE_ORDER = [
-  "Compak Sporting",
-  "FITASC Sporting",
-  "Sporting",
-  "English Sporting",
-  "Skeet",
-  "Trap",
-  "Sporttrap",
-  "Leirduesti",
-  "Kompakt leirduesti",
-  "Jegertrap / Nordisk trap",
-  "Other",
-];
-
 function orderDisciplinesForCountry(options: string[], country?: string | null) {
   const countryCode = normalizeCountryCode(country);
   if (!countryCode || countryCode === "NO") return options;
 
-  const order = new Map(INTERNATIONAL_DISCIPLINE_ORDER.map((discipline, index) => [discipline, index]));
+  const order = new Map(INTERNATIONAL_DISCIPLINE_OPTIONS.map((discipline, index) => [discipline, index]));
   return [...options].sort((a, b) => {
     if (a === "Other") return 1;
     if (b === "Other") return -1;

@@ -234,10 +234,10 @@ assert.equal(targetResultUpsertKey("sheet", "shooter", 2, 4), targetResultUpsert
 assert.deepEqual(setTargetResult(detailed, "shooter-1", 1, 2, "hit")["shooter-1"][1], { 1: "hit", 2: "hit", 3: "hit" }, "corrections update existing target results immediately");
 
 const pageSource = readFileSync("app/components/scoreSheets/ScoreSheetEditor.tsx", "utf8");
-assert.match(pageSource, /Custom targets per post/, "setup UI exposes custom targets per post section");
+assert.match(pageSource, /Custom targets per \{areaSingularLower\}/, "setup UI exposes discipline-aware custom target counts");
 assert.match(pageSource, /expected_targets_by_post: expectedTargetsByPost/, "save payload preserves expectedTargetsByPost");
 assert.match(pageSource, /expectedTargetsByPost,/, "local draft includes expectedTargetsByPost");
-assert.match(pageSource, /Detailed target results were not recorded for this post\./, "legacy total-only posts explain missing target details");
+assert.match(pageSource, /Detailed target results were not recorded for this \{areaSingularLower\}\./, "legacy total-only areas explain missing target details");
 assert.match(pageSource, /Start detailed scoring/, "legacy total-only posts require an explicit conversion action");
 assert.match(pageSource, /Starting detailed scoring will replace the saved post total/, "legacy conversion warns before replacing totals");
 assert.match(pageSource, /disabled=\{legacyTotalOnly\}/, "legacy total-only target buttons are disabled before conversion");
