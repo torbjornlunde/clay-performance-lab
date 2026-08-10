@@ -11,6 +11,7 @@ const expected = ["Compak Sporting", "Kompakt leirduesti", "Sporttrap", "Leirdue
 assert.deepEqual(Array.from(d.DISCIPLINE_DEFINITIONS, (definition) => definition.value), expected);
 assert.deepEqual(Array.from(d.DISCIPLINE_OPTIONS), expected);
 assert.equal(new Set(d.DISCIPLINE_OPTIONS).size, expected.length);
+assert.equal(d.DISCIPLINE_DEFINITIONS.some((definition) => "supportsVariableTargets" in definition), false, "registry contains no unused variable-target capability metadata");
 const international = ["Compak Sporting", "FITASC Sporting", "Sporting", "English Sporting", "Skeet", "Trap", "Sporttrap", "Leirduesti", "Kompakt leirduesti", "Jegertrap / Nordisk trap", "Other"];
 assert.deepEqual(Array.from(d.INTERNATIONAL_DISCIPLINE_OPTIONS), international);
 assert.equal(d.INTERNATIONAL_DISCIPLINE_OPTIONS.every((value) => d.DISCIPLINE_OPTIONS.includes(value)), true);
@@ -61,6 +62,9 @@ for (const value of ["Compak Sporting", "Kompakt leirduesti", "Sporting", "Local
 assert.match(editor, /storedDiscipline && !DISCIPLINE_OPTIONS\.includes\(storedDiscipline\) \? \[storedDiscipline, \.\.\.options\]/);
 assert.equal(d.canonicalizeDiscipline("Engelsk sporting"), "English Sporting");
 assert.match(editor, /getDisciplineDefinition\(discipline\)/);
+assert.match(editor, /`\$\{numberOfPosts\} \$\{areaPluralLower\} × \$\{targetsPerPost\} targets`/, "collapsed generic setup summary uses shared area plural terminology");
+assert.doesNotMatch(editor, /`\$\{numberOfPosts\} posts × \$\{targetsPerPost\} targets`/, "collapsed setup no longer hard-codes posts for every generic discipline");
+assert.doesNotMatch(readFileSync("lib/disciplines.ts", "utf8"), /supportsVariableTargets/);
 assert.doesNotMatch(editor, /function isCompakSporting/);
 execSync("rm -rf .discipline-definition-test-build");
 console.log("Authoritative discipline definitions, fallbacks, terminology, presets, and engine classification tests passed.");

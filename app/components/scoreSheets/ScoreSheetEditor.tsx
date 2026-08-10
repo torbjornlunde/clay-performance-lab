@@ -2783,7 +2783,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
           <summary>
             <span>{areaLabel} details</span>
             <span className="small muted">
-              {isCompak ? `${COMPAK_DEFAULT_STANDS} stands × ${COMPAK_TARGETS_PER_STAND} targets` : `${numberOfPosts} posts × ${targetsPerPost} targets`}
+              {isCompak ? `${COMPAK_DEFAULT_STANDS} stands × ${COMPAK_TARGETS_PER_STAND} targets` : `${numberOfPosts} ${areaPluralLower} × ${targetsPerPost} targets`}
             </span>
           </summary>
           <div className="row">

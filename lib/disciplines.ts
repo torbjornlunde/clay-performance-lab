@@ -20,7 +20,6 @@ export type DisciplineDefinition = {
   scoreSheetEngine: DisciplineScoreSheetEngine;
   areaSingular: string;
   areaPlural: string;
-  supportsVariableTargets: boolean;
   internationalOrder: number;
   quickStartKey?: DisciplineQuickStartKey;
   quickStartLabel?: string;
@@ -34,13 +33,12 @@ const genericStand = (value: string, internationalOrder: number, aliases: readon
   scoreSheetEngine: "generic",
   areaSingular: "Stand",
   areaPlural: "Stands",
-  supportsVariableTargets: true,
   internationalOrder,
 });
 
 /** Canonical selectable disciplines, in the established product order. */
 export const DISCIPLINE_DEFINITIONS: readonly DisciplineDefinition[] = [
-  { ...genericStand(COMPAK_SPORTING, 0), scoreSheetEngine: "compak", areaSingular: "Plate", areaPlural: "Plates", supportsVariableTargets: false, quickStartKey: "compak", quickStartLabel: "Compak Sporting training" },
+  { ...genericStand(COMPAK_SPORTING, 0), scoreSheetEngine: "compak", areaSingular: "Plate", areaPlural: "Plates", quickStartKey: "compak", quickStartLabel: "Compak Sporting training" },
   genericStand(KOMPAKT_LEIRDUESTI, 8),
   genericStand(SPORTTRAP, 6),
   { ...genericStand(LEIRDUESTI, 7), areaSingular: "Post", areaPlural: "Posts", quickStartKey: "leirduesti", quickStartLabel: "Leirduesti training", quickStartSetup: { postCount: 5, targetsPerPost: 10 } },
@@ -100,7 +98,7 @@ export function isPostBasedSportingDiscipline(discipline?: string | null) {
 }
 
 export function postTargetUnitLabel(discipline?: string | null) {
-  return discipline === LEIRDUESTI ? "Post" : "Stand";
+  return discipline?.trim().toLowerCase() === LEIRDUESTI.toLowerCase() ? "Post" : "Stand";
 }
 
 // This title-only import heuristic must not be used to select a score-sheet engine.
