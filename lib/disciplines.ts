@@ -21,11 +21,13 @@ export type DisciplineDefinition = {
   areaSingular: string;
   areaPlural: string;
   supportsVariableTargets: boolean;
+  internationalOrder: number;
   quickStartKey?: DisciplineQuickStartKey;
   quickStartLabel?: string;
+  quickStartSetup?: { postCount: number; targetsPerPost: number };
 };
 
-const genericStand = (value: string, aliases: readonly string[] = []): DisciplineDefinition => ({
+const genericStand = (value: string, internationalOrder: number, aliases: readonly string[] = []): DisciplineDefinition => ({
   value,
   label: value,
   aliases,
@@ -33,24 +35,28 @@ const genericStand = (value: string, aliases: readonly string[] = []): Disciplin
   areaSingular: "Stand",
   areaPlural: "Stands",
   supportsVariableTargets: true,
+  internationalOrder,
 });
 
 /** Canonical selectable disciplines, in the established product order. */
 export const DISCIPLINE_DEFINITIONS: readonly DisciplineDefinition[] = [
-  { ...genericStand(COMPAK_SPORTING), scoreSheetEngine: "compak", areaSingular: "Plate", areaPlural: "Plates", supportsVariableTargets: false, quickStartKey: "compak", quickStartLabel: "Compak Sporting training" },
-  genericStand(KOMPAKT_LEIRDUESTI),
-  genericStand(SPORTTRAP),
-  { ...genericStand(LEIRDUESTI), areaSingular: "Post", areaPlural: "Posts", quickStartKey: "leirduesti", quickStartLabel: "Leirduesti training" },
-  genericStand(FITASC_SPORTING),
-  genericStand(SPORTING),
-  genericStand(ENGLISH_SPORTING, ["Engelsk sporting"]),
-  genericStand(JEGERTRAP_NORDISK_TRAP),
-  genericStand(TRAP),
-  genericStand(SKEET),
-  genericStand(OTHER_DISCIPLINE),
+  { ...genericStand(COMPAK_SPORTING, 0), scoreSheetEngine: "compak", areaSingular: "Plate", areaPlural: "Plates", supportsVariableTargets: false, quickStartKey: "compak", quickStartLabel: "Compak Sporting training" },
+  genericStand(KOMPAKT_LEIRDUESTI, 8),
+  genericStand(SPORTTRAP, 6),
+  { ...genericStand(LEIRDUESTI, 7), areaSingular: "Post", areaPlural: "Posts", quickStartKey: "leirduesti", quickStartLabel: "Leirduesti training", quickStartSetup: { postCount: 5, targetsPerPost: 10 } },
+  genericStand(FITASC_SPORTING, 1),
+  genericStand(SPORTING, 2),
+  genericStand(ENGLISH_SPORTING, 3, ["Engelsk sporting"]),
+  genericStand(JEGERTRAP_NORDISK_TRAP, 9),
+  genericStand(TRAP, 5),
+  genericStand(SKEET, 4),
+  genericStand(OTHER_DISCIPLINE, 10),
 ];
 
 export const DISCIPLINE_OPTIONS = DISCIPLINE_DEFINITIONS.map((definition) => definition.value);
+export const INTERNATIONAL_DISCIPLINE_OPTIONS = [...DISCIPLINE_DEFINITIONS]
+  .sort((left, right) => left.internationalOrder - right.internationalOrder)
+  .map((definition) => definition.value);
 
 const disciplineLookup = new Map(
   DISCIPLINE_DEFINITIONS.flatMap((definition) =>
@@ -67,7 +73,7 @@ export function getDisciplineDefinition(discipline?: string | null): DisciplineD
   const trimmed = discipline?.trim() ?? "";
   const known = disciplineLookup.get(trimmed.toLowerCase());
   if (known) return known;
-  return genericStand(trimmed);
+  return genericStand(trimmed, Number.MAX_SAFE_INTEGER);
 }
 
 export function disciplineScoreSheetEngine(discipline?: string | null) {
@@ -85,7 +91,7 @@ export function isCompactDiscipline(discipline?: string | null) {
 }
 
 export function isOrdinaryLeirduesti(discipline?: string | null) {
-  return canonicalizeDiscipline(discipline) === LEIRDUESTI;
+  return discipline === LEIRDUESTI;
 }
 
 export function isPostBasedSportingDiscipline(discipline?: string | null) {
@@ -94,7 +100,7 @@ export function isPostBasedSportingDiscipline(discipline?: string | null) {
 }
 
 export function postTargetUnitLabel(discipline?: string | null) {
-  return getDisciplineDefinition(discipline).areaSingular;
+  return discipline === LEIRDUESTI ? "Post" : "Stand";
 }
 
 // This title-only import heuristic must not be used to select a score-sheet engine.

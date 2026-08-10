@@ -9,6 +9,7 @@ const setup = await import('../.discipline-test-build/targets/postSetupState.js'
 assert.equal(d.isPostBasedSportingDiscipline('English Sporting'), true, 'English Sporting routes to the post/stand-based target editor');
 assert.equal(d.postTargetUnitLabel('English Sporting'), 'Stand', 'English Sporting uses Stand terminology');
 assert.equal(d.postTargetUnitLabel('Leirduesti'), 'Post', 'Leirduesti keeps Post terminology');
+assert.equal(d.postTargetUnitLabel('Compak Sporting'), 'Stand', 'legacy target editors keep Stand terminology for Compak');
 assert.equal(setup.scopedPhotoKey('session-a', 3), 'session-a:3', 'image analysis is scoped to the selected stand/post');
 assert.notEqual(setup.scopedPhotoKey('session-a', 3), setup.scopedPhotoKey('session-a', 4), 'one stand photo queue cannot overwrite another stand');
 
