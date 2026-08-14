@@ -11,6 +11,7 @@ export const SKEET = "Skeet";
 export const OTHER_DISCIPLINE = "Other";
 
 export type DisciplineScoreSheetEngine = "compak" | "generic";
+export type DisciplineProgrammeFamily = "compak_menu" | "sporttrap_menu";
 export type DisciplineQuickStartKey = "compak" | "leirduesti";
 
 export type DisciplineDefinition = {
@@ -18,6 +19,7 @@ export type DisciplineDefinition = {
   label: string;
   aliases: readonly string[];
   scoreSheetEngine: DisciplineScoreSheetEngine;
+  programmeFamily?: DisciplineProgrammeFamily;
   areaSingular: string;
   areaPlural: string;
   internationalOrder: number;
@@ -38,9 +40,9 @@ const genericStand = (value: string, internationalOrder: number, aliases: readon
 
 /** Canonical selectable disciplines, in the established product order. */
 export const DISCIPLINE_DEFINITIONS: readonly DisciplineDefinition[] = [
-  { ...genericStand(COMPAK_SPORTING, 0), scoreSheetEngine: "compak", areaSingular: "Plate", areaPlural: "Plates", quickStartKey: "compak", quickStartLabel: "Compak Sporting training" },
-  genericStand(KOMPAKT_LEIRDUESTI, 8),
-  genericStand(SPORTTRAP, 6),
+  { ...genericStand(COMPAK_SPORTING, 0), scoreSheetEngine: "compak", programmeFamily: "compak_menu", areaSingular: "Plate", areaPlural: "Plates", quickStartKey: "compak", quickStartLabel: "Compak Sporting training" },
+  { ...genericStand(KOMPAKT_LEIRDUESTI, 8), programmeFamily: "compak_menu" },
+  { ...genericStand(SPORTTRAP, 6), programmeFamily: "sporttrap_menu" },
   { ...genericStand(LEIRDUESTI, 7), areaSingular: "Post", areaPlural: "Posts", quickStartKey: "leirduesti", quickStartLabel: "Leirduesti training", quickStartSetup: { postCount: 5, targetsPerPost: 10 } },
   genericStand(FITASC_SPORTING, 1),
   genericStand(SPORTING, 2),

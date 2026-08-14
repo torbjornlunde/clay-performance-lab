@@ -8,8 +8,9 @@ import { formatDateOnly } from "@/lib/scoreSheets/liveSafety";
 import { buildCompetitionResultCsv, competitionResultFilename } from "@/lib/scoreSheets/resultCsv";
 import { getDisciplineDefinition } from "@/lib/disciplines";
 import { isAuthoritativeCompetitionResult, isCurrentAuthoritativeResultRevision, projectScoreSheetResults, type ProjectedShooterResult, type ResultScoreRow, type ResultShooterRow, type ResultTargetRow } from "@/lib/scoreSheets/results";
+import { programmeLabel, type ScoreSheetProgramme } from "@/lib/scoreSheets/programmes";
 
-type Sheet = { id: string; title: string; session_date: string; location: string | null; discipline: string; session_type: string; number_of_posts: number; targets_per_post: number; expected_targets_by_post: number[] | null; competition_status: string | null; competition_finalized_at: string | null; competition_finalized_with_incomplete: boolean | null; competition_finalized_unscored_targets: number | null; competition_reopen_count: number | null; updated_at: string | null };
+type Sheet = { id: string; title: string; session_date: string; location: string | null; discipline: string; session_type: string; number_of_posts: number; targets_per_post: number; expected_targets_by_post: number[] | null; competition_status: string | null; competition_finalized_at: string | null; competition_finalized_with_incomplete: boolean | null; competition_finalized_unscored_targets: number | null; competition_reopen_count: number | null; updated_at: string | null; programme_snapshot: ScoreSheetProgramme | null };
 type State = "loading" | "ready" | "live" | "stale" | "error" | "empty";
 type RevisionRow = Pick<Sheet, "session_type" | "competition_status" | "updated_at">;
 
@@ -39,7 +40,7 @@ export default function CompetitionResultPage() {
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) { router.push("/login"); return; }
     const { data: loaded, error } = await supabase.from("training_score_sheets")
-      .select("id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,expected_targets_by_post,competition_status,competition_finalized_at,competition_finalized_with_incomplete,competition_finalized_unscored_targets,competition_reopen_count,updated_at")
+      .select("id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,expected_targets_by_post,competition_status,competition_finalized_at,competition_finalized_with_incomplete,competition_finalized_unscored_targets,competition_reopen_count,updated_at,programme_snapshot")
       .eq("id", id).eq("session_type", "competition").maybeSingle<Sheet>();
     if (error || !loaded) { setState("error"); setMessage("This Competition result was not found or is not accessible."); return; }
     setSheet(loaded);
@@ -88,6 +89,7 @@ export default function CompetitionResultPage() {
   return <main className="container competitionResultPage"><article className="card competitionResultDocument">
     <div className="competitionResultHeader"><div><p className="eyebrow">Final Competition result</p><h1>{sheet.title}</h1><p className="muted">{formatDateOnly(sheet.session_date)} · {sheet.discipline}{sheet.location ? ` · ${sheet.location}` : ""}</p></div><div className="competitionResultStatuses"><span className="badge badgeGold">Finalized</span>{(sheet.competition_reopen_count || 0) > 0 && <span className="badge">Corrected · {sheet.competition_reopen_count} {(sheet.competition_reopen_count || 0) === 1 ? "reopen" : "reopens"}</span>}</div></div>
     <p className="small">Finalized {sheet.competition_finalized_at ? new Date(sheet.competition_finalized_at).toLocaleString() : "timestamp unavailable"}</p>
+    {sheet.programme_snapshot && <p className="small"><strong>Programme:</strong> {programmeLabel(sheet.programme_snapshot)}</p>}
     {sheet.competition_finalized_with_incomplete && <div className="warning" role="alert"><strong>Finalized with incomplete target coverage</strong><br />{sheet.competition_finalized_unscored_targets || 0} target positions were unscored at finalization.</div>}
     <div className="competitionResultActions printHidden"><Link className="button secondary" href={`/competition-score-sheets/${sheet.id}`}>Back to Score Sheet</Link><button type="button" className="secondary" onClick={printResult}>Print result</button><button type="button" onClick={downloadCsv}>Download CSV</button></div>
     {message && <p className="error printHidden" role="alert">{message}</p>}

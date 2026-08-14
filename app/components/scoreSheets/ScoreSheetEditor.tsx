@@ -66,6 +66,8 @@ import { TRAINING_SCORE_SHEET_QUICK_START_STEPS } from "@/lib/trainingScoreSheet
 import { userFacingDeleteError, userFacingLoadError, userFacingSaveError } from "@/lib/userFacingErrors";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 import ShooterIdentityPicker from "@/app/components/scoreSheets/ShooterIdentityPicker";
+import ProgrammeEditor from "@/app/components/scoreSheets/ProgrammeEditor";
+import { compakProgrammeTemplate, customProgramme, programmeAreaTargetCount, programmeAsCompakRows, programmeLabel, snapshotProgramme, sporttrapProgrammeTemplate, validateProgramme, type ScoreSheetProgramme } from "@/lib/scoreSheets/programmes";
 import { applyShooterIdentity, normalizeLinkedUserId, ownProfileSuggestion, restoreShooterIdentityDrafts, unlinkShooterIdentity, type ShooterDirectorySuggestion } from "@/lib/scoreSheets/shooterIdentity";
 
 type ShooterDraft = {
@@ -103,6 +105,7 @@ type ScoreSheetRow = {
   competition_finalized_unscored_targets: number | null;
   competition_reopened_at: string | null;
   competition_reopen_count: number;
+  programme_snapshot: ScoreSheetProgramme | null;
 };
 
 type ShooterRow = {
@@ -165,6 +168,7 @@ type LocalScoreSheetDraft = {
   compakSchemeId: number;
   compakShootingMode: CompakShootingMode;
   compakRotationMode: CompakRotationMode;
+  programmeSnapshot?: ScoreSheetProgramme | null;
   shooters: ShooterDraft[];
   targetResults: TargetResultMap;
   currentShooterId: string;
@@ -567,6 +571,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   const [compakShootingMode, setCompakShootingMode] = useState<CompakShootingMode>("Squad");
   const [compakRotationMode, setCompakRotationMode] = useState<CompakRotationMode>("waiting_shooter");
   const [compakSchemeRows, setCompakSchemeRows] = useState<CompakSchemeRow[]>([]);
+  const [programmeSnapshot, setProgrammeSnapshot] = useState<ScoreSheetProgramme | null>(null);
   const [shooters, setShooters] = useState<ShooterDraft[]>([]);
   const [targetResults, setTargetResults] = useState<TargetResultMap>({});
   const [inputHistory, setInputHistory] = useState<InputHistoryItem[]>([]);
@@ -646,6 +651,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     [numberOfPosts],
   );
   const disciplineDefinition = getDisciplineDefinition(discipline);
+  const programmeFamily = disciplineDefinition.programmeFamily;
   const isCompak = disciplineDefinition.scoreSheetEngine === "compak";
   const areaSingular = disciplineDefinition.areaSingular;
   const areaPlural = disciplineDefinition.areaPlural;
@@ -714,12 +720,13 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
         ? buildCompakRoundProgram(
             compakSchemeId,
             currentCompakStartStand,
-            compakSchemeRows,
+            programmeSnapshot ? programmeAsCompakRows(programmeSnapshot, compakSchemeId) : compakSchemeRows,
           )
         : [],
     [
       compakSchemeId,
       compakSchemeRows,
+      programmeSnapshot,
       compakShootingMode,
       currentCompakStartStand,
       isCompak,
@@ -898,6 +905,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
       compakSchemeId,
       compakShootingMode,
       compakRotationMode,
+      programmeSnapshot,
       shooters,
       targetResults,
       currentShooterId,
@@ -948,6 +956,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     setCompakSchemeId(normalizeCompakSchemeId(draft.compakSchemeId));
     setCompakShootingMode(normalizeCompakShootingMode(draft.compakShootingMode));
     setCompakRotationMode(normalizeCompakRotationMode(draft.compakRotationMode));
+    setProgrammeSnapshot(draft.programmeSnapshot || null);
     setShooters(draft.shooters);
     setTargetResults(draft.targetResults);
     setCurrentShooterId(draft.currentShooterId);
@@ -1116,6 +1125,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     compakSchemeId,
     compakShootingMode,
     compakRotationMode,
+    programmeSnapshot,
     shooters,
     targetResults,
     currentShooterId,
@@ -1180,7 +1190,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     const { data: sheet, error: sheetError } = await supabase
       .from("training_score_sheets")
       .select(
-        "id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,expected_targets_by_post,updated_at,compak_scheme_id,compak_shooting_mode,compak_rotation_mode,competition_status,competition_finalized_at,competition_finalized_with_incomplete,competition_finalized_unscored_targets,competition_reopened_at,competition_reopen_count",
+        "id,title,session_date,location,discipline,session_type,number_of_posts,targets_per_post,total_targets,expected_targets_by_post,updated_at,compak_scheme_id,compak_shooting_mode,compak_rotation_mode,competition_status,competition_finalized_at,competition_finalized_with_incomplete,competition_finalized_unscored_targets,competition_reopened_at,competition_reopen_count,programme_snapshot",
       )
       .eq("id", sheetId)
       .in("session_type", isCompetition ? ["competition"] : ["training", "shared_training"])
@@ -1239,6 +1249,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     setCompakSchemeId(normalizeCompakSchemeId(sheet.compak_scheme_id));
     setCompakShootingMode(normalizeCompakShootingMode(sheet.compak_shooting_mode));
     setCompakRotationMode(normalizeCompakRotationMode(sheet.compak_rotation_mode));
+    setProgrammeSnapshot(sheet.programme_snapshot || null);
     setCompetitionStatus(isCompetition ? parseCompetitionStatus(sheet.competition_status || "live") : null);
     setCompetitionFinalizedAt(sheet.competition_finalized_at);
     setCompetitionFinalizedWithIncomplete(Boolean(sheet.competition_finalized_with_incomplete));
@@ -1384,6 +1395,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
       loadCompakSchemeRows(compakSchemeId);
     }
     setDiscipline(nextDiscipline);
+    setProgrammeSnapshot(null);
   }
 
   function updateCompakScheme(nextScheme: number) {
@@ -1392,6 +1404,30 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     const safeScheme = normalizeCompakSchemeId(nextScheme);
     setCompakSchemeId(safeScheme);
     loadCompakSchemeRows(safeScheme);
+  }
+
+  function attachProgramme(template: ScoreSheetProgramme) {
+    if (lifecycleReadOnly) return;
+    const counts = template.areas.map(programmeAreaTargetCount);
+    if (counts.length && counts.every((count) => count > 0)) {
+      const nextMax = Math.max(...counts);
+      const wouldTrim = setupReductionWouldTrimData({ shooters, targetResults, nextPostCount: counts.length, nextTargetsPerPost: nextMax });
+      if (wouldTrim && !window.confirm("Using this programme changes the scoring setup and removes scores outside its areas or target counts. Continue?")) return;
+      setNumberOfPosts(counts.length);
+      setTargetsPerPost(nextMax);
+      setExpectedTargetsByPost(counts.every((count) => count === nextMax) ? null : counts);
+      setShooters((current) => resizeShootersForSetup(current, counts.length, nextMax));
+      setTargetResults((current) => trimTargetResults(current, counts.length, counts));
+    }
+    setProgrammeSnapshot(snapshotProgramme(template));
+    setHasUserEditedSinceHydration(true);
+  }
+
+  function resetProgrammeToTemplate() {
+    if (!programmeSnapshot?.templateId || lifecycleReadOnly) return;
+    if (programmeSnapshot.modified && !window.confirm("Reset this Score Sheet programme to its template? Your programme edits will be discarded.")) return;
+    const template = programmeSnapshot.family === "sporttrap_menu" ? sporttrapProgrammeTemplate() : compakProgrammeTemplate(compakSchemeId, compakSchemeRows);
+    attachProgramme(template);
   }
 
   function updateSetupDraft(field: keyof SetupDraft, value: string) {
@@ -2107,6 +2143,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
       compak_scheme_id: isCompak ? String(compakSchemeId) : null,
       compak_shooting_mode: isCompak ? compakShootingMode : null,
       compak_rotation_mode: isCompak ? compakRotationMode : null,
+      programme_snapshot: programmeSnapshot,
     };
 
     const existingSheetId = effectiveSheetId;
@@ -2294,7 +2331,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   }
 
   const reviewCoverage = competitionCoverage(validShooters.map((shooter) => shooter.localId), sheetTotalTargets, targetResults);
-  const finalizationBlockReason = competitionFinalizeBlockReason({ online: isOnline, hasUnsyncedLocalDraft, localSaveStatus, recoveryPrompt: Boolean(recoveryPrompt), recoveryAutosavePaused, saving, lastKnownServerUpdatedAt, shooterCount: validShooters.length });
+  const programmeFinalizationError = programmeSnapshot && !validateProgramme(programmeSnapshot).valid ? "Complete every programme presentation and machine assignment before finalizing." : null;
+  const finalizationBlockReason = programmeFinalizationError || competitionFinalizeBlockReason({ online: isOnline, hasUnsyncedLocalDraft, localSaveStatus, recoveryPrompt: Boolean(recoveryPrompt), recoveryAutosavePaused, saving, lastKnownServerUpdatedAt, shooterCount: validShooters.length });
 
   async function finalizeCompetition() {
     if (!isCompetition || !effectiveSheetId || !lastKnownServerUpdatedAt) return;
@@ -2861,6 +2899,16 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
               </div>
             )}
           </div>
+
+          {programmeFamily && <section className="programmeSetupPanel" aria-label="Score Sheet programme">
+            <div className="sectionHeader compactSectionHeader"><div><h3>Programme</h3><p className="small muted">Built-ins are references. Use one to create an independent snapshot for this Score Sheet.</p></div></div>
+            {!programmeSnapshot ? <div className="btns">
+              {programmeFamily === "compak_menu" && <button type="button" className="secondary" disabled={lifecycleReadOnly} onClick={() => attachProgramme(compakProgrammeTemplate(compakSchemeId, compakSchemeRows))}>Use FITASC Scheme {compakSchemeId}</button>}
+              {programmeFamily === "sporttrap_menu" && <button type="button" className="secondary" disabled={lifecycleReadOnly} onClick={() => attachProgramme(sporttrapProgrammeTemplate())}>Use Sporttrap starter</button>}
+              <button type="button" className="secondary" disabled={lifecycleReadOnly} onClick={() => attachProgramme(customProgramme(numberOfPosts))}>Custom programme</button>
+            </div> : <ProgrammeEditor programme={programmeSnapshot} disabled={lifecycleReadOnly} onChange={(next) => { setProgrammeSnapshot(next); setHasUserEditedSinceHydration(true); }} onReset={resetProgrammeToTemplate} />}
+            {programmeSnapshot && <p className="small muted" role="status">Attached: {programmeLabel(programmeSnapshot)}</p>}
+          </section>}
 
           {isCompak ? (
             <div className="compakSettingsPanel">
