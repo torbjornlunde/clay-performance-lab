@@ -77,7 +77,7 @@ declare
   v_shooter public.training_score_sheet_shooters%rowtype; v_existing uuid; v_session uuid;
   v_expected integer; v_target_count integer; v_hits integer; v_score_count integer; v_score integer; v_max integer;
   v_course_count integer; v_sporttrap_series_count integer; v_post_count integer;
-  v_targets_per_post integer; v_shooting_format text; v_compact boolean; v_sporttrap boolean;
+  v_targets_per_post integer; v_shooting_format text; v_compact boolean; v_sporttrap boolean; v_post_based boolean;
 begin
   if v_user is null then raise exception using errcode='42501',message='Authentication required.'; end if;
   if not public.has_approved_access(v_user) then raise exception using errcode='42501',message='Access denied.'; end if;
@@ -99,21 +99,22 @@ begin
   end if;
   v_compact := lower(btrim(v_sheet.discipline)) in ('compak sporting','kompakt leirduesti');
   v_sporttrap := lower(btrim(v_sheet.discipline)) = 'sporttrap';
+  v_post_based := lower(btrim(v_sheet.discipline)) in ('leirduesti','sporting','english sporting','engelsk sporting');
   if (v_compact or v_sporttrap) and v_expected % 25 <> 0 then
     raise exception using errcode='22023',message='This result cannot be mapped to complete 25-target courses or series.';
   end if;
-  v_course_count := case when v_compact then v_expected/25 when v_sporttrap then 1 else v_sheet.number_of_posts end;
+  v_course_count := case when v_compact then v_expected/25 when v_sporttrap then 1 when v_post_based then v_sheet.number_of_posts else null end;
   v_sporttrap_series_count := case when v_sporttrap then v_expected/25 else null end;
-  v_post_count := case when not v_compact and not v_sporttrap then v_sheet.number_of_posts else null end;
+  v_post_count := case when v_post_based then v_sheet.number_of_posts else null end;
   v_targets_per_post := case when v_post_count is not null and v_sheet.expected_targets_by_post is null then v_sheet.targets_per_post else null end;
-  v_shooting_format := case when v_sporttrap then 'Sporttrap' when not v_compact then 'Post-based' else null end;
+  v_shooting_format := case when v_sporttrap then 'Sporttrap' when v_post_based then 'Post-based' else null end;
   insert into public.sessions(user_id,name,discipline,session_type,shooting_format,course_count,sporttrap_series_count,total_targets,competition_date,shooting_ground,own_score,winning_score,post_count,targets_per_post,notes)
   values(v_user,v_sheet.title,v_sheet.discipline,'Competition',v_shooting_format,v_course_count,v_sporttrap_series_count,v_expected,v_sheet.session_date,nullif(btrim(v_sheet.location),''),v_score,null,v_post_count,v_targets_per_post,'Source: Competition Score Sheet claim. Official score is an organizer-owned snapshot.') returning id into v_session;
-  insert into public.misses(session_id,course_number,target_position,target_number,target_label,target_type,missed_target,where_miss,main_reason,target_read,source_type)
+  insert into public.misses(session_id,course_number,target_position,target_number,plate,target_label,target_type,missed_target,where_miss,main_reason,target_read,source_type)
   select v_session,
     case when v_compact or v_sporttrap then ((r.post_number-1)/5)+1 else r.post_number end,
     case when v_compact or v_sporttrap then ((r.post_number-1)%5)*coalesce(v_sheet.targets_per_post,5)+r.target_number else r.target_number end,
-    r.target_number,'Target '||r.target_number,'Unknown','Unknown','Not sure','Unknown','Unknown','competition_score_sheet_claim'
+    r.target_number,case when v_compact or v_sporttrap then r.post_number else null end,'Target '||r.target_number,'Unknown','Unknown','Not sure','Unknown','Unknown','competition_score_sheet_claim'
   from public.training_score_sheet_target_results r where r.score_sheet_id=p_score_sheet_id and r.shooter_id=p_shooter_id and r.result='miss';
   insert into public.competition_score_sheet_claims(score_sheet_id,shooter_id,user_id,session_id,source_finalized_at,source_reopen_count,source_updated_at)
   values(p_score_sheet_id,p_shooter_id,v_user,v_session,v_sheet.competition_finalized_at,v_sheet.competition_reopen_count,v_sheet.updated_at);

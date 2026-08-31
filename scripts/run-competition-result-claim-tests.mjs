@@ -27,7 +27,10 @@ assert.deepEqual(claimedSessionShape("Compak Sporting", 5, 5, 25), { shootingFor
 assert.deepEqual(claimedSessionShape("Sporttrap", 5, 5, 50), { shootingFormat:"Sporttrap", courseCount:1, sporttrapSeriesCount:2, postCount:null, targetsPerPost:null });
 assert.deepEqual(claimedSessionShape("Kompakt leirduesti", 10, 5, 50), { shootingFormat:null, courseCount:2, sporttrapSeriesCount:null, postCount:null, targetsPerPost:null });
 assert.deepEqual(claimedSessionShape("Leirduesti", 5, 10, 50), { shootingFormat:"Post-based", courseCount:5, sporttrapSeriesCount:null, postCount:5, targetsPerPost:10 });
-assert.deepEqual(claimedSessionShape("Local Pool Shoot", 3, 7, 21), { shootingFormat:"Post-based", courseCount:3, sporttrapSeriesCount:null, postCount:3, targetsPerPost:7 });
+assert.deepEqual(claimedSessionShape("Sporting", 3, 7, 21), { shootingFormat:"Post-based", courseCount:3, sporttrapSeriesCount:null, postCount:3, targetsPerPost:7 });
+for (const discipline of ["Trap", "Skeet", "FITASC Sporting", "Jegertrap / Nordisk trap", "Other", "Local Pool Shoot"]) {
+  assert.deepEqual(claimedSessionShape(discipline, 5, 5, 25), { shootingFormat:null, courseCount:null, sporttrapSeriesCount:null, postCount:null, targetsPerPost:null }, `${discipline} remains total-only`);
+}
 assert.throws(() => claimedSessionShape("Compak Sporting", 1, 20, 20), /complete 25-target courses/);
 assert.match(component, /Competition results available/);
 assert.match(component, /Add to my Results/);
@@ -35,6 +38,8 @@ assert.match(component, /navigator\.onLine/);
 assert.match(component, /button secondary smallButton|badge badgeBlue/, "uses existing light/dark semantic classes");
 assert.match(migration, /v_compact := lower\(btrim\(v_sheet\.discipline\)\) in \('compak sporting','kompakt leirduesti'\)/);
 assert.match(migration, /v_sporttrap_series_count := case when v_sporttrap then v_expected\/25/);
+assert.match(migration, /v_post_based := lower\(btrim\(v_sheet\.discipline\)\) in \('leirduesti','sporting','english sporting','engelsk sporting'\)/);
+assert.match(migration, /case when v_compact or v_sporttrap then r\.post_number else null end/);
 assert.doesNotMatch(migration, /\.revision|source_revision/, "uses the real updated_at score-sheet revision");
 assert.match(migration, /source_type[^\n]*competition_score_sheet_claim/);
 assert.match(migration, /result='miss'/);

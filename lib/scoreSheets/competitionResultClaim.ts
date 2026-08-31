@@ -3,6 +3,7 @@ import {
   KOMPAKT_LEIRDUESTI,
   SPORTTRAP,
   canonicalizeDiscipline,
+  isPostBasedSportingDiscipline,
 } from "@/lib/disciplines";
 
 export type CompetitionResultClaim = {
@@ -41,7 +42,7 @@ export function sourceCorrectionLabel(result: CompetitionResultClaim) {
 
 export type ClaimedSessionShape = {
   shootingFormat: "Sporttrap" | "Post-based" | null;
-  courseCount: number;
+  courseCount: number | null;
   sporttrapSeriesCount: number | null;
   postCount: number | null;
   targetsPerPost: number | null;
@@ -59,5 +60,8 @@ export function claimedSessionShape(discipline: string, numberOfPosts: number, t
     const series = totalTargets / 25;
     return { shootingFormat: "Sporttrap", courseCount: 1, sporttrapSeriesCount: series, postCount: null, targetsPerPost: null };
   }
-  return { shootingFormat: "Post-based", courseCount: numberOfPosts, sporttrapSeriesCount: null, postCount: numberOfPosts, targetsPerPost };
+  if (isPostBasedSportingDiscipline(canonical)) {
+    return { shootingFormat: "Post-based", courseCount: numberOfPosts, sporttrapSeriesCount: null, postCount: numberOfPosts, targetsPerPost };
+  }
+  return { shootingFormat: null, courseCount: null, sporttrapSeriesCount: null, postCount: null, targetsPerPost: null };
 }
