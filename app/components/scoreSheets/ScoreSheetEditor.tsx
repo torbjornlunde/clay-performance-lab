@@ -2916,7 +2916,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
               {programmeFamily === "compak_menu" && <button type="button" className="secondary" disabled={lifecycleReadOnly} onClick={() => attachProgramme(compakProgrammeTemplate(compakSchemeId, compakSchemeRows))}>Use FITASC Scheme {compakSchemeId}</button>}
               {programmeFamily === "sporttrap_menu" && <button type="button" className="secondary" disabled={lifecycleReadOnly} onClick={() => attachProgramme(sporttrapProgrammeTemplate())}>Use Sporttrap starter</button>}
               <button type="button" className="secondary" disabled={lifecycleReadOnly} onClick={() => attachProgramme(customProgramme(isCompak ? 5 : numberOfPosts, isCompak ? 5 : 1, isCompak ? "compak_menu" : "custom"))}>Custom programme</button>
-            </div> : <ProgrammeEditor programme={programmeSnapshot} disabled={lifecycleReadOnly} fixedCompakStructure={isCompak} onChange={(next) => { acceptProgrammeSnapshot(next); }} onReset={() => { void resetProgrammeToTemplate(); }} />}
+            </div> : <ProgrammeEditor programme={programmeSnapshot} disabled={lifecycleReadOnly} fixedCompakAreas={isCompak} maxTargetsPerArea={isCompak ? 5 : undefined} onChange={(next) => { acceptProgrammeSnapshot(next); }} onReset={() => { void resetProgrammeToTemplate(); }} />}
             {programmeSnapshot && <p className="small muted" role="status">Attached: {programmeLabel(programmeSnapshot)}</p>}
           </section>}
 
