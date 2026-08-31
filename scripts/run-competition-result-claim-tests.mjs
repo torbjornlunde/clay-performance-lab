@@ -1,0 +1,57 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import ts from "typescript";
+
+const source = await readFile(new URL("../lib/scoreSheets/competitionResultClaim.ts", import.meta.url), "utf8");
+const disciplineSource = await readFile(new URL("../lib/disciplines.ts", import.meta.url), "utf8");
+const component = await readFile(new URL("../app/results/CompetitionResultClaims.tsx", import.meta.url), "utf8");
+const migration = await readFile(new URL("../supabase/migrations/20260831120000_competition_score_sheet_result_claims.sql", import.meta.url), "utf8");
+const resultsPage = await readFile(new URL("../app/results/page.tsx", import.meta.url), "utf8");
+const sessionPage = await readFile(new URL("../app/sessions/[id]/page.tsx", import.meta.url), "utf8");
+const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const disciplineJs = ts.transpileModule(disciplineSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const disciplineModule = { exports: {} }; new Function("exports", "module", disciplineJs)(disciplineModule.exports, disciplineModule);
+const module = { exports: {} }; new Function("exports", "module", "require", js)(module.exports, module, (id) => {
+  if (id === "@/lib/disciplines") return disciplineModule.exports;
+  throw new Error(`Unexpected import: ${id}`);
+});
+const { claimCoverage, unclaimedCompetitionResults, sourceCorrectionLabel, claimedSessionShape } = module.exports;
+const base = { score_sheet_id:"s", shooter_id:"u", event_title:"Cup", event_date:"2026-08-31", location:"Range", discipline:"Compak Sporting", shooter_name:"Shooter", own_score:23, expected_targets:25, scored_targets:25, known_misses:2, post_scores:[{post:1,score:23,maximum:25}], finalized_at:"2026-08-31T12:00:00Z", reopen_count:0, claimed_session_id:null, source_changed:false };
+assert.deepEqual(claimCoverage(base), { complete:true, targetDetailComplete:true });
+assert.equal(unclaimedCompetitionResults([base]).length, 1);
+assert.equal(unclaimedCompetitionResults([{...base, claimed_session_id:"session"}]).length, 0);
+assert.equal(claimCoverage({...base, scored_targets:0}).complete, true, "post totals can truthfully provide completeness");
+assert.equal(claimCoverage({...base, scored_targets:20, post_scores:[]}).complete, false);
+assert.equal(sourceCorrectionLabel({...base, claimed_session_id:"session", source_changed:true}), "Source result was corrected after you added it");
+assert.equal(sourceCorrectionLabel(base), null);
+assert.deepEqual(claimedSessionShape("Compak Sporting", 5, 5, 25), { shootingFormat:null, courseCount:1, sporttrapSeriesCount:null, postCount:null, targetsPerPost:null });
+assert.deepEqual(claimedSessionShape("Sporttrap", 5, 5, 50), { shootingFormat:"Sporttrap", courseCount:1, sporttrapSeriesCount:2, postCount:null, targetsPerPost:null });
+assert.deepEqual(claimedSessionShape("Kompakt leirduesti", 10, 5, 50), { shootingFormat:null, courseCount:2, sporttrapSeriesCount:null, postCount:null, targetsPerPost:null });
+assert.deepEqual(claimedSessionShape("Leirduesti", 5, 10, 50), { shootingFormat:"Post-based", courseCount:5, sporttrapSeriesCount:null, postCount:5, targetsPerPost:10 });
+assert.deepEqual(claimedSessionShape("Sporting", 3, 7, 21), { shootingFormat:"Post-based", courseCount:3, sporttrapSeriesCount:null, postCount:3, targetsPerPost:7 });
+for (const discipline of ["Trap", "Skeet", "FITASC Sporting", "Jegertrap / Nordisk trap", "Other", "Local Pool Shoot"]) {
+  assert.deepEqual(claimedSessionShape(discipline, 5, 5, 25), { shootingFormat:null, courseCount:null, sporttrapSeriesCount:null, postCount:null, targetsPerPost:null }, `${discipline} remains total-only`);
+}
+assert.throws(() => claimedSessionShape("Compak Sporting", 1, 20, 20), /complete 25-target courses/);
+assert.match(component, /Competition results available/);
+assert.match(component, /Add to my Results/);
+assert.match(component, /navigator\.onLine/);
+assert.match(component, /button secondary smallButton|badge badgeBlue/, "uses existing light/dark semantic classes");
+assert.match(migration, /v_compact := lower\(btrim\(v_sheet\.discipline\)\) in \('compak sporting','kompakt leirduesti'\)/);
+assert.match(migration, /v_sporttrap_series_count := case when v_sporttrap then v_expected\/25/);
+assert.match(migration, /v_post_based := lower\(btrim\(v_sheet\.discipline\)\) in \('leirduesti','sporting','english sporting','engelsk sporting'\)/);
+assert.match(migration, /case when v_compact or v_sporttrap then r\.post_number else null end/);
+assert.doesNotMatch(migration, /\.revision|source_revision/, "uses the real updated_at score-sheet revision");
+assert.match(migration, /source_type[^\n]*competition_score_sheet_claim/);
+assert.match(migration, /result='miss'/);
+assert.doesNotMatch(migration, /v_expected\s*-\s*v_score/, "does not infer misses from score difference");
+assert.match(migration, /pg_advisory_xact_lock/);
+assert.match(migration, /unique \(score_sheet_id, user_id\)/, "deduplicates independently of mutable shooter rows");
+assert.match(migration, /on delete set null/, "retains provenance when a shooter row is replaced");
+assert.match(migration, /for share/, "serializes the snapshot against reopen's parent FOR UPDATE lock");
+assert.match(migration, /target_detail_complete/);
+assert.match(sessionPage, /claimedTargetDetailComplete === false\s*\? null/, "partial detail cannot produce a calculated-score mismatch");
+assert.match(sessionPage, /"Known misses"/, "partial imported misses are labelled truthfully");
+assert.match(migration, /source_reopen_count/);
+assert.match(resultsPage, /filter\(isCompetitionResult\)/, "only sessions, not score sheets, feed Results and Performance");
+console.log("competition result claim tests passed");

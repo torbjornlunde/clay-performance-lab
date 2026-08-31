@@ -8,6 +8,8 @@ import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
 import { isQuickScoreNotes, parseQuickScoreMetadata } from "@/lib/quick-score/metadata";
 import { deleteSessionWithEvidenceCleanup } from "@/lib/sessionDeletion";
+import { CompetitionResultClaims } from "./CompetitionResultClaims";
+import type { CompetitionResultClaim } from "@/lib/scoreSheets/competitionResultClaim";
 
 type ResultFilter = "all" | "competition" | "imported" | "manual" | "draft";
 
@@ -155,6 +157,7 @@ export default function ResultsPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [claimResults, setClaimResults] = useState<CompetitionResultClaim[]>([]);
 
   useEffect(() => {
     load();
@@ -169,10 +172,11 @@ export default function ResultsPage() {
       return;
     }
 
-    const [{ data: sessionData, error: sessionError }, { data: misses }, { data: courses }] = await Promise.all([
+    const [{ data: sessionData, error: sessionError }, { data: misses }, { data: courses }, { data: claims, error: claimError }] = await Promise.all([
       supabase.from("sessions").select("id,name,discipline,session_type,shooting_format,course_count,total_targets,created_at,competition_date,leirdue_result_url,own_score,winning_score,shooting_ground,notes").order("created_at", { ascending: false }).returns<SessionRow[]>(),
       supabase.from("misses").select("session_id,missed_target").returns<MissRow[]>(),
       supabase.from("session_courses").select("session_id").returns<CourseRow[]>(),
+      supabase.rpc("get_my_competition_score_sheet_results"),
     ]);
 
     if (sessionError) {
@@ -187,6 +191,7 @@ export default function ResultsPage() {
       return acc;
     }, {}));
     setSessions((sessionData || []).filter(isCompetitionResult));
+    if (!claimError) setClaimResults((claims || []) as CompetitionResultClaim[]);
     setLoading(false);
   }
 
@@ -239,6 +244,8 @@ export default function ResultsPage() {
           <Link href="/import/leirdue" className="button secondary">Import from Leirdue.net</Link>
         </div>
       </div>
+
+      <CompetitionResultClaims initialResults={claimResults} onClaimed={load} />
 
       <section className="card statsCompetitionActivityCard" aria-labelledby="results-competition-activity-heading">
         <div className="sectionHeader listSectionHeader">

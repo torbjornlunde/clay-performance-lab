@@ -288,6 +288,8 @@ export default function Page() {
   const [templateApplyFailedMessage, setTemplateApplyFailedMessage] = useState("");
   const [courses, setCourses] = useState<any[]>([]);
   const [misses, setMisses] = useState<Miss[]>([]);
+  const [claimedTargetDetailComplete, setClaimedTargetDetailComplete] =
+    useState<boolean | null>(null);
   const [targetDefinitions, setTargetDefinitions] = useState<
     TargetDefinition[]
   >([]);
@@ -355,6 +357,11 @@ export default function Page() {
       .eq("session_id", params.id)
       .order("created_at", { ascending: false })
       .returns<Miss[]>();
+    const { data: claimData } = await supabase
+      .from("competition_score_sheet_claims")
+      .select("target_detail_complete")
+      .eq("session_id", params.id)
+      .maybeSingle();
     const { data: definitionData } = await supabase
       .from("session_target_definitions")
       .select(
@@ -399,6 +406,7 @@ export default function Page() {
     setSession(sessionData);
     setCourses(courseData || []);
     setMisses(missData || []);
+    setClaimedTargetDetailComplete(claimData?.target_detail_complete ?? null);
     setTargetDefinitions(definitionData || []);
     setCount(weightedMissCount);
     setPostSetupCount(configuredPosts);
@@ -678,10 +686,12 @@ export default function Page() {
         ? leirduestiPostCount * leirduestiTargetsPerPost
         : session.total_targets);
   const calculatedScore =
-    quickScore?.totalHits ??
-    (typeof totalTargets === "number" && count > 0
-      ? scoreFromMisses(totalTargets, count)
-      : null);
+    claimedTargetDetailComplete === false
+      ? null
+      : quickScore?.totalHits ??
+        (typeof totalTargets === "number" && count > 0
+          ? scoreFromMisses(totalTargets, count)
+          : null);
   const scoreUsed =
     typeof session.own_score === "number" ? session.own_score : calculatedScore;
   const percentage =
@@ -1197,12 +1207,18 @@ export default function Page() {
         <DetailSection title="Result details" badge="Full">
           <div className="detailRowsGrid">
             <ResultRow label="Total targets">{value(totalTargets)}</ResultRow>
-            <ResultRow label="Registered misses">
+            <ResultRow
+              label={
+                claimedTargetDetailComplete === false
+                  ? "Known misses"
+                  : "Registered misses"
+              }
+            >
               {quickScore?.totalMisses ?? count}
             </ResultRow>
-            <ResultRow label="Calculated score">
-              {value(calculatedScore)}
-            </ResultRow>
+            {claimedTargetDetailComplete !== false && (
+              <ResultRow label="Calculated score">{value(calculatedScore)}</ResultRow>
+            )}
             <ResultRow label="Manual/official score">
               {value(session.own_score)}
             </ResultRow>

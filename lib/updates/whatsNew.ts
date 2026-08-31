@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v14.08.26", title: "Add scored competition results to your profile", bullets: ["Review a finalized Competition Score Sheet result when an organizer linked your CPL profile.", "Add it to your own Results with known missed target positions ready for personal review.", "Claiming is explicit and duplicate-safe while the organizer's scored result remains separate."] },
   { id: "v13.08.26", title: "Use the programme that was actually shot", bullets: ["Start from built-in Compak or Sporttrap programme structures.", "Correct a competition programme when an older or locally modified setup was used.", "Build a custom programme when the event does not match a standard template."] },
   { id: "v12.08.26", title: "Cleaner setup across shooting disciplines", bullets: ["Use one consistent discipline model across Training and Competition Score Sheets.", "See discipline-appropriate Post, Stand or Plate wording throughout setup and results.", "Keep current Compak and Leirduesti behavior while preparing other shooting formats for dedicated support later."] },
   { id: "v11.08.26", title: "Find CPL shooters faster", bullets: ["Search opted-in CPL profiles by name when adding shooters to a score sheet.", "Keep guest shooters fully supported when no account should be linked.", "Linked profiles keep the event name as a snapshot, so old results do not change after profile edits."] },
