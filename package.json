@@ -14,6 +14,7 @@
     "test:scorecard-crop": "node scripts/run-scorecard-crop-tests.mjs",
     "test:disciplines": "node scripts/run-discipline-tests.mjs",
     "test:discipline-definitions": "node scripts/run-discipline-definition-tests.mjs",
+    "test:score-sheet-programmes": "node scripts/run-score-sheet-programme-tests.mjs",
     "test:target-details": "node scripts/run-target-detail-tests.mjs",
     "test:competition-templates": "node scripts/run-competition-template-tests.mjs",
     "test:competition-template-candidates": "node scripts/run-competition-template-candidate-tests.mjs",
