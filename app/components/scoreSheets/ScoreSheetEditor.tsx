@@ -67,7 +67,7 @@ import { userFacingDeleteError, userFacingLoadError, userFacingSaveError } from 
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
 import ShooterIdentityPicker from "@/app/components/scoreSheets/ShooterIdentityPicker";
 import ProgrammeEditor from "@/app/components/scoreSheets/ProgrammeEditor";
-import { compakProgrammeTemplate, customProgramme, programmeAreaTargetCount, programmeAsCompakRows, programmeLabel, snapshotProgramme, sporttrapProgrammeTemplate, validateProgramme, type ScoreSheetProgramme } from "@/lib/scoreSheets/programmes";
+import { compakProgrammeTemplate, compakSchemeNumberFromProgramme, customProgramme, programmeAsCompakRows, programmeLabel, programmeSetupMatches, reconcileProgrammeStructure, snapshotProgramme, sporttrapProgrammeTemplate, validateProgramme, type ScoreSheetProgramme } from "@/lib/scoreSheets/programmes";
 import { applyShooterIdentity, normalizeLinkedUserId, ownProfileSuggestion, restoreShooterIdentityDrafts, unlinkShooterIdentity, type ShooterDirectorySuggestion } from "@/lib/scoreSheets/shooterIdentity";
 
 type ShooterDraft = {
@@ -714,19 +714,20 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
       ? compakStartPlateForOrderNumber(currentShooterNumber, compakRotationMode)
       : 1
     : 1;
+  const authoritativeCompakRows = useMemo(() => programmeSnapshot ? programmeAsCompakRows(programmeSnapshot) : compakSchemeRows, [compakSchemeRows, programmeSnapshot]);
+  const authoritativeCompakSchemeId = compakSchemeNumberFromProgramme(programmeSnapshot) ?? compakSchemeId;
   const currentCompakProgram = useMemo(
     () =>
       isCompak
         ? buildCompakRoundProgram(
-            compakSchemeId,
+            authoritativeCompakSchemeId,
             currentCompakStartStand,
-            programmeSnapshot ? programmeAsCompakRows(programmeSnapshot, compakSchemeId) : compakSchemeRows,
+            authoritativeCompakRows,
           )
         : [],
     [
-      compakSchemeId,
-      compakSchemeRows,
-      programmeSnapshot,
+      authoritativeCompakRows,
+      authoritativeCompakSchemeId,
       compakShootingMode,
       currentCompakStartStand,
       isCompak,
@@ -764,9 +765,9 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
   const activeCompakStandSequences = useMemo(
     () =>
       isCompak
-        ? buildCompakStandSequences(compakSchemeId, activePostNumber, compakSchemeRows)
+        ? buildCompakStandSequences(authoritativeCompakSchemeId, activePostNumber, authoritativeCompakRows)
         : [],
-    [activePostNumber, compakSchemeId, compakSchemeRows, isCompak],
+    [activePostNumber, authoritativeCompakRows, authoritativeCompakSchemeId, isCompak],
   );
   const currentPostResults = currentShooter
     ? targetResults[currentShooter.localId]?.[activePostNumber] || {}
@@ -799,7 +800,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     ? displayedPostScore(postCompleteShooter, postComplete.postNumber - 1, targetResults)
     : 0;
   const postCompleteStandSequences = postComplete && isCompak
-    ? buildCompakStandSequences(compakSchemeId, postComplete.postNumber, compakSchemeRows)
+    ? buildCompakStandSequences(authoritativeCompakSchemeId, postComplete.postNumber, authoritativeCompakRows)
     : [];
   const postCompleteMisses = postComplete
     ? isCompak
@@ -953,7 +954,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
       customTargetsByPost: customTargetDraftValues(draft.numberOfPosts, draft.targetsPerPost, draftCustomTargets),
       customTargetsActive: Boolean(draftCustomTargets),
     });
-    setCompakSchemeId(normalizeCompakSchemeId(draft.compakSchemeId));
+    setCompakSchemeId(compakSchemeNumberFromProgramme(draft.programmeSnapshot) ?? normalizeCompakSchemeId(draft.compakSchemeId));
     setCompakShootingMode(normalizeCompakShootingMode(draft.compakShootingMode));
     setCompakRotationMode(normalizeCompakRotationMode(draft.compakRotationMode));
     setProgrammeSnapshot(draft.programmeSnapshot || null);
@@ -1246,7 +1247,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
       customTargetsByPost: customTargetDraftValues(sheet.number_of_posts || 5, sheet.targets_per_post || 10, loadedExpectedTargetsByPost),
       customTargetsActive: Boolean(loadedExpectedTargetsByPost),
     });
-    setCompakSchemeId(normalizeCompakSchemeId(sheet.compak_scheme_id));
+    setCompakSchemeId(compakSchemeNumberFromProgramme(sheet.programme_snapshot) ?? normalizeCompakSchemeId(sheet.compak_scheme_id));
     setCompakShootingMode(normalizeCompakShootingMode(sheet.compak_shooting_mode));
     setCompakRotationMode(normalizeCompakRotationMode(sheet.compak_rotation_mode));
     setProgrammeSnapshot(sheet.programme_snapshot || null);
@@ -1323,22 +1324,24 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
 
     const disciplineToLoad = draftForScheme?.discipline || sheet.discipline || "";
     const schemeToLoad = draftForScheme
-      ? draftForScheme.compakSchemeId
-      : normalizeCompakSchemeId(sheet.compak_scheme_id);
-    if (usesCompakScoreSheetEngine(disciplineToLoad)) {
+      ? compakSchemeNumberFromProgramme(draftForScheme.programmeSnapshot) ?? draftForScheme.compakSchemeId
+      : compakSchemeNumberFromProgramme(sheet.programme_snapshot) ?? normalizeCompakSchemeId(sheet.compak_scheme_id);
+    if (getDisciplineDefinition(disciplineToLoad).programmeFamily === "compak_menu") {
       await loadCompakSchemeRows(normalizeCompakSchemeId(schemeToLoad));
     }
     setLocalDraftLoaded(true);
     setLoading(false);
   }
 
-  async function loadCompakSchemeRows(schemeNumber: number) {
+  async function loadCompakSchemeRows(schemeNumber: number, store = true) {
     const { data, error } = await supabase
       .from("fitasc_compak_schemes")
       .select("scheme_number,plate_number,event_number,presentation,first_machine,second_machine,is_verified")
       .eq("scheme_number", schemeNumber)
       .returns<CompakSchemeRow[]>();
-    if (!error) setCompakSchemeRows(data || []);
+    const rows = error ? [] : data || [];
+    if (!error && store) setCompakSchemeRows(rows);
+    return rows;
   }
 
   function applyCompakDefaults() {
@@ -1392,42 +1395,45 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
       if (!applied) return;
       setCompakShootingMode("Squad");
       setCompakRotationMode("waiting_shooter");
-      loadCompakSchemeRows(compakSchemeId);
+      void loadCompakSchemeRows(compakSchemeId);
+    } else if (getDisciplineDefinition(nextDiscipline).programmeFamily === "compak_menu") {
+      void loadCompakSchemeRows(compakSchemeId);
     }
     setDiscipline(nextDiscipline);
     setProgrammeSnapshot(null);
   }
 
-  function updateCompakScheme(nextScheme: number) {
+  async function updateCompakScheme(nextScheme: number) {
     if (lifecycleReadOnly) return;
-    setHasUserEditedSinceHydration(true);
     const safeScheme = normalizeCompakSchemeId(nextScheme);
+    if (programmeSnapshot) {
+      const warning = programmeSnapshot.modified ? `Replace ${programmeLabel(programmeSnapshot)} with FITASC Scheme ${safeScheme}? Programme edits will be discarded.` : `Replace ${programmeLabel(programmeSnapshot)} with FITASC Scheme ${safeScheme}?`;
+      if (!window.confirm(warning)) return;
+      const rows = await loadCompakSchemeRows(safeScheme, false);
+      if (!acceptProgrammeSnapshot(snapshotProgramme(compakProgrammeTemplate(safeScheme, rows)))) return;
+      setCompakSchemeRows(rows);
+    } else await loadCompakSchemeRows(safeScheme);
     setCompakSchemeId(safeScheme);
-    loadCompakSchemeRows(safeScheme);
-  }
-
-  function attachProgramme(template: ScoreSheetProgramme) {
-    if (lifecycleReadOnly) return;
-    const counts = template.areas.map(programmeAreaTargetCount);
-    if (counts.length && counts.every((count) => count > 0)) {
-      const nextMax = Math.max(...counts);
-      const wouldTrim = setupReductionWouldTrimData({ shooters, targetResults, nextPostCount: counts.length, nextTargetsPerPost: nextMax });
-      if (wouldTrim && !window.confirm("Using this programme changes the scoring setup and removes scores outside its areas or target counts. Continue?")) return;
-      setNumberOfPosts(counts.length);
-      setTargetsPerPost(nextMax);
-      setExpectedTargetsByPost(counts.every((count) => count === nextMax) ? null : counts);
-      setShooters((current) => resizeShootersForSetup(current, counts.length, nextMax));
-      setTargetResults((current) => trimTargetResults(current, counts.length, counts));
-    }
-    setProgrammeSnapshot(snapshotProgramme(template));
     setHasUserEditedSinceHydration(true);
   }
 
-  function resetProgrammeToTemplate() {
+  function acceptProgrammeSnapshot(nextProgramme: ScoreSheetProgramme) {
+    if (lifecycleReadOnly) return;
+    let reconciled = reconcileProgrammeStructure({ programme: nextProgramme, shooters, targetResults, allowDestructiveReduction: false });
+    if (!reconciled.accepted) { if (!window.confirm("This programme change removes scores or target results outside the new structure. Continue and discard only that out-of-range scoring data?")) return false; reconciled = reconcileProgrammeStructure({ programme: nextProgramme, shooters, targetResults, allowDestructiveReduction: true }); }
+    setNumberOfPosts(reconciled.setup.numberOfPosts); setTargetsPerPost(reconciled.setup.targetsPerPost); setExpectedTargetsByPost(reconciled.setup.expectedTargetsByPost); setShooters(reconciled.shooters); setTargetResults(reconciled.targetResults); setProgrammeSnapshot(nextProgramme);
+    setHasUserEditedSinceHydration(true);
+    return true;
+  }
+  function attachProgramme(template: ScoreSheetProgramme) { return acceptProgrammeSnapshot(snapshotProgramme(template)); }
+
+  async function resetProgrammeToTemplate() {
     if (!programmeSnapshot?.templateId || lifecycleReadOnly) return;
     if (programmeSnapshot.modified && !window.confirm("Reset this Score Sheet programme to its template? Your programme edits will be discarded.")) return;
-    const template = programmeSnapshot.family === "sporttrap_menu" ? sporttrapProgrammeTemplate() : compakProgrammeTemplate(compakSchemeId, compakSchemeRows);
-    attachProgramme(template);
+    if (programmeSnapshot.family === "sporttrap_menu") { attachProgramme(sporttrapProgrammeTemplate()); return; }
+    const originalScheme = compakSchemeNumberFromProgramme(programmeSnapshot); if (!originalScheme) return;
+    const rows = originalScheme === compakSchemeId ? compakSchemeRows : await loadCompakSchemeRows(originalScheme, false);
+    if (attachProgramme(compakProgrammeTemplate(originalScheme, rows))) { setCompakSchemeId(originalScheme); setCompakSchemeRows(rows); }
   }
 
   function updateSetupDraft(field: keyof SetupDraft, value: string) {
@@ -1506,6 +1512,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
       setSetupApplyMessage("Setup is already applied.");
       return;
     }
+    if (programmeSnapshot && !window.confirm("Apply a manual scoring setup and detach the current programme snapshot? The programme itself will not be changed.")) { setSetupApplyMessage("Setup changes were not applied; the attached programme and scoring setup are unchanged."); return; }
 
     const wouldTrim = setupReductionWouldTrimData({
       shooters,
@@ -1536,6 +1543,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     setTargetResults((current) =>
       trimTargetResults(current, nextPostCount, nextTargetMax),
     );
+    setProgrammeSnapshot(null);
     setSetupApplyMessage(
       nextExpectedTargetsByPost
         ? `${areaSingular} setup applied: ${nextPostCount} custom counts, ${nextExpectedTargetsByPost.reduce((sum, count) => sum + count, 0)} targets per shooter.`
@@ -2062,6 +2070,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     if (!discipline) return "Choose a discipline.";
     if (numberOfPosts < 1) return `Add at least one ${areaSingularLower}.`;
     if (targetsPerPost < 1) return `Targets per ${areaSingularLower} must be at least 1.`;
+    if (programmeSnapshot && !programmeSetupMatches(programmeSnapshot, { numberOfPosts, targetsPerPost, expectedTargetsByPost })) return "The programme and scoring setup do not match. Reapply or edit the programme before saving.";
     if (namedShooters.length === 0) return "Add at least one shooter.";
     for (const shooter of namedShooters) {
       for (
@@ -2140,7 +2149,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
       targets_per_post: targetsPerPost,
       total_targets: sheetTotalTargets,
       expected_targets_by_post: expectedTargetsByPost,
-      compak_scheme_id: isCompak ? String(compakSchemeId) : null,
+      compak_scheme_id: programmeFamily === "compak_menu" ? String(authoritativeCompakSchemeId) : null,
       compak_shooting_mode: isCompak ? compakShootingMode : null,
       compak_rotation_mode: isCompak ? compakRotationMode : null,
       programme_snapshot: programmeSnapshot,
@@ -2735,7 +2744,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                 {rankedShooters.map((shooter) => {
                   const misses = postNumbers.flatMap((standNumber) =>
                     compakMissDetailsForStand(
-                      buildCompakStandSequences(compakSchemeId, standNumber, compakSchemeRows),
+                      buildCompakStandSequences(authoritativeCompakSchemeId, standNumber, authoritativeCompakRows),
                       targetResults[shooter.localId]?.[standNumber],
                     ).map((miss) => `P${standNumber} ${miss}`),
                   );
@@ -2902,11 +2911,12 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
 
           {programmeFamily && <section className="programmeSetupPanel" aria-label="Score Sheet programme">
             <div className="sectionHeader compactSectionHeader"><div><h3>Programme</h3><p className="small muted">Built-ins are references. Use one to create an independent snapshot for this Score Sheet.</p></div></div>
+            {programmeFamily === "compak_menu" && <label>Programme template<select value={compakSchemeId} disabled={lifecycleReadOnly} onChange={(event) => void updateCompakScheme(Number(event.target.value))}>{getAllSchemeNumbers().map((schemeNumber) => <option key={schemeNumber} value={schemeNumber}>Scheme {schemeNumber} · {getCompakSchemeType(schemeNumber)}</option>)}</select></label>}
             {!programmeSnapshot ? <div className="btns">
               {programmeFamily === "compak_menu" && <button type="button" className="secondary" disabled={lifecycleReadOnly} onClick={() => attachProgramme(compakProgrammeTemplate(compakSchemeId, compakSchemeRows))}>Use FITASC Scheme {compakSchemeId}</button>}
               {programmeFamily === "sporttrap_menu" && <button type="button" className="secondary" disabled={lifecycleReadOnly} onClick={() => attachProgramme(sporttrapProgrammeTemplate())}>Use Sporttrap starter</button>}
               <button type="button" className="secondary" disabled={lifecycleReadOnly} onClick={() => attachProgramme(customProgramme(numberOfPosts))}>Custom programme</button>
-            </div> : <ProgrammeEditor programme={programmeSnapshot} disabled={lifecycleReadOnly} onChange={(next) => { setProgrammeSnapshot(next); setHasUserEditedSinceHydration(true); }} onReset={resetProgrammeToTemplate} />}
+            </div> : <ProgrammeEditor programme={programmeSnapshot} disabled={lifecycleReadOnly} onChange={(next) => { acceptProgrammeSnapshot(next); }} onReset={() => { void resetProgrammeToTemplate(); }} />}
             {programmeSnapshot && <p className="small muted" role="status">Attached: {programmeLabel(programmeSnapshot)}</p>}
           </section>}
 
@@ -2937,19 +2947,6 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
                       ? "Squad distributes shooter #1–#5 across Plate 1–5. Extra shooters follow the selected waiting/continuous behavior."
                       : `Inline keeps everyone on a Plate 1-first ${areaLabelLower} flow before moving onward.`}
                   </p>
-                </div>
-                <div>
-                  <label>Scheme / program</label>
-                  <select
-                    value={compakSchemeId}
-                    onChange={(event) => updateCompakScheme(Number(event.target.value))}
-                  >
-                    {getAllSchemeNumbers().map((schemeNumber) => (
-                      <option key={schemeNumber} value={schemeNumber}>
-                        Scheme {schemeNumber} · {getCompakSchemeType(schemeNumber)}
-                      </option>
-                    ))}
-                  </select>
                 </div>
               </div>
               <details className="compactMoreActions compakMoreSettings" open={!liveMode && showCompakSettingsDuringLive}>
