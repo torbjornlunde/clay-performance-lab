@@ -7,7 +7,7 @@ create table public.competition_score_sheet_claims (
   session_id uuid not null references public.sessions(id) on delete cascade,
   source_finalized_at timestamptz not null,
   source_reopen_count integer not null,
-  source_revision bigint not null,
+  source_updated_at timestamptz not null,
   claimed_at timestamptz not null default now(),
   constraint competition_score_sheet_claims_source_unique unique (score_sheet_id, shooter_id),
   constraint competition_score_sheet_claims_session_unique unique (session_id),
@@ -41,7 +41,7 @@ as $$
       case when s.expected_targets_by_post is not null
         then (select sum(value::integer) from jsonb_array_elements_text(to_jsonb(s.expected_targets_by_post)))
         else s.number_of_posts * s.targets_per_post end as expected,
-      c.session_id as claimed_id, c.source_finalized_at, c.source_reopen_count, c.source_revision
+      c.session_id as claimed_id, c.source_finalized_at, c.source_reopen_count, c.source_updated_at
     from public.training_score_sheets s
     join public.training_score_sheet_shooters sh on sh.score_sheet_id=s.id and sh.linked_user_id=auth.uid()
     left join public.competition_score_sheet_claims c on c.score_sheet_id=s.id and c.shooter_id=sh.id and c.user_id=auth.uid()
@@ -62,7 +62,7 @@ as $$
     f.shooter_name, case when f.target_count=f.expected then f.hit_count else f.score_sum end,
     f.expected, f.target_count, f.miss_count, f.breakdown, f.competition_finalized_at,
     f.competition_reopen_count, f.claimed_id,
-    f.claimed_id is not null and (f.source_finalized_at is distinct from f.competition_finalized_at or f.source_reopen_count is distinct from f.competition_reopen_count or f.source_revision is distinct from f.revision)
+    f.claimed_id is not null and (f.source_finalized_at is distinct from f.competition_finalized_at or f.source_reopen_count is distinct from f.competition_reopen_count or f.source_updated_at is distinct from f.updated_at)
   from facts f
   where f.target_count=f.expected or (f.score_count=f.number_of_posts and f.max_sum=f.expected)
   order by f.session_date desc, f.competition_finalized_at desc;
@@ -76,6 +76,8 @@ declare
   v_user uuid := auth.uid(); v_sheet public.training_score_sheets%rowtype;
   v_shooter public.training_score_sheet_shooters%rowtype; v_existing uuid; v_session uuid;
   v_expected integer; v_target_count integer; v_hits integer; v_score_count integer; v_score integer; v_max integer;
+  v_course_count integer; v_sporttrap_series_count integer; v_post_count integer;
+  v_targets_per_post integer; v_shooting_format text; v_compact boolean; v_sporttrap boolean;
 begin
   if v_user is null then raise exception using errcode='42501',message='Authentication required.'; end if;
   if not public.has_approved_access(v_user) then raise exception using errcode='42501',message='Access denied.'; end if;
@@ -95,13 +97,26 @@ begin
   if v_target_count=v_expected then v_score:=v_hits;
   elsif not (v_score_count=v_sheet.number_of_posts and v_max=v_expected) then raise exception using errcode='22023',message='This shooter result is incomplete.';
   end if;
-  insert into public.sessions(user_id,name,discipline,session_type,shooting_format,course_count,total_targets,competition_date,shooting_ground,own_score,winning_score,post_count,targets_per_post,notes)
-  values(v_user,v_sheet.title,v_sheet.discipline,'Competition',null,v_sheet.number_of_posts,v_expected,v_sheet.session_date,nullif(btrim(v_sheet.location),''),v_score,null,v_sheet.number_of_posts,case when v_sheet.expected_targets_by_post is null then v_sheet.targets_per_post else null end,'Source: Competition Score Sheet claim. Official score is an organizer-owned snapshot.') returning id into v_session;
+  v_compact := lower(btrim(v_sheet.discipline)) in ('compak sporting','kompakt leirduesti');
+  v_sporttrap := lower(btrim(v_sheet.discipline)) = 'sporttrap';
+  if (v_compact or v_sporttrap) and v_expected % 25 <> 0 then
+    raise exception using errcode='22023',message='This result cannot be mapped to complete 25-target courses or series.';
+  end if;
+  v_course_count := case when v_compact then v_expected/25 when v_sporttrap then 1 else v_sheet.number_of_posts end;
+  v_sporttrap_series_count := case when v_sporttrap then v_expected/25 else null end;
+  v_post_count := case when not v_compact and not v_sporttrap then v_sheet.number_of_posts else null end;
+  v_targets_per_post := case when v_post_count is not null and v_sheet.expected_targets_by_post is null then v_sheet.targets_per_post else null end;
+  v_shooting_format := case when v_sporttrap then 'Sporttrap' when not v_compact then 'Post-based' else null end;
+  insert into public.sessions(user_id,name,discipline,session_type,shooting_format,course_count,sporttrap_series_count,total_targets,competition_date,shooting_ground,own_score,winning_score,post_count,targets_per_post,notes)
+  values(v_user,v_sheet.title,v_sheet.discipline,'Competition',v_shooting_format,v_course_count,v_sporttrap_series_count,v_expected,v_sheet.session_date,nullif(btrim(v_sheet.location),''),v_score,null,v_post_count,v_targets_per_post,'Source: Competition Score Sheet claim. Official score is an organizer-owned snapshot.') returning id into v_session;
   insert into public.misses(session_id,course_number,target_position,target_number,target_label,target_type,missed_target,where_miss,main_reason,target_read,source_type)
-  select v_session,r.post_number,r.target_number,r.target_number,'Target '||r.target_number,'Unknown','Unknown','Not sure','Unknown','Unknown','competition_score_sheet_claim'
+  select v_session,
+    case when v_compact or v_sporttrap then ((r.post_number-1)/5)+1 else r.post_number end,
+    case when v_compact or v_sporttrap then ((r.post_number-1)%5)*coalesce(v_sheet.targets_per_post,5)+r.target_number else r.target_number end,
+    r.target_number,'Target '||r.target_number,'Unknown','Unknown','Not sure','Unknown','Unknown','competition_score_sheet_claim'
   from public.training_score_sheet_target_results r where r.score_sheet_id=p_score_sheet_id and r.shooter_id=p_shooter_id and r.result='miss';
-  insert into public.competition_score_sheet_claims(score_sheet_id,shooter_id,user_id,session_id,source_finalized_at,source_reopen_count,source_revision)
-  values(p_score_sheet_id,p_shooter_id,v_user,v_session,v_sheet.competition_finalized_at,v_sheet.competition_reopen_count,v_sheet.revision);
+  insert into public.competition_score_sheet_claims(score_sheet_id,shooter_id,user_id,session_id,source_finalized_at,source_reopen_count,source_updated_at)
+  values(p_score_sheet_id,p_shooter_id,v_user,v_session,v_sheet.competition_finalized_at,v_sheet.competition_reopen_count,v_sheet.updated_at);
   return v_session;
 end;
 $$;
