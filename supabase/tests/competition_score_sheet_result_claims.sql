@@ -99,6 +99,7 @@ do $$ declare first_id uuid; retry_id uuid; begin
  if (select count(*) from public.misses where session_id=first_id and source_type='competition_score_sheet_claim' and course_number=1 and target_position=2 and plate=1)<>1 then raise exception 'known Compak miss mapping wrong'; end if;
  if (select count(*) from public.misses where session_id=first_id)<>1 then raise exception 'hit/unknown fabricated miss'; end if;
  if (select count(*) from public.competition_score_sheet_claims where session_id=first_id)<>1 then raise exception 'claim provenance wrong'; end if;
+ if not exists(select 1 from public.competition_score_sheet_claims where session_id=first_id and target_detail_complete=false) then raise exception 'partial target coverage not persisted'; end if;
 end $$;
 
 -- Another account can neither inspect nor mutate the claimant-owned snapshot/provenance.
@@ -114,23 +115,30 @@ end $$;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000276',true);
 do $$ declare rev timestamptz; begin
  select updated_at into rev from public.training_score_sheets where id='10000000-0000-0000-0000-000000000276'; perform public.reopen_competition_score_sheet('10000000-0000-0000-0000-000000000276',rev);
- update public.training_score_sheet_target_results set result='hit' where score_sheet_id='10000000-0000-0000-0000-000000000276' and target_number=2;
+ delete from public.training_score_sheet_shooters where id='20000000-0000-0000-0000-000000000276';
+ if not exists(select 1 from public.competition_score_sheet_claims where score_sheet_id='10000000-0000-0000-0000-000000000276' and shooter_id is null) then raise exception 'shooter replacement deleted claim provenance'; end if;
+ insert into public.training_score_sheet_shooters(id,score_sheet_id,shooter_name,linked_user_id,display_order) values
+  ('20000000-0000-0000-0000-000000000284','10000000-0000-0000-0000-000000000276','Replacement Snapshot','00000000-0000-0000-0000-000000000277',1);
+ insert into public.training_score_sheet_scores(score_sheet_id,shooter_id,post_number,score,max_score)
+  select '10000000-0000-0000-0000-000000000276','20000000-0000-0000-0000-000000000284',n,5,5 from generate_series(1,5) n;
  select updated_at into rev from public.training_score_sheets where id='10000000-0000-0000-0000-000000000276'; perform public.finalize_competition_score_sheet('10000000-0000-0000-0000-000000000276',rev,true);
 end $$;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000277',true);
 do $$ declare sid uuid; begin
  if not exists(select 1 from public.get_my_competition_score_sheet_results() where source_changed) then raise exception 'source correction not detected'; end if;
  select session_id into sid from public.competition_score_sheet_claims where score_sheet_id='10000000-0000-0000-0000-000000000276';
+ if public.claim_competition_score_sheet_result('10000000-0000-0000-0000-000000000276','20000000-0000-0000-0000-000000000284')<>sid then raise exception 'replacement shooter created duplicate result'; end if;
+ if (select count(*) from public.sessions where user_id=auth.uid() and name='Issue 276 Cup')<>1 then raise exception 'replacement shooter duplicated personal session'; end if;
  update public.misses set main_reason='Technique' where session_id=sid;
  if exists(select 1 from public.training_score_sheet_target_results where result='Technique') then raise exception 'personal miss edit affected source'; end if;
  delete from public.sessions where id=sid;
  if exists(select 1 from public.competition_score_sheet_claims where session_id=sid) then raise exception 'claim did not cascade'; end if;
- if public.claim_competition_score_sheet_result('10000000-0000-0000-0000-000000000276','20000000-0000-0000-0000-000000000276')=sid then raise exception 'reclaim reused deleted id'; end if;
+ if public.claim_competition_score_sheet_result('10000000-0000-0000-0000-000000000276','20000000-0000-0000-0000-000000000284')=sid then raise exception 'reclaim reused deleted id'; end if;
 end $$;
 
 reset role;
 do $$ begin
  if has_function_privilege('anon','public.get_my_competition_score_sheet_results()','EXECUTE') or has_function_privilege('anon','public.claim_competition_score_sheet_result(uuid,uuid)','EXECUTE') then raise exception 'anon execute retained'; end if;
- begin insert into public.competition_score_sheet_claims(score_sheet_id,shooter_id,user_id,session_id,source_finalized_at,source_reopen_count,source_updated_at) select score_sheet_id,shooter_id,user_id,session_id,source_finalized_at,source_reopen_count,source_updated_at from public.competition_score_sheet_claims limit 1; raise exception 'claim uniqueness not enforced'; exception when unique_violation then null; end;
+ begin insert into public.competition_score_sheet_claims(score_sheet_id,shooter_id,user_id,session_id,source_finalized_at,source_reopen_count,source_updated_at,target_detail_complete) select score_sheet_id,shooter_id,user_id,session_id,source_finalized_at,source_reopen_count,source_updated_at,target_detail_complete from public.competition_score_sheet_claims limit 1; raise exception 'claim uniqueness not enforced'; exception when unique_violation then null; end;
 end $$;
 rollback;

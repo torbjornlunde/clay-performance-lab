@@ -2,14 +2,15 @@
 create table public.competition_score_sheet_claims (
   id uuid primary key default gen_random_uuid(),
   score_sheet_id uuid not null references public.training_score_sheets(id) on delete cascade,
-  shooter_id uuid not null references public.training_score_sheet_shooters(id) on delete cascade,
+  shooter_id uuid references public.training_score_sheet_shooters(id) on delete set null,
   user_id uuid not null references auth.users(id) on delete cascade,
   session_id uuid not null references public.sessions(id) on delete cascade,
   source_finalized_at timestamptz not null,
   source_reopen_count integer not null,
   source_updated_at timestamptz not null,
+  target_detail_complete boolean not null,
   claimed_at timestamptz not null default now(),
-  constraint competition_score_sheet_claims_source_unique unique (score_sheet_id, shooter_id),
+  constraint competition_score_sheet_claims_source_unique unique (score_sheet_id, user_id),
   constraint competition_score_sheet_claims_session_unique unique (session_id),
   constraint competition_score_sheet_claims_reopen_count_check check (source_reopen_count >= 0)
 );
@@ -44,7 +45,7 @@ as $$
       c.session_id as claimed_id, c.source_finalized_at, c.source_reopen_count, c.source_updated_at
     from public.training_score_sheets s
     join public.training_score_sheet_shooters sh on sh.score_sheet_id=s.id and sh.linked_user_id=auth.uid()
-    left join public.competition_score_sheet_claims c on c.score_sheet_id=s.id and c.shooter_id=sh.id and c.user_id=auth.uid()
+    left join public.competition_score_sheet_claims c on c.score_sheet_id=s.id and c.user_id=auth.uid()
     where auth.uid() is not null and public.has_approved_access(auth.uid())
       and s.session_type='competition' and s.competition_status='finalized'
   ), facts as (
@@ -81,13 +82,15 @@ declare
 begin
   if v_user is null then raise exception using errcode='42501',message='Authentication required.'; end if;
   if not public.has_approved_access(v_user) then raise exception using errcode='42501',message='Access denied.'; end if;
-  perform pg_advisory_xact_lock(hashtextextended(p_score_sheet_id::text || ':' || p_shooter_id::text, 276));
-  select c.session_id into v_existing from public.competition_score_sheet_claims c where c.score_sheet_id=p_score_sheet_id and c.shooter_id=p_shooter_id;
+  -- Durable claim identity is the sheet and linked user; organizer shooter rows may be replaced.
+  perform pg_advisory_xact_lock(hashtextextended(p_score_sheet_id::text || ':' || v_user::text, 276));
+  select c.session_id into v_existing from public.competition_score_sheet_claims c where c.score_sheet_id=p_score_sheet_id and c.user_id=v_user;
   if found then
     if exists(select 1 from public.competition_score_sheet_claims c where c.session_id=v_existing and c.user_id=v_user) then return v_existing; end if;
     raise exception using errcode='42501',message='Result claim access denied.';
   end if;
-  select * into v_sheet from public.training_score_sheets where id=p_score_sheet_id for key share;
+  -- Reopen takes FOR UPDATE on this same parent, so this snapshot cannot overlap a correction.
+  select * into v_sheet from public.training_score_sheets where id=p_score_sheet_id for share;
   if not found or v_sheet.session_type<>'competition' or v_sheet.competition_status<>'finalized' then raise exception using errcode='55000',message='A finalized Competition Score Sheet is required.'; end if;
   select * into v_shooter from public.training_score_sheet_shooters where id=p_shooter_id and score_sheet_id=p_score_sheet_id;
   if not found or v_shooter.linked_user_id is distinct from v_user then raise exception using errcode='42501',message='Result claim access denied.'; end if;
@@ -116,8 +119,8 @@ begin
     case when v_compact or v_sporttrap then ((r.post_number-1)%5)*coalesce(v_sheet.targets_per_post,5)+r.target_number else r.target_number end,
     r.target_number,case when v_compact or v_sporttrap then r.post_number else null end,'Target '||r.target_number,'Unknown','Unknown','Not sure','Unknown','Unknown','competition_score_sheet_claim'
   from public.training_score_sheet_target_results r where r.score_sheet_id=p_score_sheet_id and r.shooter_id=p_shooter_id and r.result='miss';
-  insert into public.competition_score_sheet_claims(score_sheet_id,shooter_id,user_id,session_id,source_finalized_at,source_reopen_count,source_updated_at)
-  values(p_score_sheet_id,p_shooter_id,v_user,v_session,v_sheet.competition_finalized_at,v_sheet.competition_reopen_count,v_sheet.updated_at);
+  insert into public.competition_score_sheet_claims(score_sheet_id,shooter_id,user_id,session_id,source_finalized_at,source_reopen_count,source_updated_at,target_detail_complete)
+  values(p_score_sheet_id,p_shooter_id,v_user,v_session,v_sheet.competition_finalized_at,v_sheet.competition_reopen_count,v_sheet.updated_at,v_target_count=v_expected);
   return v_session;
 end;
 $$;
