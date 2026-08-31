@@ -6,9 +6,11 @@ begin
  for area in select value from jsonb_array_elements(snapshot->'areas') loop
   if jsonb_typeof(area) is distinct from 'object' or jsonb_typeof(area->'areaNumber') is distinct from 'number' or area->>'areaNumber' !~ '^[1-9][0-9]*$' or jsonb_typeof(area->'presentations') is distinct from 'array' or jsonb_array_length(area->'presentations')=0 then return false; end if;
   for presentation in select value from jsonb_array_elements(area->'presentations') loop
-   if jsonb_typeof(presentation) is distinct from 'object' or jsonb_typeof(presentation->'id') is distinct from 'string' or nullif(btrim(presentation->>'id'),'') is null or jsonb_typeof(presentation->'type') is distinct from 'string' or presentation->>'type' not in ('single','report_pair','simultaneous_pair','unknown') or not(presentation?'firstMachine') or jsonb_typeof(presentation->'firstMachine') not in ('string','null') or not(presentation?'secondMachine') or jsonb_typeof(presentation->'secondMachine') not in ('string','null') then return false; end if;
+   if jsonb_typeof(presentation) is distinct from 'object' or jsonb_typeof(presentation->'id') is distinct from 'string' or nullif(btrim(presentation->>'id'),'') is null or jsonb_typeof(presentation->'type') is distinct from 'string' or presentation->>'type' not in ('single','report_pair','simultaneous_pair','unknown') or (presentation->>'type'='unknown' and snapshot->>'source'<>'legacy') or not(presentation?'firstMachine') or jsonb_typeof(presentation->'firstMachine') not in ('string','null') or not(presentation?'secondMachine') or jsonb_typeof(presentation->'secondMachine') not in ('string','null') then return false; end if;
   end loop;
- end loop; return true;
+ end loop;
+ if snapshot->>'family'='compak_menu' and snapshot->>'source'<>'legacy' and (jsonb_array_length(snapshot->'areas')<>5 or exists(select 1 from jsonb_array_elements(snapshot->'areas') a where (select coalesce(sum(case when p->>'type' in ('report_pair','simultaneous_pair') then 2 else 1 end),0) from jsonb_array_elements(a->'presentations') p)<>5)) then return false; end if;
+ return true;
 exception when others then return false; end $$;
 alter table public.training_score_sheets add constraint training_score_sheets_programme_snapshot_shape check(programme_snapshot is null or public.is_valid_score_sheet_programme_snapshot(programme_snapshot));
 comment on column public.training_score_sheets.programme_snapshot is 'Independent event programme snapshot with template provenance and ordered presentations; never resolved dynamically from current built-ins.';

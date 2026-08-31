@@ -714,7 +714,7 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
       ? compakStartPlateForOrderNumber(currentShooterNumber, compakRotationMode)
       : 1
     : 1;
-  const authoritativeCompakRows = useMemo(() => programmeSnapshot ? programmeAsCompakRows(programmeSnapshot) : compakSchemeRows, [compakSchemeRows, programmeSnapshot]);
+  const authoritativeCompakRows = useMemo(() => programmeSnapshot ? programmeAsCompakRows(programmeSnapshot, compakSchemeId) : compakSchemeRows, [compakSchemeId, compakSchemeRows, programmeSnapshot]);
   const authoritativeCompakSchemeId = compakSchemeNumberFromProgramme(programmeSnapshot) ?? compakSchemeId;
   const currentCompakProgram = useMemo(
     () =>
@@ -2915,8 +2915,8 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
             {!programmeSnapshot ? <div className="btns">
               {programmeFamily === "compak_menu" && <button type="button" className="secondary" disabled={lifecycleReadOnly} onClick={() => attachProgramme(compakProgrammeTemplate(compakSchemeId, compakSchemeRows))}>Use FITASC Scheme {compakSchemeId}</button>}
               {programmeFamily === "sporttrap_menu" && <button type="button" className="secondary" disabled={lifecycleReadOnly} onClick={() => attachProgramme(sporttrapProgrammeTemplate())}>Use Sporttrap starter</button>}
-              <button type="button" className="secondary" disabled={lifecycleReadOnly} onClick={() => attachProgramme(customProgramme(numberOfPosts))}>Custom programme</button>
-            </div> : <ProgrammeEditor programme={programmeSnapshot} disabled={lifecycleReadOnly} onChange={(next) => { acceptProgrammeSnapshot(next); }} onReset={() => { void resetProgrammeToTemplate(); }} />}
+              <button type="button" className="secondary" disabled={lifecycleReadOnly} onClick={() => attachProgramme(customProgramme(isCompak ? 5 : numberOfPosts, isCompak ? 5 : 1, isCompak ? "compak_menu" : "custom"))}>Custom programme</button>
+            </div> : <ProgrammeEditor programme={programmeSnapshot} disabled={lifecycleReadOnly} fixedCompakStructure={isCompak} onChange={(next) => { acceptProgrammeSnapshot(next); }} onReset={() => { void resetProgrammeToTemplate(); }} />}
             {programmeSnapshot && <p className="small muted" role="status">Attached: {programmeLabel(programmeSnapshot)}</p>}
           </section>}
 

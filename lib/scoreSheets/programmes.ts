@@ -50,19 +50,23 @@ export function sporttrapProgrammeTemplate(): ScoreSheetProgramme {
   return { schemaVersion: 1, snapshotId: id(), name: "Sporttrap structural starter", family: "sporttrap_menu", source: "built_in", sourceOrganisation: null, sourceVersion: "V1 structure", templateId: "sporttrap-structural-v1", modified: false, machineVocabulary: ["A", "B", "C", "D", "E"], areas: Array.from({ length: 5 }, (_, index) => ({ areaNumber: index + 1, presentations: types.map((type) => ({ id: id(), type, firstMachine: null, secondMachine: null })) })) };
 }
 
-export function customProgramme(areaCount = 1): ScoreSheetProgramme {
-  return { schemaVersion: 1, snapshotId: id(), name: "Custom programme", family: "custom", source: "custom", sourceOrganisation: null, sourceVersion: null, templateId: null, modified: false, machineVocabulary: ["A", "B", "C", "D", "E", "F"], areas: Array.from({ length: areaCount }, (_, index) => ({ areaNumber: index + 1, presentations: [{ id: id(), type: "single", firstMachine: null, secondMachine: null }] })) };
+export function customProgramme(areaCount = 1, targetsPerArea = 1, family: ScoreSheetProgramme["family"] = "custom"): ScoreSheetProgramme {
+  return { schemaVersion: 1, snapshotId: id(), name: "Custom programme", family, source: "custom", sourceOrganisation: null, sourceVersion: null, templateId: null, modified: false, machineVocabulary: ["A", "B", "C", "D", "E", "F"], areas: Array.from({ length: areaCount }, (_, index) => ({ areaNumber: index + 1, presentations: Array.from({ length: targetsPerArea }, () => ({ id: id(), type: "single" as const, firstMachine: null, secondMachine: null })) })) };
 }
 
 export function snapshotProgramme(template: ScoreSheetProgramme): ScoreSheetProgramme { return { ...cloneProgramme(template), snapshotId: id(), modified: false }; }
 export function editProgramme(programme: ScoreSheetProgramme, edit: (draft: ScoreSheetProgramme) => void) { const draft = cloneProgramme(programme); edit(draft); draft.modified = draft.source !== "custom"; return draft; }
 export function validateProgramme(programme: ScoreSheetProgramme) {
   const errors: string[] = [];
+  if (programme.family === "compak_menu" && programme.source !== "legacy" && (programme.areas.length !== 5 || programme.areas.some((area) => programmeAreaTargetCount(area) !== 5))) errors.push("Compak programmes must have exactly 5 areas with 5 physical targets in each area.");
   if (!programme.areas.length) errors.push("Add at least one shooting area.");
   for (const area of programme.areas) {
     if (!area.presentations.length) errors.push(`Area ${area.areaNumber} has no presentations.`);
     for (const presentation of area.presentations) {
-      if (presentation.type === "unknown") continue;
+      if (presentation.type === "unknown") {
+        if (programme.source !== "legacy") errors.push(`Area ${area.areaNumber} has an unknown presentation that can only be preserved in legacy data.`);
+        continue;
+      }
       if (!presentation.firstMachine) errors.push(`Area ${area.areaNumber} has a presentation without a first machine.`);
       else if (!programme.machineVocabulary.includes(presentation.firstMachine)) errors.push(`Area ${area.areaNumber} has a presentation with an invalid first machine.`);
       if (presentation.type !== "single" && !presentation.secondMachine) errors.push(`Area ${area.areaNumber} has a pair without a second machine.`);
@@ -78,7 +82,7 @@ export function programmeLabel(programme: ScoreSheetProgramme) {
 }
 
 export function compakSchemeNumberFromProgramme(programme: ScoreSheetProgramme | null | undefined): number | null { const match = programme?.templateId?.match(/^fitasc-compak-.*-(\d+)$/); const scheme = Number(match?.[1]); return Number.isInteger(scheme) && scheme >= 1 && scheme <= 40 ? scheme : null; }
-export function programmeAsCompakRows(programme: ScoreSheetProgramme): CompakSchemeRow[] {
-  const schemeNumber = compakSchemeNumberFromProgramme(programme) ?? 0;
+export function programmeAsCompakRows(programme: ScoreSheetProgramme, fallbackSchemeNumber = 0): CompakSchemeRow[] {
+  const schemeNumber = compakSchemeNumberFromProgramme(programme) ?? fallbackSchemeNumber;
   return programme.areas.flatMap((area) => area.presentations.map((presentation, index) => ({ scheme_number: schemeNumber, plate_number: area.areaNumber, event_number: index + 1, presentation: presentation.type === "simultaneous_pair" ? "simo_pair" : presentation.type, first_machine: presentation.firstMachine, second_machine: presentation.secondMachine, is_verified: false })));
 }
