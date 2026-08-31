@@ -116,7 +116,15 @@ select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000276'
 do $$ declare rev timestamptz; begin
  select updated_at into rev from public.training_score_sheets where id='10000000-0000-0000-0000-000000000276'; perform public.reopen_competition_score_sheet('10000000-0000-0000-0000-000000000276',rev);
  delete from public.training_score_sheet_shooters where id='20000000-0000-0000-0000-000000000276';
+end $$;
+-- The claimant can still see their provenance after replacement; the organizer cannot
+-- (as asserted above) because claim SELECT access remains protected by own-user RLS.
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000277',true);
+do $$ begin
  if not exists(select 1 from public.competition_score_sheet_claims where score_sheet_id='10000000-0000-0000-0000-000000000276' and shooter_id is null) then raise exception 'shooter replacement deleted claim provenance'; end if;
+end $$;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000276',true);
+do $$ declare rev timestamptz; begin
  insert into public.training_score_sheet_shooters(id,score_sheet_id,shooter_name,linked_user_id,display_order) values
   ('20000000-0000-0000-0000-000000000284','10000000-0000-0000-0000-000000000276','Replacement Snapshot','00000000-0000-0000-0000-000000000277',1);
  insert into public.training_score_sheet_scores(score_sheet_id,shooter_id,post_number,score,max_score)
