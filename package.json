@@ -53,7 +53,8 @@
     "test:competition-score-sheet-live": "node scripts/run-competition-score-sheet-live-tests.mjs",
     "test:competition-finalization": "node scripts/run-competition-finalization-tests.mjs",
     "test:competition-result-export": "node scripts/run-competition-result-export-tests.mjs",
-    "test:shooter-identity": "node scripts/run-shooter-identity-tests.mjs"
+    "test:shooter-identity": "node scripts/run-shooter-identity-tests.mjs",
+    "test:competition-result-claim": "node scripts/run-competition-result-claim-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",
