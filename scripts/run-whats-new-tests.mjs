@@ -32,9 +32,10 @@ assert.equal(updates.validateWhatsNewEntries(entries), true, "monthly sequences 
 assert.throws(() => updates.validateWhatsNewEntries([...entries, entries[0]]), /Duplicate/, "duplicates fail loudly");
 assert.throws(() => updates.parseWhatsNewId("v0.13.26"), /Invalid/, "malformed IDs fail loudly");
 const groups = updates.groupWhatsNewEntries(entries);
-assert.deepEqual(groups.map(({ heading }) => heading), ["August 2026", "July 2026"], "English month headings are derived newest-first");
-assert.deepEqual(groups[0].entries.map(({ id }) => id), ["v13.08.26", "v12.08.26", "v11.08.26", "v10.08.26", "v9.08.26", "v8.08.26", "v7.08.26", "v6.08.26", "v5.08.26", "v4.08.26", "v3.08.26", "v2.08.26", "v1.08.26"], "newest update is first within month");
-assert.equal(updates.latestWhatsNewEntry(entries).id, "v13.08.26", "latest update is deterministic");
+assert.deepEqual(groups.map(({ heading }) => heading), ["September 2026", "August 2026", "July 2026"], "English month headings are derived newest-first");
+assert.deepEqual(groups[0].entries.map(({ id }) => id), ["v1.09.26"], "September sequence starts at v1");
+assert.deepEqual(groups[1].entries.map(({ id }) => id), ["v14.08.26", "v13.08.26", "v12.08.26", "v11.08.26", "v10.08.26", "v9.08.26", "v8.08.26", "v7.08.26", "v6.08.26", "v5.08.26", "v4.08.26", "v3.08.26", "v2.08.26", "v1.08.26"], "newest update is first within month");
+assert.equal(updates.latestWhatsNewEntry(entries).id, "v1.09.26", "latest update is deterministic");
 
 assert.equal(seen.isLatestWhatsNewUnseen(null, "v6.08.26"), true, "empty seen value is unseen");
 assert.equal(seen.isLatestWhatsNewUnseen("v5.08.26", "v6.08.26"), true, "older seen value is unseen");

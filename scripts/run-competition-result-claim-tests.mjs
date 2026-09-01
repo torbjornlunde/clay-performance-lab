@@ -1,18 +1,34 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import ts from "typescript";
+import { execFileSync } from "node:child_process";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 
+const buildDir = new URL("../.competition-result-claim-test-build/", import.meta.url);
 const source = await readFile(new URL("../lib/scoreSheets/competitionResultClaim.ts", import.meta.url), "utf8");
 const disciplineSource = await readFile(new URL("../lib/disciplines.ts", import.meta.url), "utf8");
+await rm(buildDir, { recursive: true, force: true });
+await mkdir(buildDir, { recursive: true });
+await writeFile(new URL("competitionResultClaim.ts", buildDir), source.replace("@/lib/disciplines", "./disciplines"));
+await writeFile(new URL("disciplines.ts", buildDir), disciplineSource);
+execFileSync(process.execPath, [
+  "node_modules/typescript/bin/tsc",
+  ".competition-result-claim-test-build/competitionResultClaim.ts",
+  ".competition-result-claim-test-build/disciplines.ts",
+  "--ignoreConfig",
+  "--module", "NodeNext",
+  "--moduleResolution", "NodeNext",
+  "--target", "ES2022",
+  "--outDir", ".competition-result-claim-test-build/compiled",
+  "--skipLibCheck",
+], { stdio: "inherit" });
+const js = await readFile(new URL("compiled/competitionResultClaim.js", buildDir), "utf8");
+const disciplineJs = await readFile(new URL("compiled/disciplines.js", buildDir), "utf8");
 const component = await readFile(new URL("../app/results/CompetitionResultClaims.tsx", import.meta.url), "utf8");
 const migration = await readFile(new URL("../supabase/migrations/20260831120000_competition_score_sheet_result_claims.sql", import.meta.url), "utf8");
 const resultsPage = await readFile(new URL("../app/results/page.tsx", import.meta.url), "utf8");
 const sessionPage = await readFile(new URL("../app/sessions/[id]/page.tsx", import.meta.url), "utf8");
-const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-const disciplineJs = ts.transpileModule(disciplineSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const disciplineModule = { exports: {} }; new Function("exports", "module", disciplineJs)(disciplineModule.exports, disciplineModule);
 const module = { exports: {} }; new Function("exports", "module", "require", js)(module.exports, module, (id) => {
-  if (id === "@/lib/disciplines") return disciplineModule.exports;
+  if (id === "./disciplines") return disciplineModule.exports;
   throw new Error(`Unexpected import: ${id}`);
 });
 const { claimCoverage, unclaimedCompetitionResults, sourceCorrectionLabel, claimedSessionShape } = module.exports;
@@ -54,4 +70,5 @@ assert.match(sessionPage, /claimedTargetDetailComplete === false\s*\? null/, "pa
 assert.match(sessionPage, /"Known misses"/, "partial imported misses are labelled truthfully");
 assert.match(migration, /source_reopen_count/);
 assert.match(resultsPage, /filter\(isCompetitionResult\)/, "only sessions, not score sheets, feed Results and Performance");
+await rm(buildDir, { recursive: true, force: true });
 console.log("competition result claim tests passed");
