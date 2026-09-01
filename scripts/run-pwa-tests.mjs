@@ -87,7 +87,16 @@ assert.match(sw, /pathname\.startsWith\("\/api\/"\)/, 'service worker excludes a
 assert.match(sw, /hostname\.includes\("supabase\.co"\)/, 'service worker excludes Supabase routes');
 assert.match(sw, /if \(request\.method !== "GET" \|\| isUnsafeToCache\(url\)\) return;/, 'unsafe API and Supabase requests exit before any runtime cache strategy');
 assert.match(sw, /isScoreSheetRoute\(url\)[\s\S]*scoreSheetNavigationResponse\(request\)/, 'only an already-used Training or Competition Score Sheet navigation gets route-shell recovery');
-assert.match(sw, /\^\\\/\(training\|competition\)-score-sheets\\\/\[\^\/\]\+/, 'Score Sheet route caching excludes list, result-claim, and unrelated authenticated routes');
+assert.match(sw, /\[0-9a-f\]\{8\}[\s\S]*\[0-9a-f\]\{12\}/, 'Score Sheet route caching requires a persisted UUID');
+assert.doesNotMatch(sw, /\(training\|competition\)-score-sheets\\\/\[\^\/\]\+/, 'Score Sheet route caching does not accept arbitrary route segments such as new');
+const persistedSheetId = '123e4567-e89b-42d3-a456-426614174000';
+const scoreSheetRoutePattern = /^\/(training|competition)-score-sheets\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/?$/i;
+for (const route of [`/training-score-sheets/${persistedSheetId}`, `/competition-score-sheets/${persistedSheetId}`]) {
+  assert.equal(scoreSheetRoutePattern.test(route), true, `persisted Score Sheet navigation ${route} is cacheable`);
+}
+for (const route of ['/training-score-sheets/new', '/competition-score-sheets/new']) {
+  assert.equal(scoreSheetRoutePattern.test(route), false, `create navigation ${route} is never cached`);
+}
 assert.match(sw, /url\.pathname\.startsWith\("\/_next\/static\/"\)/, 'immutable Next.js app-shell assets can reopen the cached route offline');
 assert.doesNotMatch(sw, /fetch\(request\)[\s\S]*cache\.put\(request[\s\S]*pathname\.startsWith\("\/api\/"\)/, 'no generic fetched user-data cache is introduced');
 

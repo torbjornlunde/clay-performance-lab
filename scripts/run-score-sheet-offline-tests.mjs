@@ -55,6 +55,8 @@ assert.match(editor, /ownerUserId:\s*ownerUserIdRef\.current/, "offline snapshot
 assert.match(editor, /restoreOfflineSnapshot\(cachedDraft,[\s\S]*setLocalDraftLoaded\(true\)/, "reload can hydrate the editor from the device snapshot");
 assert.match(editor, /document\.addEventListener\("visibilitychange", handleVisibilityChange\)/, "foreground return attempts reconnect sync");
 assert.match(editor, /setLocalSaveStatus\("conflict"\)/, "stale revisions have a distinct conflict state");
+assert.match(editor, /function reviewSyncConflict\(\)[\s\S]*setRecoveryAutosavePaused\(true\)[\s\S]*writeLocalDraft\(false\)[\s\S]*loadScoreSheet\(\)/, "conflict review preserves the local draft before loading the server version into recovery");
+assert.match(editor, /localSaveStatus === "conflict"[\s\S]*onClick=\{reviewSyncConflict\}[\s\S]*Review conflict/, "the conflict banner exposes its safe review action");
 assert.match(editor, /writeLocalDraft\(false, savedSheet\.id, savedSheet\.updated_at\)/, "partial-save retry keeps the advanced server revision as its safe base");
 assert.match(editor, /\.eq\("updated_at", lastKnownServerUpdatedAt \|\| ""\)[\s\S]*if \(!sheetError && existingSheetId && !savedSheet\)[\s\S]*return null;[\s\S]*training_score_sheet_shooters/, "stale parent writes stop before child rows are touched");
 for (const conflictKey of ["id", "score_sheet_id,shooter_id,post_number", "score_sheet_id,shooter_id,post_number,target_number"]) {

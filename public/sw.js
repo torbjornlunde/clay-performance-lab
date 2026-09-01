@@ -35,7 +35,7 @@ function isUnsafeToCache(url) {
 }
 
 function isScoreSheetRoute(url) {
-  return url.origin === self.location.origin && /^\/(training|competition)-score-sheets\/[^/]+\/?$/.test(url.pathname);
+  return url.origin === self.location.origin && /^\/(training|competition)-score-sheets\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/?$/i.test(url.pathname);
 }
 
 function isStaticAppShellAsset(url) {

@@ -670,6 +670,19 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
     void loadScoreSheet();
   }
 
+  function reviewSyncConflict() {
+    // Persist the version currently on screen before loading the authoritative
+    // server copy. loadScoreSheet then detects both versions and opens the
+    // existing recovery prompt without uploading or discarding either one.
+    setRecoveryAutosavePaused(true);
+    if (!writeLocalDraft(false)) {
+      setRecoveryAutosavePaused(false);
+      setErr("This device could not preserve the local draft. Keep this score sheet open and retry before reviewing the conflict.");
+      return;
+    }
+    void loadScoreSheet();
+  }
+
   const postNumbers = useMemo(
     () => Array.from({ length: numberOfPosts }, (_, index) => index + 1),
     [numberOfPosts],
@@ -2726,6 +2739,9 @@ export default function ScoreSheetEditor({ kind }: { kind: "training" | "competi
 
         <div className={`scoreSheetSyncBanner syncStatus-${syncStatusTone}`} role="status" aria-live="polite">
           <strong>{syncStatusMessage}</strong>
+          {localSaveStatus === "conflict" && !recoveryPrompt && <button type="button" className="secondary smallButton" onClick={reviewSyncConflict} disabled={saving || loading}>
+            Review conflict
+          </button>}
           {canRetryConnection && <button type="button" className="secondary smallButton" onClick={retryScoreSheetConnection} disabled={saving}>
             {localSaveStatus === "local_save_failed" ? "Retry local save" : syncActionLabel(localSaveStatus)}
           </button>}
