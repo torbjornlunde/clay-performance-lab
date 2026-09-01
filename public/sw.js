@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "cpl-pwa-";
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const STATIC_CACHE = `${CACHE_PREFIX}${CACHE_VERSION}-static`;
 const REQUIRED_STATIC_ASSETS = ["/offline.html"];
 const OPTIONAL_STATIC_ASSETS = [
@@ -34,13 +34,54 @@ function isUnsafeToCache(url) {
   return url.pathname.startsWith("/api/") || url.hostname.includes("supabase.co") || url.hostname.includes("supabase.in");
 }
 
+function isScoreSheetRoute(url) {
+  return url.origin === self.location.origin && /^\/(training|competition)-score-sheets\/[^/]+\/?$/.test(url.pathname);
+}
+
+function isStaticAppShellAsset(url) {
+  return url.origin === self.location.origin && url.pathname.startsWith("/_next/static/");
+}
+
+async function scoreSheetNavigationResponse(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  try {
+    const response = await fetch(request);
+    if (response.ok && response.type === "basic") {
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    return (await cache.match(request)) || (await cache.match("/offline.html"));
+  }
+}
+
+async function staticAppShellResponse(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response.ok && response.type === "basic") {
+    await cache.put(request, response.clone());
+  }
+  return response;
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== "GET" || isUnsafeToCache(url)) return;
 
   if (request.mode === "navigate") {
+    if (isScoreSheetRoute(url)) {
+      event.respondWith(scoreSheetNavigationResponse(request));
+      return;
+    }
     event.respondWith(fetch(request).catch(() => caches.match("/offline.html")));
+    return;
+  }
+
+  if (isStaticAppShellAsset(url)) {
+    event.respondWith(staticAppShellResponse(request));
     return;
   }
 

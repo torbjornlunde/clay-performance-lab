@@ -50,7 +50,7 @@ assert.doesNotMatch(authHeader, /cpl-install-hint-dismissed|DISMISSED_KEY|hintDi
 assert.match(provider, /await promptEvent\.prompt\(\)/, 'Android with a valid deferred prompt can invoke prompt() from the explicit install action');
 assert.match(provider, /const choice = await promptEvent\.userChoice;[\s\S]*clearPromptEvent\(\);/, 'consumed deferred prompt is cleared after userChoice');
 assert.match(provider, /choice\.outcome === "accepted"[\s\S]*setDialogOpen\(false\)/, 'accepted install choices close the install dialog');
-assert.match(provider, /else {\n        setDialogOpen\(true\)/, 'dismissed install choices do not permanently hide future install attempts');
+assert.match(provider, /else {\r?\n\s*setDialogOpen\(true\)/, 'dismissed install choices do not permanently hide future install attempts');
 assert.match(provider, /Open Clay Performance Lab in Safari first, then follow the steps below\./, 'non-Safari iOS browsers instruct users to open Safari first');
 for (const term of ['Safari', 'Share', 'Add to Home Screen', 'Open as Web App', 'Add']) assert.match(provider, new RegExp(term), `iOS instructions include ${term}`);
 assert.doesNotMatch(installCard, />Not now<\/button>/, 'Settings no longer presents Not now as the only useful action');
@@ -66,16 +66,16 @@ assert.match(css, /@media all and \(display-mode: standalone\)[\s\S]*body::befor
 
 const sw = readFileSync('public/sw.js', 'utf8');
 assert.match(sw, /const CACHE_PREFIX = "cpl-pwa-";/, 'service worker owns only cpl-pwa-* caches');
-assert.match(sw, /const CACHE_VERSION = "v2";/, 'service worker cache version is bumped for new icon branding');
+assert.match(sw, /const CACHE_VERSION = "v3";/, 'service worker cache version is bumped for the offline Score Sheet shell');
 assert.match(sw, /key\.startsWith\(CACHE_PREFIX\) && key !== STATIC_CACHE/, 'service worker cleanup only targets old owned caches');
 assert.doesNotMatch(sw, /!key\.startsWith\(CACHE_VERSION\)/, 'service worker no longer deletes unrelated caches');
 for (const unrelated of ['workbox-precache-v9', 'future-offline-sync', 'supabase-cache']) {
   const CACHE_PREFIX = 'cpl-pwa-';
-  const STATIC_CACHE = 'cpl-pwa-v2-static';
+  const STATIC_CACHE = 'cpl-pwa-v3-static';
   const shouldDelete = unrelated.startsWith(CACHE_PREFIX) && unrelated !== STATIC_CACHE;
   assert.equal(shouldDelete, false, `unrelated cache ${unrelated} is never deleted`);
 }
-assert.equal('cpl-pwa-v1-static'.startsWith('cpl-pwa-') && 'cpl-pwa-v1-static' !== 'cpl-pwa-v2-static', true, 'old CPL cache is eligible for cleanup');
+assert.equal('cpl-pwa-v2-static'.startsWith('cpl-pwa-') && 'cpl-pwa-v2-static' !== 'cpl-pwa-v3-static', true, 'old CPL cache is eligible for cleanup');
 assert.match(sw, /cache\.addAll\(REQUIRED_STATIC_ASSETS\)/, 'offline fallback is required during install');
 assert.match(sw, /Promise\.allSettled\(OPTIONAL_STATIC_ASSETS\.map/, 'optional icons do not fail the whole install');
 for (const path of ['/pwa-icons/v1/192', '/pwa-icons/v1/512', '/pwa-icons/v1/maskable', '/pwa-icons/v1/apple']) {
@@ -85,7 +85,11 @@ assert.match(sw, /icon:\s*"\/pwa-icons\/v1\/192"[\s\S]*badge:\s*"\/pwa-icons\/v1
 assert.doesNotMatch([manifest, layout, sw].join('\n'), /\/pwa-icons\/(192|512|maskable|apple)"/, 'old unversioned icon paths are no longer referenced');
 assert.match(sw, /pathname\.startsWith\("\/api\/"\)/, 'service worker excludes app API routes');
 assert.match(sw, /hostname\.includes\("supabase\.co"\)/, 'service worker excludes Supabase routes');
-assert.doesNotMatch(sw, /cache\.put\(request|caches\.open\([^)]*\)[\s\S]*fetch\(request\)[\s\S]*cache\.put/, 'service worker does not runtime-cache fetched user data');
+assert.match(sw, /if \(request\.method !== "GET" \|\| isUnsafeToCache\(url\)\) return;/, 'unsafe API and Supabase requests exit before any runtime cache strategy');
+assert.match(sw, /isScoreSheetRoute\(url\)[\s\S]*scoreSheetNavigationResponse\(request\)/, 'only an already-used Training or Competition Score Sheet navigation gets route-shell recovery');
+assert.match(sw, /\^\\\/\(training\|competition\)-score-sheets\\\/\[\^\/\]\+/, 'Score Sheet route caching excludes list, result-claim, and unrelated authenticated routes');
+assert.match(sw, /url\.pathname\.startsWith\("\/_next\/static\/"\)/, 'immutable Next.js app-shell assets can reopen the cached route offline');
+assert.doesNotMatch(sw, /fetch\(request\)[\s\S]*cache\.put\(request[\s\S]*pathname\.startsWith\("\/api\/"\)/, 'no generic fetched user-data cache is introduced');
 
 const whatsNew = readFileSync('lib/updates/whatsNew.ts', 'utf8');
 assert.match(whatsNew, /id:\s*"v4\.08\.26"[\s\S]*Official CPL app icon/, 'What’s new includes the app-icon branding release');

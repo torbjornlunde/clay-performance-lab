@@ -5238,14 +5238,57 @@ body {
   margin: 4px 0 0;
 }
 
+.scoreSheetSyncBanner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+}
+
+.scoreSheetSyncBanner.syncStatus-offline,
+.scoreSheetSyncBanner.syncStatus-saved_local,
+.scoreSheetSyncBanner.syncStatus-sync_failed,
+.scoreSheetSyncBanner.syncStatus-conflict {
+  border-color: var(--border-accent);
+  background: var(--warning-bg, rgba(216, 165, 58, 0.12));
+}
+
+.scoreSheetSyncBanner.syncStatus-local_save_failed {
+  border-color: var(--danger-border, rgba(239, 118, 95, 0.5));
+  background: var(--danger-bg);
+}
+
+html[data-theme="light"] .scoreSheetSyncBanner.syncStatus-offline strong,
+html[data-theme="light"] .scoreSheetSyncBanner.syncStatus-saved_local strong,
+html[data-theme="light"] .scoreSheetSyncBanner.syncStatus-sync_failed strong,
+html[data-theme="light"] .scoreSheetSyncBanner.syncStatus-conflict strong {
+  color: #5f3e00;
+}
+
+.scoreSheetSyncBanner button {
+  min-height: 40px;
+}
+
 .syncStatusPill strong {
   color: #bdf5d4;
   font-size: clamp(12px, 2.4vw, 15px);
 }
 
 .syncStatus-sync_failed strong,
+.syncStatus-conflict strong,
 .syncStatus-offline strong {
   color: #ffd18a;
+}
+
+.syncStatus-local_save_failed strong {
+  color: var(--danger-text, #ffb0a1);
 }
 
 .syncStatusPill button {
