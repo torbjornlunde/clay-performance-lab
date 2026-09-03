@@ -17,6 +17,10 @@ const page = readFileSync('app/sessions/[id]/page.tsx', 'utf8');
 assert.match(page, /Private notes/, 'UI contains Private notes section');
 assert.match(page, /Only you can see these notes\./, 'UI says notes are private');
 assert.match(page, /Save session note/, 'session-level note save exists');
+assert.match(page, /Competition notes can be as detailed as you need/, 'Competition keeps the full session-note workflow');
+const sessionNoteEditor = page.match(/Session note[\s\S]*?<textarea([\s\S]*?)\/>/);
+assert(sessionNoteEditor, 'session note editor is rendered for every session type');
+assert.doesNotMatch(sessionNoteEditor[1], /maxLength/, 'full session note editor accepts existing notes longer than 600 characters');
 assert.match(page, /Optional per-post notes/, 'per-post notes are optional/collapsible');
 assert.match(page, /from\("private_session_notes"\)/, 'UI uses private notes table instead of sessions.notes');
 for (const eventName of ['private_note_saved_local','private_note_sync_succeeded','private_note_sync_failed']) {

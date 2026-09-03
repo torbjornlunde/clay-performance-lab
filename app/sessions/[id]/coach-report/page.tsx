@@ -34,9 +34,9 @@ export default function CoachReportPage() {
       supabase.from("session_post_targets").select("post_number,target_position,presentation_number,presentation_type,position_in_presentation,target_label,target_type,direction,angle,speed,distance,difficulty,notes").eq("session_id", params.id),
       supabase.from("scorecard_imports").select("reviewed_total_targets,reviewed_hits,reviewed_misses,inserted_misses,skipped_duplicates,created_at").eq("session_id", params.id).order("created_at", { ascending: false }),
       sessionData ? supabase.from("sessions").select("id,name,discipline,session_type,own_score,total_targets,winning_score,competition_date,created_at").eq("user_id", sessionData.user_id).order("competition_date", { ascending: false, nullsFirst: false }) : Promise.resolve({ data: [] }),
-      supabase.from("private_session_notes").select("note_scope,post_number,body").eq("session_id", params.id),
+      supabase.from("private_session_notes").select("note_scope,post_number,body,context_tags").eq("session_id", params.id),
     ]);
-    const notes = (privateNoteData || []).filter((note) => String(note.body || "").trim().length > 0);
+    const notes = (privateNoteData || []).filter((note) => String(note.body || "").trim().length > 0 || (Array.isArray(note.context_tags) && note.context_tags.length > 0));
     setSession(sessionData);
     setMisses(missData || []);
     setPostTargets(postTargetData || []);

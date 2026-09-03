@@ -69,7 +69,7 @@ export default function AnalysisPage() {
         : Promise.resolve({ data: [] }),
       supabase
         .from("private_session_notes")
-        .select("note_scope,post_number,body")
+        .select("note_scope,post_number,body,context_tags")
         .eq("session_id", params.id),
     ]);
     const useScorecardPath = Boolean(importData?.[0]) && isPostBasedSportingDiscipline(sessionData?.discipline);
@@ -84,7 +84,7 @@ export default function AnalysisPage() {
     setDefinitions(definitionData || []);
     setPostTargets(postTargetData || []);
     setImports(importData || []);
-    const notes = (privateNoteData || []).filter((note) => String(note.body || "").trim().length > 0);
+    const notes = (privateNoteData || []).filter((note) => String(note.body || "").trim().length > 0 || (Array.isArray(note.context_tags) && note.context_tags.length > 0));
     setHistory(historyData || []);
     setPrivateNotes(notes);
     setIncludePrivateNotes(notes.length > 0);

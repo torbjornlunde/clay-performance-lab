@@ -16,7 +16,7 @@ const missesBySession = {
   c1: [{ course_number: 1, target_position: 41, target_number: 41, main_reason: 'Behind' }, { course_number: 1, target_position: 45, target_number: 45, main_reason: 'Behind' }, { course_number: 1, target_position: 49, target_number: 49, main_reason: 'Technical' }],
   c2: [{ course_number: 1, target_position: 1, target_number: 1, main_reason: 'Low' }, { course_number: 1, target_position: 2, target_number: 2, main_reason: 'Low' }, { course_number: 1, target_position: 3, target_number: 3, main_reason: 'Low' }],
 };
-const privateNotesBySession = { c1: [{ note_scope: 'session', body: 'RAW PRIVATE NOTE wind and fatigue, rushed under pressure' }] };
+const privateNotesBySession = { c1: [{ note_scope: 'session', body: 'RAW PRIVATE NOTE wind and fatigue, rushed under pressure', context_tags: ['tired', 'rabbit'] }] };
 const scorecardImportsBySession = { c1: { reviewed_total_targets: 50, reviewed_hits: 38, reviewed_misses: 12 } };
 let evidence = buildCoachReportEvidence({ sessions, missesBySession, scorecardImportsBySession, privateNotesBySession, includeNotesContext: true });
 assert.equal(evidence.trainingSessions.length, 2, 'sessions are grouped into training');
@@ -33,9 +33,11 @@ const broad = evidence.repeatedMissCategories.find((item) => item.label === 'Tec
 assert.match(`${broad?.likelyMeaning} ${broad?.testNext}`, /too broad.*line, lead, hold point, movement timing, visual pickup/i, 'broad categories produce too-broad guidance');
 const detailed = evidence.repeatedMissCategories.find((item) => item.label === 'Behind');
 assert.match(`${detailed?.likelyMeaning} ${detailed?.testNext}`, /late pickup|too little lead|stopping the gun/i, 'detailed reasons produce specific test guidance');
+assert.deepEqual(evidence.selfReportedContext.map((item) => [item.tag, item.sessionCount]), [['rabbit', 1], ['tired', 1]], 'explicit tags remain self-reported context with session counts');
 assert(evidence.notesThemes.includes('wind') && evidence.notesThemes.includes('fatigue'), 'private notes are summarized into themes');
 const report = buildPeriodCoachReport({ fromDate: '2026-06-01', toDate: '2026-07-13', sessions, missesBySession, scorecardImportsBySession, privateNotesBySession, includeNotesContext: true });
 for (const title of ['Coach takeaway', 'Likely performance problem', 'Evidence from your data', 'Training vs competition', 'Start / finish pattern', 'Preparation before competition', 'What to test next', 'Training plan for next 1–2 weeks', 'Data quality and what to log next']) assert(report.sections.some((section) => section.title === title), `report includes ${title}`);
+assert.match(report.plainText, /You marked Rabbit in 1 selected competition.*self-reported context, not a proven cause/, 'saved tags are reported as qualified user context');
 assert(!report.plainText.includes('RAW PRIVATE NOTE'), 'raw private notes are never shown');
 assert.match(report.plainText, /Evidence-based coach report/, 'report does not call itself AI');
 evidence = buildCoachReportEvidence({ sessions: [sessions[3]], missesBySession: {}, scorecardImportsBySession: {}, privateNotesBySession: {}, includeNotesContext: false });

@@ -829,7 +829,7 @@ export default function Page() {
         ownScoreUpdated: String(Boolean(result.ownScoreUpdated)),
       });
       void recordAnalyticsEvent(supabase, "scorecard_review_applied", { route: "/sessions/[id]/scorecard-import", feature: "scorecard_import", sessionId: id, metadata: { scoreChoice, targetCount: grid.length } });
-      router.push(`/sessions/${id}?scorecardImported=1&describeMisses=1&${qs.toString()}`);
+      router.push(`/sessions/${id}?scorecardImported=1&describeMisses=1&context=1&${qs.toString()}#competition-context`);
     } catch (e: any) {
       const retryable = {
         ...applyingWithRevision,

@@ -117,7 +117,7 @@ export default function QuickCompetitionScorePage() {
       setErr(userFacingSaveError(error, "Could not save this quick score right now. Try again when online."));
       return;
     }
-    router.push(data?.id ? `/sessions/${data.id}` : "/results");
+    router.push(data?.id ? `/sessions/${data.id}?resultSaved=1&context=1#competition-context` : "/results");
   }
 
   return (

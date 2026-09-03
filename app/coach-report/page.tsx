@@ -8,7 +8,7 @@ import { recordAnalyticsEvent } from "@/lib/analytics";
 import { supabase } from "@/lib/supabase/client";
 
 type MissRow = { id?: string; session_id: string; course_number: number | null; target_position?: number | null; target_number: number | null; missed_target?: string | null; main_reason?: string | null; where_miss?: string | null; created_at?: string | null };
-type NoteRow = { session_id: string; note_scope: "session" | "post"; post_number?: number | null; body?: string | null };
+type NoteRow = { session_id: string; note_scope: "session" | "post"; post_number?: number | null; body?: string | null; context_tags?: string[] | null };
 type ScorecardImportRow = { session_id: string; reviewed_total_targets: number; reviewed_hits: number; reviewed_misses: number; inserted_misses?: number | null; skipped_duplicates?: number | null; created_at?: string | null };
 type LeirdueRow = { event_id?: string | null; liste_id?: string | null; normalized_name?: string | null; original_name?: string | null; club?: string | null; placement?: number | null; score?: number | null; own_score?: number | null; total_targets?: number | null; winning_score?: number | null; discipline?: string | null; event_date?: string | null; event_title?: string | null; organizer?: string | null; source_url?: string | null; validation_status?: string | null };
 type AiReport = { reportText: string; sections: string[] };
@@ -82,13 +82,13 @@ export default function CoachReportPeriodPage() {
     const ids = rows.map((session) => session.id);
     const [{ data: missRows }, { data: noteRows }, { data: importRows }] = ids.length ? await Promise.all([
       supabase.from("misses").select("id,session_id,course_number,target_position,target_number,missed_target,main_reason,where_miss,created_at").in("session_id", ids),
-      supabase.from("private_session_notes").select("session_id,note_scope,post_number,body").in("session_id", ids),
+      supabase.from("private_session_notes").select("session_id,note_scope,post_number,body,context_tags").in("session_id", ids),
       supabase.from("scorecard_imports").select("session_id,reviewed_total_targets,reviewed_hits,reviewed_misses,inserted_misses,skipped_duplicates,created_at").in("session_id", ids).order("created_at", { ascending: false }),
     ]) : [{ data: [] }, { data: [] }, { data: [] }];
     setSessions(rows);
     setMisses((missRows || []) as MissRow[]);
     setScorecardImports((importRows || []) as ScorecardImportRow[]);
-    const privateNotes = ((noteRows || []) as NoteRow[]).filter((note) => String(note.body || "").trim());
+    const privateNotes = ((noteRows || []) as NoteRow[]).filter((note) => String(note.body || "").trim() || (Array.isArray(note.context_tags) && note.context_tags.length > 0));
     setNotes(privateNotes);
     const visible = rows.filter((session) => inRange(session, fromDate, toDate)).map((session) => session.id);
     setSelectedIds(new Set(visible));
