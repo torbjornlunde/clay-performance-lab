@@ -92,7 +92,7 @@ assert(result.confidence.smallSample, 'small historical samples warn');
 const page=readFileSync('app/sessions/[id]/scorecard-import/page.tsx','utf8');
 const analysisPage=readFileSync('app/sessions/[id]/analysis/page.tsx','utf8');
 const css=readFileSync('app/globals.css','utf8');
-assert.match(page,/scorecardRawTextDetails/); assert.match(page,/\/analysis\?scorecardImported=1/);
+assert.match(page,/scorecardRawTextDetails/); assert.match(page,/#competition-context/, 'completed scorecard review opens quick Competition context');
 assert.match(analysisPage,/useSearchParams/); assert.match(analysisPage,/from\("private_session_notes"\)/, 'private notes are queried for session analysis'); assert.match(analysisPage,/Include private notes in analysis/, 'include-private-notes toggle exists'); assert.match(analysisPage,/setIncludePrivateNotes\(notes\.length > 0\)/, 'toggle defaults ON when notes exist'); assert.match(analysisPage,/hasPrivateNotes &&/, 'toggle appears only when notes exist'); assert.match(analysisPage,/includePrivateNotes/, 'toggle state controls analysis context'); assert.match(analysisPage,/Note text is not sent to analytics/, 'privacy helper text is shown'); assert.match(analysisPage,/hasReviewedPostScorecard/); assert.match(analysisPage,/analyzeMisses/); assert.match(analysisPage,/alreadyImported/); assert.match(analysisPage,/ownScoreUpdated/);
 assert.match(css,/scorecardRawText[\s\S]*overflow-wrap:\s*anywhere/); assert.match(css,/white-space:\s*pre-wrap/); assert.match(css,/word-break:\s*break-word/); assert.match(css,/var\(--text\)/);
 console.log('session analysis focused tests passed');

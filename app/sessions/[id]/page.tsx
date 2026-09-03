@@ -30,7 +30,7 @@ import {
 import { equipmentSnapshotLines } from "@/lib/equipment/logSnapshots";
 import ScorecardEvidenceSection from "@/app/components/ScorecardEvidenceSection";
 import { deleteSessionWithEvidenceCleanup } from "@/lib/sessionDeletion";
-import { COMPETITION_CONTEXT_TAGS, normalizeCompetitionContextTags } from "@/lib/competitionContext";
+import { COMPETITION_CONTEXT_TAGS, normalizeCompetitionContextTags, shortCompetitionReflectionMaxLength } from "@/lib/competitionContext";
 
 type Miss = {
   id: string;
@@ -947,7 +947,7 @@ export default function Page() {
             })}
           </div>
           <label htmlFor="competition-reflection">Short reflection</label>
-          <textarea id="competition-reflection" maxLength={600} value={noteDrafts.session || ""} onChange={(event) => setNoteDraft("session", event.target.value, "session")} placeholder="What felt important overall?" />
+          <textarea id="competition-reflection" maxLength={shortCompetitionReflectionMaxLength(noteDrafts.session || "")} value={noteDrafts.session || ""} onChange={(event) => setNoteDraft("session", event.target.value, "session")} placeholder="What felt important overall?" />
           <div className="btns compactActions">
             <button type="button" className="smallButton" disabled={noteSavingKey === "session"} onClick={() => void savePrivateNote("session")}>{noteSavingKey === "session" ? "Saving..." : "Save context"}</button>
             <span className="small muted">Optional — you can edit this later.</span>
@@ -1063,8 +1063,8 @@ export default function Page() {
           </summary>
           <div className="detailAccordionBody privateNotesBody">
             <p className="muted small">Only you can see these notes.</p>
-            <p className="muted small">{session.session_type === "Competition" ? "Your overall reflection is in How did it go? above. Add optional detail for individual posts here." : "Use this for wind, focus, technical thoughts, or what to train next."}</p>
-            {session.session_type !== "Competition" && <>
+            <p className="muted small">Use this for wind, focus, technical thoughts, or what to train next. Competition notes can be as detailed as you need.</p>
+            <>
               <label>
                 Session note
                 <textarea value={noteDrafts.session || ""} onChange={(event) => setNoteDraft("session", event.target.value, "session")} placeholder="Wind, light, focus, technical feeling, what went wrong, or what to train next" />
@@ -1074,7 +1074,7 @@ export default function Page() {
                 <button type="button" className="secondary smallButton" disabled={noteSavingKey === "session"} onClick={() => void deletePrivateNote("session")}>Clear/delete</button>
                 {noteStatus.session && <span className="small privateNoteSyncStatus" role="status">{noteStatus.session}</span>}
               </div>
-            </>}
+            </>
             {privateNotePosts.length > 0 && (
               <details className="postPrivateNotes">
                 <summary>Optional per-post notes</summary>

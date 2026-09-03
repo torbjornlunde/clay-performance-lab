@@ -28,3 +28,7 @@ export function normalizeCompetitionContextTags(value: unknown): CompetitionCont
 export function competitionContextTagLabel(id: string) {
   return COMPETITION_CONTEXT_TAGS.find((tag) => tag.id === id)?.label || id;
 }
+
+export function shortCompetitionReflectionMaxLength(body: string) {
+  return body.length > 600 ? undefined : 600;
+}

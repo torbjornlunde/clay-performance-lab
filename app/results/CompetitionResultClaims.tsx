@@ -44,7 +44,7 @@ export function CompetitionResultClaims({ initialResults, onClaimed }: { initial
             {correction && <div className="notice">{correction}</div>}
             <p className="small muted">If the official score is incorrect, ask the organizer to correct the Competition Score Sheet.</p>
             <div className="btns archiveActions">
-              {result.claimed_session_id ? <><span className="badge badgeBlue">Added to Results</span><Link className="button secondary smallButton" href={`/sessions/${result.claimed_session_id}?context=1`}>Open result</Link></> :
+              {result.claimed_session_id ? <><span className="badge badgeBlue">Added to Results</span><Link className="button secondary smallButton" href={`/sessions/${result.claimed_session_id}?context=1#competition-context`}>Open result</Link></> :
                 <button className="button smallButton" type="button" disabled={busy === result.shooter_id} onClick={() => claim(result)}>{busy === result.shooter_id ? "Adding..." : "Add to my Results"}</button>}
             </div>
           </div>
