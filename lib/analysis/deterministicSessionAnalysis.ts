@@ -1,6 +1,7 @@
 import { postTargetUnitLabel } from "../disciplines";
 import { normalizeLeirdueDisciplineLabel } from "../leirdue/normalize";
 import { scoreFromMisses, totalMisses } from "../misses/scoring";
+import { competitionContextTagLabel, normalizeCompetitionContextTags } from "../competitionContext";
 
 export type AnalysisSession = {
   id: string;
@@ -52,6 +53,7 @@ export type PrivateSessionAnalysisNote = {
   note_scope: "session" | "post";
   post_number?: number | null;
   body?: string | null;
+  context_tags?: string[] | null;
 };
 
 export type ScorecardImportSummary = {
@@ -335,16 +337,19 @@ const NOTE_THEME_RULES: Array<{ theme: string; pattern: RegExp; summary: string;
 
 export function summarizePrivateNotesContext(notes: PrivateSessionAnalysisNote[]) {
   const usable = notes
-    .map((note) => ({ scope: note.note_scope, postNumber: note.post_number ?? null, body: String(note.body || "").trim() }))
-    .filter((note) => note.body.length > 0);
+    .map((note) => ({ scope: note.note_scope, postNumber: note.post_number ?? null, body: String(note.body || "").trim(), contextTags: normalizeCompetitionContextTags(note.context_tags) }))
+    .filter((note) => note.body.length > 0 || note.contextTags.length > 0);
   if (!usable.length) return null;
   const combined = usable.map((note) => note.body).join("\n");
+  const explicitTags = [...new Set(usable.flatMap((note) => note.contextTags))];
   const matched = NOTE_THEME_RULES.filter((rule) => rule.pattern.test(combined));
   const themes = matched.map((rule) => rule.theme);
   const postNumbers = [...new Set(usable.filter((note) => note.scope === "post" && note.postNumber).map((note) => Number(note.postNumber)))].sort((a,b)=>a-b);
   const summary = matched.length
     ? matched.slice(0, 3).map((rule) => rule.summary)
-    : ["Your private notes add user-stated context, but no strong recurring note theme was detected."];
+    : [];
+  if (explicitTags.length) summary.unshift(`You marked ${explicitTags.map(competitionContextTagLabel).join(", ")} as relevant context. These are self-reported observations, not proven causes.`);
+  if (!summary.length) summary.push("Your private notes add user-stated context, but no strong recurring note theme was detected.");
   if (postNumbers.length) summary.push(`Specific post comments were present for post${postNumbers.length === 1 ? "" : "s"} ${postNumbers.join(", ")}.`);
   return {
     heading: "Notes-based context",
@@ -352,6 +357,7 @@ export function summarizePrivateNotesContext(notes: PrivateSessionAnalysisNote[]
     hasSessionNote: usable.some((note) => note.scope === "session"),
     hasPostNotes: usable.some((note) => note.scope === "post"),
     themes,
+    explicitTags,
     summary,
     trainingPriority: matched[0]?.priority || "Use your private notes as a brief reflection cue after the main scorecard priorities.",
     instructions: PRIVATE_NOTES_ANALYSIS_CONTEXT_INSTRUCTIONS,

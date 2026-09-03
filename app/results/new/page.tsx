@@ -149,7 +149,7 @@ export default function NewResultPage() {
     setSaving(false);
     const params = new URLSearchParams();
     if (!applied) params.set("templateApplyFailed", "result");
-    if (ownScoreValue !== null) params.set("resultSaved", "1");
+    if (ownScoreValue !== null) { params.set("resultSaved", "1"); params.set("context", "1"); }
     const query = params.toString();
     router.push(`/sessions/${inserted.id}${query ? `?${query}` : ""}`);
   }

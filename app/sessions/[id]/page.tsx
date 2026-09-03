@@ -30,6 +30,7 @@ import {
 import { equipmentSnapshotLines } from "@/lib/equipment/logSnapshots";
 import ScorecardEvidenceSection from "@/app/components/ScorecardEvidenceSection";
 import { deleteSessionWithEvidenceCleanup } from "@/lib/sessionDeletion";
+import { COMPETITION_CONTEXT_TAGS, normalizeCompetitionContextTags } from "@/lib/competitionContext";
 
 type Miss = {
   id: string;
@@ -67,6 +68,7 @@ type PrivateSessionNote = {
   post_number: number | null;
   body: string;
   updated_at: string;
+  context_tags: string[];
 };
 
 type TargetDefinition = {
@@ -89,6 +91,7 @@ type PendingPrivateNote = {
   postNumber: number | null;
   action: "upsert" | "delete";
   body: string;
+  contextTags: string[];
   updatedAt: string;
 };
 
@@ -302,6 +305,7 @@ export default function Page() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [privateNotes, setPrivateNotes] = useState<PrivateSessionNote[]>([]);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [contextTags, setContextTags] = useState<string[]>([]);
   const [noteSavingKey, setNoteSavingKey] = useState<string | null>(null);
   const [noteStatus, setNoteStatus] = useState<Record<string, string>>({});
   const [localPrivateNotePosts, setLocalPrivateNotePosts] = useState<number[]>([]);
@@ -398,7 +402,7 @@ export default function Page() {
     }
     const { data: privateNoteData } = await supabase
       .from("private_session_notes")
-      .select("id,note_scope,post_number,body,updated_at")
+      .select("id,note_scope,post_number,body,context_tags,updated_at")
       .eq("session_id", params.id)
       .order("updated_at", { ascending: false })
       .returns<PrivateSessionNote[]>();
@@ -412,6 +416,7 @@ export default function Page() {
     setPostSetupCount(configuredPosts);
     const notes = privateNoteData || [];
     setPrivateNotes(notes);
+    setContextTags(normalizeCompetitionContextTags(notes.find((note) => note.note_scope === "session")?.context_tags));
     applyLocalPrivateNoteState(u.user.id, params.id, notes, sessionData);
     if (syncPending) void syncPendingPrivateNotes(u.user.id, params.id, notes, sessionData?.discipline);
     setSourceRefresh(null);
@@ -484,9 +489,9 @@ export default function Page() {
         if (error) throw error;
       }
     } else {
-      const payload = { user_id: pending.userId, session_id: pending.sessionId, note_scope: pending.scope, post_number: pending.postNumber, body: pending.body };
+      const payload = { user_id: pending.userId, session_id: pending.sessionId, note_scope: pending.scope, post_number: pending.postNumber, body: pending.body, context_tags: pending.scope === "session" ? normalizeCompetitionContextTags(pending.contextTags) : [] };
       const request = existing
-        ? supabase.from("private_session_notes").update({ body: pending.body }).eq("id", existing.id)
+        ? supabase.from("private_session_notes").update({ body: pending.body, context_tags: payload.context_tags }).eq("id", existing.id)
         : supabase.from("private_session_notes").insert(payload);
       const { error } = await request;
       if (error) throw error;
@@ -536,7 +541,7 @@ export default function Page() {
     const key = noteKey(scope, postNumber);
     const body = noteDrafts[key] || "";
     window.localStorage.setItem(privateNoteDraftKey(currentUserId, session.id, scope, postNumber), body);
-    const pending = { userId: currentUserId, sessionId: session.id, scope, postNumber, action: "upsert" as const, body };
+    const pending = { userId: currentUserId, sessionId: session.id, scope, postNumber, action: "upsert" as const, body, contextTags: scope === "session" ? contextTags : [] };
     if (!navigator.onLine) {
       writePendingPrivateNote(pending);
       setNoteStatus((statuses) => ({ ...statuses, [key]: "Saved locally · pending sync" }));
@@ -565,7 +570,8 @@ export default function Page() {
     if (!window.confirm("Clear this private note?")) return;
     setNoteDrafts((drafts) => ({ ...drafts, [key]: "" }));
     window.localStorage.setItem(privateNoteDraftKey(currentUserId, session.id, scope, postNumber), "");
-    const pending = { userId: currentUserId, sessionId: session.id, scope, postNumber, action: "delete" as const, body: "" };
+    const retainedTags = scope === "session" ? contextTags : [];
+    const pending = { userId: currentUserId, sessionId: session.id, scope, postNumber, action: retainedTags.length ? "upsert" as const : "delete" as const, body: "", contextTags: retainedTags };
     if (!navigator.onLine) {
       writePendingPrivateNote(pending);
       setNoteStatus((statuses) => ({ ...statuses, [key]: "Delete pending sync" }));
@@ -900,9 +906,10 @@ export default function Page() {
         )}
         {shouldPromptMissDetails && (
           <div className="compactNotice">
-            <strong>Optional next step:</strong> describe the targets you missed for better later analysis.
+            <strong>Optional next steps:</strong> add quick overall context, or describe individual missed targets for detailed analysis.
             <div className="btns compactNoticeActions">
-              <Link className="button smallButton" href={missedTargetCtaHref}>
+              <Link className="button smallButton" href="#competition-context">Add quick context</Link>
+              <Link className="button secondary smallButton" href={missedTargetCtaHref}>
                 {missedTargetCtaLabel}
               </Link>
               <Link className="button secondary smallButton" href={`/sessions/${session.id}`}>
@@ -927,6 +934,27 @@ export default function Page() {
           ))}
         </div>
       </div>
+
+      {session.session_type === "Competition" && (
+        <section className="card competitionContextCard" id="competition-context" aria-labelledby="competition-context-heading">
+          <p className="eyebrow">Optional private context</p>
+          <h2 id="competition-context-heading">How did it go?</h2>
+          <p className="small muted">Mark anything that felt relevant. These are your own observations, not proven causes.</p>
+          <div className="competitionContextTags" aria-label="Competition context tags">
+            {COMPETITION_CONTEXT_TAGS.map((tag) => {
+              const selected = contextTags.includes(tag.id);
+              return <button key={tag.id} type="button" className={`competitionContextTag${selected ? " selected" : ""}`} aria-pressed={selected} onClick={() => setContextTags((current) => selected ? current.filter((id) => id !== tag.id) : [...current, tag.id])}>{tag.label}</button>;
+            })}
+          </div>
+          <label htmlFor="competition-reflection">Short reflection</label>
+          <textarea id="competition-reflection" maxLength={600} value={noteDrafts.session || ""} onChange={(event) => setNoteDraft("session", event.target.value, "session")} placeholder="What felt important overall?" />
+          <div className="btns compactActions">
+            <button type="button" className="smallButton" disabled={noteSavingKey === "session"} onClick={() => void savePrivateNote("session")}>{noteSavingKey === "session" ? "Saving..." : "Save context"}</button>
+            <span className="small muted">Optional — you can edit this later.</span>
+            {noteStatus.session && <span className="small privateNoteSyncStatus" role="status">{noteStatus.session}</span>}
+          </div>
+        </section>
+      )}
 
       <div className="card actionsCard">
         <div className="sectionHeader">
@@ -1035,24 +1063,18 @@ export default function Page() {
           </summary>
           <div className="detailAccordionBody privateNotesBody">
             <p className="muted small">Only you can see these notes.</p>
-            <p className="muted small">Use this for wind, focus, technical thoughts, or what to train next.</p>
-            <label>
-              Session note
-              <textarea
-                value={noteDrafts.session || ""}
-                onChange={(event) => setNoteDraft("session", event.target.value, "session")}
-                placeholder="Wind, light, focus, technical feeling, what went wrong, or what to train next"
-              />
-            </label>
-            <div className="btns compactActions">
-              <button type="button" className="smallButton" disabled={noteSavingKey === "session"} onClick={() => void savePrivateNote("session")}>
-                {noteSavingKey === "session" ? "Saving..." : "Save session note"}
-              </button>
-              <button type="button" className="secondary smallButton" disabled={noteSavingKey === "session"} onClick={() => void deletePrivateNote("session")}>
-                Clear/delete
-              </button>
-              {noteStatus.session && <span className="small privateNoteSyncStatus" role="status">{noteStatus.session}</span>}
-            </div>
+            <p className="muted small">{session.session_type === "Competition" ? "Your overall reflection is in How did it go? above. Add optional detail for individual posts here." : "Use this for wind, focus, technical thoughts, or what to train next."}</p>
+            {session.session_type !== "Competition" && <>
+              <label>
+                Session note
+                <textarea value={noteDrafts.session || ""} onChange={(event) => setNoteDraft("session", event.target.value, "session")} placeholder="Wind, light, focus, technical feeling, what went wrong, or what to train next" />
+              </label>
+              <div className="btns compactActions">
+                <button type="button" className="smallButton" disabled={noteSavingKey === "session"} onClick={() => void savePrivateNote("session")}>{noteSavingKey === "session" ? "Saving..." : "Save session note"}</button>
+                <button type="button" className="secondary smallButton" disabled={noteSavingKey === "session"} onClick={() => void deletePrivateNote("session")}>Clear/delete</button>
+                {noteStatus.session && <span className="small privateNoteSyncStatus" role="status">{noteStatus.session}</span>}
+              </div>
+            </>}
             {privateNotePosts.length > 0 && (
               <details className="postPrivateNotes">
                 <summary>Optional per-post notes</summary>
