@@ -25,7 +25,7 @@ const headers = { id: 'msg_1', timestamp: '1788771600', signature: 'v1,test' };
 const eventValue = { id: 'evt_delivered', type: 'email.delivered', created_at: '2026-09-07T09:01:00Z', data: { email_id: 'email_123' } };
 const eventBody = JSON.stringify(eventValue);
 let verificationInput;
-const delivered = await webhook.verifyAndParseResendWebhook({ payload: eventBody, headers, secret: 'whsec_test' }, async (input) => {
+const delivered = await webhook.verifyAndParseResendWebhook({ payload: eventBody, headers, secret: 'whsec_test' }, (input) => {
   verificationInput = input;
   return eventValue;
 });
@@ -50,7 +50,7 @@ assert.match(adminRoute, /emailStatus: "accepted",\s*trackingStatus: "failed"/, 
 assert.match(adminRoute, /Do not resend solely because of this warning/, 'tracking persistence warning does not encourage a duplicate email');
 const webhookRoute = readFileSync('app/api/webhooks/resend/route.ts', 'utf8');
 assert.ok(webhookRoute.indexOf('verifyAndParseResendWebhook') < webhookRoute.indexOf('createClient(url, serviceKey'), 'official signature verification happens before service-role database access');
-assert.match(webhookRoute, /if \(!row\).*status: 503/, 'an event racing message-ID persistence receives a retryable response');
+assert.match(webhookRoute, /if \(!row\) return NextResponse\.json\(\{ received: true \}\)/, 'unknown account-level message IDs are acknowledged without provider retries');
 assert.doesNotMatch(webhookRoute, /NEXT_PUBLIC_.*SERVICE_ROLE/, 'service-role secret is never exposed as a public variable');
 
 rmSync('.beta-email-test-build', { recursive: true, force: true });

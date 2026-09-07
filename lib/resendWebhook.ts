@@ -10,10 +10,15 @@ export type ResendDeliveryEvent = {
 };
 
 type ResendWebhookHeaders = { id: string; timestamp: string; signature: string };
+type ResendWebhookVerifier = (input: {
+  payload: string;
+  headers: ResendWebhookHeaders;
+  webhookSecret: string;
+}) => unknown | Promise<unknown>;
 
 export async function verifyAndParseResendWebhook(
   input: { payload: string; headers: ResendWebhookHeaders; secret: string },
-  verify: (input: { payload: string; headers: ResendWebhookHeaders; webhookSecret: string }) => Promise<unknown> = (value) => new Resend().webhooks.verify(value),
+  verify: ResendWebhookVerifier = (value) => new Resend().webhooks.verify(value),
 ) {
   const verified = await verify({ payload: input.payload, headers: input.headers, webhookSecret: input.secret });
   return parseResendDeliveryEvent(verified, input.headers.id);

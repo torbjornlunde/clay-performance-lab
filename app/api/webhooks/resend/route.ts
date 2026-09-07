@@ -30,9 +30,9 @@ export async function POST(request: Request) {
     .select("id,approval_email_message_id,approval_email_webhook_event_id,approval_email_status_updated_at")
     .eq("approval_email_message_id", event.messageId).maybeSingle();
   if (readError) return NextResponse.json({ error: "Unable to store webhook event." }, { status: 500 });
-  // A webhook can beat the approval request's message-ID write. Ask Resend to
-  // retry rather than acknowledging and permanently losing that terminal state.
-  if (!row) return NextResponse.json({ error: "Message is not tracked yet; retry this event." }, { status: 503 });
+  // Resend webhooks are account-level, so unrelated messages are expected here.
+  // Acknowledge unknown IDs instead of causing repeated provider retries.
+  if (!row) return NextResponse.json({ received: true });
   if (!shouldApplyDeliveryEvent({ messageId: row.approval_email_message_id, eventId: row.approval_email_webhook_event_id, updatedAt: row.approval_email_status_updated_at }, event)) {
     return NextResponse.json({ received: true });
   }
