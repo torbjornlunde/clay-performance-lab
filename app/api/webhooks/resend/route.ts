@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { deliveryStatusForEvent, parseResendDeliveryEvent, shouldApplyDeliveryEvent, verifyResendWebhookSignature } from "@/lib/resendWebhook";
+import { deliveryStatusForEvent, shouldApplyDeliveryEvent, verifyAndParseResendWebhook } from "@/lib/resendWebhook";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,11 +12,15 @@ export async function POST(request: Request) {
   const timestamp = request.headers.get("svix-timestamp") || "";
   const signature = request.headers.get("svix-signature") || "";
   const payload = await request.text();
-  if (!id || !timestamp || !signature || !verifyResendWebhookSignature({ payload, id, timestamp, signature, secret })) {
+  if (!id || !timestamp || !signature) {
     return NextResponse.json({ error: "Invalid webhook signature." }, { status: 401 });
   }
-
-  const event = parseResendDeliveryEvent(payload, id);
+  let event;
+  try {
+    event = await verifyAndParseResendWebhook({ payload, headers: { id, timestamp, signature }, secret });
+  } catch {
+    return NextResponse.json({ error: "Invalid webhook signature." }, { status: 401 });
+  }
   if (!event) return NextResponse.json({ received: true });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -26,7 +30,10 @@ export async function POST(request: Request) {
     .select("id,approval_email_message_id,approval_email_webhook_event_id,approval_email_status_updated_at")
     .eq("approval_email_message_id", event.messageId).maybeSingle();
   if (readError) return NextResponse.json({ error: "Unable to store webhook event." }, { status: 500 });
-  if (!row || !shouldApplyDeliveryEvent({ messageId: row.approval_email_message_id, eventId: row.approval_email_webhook_event_id, updatedAt: row.approval_email_status_updated_at }, event)) {
+  // A webhook can beat the approval request's message-ID write. Ask Resend to
+  // retry rather than acknowledging and permanently losing that terminal state.
+  if (!row) return NextResponse.json({ error: "Message is not tracked yet; retry this event." }, { status: 503 });
+  if (!shouldApplyDeliveryEvent({ messageId: row.approval_email_message_id, eventId: row.approval_email_webhook_event_id, updatedAt: row.approval_email_status_updated_at }, event)) {
     return NextResponse.json({ received: true });
   }
   const status = deliveryStatusForEvent(event.type);

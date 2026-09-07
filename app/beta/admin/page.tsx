@@ -60,16 +60,17 @@ function isRejectedOrRevoked(item: ApprovalInboxItem) {
 }
 
 function hasEmailIssue(item: ApprovalInboxItem) {
-  return Boolean(item.interest && (["bounced", "failed"].includes(item.interest.approval_email_delivery_status || "") || item.interest.approval_email_error || (isInterestApproved(item.interest) && !item.interest.approval_email_sent_at)));
+  return Boolean(item.interest && (["bounced", "failed", "suppressed"].includes(item.interest.approval_email_delivery_status || "") || item.interest.approval_email_error || (isInterestApproved(item.interest) && !item.interest.approval_email_sent_at)));
 }
 
 function approvalEmailStatus(interest: BetaInterestSubmission) {
   const at = interest.approval_email_status_updated_at || interest.approval_email_sent_at;
-  if (interest.approval_email_error && interest.approval_email_delivery_status !== "bounced" && interest.approval_email_delivery_status !== "failed") return `Latest send needs attention: ${interest.approval_email_error}`;
+  if (interest.approval_email_error && !["bounced", "failed", "suppressed"].includes(interest.approval_email_delivery_status || "")) return `Latest send needs attention: ${interest.approval_email_error}`;
   if (interest.approval_email_delivery_status === "delivered") return `Delivered${at ? ` ${formatDate(at)}` : ""}`;
   if (interest.approval_email_delivery_status === "accepted") return `Accepted by Resend${at ? ` ${formatDate(at)}` : ""}; awaiting delivery confirmation`;
   if (interest.approval_email_delivery_status === "bounced") return `Bounced${at ? ` ${formatDate(at)}` : ""}`;
   if (interest.approval_email_delivery_status === "failed") return `Delivery failed${at ? ` ${formatDate(at)}` : ""}`;
+  if (interest.approval_email_delivery_status === "suppressed") return `Suppressed by Resend${at ? ` ${formatDate(at)}` : ""}`;
   if (interest.approval_email_sent_at) return `Legacy send recorded ${formatDate(interest.approval_email_sent_at)}; delivery unverified`;
   return "Not sent";
 }
@@ -783,7 +784,7 @@ function ApprovalInboxCard({
   const rejected = user?.access_status === "rejected" || user?.access_status === "revoked" || interest?.admin_status === "rejected";
   const canApprove = !fullyHandled && !rejected && Boolean(user || interest);
   const canReject = !approved && !rejected && Boolean(user || interest);
-  const emailFailed = Boolean(interest && (["bounced", "failed"].includes(interest.approval_email_delivery_status || "") || interest.approval_email_error));
+  const emailFailed = Boolean(interest && (["bounced", "failed", "suppressed"].includes(interest.approval_email_delivery_status || "") || interest.approval_email_error));
   const emailDelivered = interest?.approval_email_delivery_status === "delivered";
   const emailAccepted = interest?.approval_email_delivery_status === "accepted";
   const lastSignInText = !user ? "No account yet" : lastSignIn?.unavailable ? "Last sign-in unavailable" : lastSignIn?.lastSignInAt ? formatDate(lastSignIn.lastSignInAt) : "Never signed in";

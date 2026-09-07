@@ -1,41 +1,28 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { Resend } from "resend";
 
-export type ApprovalEmailDeliveryStatus = "accepted" | "delivered" | "bounced" | "failed";
+export type ApprovalEmailDeliveryStatus = "accepted" | "delivered" | "bounced" | "failed" | "suppressed";
 
 export type ResendDeliveryEvent = {
   id: string;
-  type: "email.delivered" | "email.bounced" | "email.failed";
+  type: "email.delivered" | "email.bounced" | "email.failed" | "email.suppressed";
   createdAt: string;
   messageId: string;
 };
 
-function webhookSecretBytes(secret: string) {
-  const value = secret.startsWith("whsec_") ? secret.slice(6) : secret;
-  return Buffer.from(value, "base64");
+type ResendWebhookHeaders = { id: string; timestamp: string; signature: string };
+
+export async function verifyAndParseResendWebhook(
+  input: { payload: string; headers: ResendWebhookHeaders; secret: string },
+  verify: (input: { payload: string; headers: ResendWebhookHeaders; webhookSecret: string }) => Promise<unknown> = (value) => new Resend().webhooks.verify(value),
+) {
+  const verified = await verify({ payload: input.payload, headers: input.headers, webhookSecret: input.secret });
+  return parseResendDeliveryEvent(verified, input.headers.id);
 }
 
-export function verifyResendWebhookSignature(input: { payload: string; id: string; timestamp: string; signature: string; secret: string; now?: number }) {
-  const timestampSeconds = Number(input.timestamp);
-  const now = input.now ?? Date.now();
-  if (!Number.isFinite(timestampSeconds) || Math.abs(now - timestampSeconds * 1000) > 5 * 60 * 1000) return false;
-  const expected = createHmac("sha256", webhookSecretBytes(input.secret))
-    .update(`${input.id}.${input.timestamp}.${input.payload}`)
-    .digest();
-  return input.signature.split(" ").some((candidate) => {
-    const [, encoded] = candidate.split(",", 2);
-    if (!encoded) return false;
-    let actual: Buffer;
-    try { actual = Buffer.from(encoded, "base64"); } catch { return false; }
-    return actual.length === expected.length && timingSafeEqual(actual, expected);
-  });
-}
-
-export function parseResendDeliveryEvent(payload: string, webhookId: string): ResendDeliveryEvent | null {
-  let value: unknown;
-  try { value = JSON.parse(payload); } catch { return null; }
+export function parseResendDeliveryEvent(value: unknown, webhookId: string): ResendDeliveryEvent | null {
   if (!value || typeof value !== "object") return null;
   const event = value as { type?: unknown; created_at?: unknown; data?: { email_id?: unknown } };
-  if (event.type !== "email.delivered" && event.type !== "email.bounced" && event.type !== "email.failed") return null;
+  if (event.type !== "email.delivered" && event.type !== "email.bounced" && event.type !== "email.failed" && event.type !== "email.suppressed") return null;
   if (!webhookId || typeof event.created_at !== "string" || typeof event.data?.email_id !== "string") return null;
   if (!Number.isFinite(Date.parse(event.created_at))) return null;
   return { id: webhookId, type: event.type, createdAt: event.created_at, messageId: event.data.email_id };
@@ -44,6 +31,7 @@ export function parseResendDeliveryEvent(payload: string, webhookId: string): Re
 export function deliveryStatusForEvent(type: ResendDeliveryEvent["type"]): ApprovalEmailDeliveryStatus {
   if (type === "email.delivered") return "delivered";
   if (type === "email.bounced") return "bounced";
+  if (type === "email.suppressed") return "suppressed";
   return "failed";
 }
 
