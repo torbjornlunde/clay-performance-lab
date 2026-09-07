@@ -26,12 +26,12 @@ export function getBetaApprovalEmailConfigStatus(env: EmailEnv = process.env): B
   const fallbackFromAddress = cleanEnvValue(env.ADMIN_ALERT_EMAIL_FROM);
   const fromAddress = betaFromAddress || fallbackFromAddress;
   const hasFromAddress = Boolean(fromAddress);
-  const hasSiteUrl = Boolean(cleanEnvValue(env.NEXT_PUBLIC_SITE_URL));
+  const hasSiteUrl = Boolean(cleanEnvValue(env.NEXT_PUBLIC_SITE_URL) || cleanEnvValue(env.VERCEL_URL));
   const siteUrlPreview = hasSiteUrl ? appLoginUrl(env) : null;
   const missing = [
     ...(!hasResendApiKey ? ["RESEND_API_KEY"] : []),
     ...(!hasFromAddress ? ["BETA_APPROVAL_EMAIL_FROM"] : []),
-    ...(!hasSiteUrl ? ["NEXT_PUBLIC_SITE_URL"] : []),
+    ...(!hasSiteUrl ? ["NEXT_PUBLIC_SITE_URL or VERCEL_URL"] : []),
   ];
 
   return {
@@ -84,4 +84,7 @@ export async function sendBetaApprovalEmail(input: { name: string; email: string
     body: JSON.stringify({ from, to: input.email, subject: email.subject, text: email.body }),
   });
   if (!response.ok) throw new Error(`Resend email failed with HTTP ${response.status}`);
+  const result = await response.json() as { id?: unknown };
+  if (typeof result.id !== "string" || !result.id.trim()) throw new Error("Resend email response did not include a message ID");
+  return { messageId: result.id };
 }

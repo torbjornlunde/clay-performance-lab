@@ -37,6 +37,10 @@ export type BetaInterestSubmission = {
   admin_note: string | null;
   approval_email_sent_at: string | null;
   approval_email_error: string | null;
+  approval_email_message_id: string | null;
+  approval_email_delivery_status: import("./resendWebhook").ApprovalEmailDeliveryStatus | null;
+  approval_email_status_updated_at: string | null;
+  approval_email_webhook_event_id: string | null;
   created_at: string;
   updated_at: string;
 };

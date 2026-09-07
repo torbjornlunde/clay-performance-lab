@@ -43,6 +43,7 @@
     "test:stats-page": "node scripts/run-stats-page-presentation-tests.mjs",
     "test:equipment-last-serviced": "node scripts/run-equipment-last-serviced-tests.mjs",
     "test:auth-entry": "node scripts/run-auth-entry-tests.mjs",
+    "test:beta-approval-email": "node scripts/run-beta-approval-email-tests.mjs",
     "test:notifications": "node scripts/run-notification-tests.mjs",
     "test:whats-new": "node scripts/run-whats-new-tests.mjs",
     "test:simple-training-upgrade": "node scripts/run-simple-training-upgrade-tests.mjs",

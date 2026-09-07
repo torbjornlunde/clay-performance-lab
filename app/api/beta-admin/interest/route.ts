@@ -61,9 +61,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    await sendBetaApprovalEmail({ name: row.name, email: row.email });
-    await supabase.from("beta_interest_submissions").update({ approval_email_sent_at: new Date().toISOString(), approval_email_error: null }).eq("id", row.id);
-    return NextResponse.json({ ok: true, row, emailStatus: "sent" });
+    const sentAt = new Date().toISOString();
+    const { messageId } = await sendBetaApprovalEmail({ name: row.name, email: row.email });
+    const { error: trackingError } = await supabase.from("beta_interest_submissions").update({ approval_email_sent_at: sentAt, approval_email_error: null, approval_email_message_id: messageId, approval_email_delivery_status: "accepted", approval_email_status_updated_at: sentAt, approval_email_webhook_event_id: null }).eq("id", row.id);
+    if (trackingError) throw new Error(`Resend accepted the email, but its message ID could not be saved: ${trackingError.message}`);
+    return NextResponse.json({ ok: true, row, emailStatus: "accepted" });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await supabase.from("beta_interest_submissions").update({ approval_email_error: message }).eq("id", row.id);
