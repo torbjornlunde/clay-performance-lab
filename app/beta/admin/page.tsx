@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase/client";
 
 const USER_COLUMNS = "user_id,email,full_name,access_status,system_role,account_type,created_at,updated_at,approved_at,approved_by";
 const ACCESS_LIST_COLUMNS = "id,email,full_name,access_status_to_grant,system_role_to_grant,note,created_at,created_by";
-const INTEREST_COLUMNS = "id,name,email,country,main_discipline,level_comment,instagram_handle,admin_status,handled_at,handled_by,access_list_entry_id,admin_note,approval_email_sent_at,approval_email_error,created_at,updated_at";
+const INTEREST_COLUMNS = "id,name,email,country,main_discipline,level_comment,instagram_handle,admin_status,handled_at,handled_by,access_list_entry_id,admin_note,approval_email_sent_at,approval_email_error,approval_email_message_id,approval_email_delivery_status,approval_email_status_updated_at,approval_email_webhook_event_id,created_at,updated_at";
 
 type AccessListForm = {
   email: string;
@@ -60,7 +60,19 @@ function isRejectedOrRevoked(item: ApprovalInboxItem) {
 }
 
 function hasEmailIssue(item: ApprovalInboxItem) {
-  return Boolean(item.interest && (item.interest.approval_email_error || (isInterestApproved(item.interest) && !item.interest.approval_email_sent_at)));
+  return Boolean(item.interest && (["bounced", "failed", "suppressed"].includes(item.interest.approval_email_delivery_status || "") || item.interest.approval_email_error || (isInterestApproved(item.interest) && !item.interest.approval_email_sent_at)));
+}
+
+function approvalEmailStatus(interest: BetaInterestSubmission) {
+  const at = interest.approval_email_status_updated_at || interest.approval_email_sent_at;
+  if (interest.approval_email_error && !["bounced", "failed", "suppressed"].includes(interest.approval_email_delivery_status || "")) return `Latest send needs attention: ${interest.approval_email_error}`;
+  if (interest.approval_email_delivery_status === "delivered") return `Delivered${at ? ` ${formatDate(at)}` : ""}`;
+  if (interest.approval_email_delivery_status === "accepted") return `Accepted by Resend${at ? ` ${formatDate(at)}` : ""}; awaiting delivery confirmation`;
+  if (interest.approval_email_delivery_status === "bounced") return `Bounced${at ? ` ${formatDate(at)}` : ""}`;
+  if (interest.approval_email_delivery_status === "failed") return `Delivery failed${at ? ` ${formatDate(at)}` : ""}`;
+  if (interest.approval_email_delivery_status === "suppressed") return `Suppressed by Resend${at ? ` ${formatDate(at)}` : ""}`;
+  if (interest.approval_email_sent_at) return `Legacy send recorded ${formatDate(interest.approval_email_sent_at)}; delivery unverified`;
+  return "Not sent";
 }
 
 function getInboxSortGroup(item: ApprovalInboxItem): { group: InboxSortGroup; priority: number } {
@@ -370,7 +382,7 @@ export default function BetaAdminPage() {
       return;
     }
     if (result.warning) setError(result.warning);
-    setMessage(action === "reject" ? "Interest submission marked rejected / not now." : result.emailStatus === "sent" ? "Access approved and approval email sent." : "Access approved. Approval email needs attention.");
+    setMessage(action === "reject" ? "Interest submission marked rejected / not now." : result.emailStatus === "accepted" ? "Access approved. Resend accepted the email; awaiting delivery confirmation." : "Access approved. Approval email needs attention.");
     await loadAdminData();
   }
 
@@ -556,7 +568,7 @@ export default function BetaAdminPage() {
                         <td>{entry.instagram_handle || "—"}</td>
                         <td>{entry.level_comment || "—"}</td>
                         <td>{formatDate(entry.created_at)}</td>
-                        <td>{entry.approval_email_sent_at ? `Sent ${formatDate(entry.approval_email_sent_at)}` : entry.approval_email_error ? `Failed: ${entry.approval_email_error}` : "Not sent"}</td>
+                        <td>{approvalEmailStatus(entry)}</td>
                         <td>
                           <div className="tableActions">
                             <button type="button" className="smallButton" disabled={saving || entry.admin_status === "pre_approved" || entry.admin_status === "approved_existing_user"} onClick={() => runInterestAction(entry, "preapprove")}>Pre-approve</button>
@@ -772,19 +784,20 @@ function ApprovalInboxCard({
   const rejected = user?.access_status === "rejected" || user?.access_status === "revoked" || interest?.admin_status === "rejected";
   const canApprove = !fullyHandled && !rejected && Boolean(user || interest);
   const canReject = !approved && !rejected && Boolean(user || interest);
-  const emailFailed = Boolean(interest?.approval_email_error);
-  const emailSent = Boolean(interest?.approval_email_sent_at);
+  const emailFailed = Boolean(interest && (["bounced", "failed", "suppressed"].includes(interest.approval_email_delivery_status || "") || interest.approval_email_error));
+  const emailDelivered = interest?.approval_email_delivery_status === "delivered";
+  const emailAccepted = interest?.approval_email_delivery_status === "accepted";
   const lastSignInText = !user ? "No account yet" : lastSignIn?.unavailable ? "Last sign-in unavailable" : lastSignIn?.lastSignInAt ? formatDate(lastSignIn.lastSignInAt) : "Never signed in";
 
   return (
     <article className={`approvalInboxCard ${fullyHandled ? "approvalInboxCardSecondary" : ""}`}>
       <div className="approvalInboxCardHeader">
         <div><h3>{displayName(name)}</h3><p className="small muted breakText">{email || "No email on this record"}</p></div>
-        <div className="approvalBadgeList" aria-label="Beta approval statuses">{user ? <span className="badge badgeBlue">Account created</span> : null}{interest ? <span className="badge badgeBlue">Interest submitted</span> : null}{accessEntry ? <span className="badge badgeGreen">Pre-approved</span> : null}{approved ? <span className="badge badgeGreen">Approved</span> : null}{!fullyHandled && !rejected ? <span className="badge">Pending</span> : null}{rejected ? <span className="badge">Rejected</span> : null}{emailFailed ? <span className="badge">Email failed</span> : emailSent ? <span className="badge badgeGreen">Email sent</span> : interest ? <span className="badge">Email not sent</span> : null}</div>
+        <div className="approvalBadgeList" aria-label="Beta approval statuses">{user ? <span className="badge badgeBlue">Account created</span> : null}{interest ? <span className="badge badgeBlue">Interest submitted</span> : null}{accessEntry ? <span className="badge badgeGreen">Pre-approved</span> : null}{approved ? <span className="badge badgeGreen">Approved</span> : null}{!fullyHandled && !rejected ? <span className="badge">Pending</span> : null}{rejected ? <span className="badge">Rejected</span> : null}{emailFailed ? <span className="badge">Email failed</span> : emailDelivered ? <span className="badge badgeGreen">Email delivered</span> : emailAccepted ? <span className="badge badgeBlue">Email accepted</span> : interest?.approval_email_sent_at ? <span className="badge">Delivery unverified</span> : interest ? <span className="badge">Email not sent</span> : null}</div>
       </div>
       <dl className="approvalInboxSummary"><div><dt>Discipline</dt><dd>{interest?.main_discipline || "—"}</dd></div><div><dt>Country</dt><dd>{interest?.country || "—"}</dd></div><div><dt>Last sign-in</dt><dd>{lastSignInText}</dd></div><div><dt>Created / submitted</dt><dd>{formatDate(latestDate(user?.created_at, interest?.created_at, accessEntry?.created_at))}</dd></div></dl>
       <div className="approvalInboxActions approvalInboxPrimaryActions">{canApprove ? <button type="button" disabled={saving} onClick={() => onApprove(item)}>Approve beta access</button> : fullyHandled ? <button type="button" disabled className="secondary">Approved</button> : null}<button type="button" className="secondary" onClick={onToggleDetails} aria-expanded={expanded}>{expanded ? "Hide details" : "Show details"}</button></div>
-      {expanded ? <><dl className="approvalInboxDetails">{interest?.instagram_handle ? <div><dt>Instagram</dt><dd className="breakText">{interest.instagram_handle}</dd></div> : null}{user ? <div><dt>Full account status</dt><dd>{statusLabel(user.access_status)} · {user.system_role} · created {formatDate(user.created_at)}{user.approved_at ? ` · approved ${formatDate(user.approved_at)}` : ""}</dd></div> : null}{interest ? <div><dt>Full interest status</dt><dd>{statusLabel(interest.admin_status)} · submitted {formatDate(interest.created_at)}{interest.handled_at ? ` · handled ${formatDate(interest.handled_at)}` : ""}</dd></div> : null}{accessEntry ? <div><dt>Preapproval status</dt><dd>Approved · {accessEntry.system_role_to_grant} · created {formatDate(accessEntry.created_at)}</dd></div> : null}{interest ? <div><dt>Approval email</dt><dd>{interest.approval_email_error ? `Needs attention: ${interest.approval_email_error}` : interest.approval_email_sent_at ? `Sent ${formatDate(interest.approval_email_sent_at)}` : "Not sent"}</dd></div> : null}{interest?.admin_note ? <div><dt>Admin note</dt><dd>{interest.admin_note}</dd></div> : null}{accessEntry?.note ? <div><dt>Source note</dt><dd>{accessEntry.note}</dd></div> : null}</dl>{interest?.level_comment ? <p className="approvalNote breakText">{interest.level_comment}</p> : null}<div className="approvalInboxActions">{interest && interestApproved ? <button type="button" className="secondary" disabled={saving} onClick={() => onResend(interest)}>Resend approval email</button> : null}{canReject ? <button type="button" className="secondary" disabled={saving} onClick={() => onReject(item)}>Reject / Not now</button> : null}</div></> : null}
+      {expanded ? <><dl className="approvalInboxDetails">{interest?.instagram_handle ? <div><dt>Instagram</dt><dd className="breakText">{interest.instagram_handle}</dd></div> : null}{user ? <div><dt>Full account status</dt><dd>{statusLabel(user.access_status)} · {user.system_role} · created {formatDate(user.created_at)}{user.approved_at ? ` · approved ${formatDate(user.approved_at)}` : ""}</dd></div> : null}{interest ? <div><dt>Full interest status</dt><dd>{statusLabel(interest.admin_status)} · submitted {formatDate(interest.created_at)}{interest.handled_at ? ` · handled ${formatDate(interest.handled_at)}` : ""}</dd></div> : null}{accessEntry ? <div><dt>Preapproval status</dt><dd>Approved · {accessEntry.system_role_to_grant} · created {formatDate(accessEntry.created_at)}</dd></div> : null}{interest ? <div><dt>Approval email</dt><dd>{approvalEmailStatus(interest)}</dd></div> : null}{interest?.admin_note ? <div><dt>Admin note</dt><dd>{interest.admin_note}</dd></div> : null}{accessEntry?.note ? <div><dt>Source note</dt><dd>{accessEntry.note}</dd></div> : null}</dl>{interest?.level_comment ? <p className="approvalNote breakText">{interest.level_comment}</p> : null}<div className="approvalInboxActions">{interest && interestApproved ? <button type="button" className="secondary" disabled={saving} onClick={() => onResend(interest)}>Resend approval email</button> : null}{canReject ? <button type="button" className="secondary" disabled={saving} onClick={() => onReject(item)}>Reject / Not now</button> : null}</div></> : null}
     </article>
   );
 }

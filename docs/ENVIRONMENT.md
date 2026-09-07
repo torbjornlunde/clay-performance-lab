@@ -10,6 +10,8 @@ Required for approval email delivery:
 RESEND_API_KEY="re_..."
 BETA_APPROVAL_EMAIL_FROM="Clay Performance Lab <beta@clayperformancelab.com>"
 NEXT_PUBLIC_SITE_URL="https://clayperformancelab.com"
+RESEND_WEBHOOK_SECRET="whsec_..."
+SUPABASE_SERVICE_ROLE_KEY="..."
 ```
 
 Optional fallback:
@@ -24,9 +26,11 @@ Notes:
 
 - Never expose `RESEND_API_KEY` in client code. The admin UI only shows whether it exists.
 - The sender domain/address must be verified in Resend before Resend will accept the email.
-- `NEXT_PUBLIC_SITE_URL` is used to build the login/signup link in approval emails. Do not include a trailing path; use the site origin.
+- `NEXT_PUBLIC_SITE_URL` is used to build the login/signup link in approval emails. On Vercel, `VERCEL_URL` is accepted as a fallback. Do not include a trailing path; use the site origin.
+- In Resend, create a webhook for `https://clayperformancelab.com/api/webhooks/resend` and subscribe to `email.delivered`, `email.bounced`, `email.failed`, and `email.suppressed`. Copy its signing secret to `RESEND_WEBHOOK_SECRET`.
+- Webhooks are verified from the unmodified request body with Resend's official Node verification helper before the server-only Supabase service role updates delivery state. Because Resend webhooks are account-level, events whose message IDs do not match a tracked beta approval email are safely acknowledged and ignored.
 - Vercel deployments must be redeployed after environment variable changes.
-- Beta access approval still grants access if email delivery fails; the admin UI and the interest row email status show the email error so an admin can fix configuration and resend.
+- Beta access approval still grants access if sending or delivery fails. Resend API acceptance is shown as `Accepted`, not `Delivered`; only a verified delivery webhook changes that state to `Delivered`.
 
 ## Beta admin last sign-in
 
