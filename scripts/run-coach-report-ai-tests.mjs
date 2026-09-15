@@ -7,9 +7,9 @@ execSync('rm -rf .coach-report-ai-test-build && npx tsc -p .coach-report-ai-test
 const { buildCoachReportPrompt, COACH_REPORT_AI_SECTIONS } = await import('../.coach-report-ai-test-build/lib/ai/coachReportPrompt.js');
 const { handleCoachReportGenerate, __test } = await import('../.coach-report-ai-test-build/app/api/coach-report/generate/route.js');
 
-const prompt = buildCoachReportPrompt({ notesThemes: ['fatigue'], privacy: { rawPrivateNotesIncluded: false } });
+const prompt = buildCoachReportPrompt({ evidenceLevels: { currentAcceptedReflectionEvidence: [{ basis: 'self_report', sessionType: 'Competition' }] }, privacy: { rawPrivateNotesIncluded: false } });
 for (const heading of ['Coach summary','Performance context','Main findings','Discipline-specific notes','What to train next','Data quality']) assert(prompt.includes(heading), `${heading} is required`);
-for (const guardrail of ['The data suggests','This should be tested, not assumed','Compared with the field level','Do not compare only against the winning score']) assert(prompt.includes(guardrail), `${guardrail} guardrail exists`);
+for (const guardrail of ['The data suggests','This should be tested, not assumed','Compared with the field level','Do not compare only against the winning score','reviewed hypothesis','Never merge self-report and AI inference']) assert(prompt.includes(guardrail), `${guardrail} guardrail exists`);
 assert.equal(COACH_REPORT_AI_SECTIONS.length, 6, 'AI route exposes required sections');
 
 function deps({ user = { id: 'u1' }, openAiText = 'Coach summary\n- Good', capture = {}, profile = { user_id: 'u1', access_status: 'approved', system_role: 'user' }, profileError = null, entitlement = null, entitlementError = null, billingMode = 'beta_hidden' } = {}) {
@@ -34,12 +34,12 @@ let response = await handleCoachReportGenerate(req({ selectedSessions: [] }), de
 assert.equal(response.status, 401, 'unauthenticated API request returns 401');
 
 const capture = {};
-response = await handleCoachReportGenerate(req({ selectedSessions: [], notesThemes: ['fatigue'] }, { authorization: 'Bearer token' }), deps({ capture }));
+response = await handleCoachReportGenerate(req({ evidenceLevels: { currentAcceptedReflectionEvidence: [{ basis: 'self_report' }] } }, { authorization: 'Bearer token' }), deps({ capture }));
 assert.equal(response.status, 200, 'approved beta user can generate report in beta_hidden');
 assert.equal((await response.json()).reportText, 'Coach summary\n- Good', 'authenticated request returns generated report');
 assert.equal(capture.supabaseOptions.global.headers.Authorization, 'Bearer token', 'request auth header is forwarded to Supabase auth');
 assert(!JSON.stringify(capture.openAiBody).includes('RAW PRIVATE NOTE'), 'raw private note body is not forwarded to OpenAI');
-assert(JSON.stringify(capture.openAiBody).includes('notesThemes'), 'safe summarized note context reaches OpenAI packet');
+assert(JSON.stringify(capture.openAiBody).includes('self_report'), 'structured evidence basis reaches OpenAI packet');
 
 response = await handleCoachReportGenerate(req({ selectedSessions: [] }), deps({ profile: null }));
 assert.equal(response.status, 403, 'authenticated user without approved beta access cannot generate AI in beta_hidden');
@@ -61,11 +61,12 @@ assert.equal(response.status, 413, 'oversized evidence packet is rejected');
 
 response = await handleCoachReportGenerate(req({ privateNoteBodies: ['RAW PRIVATE NOTE fatigue'], notesThemes: ['fatigue'] }), deps());
 assert.equal(response.status, 400, 'raw private note body-like fields are rejected');
+assert.throws(() => __test.sanitizeEvidencePacket({ notesThemes: ['fatigue'] }), /Raw private note-like field/, 'legacy raw-note-derived themes are rejected');
 for (const key of ['body', 'text', 'content', 'rawPrivateNotes']) {
   assert.throws(() => __test.sanitizeEvidencePacket({ selectedSessions: [{ [key]: 'RAW PRIVATE NOTE fatigue' }] }), /Raw private note-like field/, `${key} raw note field is rejected`);
 }
-assert.doesNotThrow(() => __test.sanitizeEvidencePacket({ notesThemes: ['fatigue'], hasNotesContext: true, privacy: { rawPrivateNotesIncluded: false, reportBodyIncludedInAnalytics: false } }), 'summarized note themes and safe privacy metadata are accepted');
-const sanitized = __test.sanitizeEvidencePacket({ notesThemes: ['fatigue'], privacy: { rawPrivateNotesIncluded: false } });
+assert.doesNotThrow(() => __test.sanitizeEvidencePacket({ evidenceLevels: { explicitSelfReportTags: ['fatigue'] }, hasNotesContext: true, privacy: { rawPrivateNotesIncluded: false, reportBodyIncludedInAnalytics: false } }), 'structured reviewed context and safe privacy metadata are accepted');
+const sanitized = __test.sanitizeEvidencePacket({ evidenceLevels: { explicitSelfReportTags: ['fatigue'] }, privacy: { rawPrivateNotesIncluded: false } });
 assert(!JSON.stringify(sanitized).includes('RAW PRIVATE NOTE'), 'sanitized AI packet has no raw private note body');
 
 const page = readFileSync('app/coach-report/page.tsx', 'utf8');

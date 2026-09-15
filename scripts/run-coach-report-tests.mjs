@@ -16,21 +16,21 @@ assert(report.sections.some((s) => s.title === 'Key findings' && s.items.length)
 assert(report.sections.some((s) => s.title === 'Training focus' && s.items.length), 'report includes training focus');
 assert(report.sections.some((s) => s.title === 'Recommended drills/priorities' && s.items.length), 'report includes recommendations');
 assert(report.sections.some((s) => s.title === 'Missing data / confidence notes' && s.items.length), 'report includes confidence/missing-data notes');
-assert(report.sections.some((s) => s.title === 'Notes-based context'), 'notes-based context can be included');
+assert(report.sections.some((s) => s.title === 'Reviewed context'), 'non-semantic reviewed context can be included');
 assert(!report.plainText.includes('RAW SECRET NOTE'), 'raw private note text is not included');
 assert(!/[<>][a-z]/i.test(report.plainText), 'copied report is plain text, not HTML');
 assert(report.plainText.includes('Observed data shows'), 'coach-safe observed wording is used');
 assert(report.plainText.includes('The analysis suggests'), 'coach-safe suggestion wording is used');
-assert(report.plainText.includes('This should be treated as context, not a confirmed cause.'), 'notes context is caveated');
+assert(report.plainText.includes('Its raw text is not interpreted as a coaching theme.'), 'raw note text is explicitly not interpreted');
 report = buildCoachReport({ session, scorecardImport, misses, postTargets: [], history: [], privateNotes: notes, includeNotesContext: false });
-assert(!report.sections.some((s) => s.title === 'Notes-based context'), 'notes-based context can be turned off');
+assert(!report.sections.some((s) => s.title === 'Reviewed context'), 'reviewed context can be turned off');
 assert(!report.plainText.includes('tired at the end'), 'disabled notes are omitted from report');
 
 const analysisPage = readFileSync('app/sessions/[id]/analysis/page.tsx', 'utf8');
 assert.match(analysisPage, /Coach report preview/, 'Coach report entry point exists from analysis page');
 assert.match(analysisPage, /deterministic\.findings\.length > 0 && deterministic\.recommendations\.length > 0/, 'entry point only shows when analysis can be built');
 const page = readFileSync('app/sessions/[id]/coach-report/page.tsx', 'utf8');
-for (const text of ['Coach report preview', 'Include notes-based context', 'Raw private notes are not shown', 'Copy report', 'Copied']) assert(page.includes(text), `coach report page includes ${text}`);
+for (const text of ['Coach report preview', 'Include reviewed context', 'Raw private note text is not interpreted', 'Copy report', 'Copied']) assert(page.includes(text), `coach report page includes ${text}`);
 assert.doesNotMatch(page, /select\("[^"]*location/, 'single-session coach report page does not select location from sessions');
 assert.match(page, /shooting_ground/, 'single-session coach report page selects shooting_ground for venue/ground');
 assert.match(page, /navigator\.clipboard\.writeText\(report\.plainText\)/, 'copy report button writes plain text');

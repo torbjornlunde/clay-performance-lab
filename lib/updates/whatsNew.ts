@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v5.09.26", title: "Bring clearer evidence to Coach Report", bullets: ["See recurring self-reports separately from reviewed AI hypotheses across selected sessions.", "Understand report confidence through plain-language reasons and source sessions.", "Take focused questions to your coach without private note text becoming an unsupported diagnosis."] },
   { id: "v4.09.26", title: "Keep reflection evidence clear in Analysis", bullets: ["See your selected context and accepted self-reports separately from observed scorecard facts.", "Treat accepted AI suggestions as reviewed hypotheses to investigate, never proven causes.", "Keep raw private reflection text from silently creating training priorities."] },
   { id: "v3.09.26", title: "Review insights from your competition reflection", bullets: ["Choose when to interpret a saved private Competition reflection.", "Edit, accept or reject each suggestion before it can support coaching analysis.", "Keep your own reports separate from reviewed AI hypotheses and observed results."] },
   { id: "v2.09.26", title: "Add quick context after a competition", bullets: ["Mark conditions, focus, target types or equipment changes in seconds.", "Save a short private reflection without setting up targets or logging every miss.", "Use your own context in private analysis while keeping it separate from proven scorecard facts."] },

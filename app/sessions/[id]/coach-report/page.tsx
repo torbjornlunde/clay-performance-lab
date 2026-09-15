@@ -82,9 +82,9 @@ export default function CoachReportPage() {
       {hasPrivateNotes && <div className="analysisPrivateNotesControl">
         <label className="checkboxRow">
           <input type="checkbox" checked={includeNotesContext} onChange={(event) => setIncludeNotesContext(event.target.checked)} />
-          <span>Include notes-based context</span>
+          <span>Include reviewed context</span>
         </label>
-        <p className="small muted">Only summarized note themes are included. Raw private notes are not shown.</p>
+        <p className="small muted">Only explicit context tags and current accepted reflection evidence are included. Raw private note text is not interpreted.</p>
       </div>}
       <div className="btns"><button type="button" onClick={copyReport}>Copy report</button>{copyStatus && <span className={copyStatus === "Copied" ? "successInline" : "errorInline"}>{copyStatus}</span>}</div>
     </section>

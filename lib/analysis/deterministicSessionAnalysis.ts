@@ -52,6 +52,8 @@ export type PostTargetAnalysisRow = {
 };
 
 export type PrivateSessionAnalysisNote = {
+  id?: string;
+  updated_at?: string;
   note_scope: "session" | "post";
   post_number?: number | null;
   body?: string | null;
