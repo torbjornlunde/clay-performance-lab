@@ -10288,3 +10288,12 @@ select {
 @media (max-width: 430px) {
   .competitionClaimCard .archiveActions .button { min-height: 44px; width: 100%; }
 }
+
+.reflectionEvidenceReview { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+.reflectionEvidenceHeader, .reflectionEvidenceMeta, .reflectionEvidenceFields { display: flex; gap: .75rem; justify-content: space-between; align-items: flex-start; }
+.reflectionEvidenceHeader h3 { margin: 0; }
+.reflectionEvidenceItem { background: var(--surface-soft); border: 1px solid var(--border); border-radius: .75rem; padding: .85rem; margin-top: .75rem; }
+.reflectionEvidenceMeta { justify-content: flex-start; flex-wrap: wrap; font-size: .85rem; margin-bottom: .65rem; }
+.reflectionEvidenceFields label { flex: 1; }
+.reflectionEvidenceItem input { min-height: 44px; font-size: 16px; width: 100%; }
+@media (max-width: 430px) { .reflectionEvidenceHeader, .reflectionEvidenceFields { flex-direction: column; } .reflectionEvidenceHeader button, .reflectionEvidenceFields label { width: 100%; } }

@@ -1,4 +1,5 @@
 import type { AnalysisSession, ScorecardImportSummary, PostTargetAnalysisRow, AnalysisMiss, PrivateSessionAnalysisNote } from "./deterministicSessionAnalysis";
+import { acceptedEvidenceSentence, type ReflectionEvidenceItem } from "../ai/reflectionEvidence";
 import { buildDeterministicSessionAnalysis } from "./deterministicSessionAnalysis";
 
 export type CoachReportInput = {
@@ -8,6 +9,7 @@ export type CoachReportInput = {
   postTargets?: PostTargetAnalysisRow[];
   history?: AnalysisSession[];
   privateNotes?: PrivateSessionAnalysisNote[];
+  acceptedEvidence?: ReflectionEvidenceItem[];
   includeNotesContext?: boolean;
 };
 
@@ -33,6 +35,7 @@ export function buildCoachReport(input: CoachReportInput) {
     { title: "Training focus", items: analysis.recommendations.map((item) => `The analysis suggests ${item.title} Evidence: ${item.evidence}`) },
     { title: "Recommended drills/priorities", items: analysis.recommendations.map((item) => item.title) },
     ...(input.includeNotesContext && analysis.notesBasedContext ? [{ title: "Notes-based context", items: [...analysis.notesBasedContext.summary.map((text) => `Private notes suggest ${text}`), "This should be treated as context, not a confirmed cause."] }] : []),
+    ...(input.includeNotesContext && input.acceptedEvidence?.length ? [{ title: "Reviewed reflection evidence", items: input.acceptedEvidence.map(acceptedEvidenceSentence) }] : []),
     { title: "Missing data / confidence notes", items: analysis.missingData.length ? analysis.missingData : ["No major missing-data notes were produced for this session."] },
     { title: "Disclaimer", items: ["This is a training-support summary, not a replacement for a coach watching you shoot."] },
   ].filter((section) => section.items.length > 0);

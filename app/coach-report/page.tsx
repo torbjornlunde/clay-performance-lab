@@ -11,6 +11,7 @@ type MissRow = { id?: string; session_id: string; course_number: number | null; 
 type NoteRow = { session_id: string; note_scope: "session" | "post"; post_number?: number | null; body?: string | null; context_tags?: string[] | null };
 type ScorecardImportRow = { session_id: string; reviewed_total_targets: number; reviewed_hits: number; reviewed_misses: number; inserted_misses?: number | null; skipped_duplicates?: number | null; created_at?: string | null };
 type LeirdueRow = { event_id?: string | null; liste_id?: string | null; normalized_name?: string | null; original_name?: string | null; club?: string | null; placement?: number | null; score?: number | null; own_score?: number | null; total_targets?: number | null; winning_score?: number | null; discipline?: string | null; event_date?: string | null; event_title?: string | null; organizer?: string | null; source_url?: string | null; validation_status?: string | null };
+type EvidenceRow = { session_id: string; category: any; normalized_value: string; label: string; evidence_basis: any; confidence: any; reference?: string | null };
 type AiReport = { reportText: string; sections: string[] };
 
 const AI_SECTION_TITLES = ["Coach summary", "Performance context", "Main findings", "Discipline-specific notes", "What to train next", "Data quality"];
@@ -53,6 +54,7 @@ export default function CoachReportPeriodPage() {
   const [sessions, setSessions] = useState<CoachReportPeriodSession[]>([]);
   const [misses, setMisses] = useState<MissRow[]>([]);
   const [notes, setNotes] = useState<NoteRow[]>([]);
+  const [acceptedEvidence, setAcceptedEvidence] = useState<EvidenceRow[]>([]);
   const [scorecardImports, setScorecardImports] = useState<ScorecardImportRow[]>([]);
   const [leirdueRows, setLeirdueRows] = useState<LeirdueRow[]>([]);
   const [leirdueStatus, setLeirdueStatus] = useState<"idle" | "available" | "unavailable">("idle");
@@ -80,14 +82,16 @@ export default function CoachReportPeriodPage() {
       .order("competition_date", { ascending: false, nullsFirst: false });
     const rows = (sessionRows || []) as CoachReportPeriodSession[];
     const ids = rows.map((session) => session.id);
-    const [{ data: missRows }, { data: noteRows }, { data: importRows }] = ids.length ? await Promise.all([
+    const [{ data: missRows }, { data: noteRows }, { data: importRows }, { data: evidenceRows }] = ids.length ? await Promise.all([
       supabase.from("misses").select("id,session_id,course_number,target_position,target_number,missed_target,main_reason,where_miss,created_at").in("session_id", ids),
       supabase.from("private_session_notes").select("session_id,note_scope,post_number,body,context_tags").in("session_id", ids),
       supabase.from("scorecard_imports").select("session_id,reviewed_total_targets,reviewed_hits,reviewed_misses,inserted_misses,skipped_duplicates,created_at").in("session_id", ids).order("created_at", { ascending: false }),
-    ]) : [{ data: [] }, { data: [] }, { data: [] }];
+      supabase.from("private_reflection_evidence").select("session_id,category,normalized_value,label,evidence_basis,confidence,reference").in("session_id", ids).eq("review_status", "accepted"),
+    ]) : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
     setSessions(rows);
     setMisses((missRows || []) as MissRow[]);
     setScorecardImports((importRows || []) as ScorecardImportRow[]);
+    setAcceptedEvidence((evidenceRows || []) as EvidenceRow[]);
     const privateNotes = ((noteRows || []) as NoteRow[]).filter((note) => String(note.body || "").trim() || (Array.isArray(note.context_tags) && note.context_tags.length > 0));
     setNotes(privateNotes);
     const visible = rows.filter((session) => inRange(session, fromDate, toDate)).map((session) => session.id);
@@ -109,10 +113,12 @@ export default function CoachReportPeriodPage() {
   useEffect(() => { if (notesForSelected.length > 0) setIncludeNotesContext(true); }, [notesForSelected.length]);
   const missesBySession = useMemo(() => Object.fromEntries(previewSessions.map((session) => [session.id, misses.filter((miss) => miss.session_id === session.id)])), [previewSessions, misses]);
   const privateNotesBySession = useMemo(() => Object.fromEntries(previewSessions.map((session) => [session.id, notes.filter((note) => note.session_id === session.id)])), [previewSessions, notes]);
+  const acceptedEvidenceBySession = useMemo(() => Object.fromEntries(previewSessions.map((session) => [session.id, acceptedEvidence.filter((item) => item.session_id === session.id)])), [previewSessions, acceptedEvidence]);
   const scorecardImportsBySession = useMemo(() => Object.fromEntries(previewSessions.map((session) => [session.id, scorecardImports.find((row) => row.session_id === session.id) || null])), [previewSessions, scorecardImports]);
-  const report = useMemo(() => buildPeriodCoachReport({ fromDate: previewInput?.fromDate || fromDate, toDate: previewInput?.toDate || toDate, sessions: previewSessions, missesBySession, scorecardImportsBySession, privateNotesBySession, includeNotesContext: previewInput?.includeNotesContext ?? includeNotesContext, leirdueRows }), [previewInput, fromDate, toDate, previewSessions, missesBySession, scorecardImportsBySession, privateNotesBySession, includeNotesContext, leirdueRows]);
+  const report = useMemo(() => buildPeriodCoachReport({ fromDate: previewInput?.fromDate || fromDate, toDate: previewInput?.toDate || toDate, sessions: previewSessions, missesBySession, scorecardImportsBySession, privateNotesBySession, acceptedEvidenceBySession, includeNotesContext: previewInput?.includeNotesContext ?? includeNotesContext, leirdueRows }), [previewInput, fromDate, toDate, previewSessions, missesBySession, scorecardImportsBySession, privateNotesBySession, acceptedEvidenceBySession, includeNotesContext, leirdueRows]);
   const currentMissesBySession = useMemo(() => Object.fromEntries(selectedSessions.map((session) => [session.id, misses.filter((miss) => miss.session_id === session.id)])), [selectedSessions, misses]);
   const currentPrivateNotesBySession = useMemo(() => Object.fromEntries(selectedSessions.map((session) => [session.id, notes.filter((note) => note.session_id === session.id)])), [selectedSessions, notes]);
+  const currentAcceptedEvidenceBySession = useMemo(() => Object.fromEntries(selectedSessions.map((session) => [session.id, acceptedEvidence.filter((item) => item.session_id === session.id)])), [selectedSessions, acceptedEvidence]);
   const currentScorecardImportsBySession = useMemo(() => Object.fromEntries(selectedSessions.map((session) => [session.id, scorecardImports.find((row) => row.session_id === session.id) || null])), [selectedSessions, scorecardImports]);
   const aiReportCards = aiReport ? parseAiReportCards(aiReport.reportText) : [];
   const evidenceSummaryItems = [`Sessions used: ${report.selectedSessionCount}`, `Disciplines: ${report.evidence.disciplineGroups.map((group) => group.discipline).join(", ") || "none"}`, `Matched Leirdue events: ${report.evidence.leirdueFieldContexts.length}`, `Scorecard sessions: ${report.evidence.sessionsWithScorecardImportEvidence.length}`, `Detailed miss rows: ${report.evidence.detailedMissCount}`, `Notes context: ${report.hasNotesContext ? "yes" : "no"}`, `Data quality: ${report.dataQuality}`];
@@ -155,7 +161,7 @@ export default function CoachReportPeriodPage() {
     setAiReport(null);
     const freshLeirdueRows = await fetchLeirdueContextFor(selectedSessions);
     setPreviewInput({ fromDate, toDate, selectedIds: [...selectedIds], includeNotesContext });
-    const currentReport = buildPeriodCoachReport({ fromDate, toDate, sessions: selectedSessions, missesBySession: currentMissesBySession, scorecardImportsBySession: currentScorecardImportsBySession, privateNotesBySession: currentPrivateNotesBySession, includeNotesContext, leirdueRows: freshLeirdueRows });
+    const currentReport = buildPeriodCoachReport({ fromDate, toDate, sessions: selectedSessions, missesBySession: currentMissesBySession, scorecardImportsBySession: currentScorecardImportsBySession, privateNotesBySession: currentPrivateNotesBySession, acceptedEvidenceBySession: currentAcceptedEvidenceBySession, includeNotesContext, leirdueRows: freshLeirdueRows });
     const safeMetadata = { reportType: "ai_period", selectedSessionCount: selectedSessions.length, trainingCount: selectedSessions.filter((session) => typeLabel(session) === "Training").length, competitionCount: selectedSessions.filter((session) => typeLabel(session) === "Competition").length, disciplineCount: new Set(selectedSessions.map((session) => session.discipline || "Unknown")).size, hasLeirdueContext: currentReport.evidence.leirdueFieldContexts.length > 0, hasNotesContext: currentReport.hasNotesContext, dataQuality: currentReport.dataQuality };
     void recordAnalyticsEvent(supabase, "coach_report_ai_generate_clicked", { route: "/coach-report", feature: "coach_report", metadata: safeMetadata });
     try {

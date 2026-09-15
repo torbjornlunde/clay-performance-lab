@@ -16,6 +16,7 @@ export default function CoachReportPage() {
   const [imports, setImports] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [privateNotes, setPrivateNotes] = useState<any[]>([]);
+  const [acceptedEvidence, setAcceptedEvidence] = useState<any[]>([]);
   const [includeNotesContext, setIncludeNotesContext] = useState(true);
   const [copyStatus, setCopyStatus] = useState("");
 
@@ -29,12 +30,13 @@ export default function CoachReportPage() {
       .select("id,name,discipline,shooting_format,session_type,own_score,winning_score,total_targets,post_count,targets_per_post,created_at,competition_date,shooting_ground,user_id")
       .eq("id", params.id)
       .single();
-    const [{ data: missData }, { data: postTargetData }, { data: importData }, { data: historyData }, { data: privateNoteData }] = await Promise.all([
+    const [{ data: missData }, { data: postTargetData }, { data: importData }, { data: historyData }, { data: privateNoteData }, { data: evidenceData }] = await Promise.all([
       supabase.from("misses").select("*").eq("session_id", params.id).order("created_at"),
       supabase.from("session_post_targets").select("post_number,target_position,presentation_number,presentation_type,position_in_presentation,target_label,target_type,direction,angle,speed,distance,difficulty,notes").eq("session_id", params.id),
       supabase.from("scorecard_imports").select("reviewed_total_targets,reviewed_hits,reviewed_misses,inserted_misses,skipped_duplicates,created_at").eq("session_id", params.id).order("created_at", { ascending: false }),
       sessionData ? supabase.from("sessions").select("id,name,discipline,session_type,own_score,total_targets,winning_score,competition_date,created_at").eq("user_id", sessionData.user_id).order("competition_date", { ascending: false, nullsFirst: false }) : Promise.resolve({ data: [] }),
       supabase.from("private_session_notes").select("note_scope,post_number,body,context_tags").eq("session_id", params.id),
+      supabase.from("private_reflection_evidence").select("category,normalized_value,label,evidence_basis,confidence,reference").eq("session_id", params.id).eq("review_status", "accepted"),
     ]);
     const notes = (privateNoteData || []).filter((note) => String(note.body || "").trim().length > 0 || (Array.isArray(note.context_tags) && note.context_tags.length > 0));
     setSession(sessionData);
@@ -43,10 +45,11 @@ export default function CoachReportPage() {
     setImports(importData || []);
     setHistory(historyData || []);
     setPrivateNotes(notes);
+    setAcceptedEvidence(evidenceData || []);
     setIncludeNotesContext(notes.length > 0);
   }
 
-  const report = useMemo(() => session ? buildCoachReport({ session, misses, scorecardImport: imports[0] || null, postTargets, history, privateNotes, includeNotesContext }) : null, [session, misses, imports, postTargets, history, privateNotes, includeNotesContext]);
+  const report = useMemo(() => session ? buildCoachReport({ session, misses, scorecardImport: imports[0] || null, postTargets, history, privateNotes, acceptedEvidence, includeNotesContext }) : null, [session, misses, imports, postTargets, history, privateNotes, acceptedEvidence, includeNotesContext]);
 
   useEffect(() => {
     if (!session || !report) return;
