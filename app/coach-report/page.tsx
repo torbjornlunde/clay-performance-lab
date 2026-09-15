@@ -84,14 +84,14 @@ export default function CoachReportPeriodPage() {
     const ids = rows.map((session) => session.id);
     const [{ data: missRows }, { data: noteRows }, { data: importRows }, { data: evidenceRows }] = ids.length ? await Promise.all([
       supabase.from("misses").select("id,session_id,course_number,target_position,target_number,missed_target,main_reason,where_miss,created_at").in("session_id", ids),
-      supabase.from("private_session_notes").select("session_id,note_scope,post_number,body,context_tags").in("session_id", ids),
+      supabase.from("private_session_notes").select("id,session_id,note_scope,post_number,body,context_tags,updated_at").in("session_id", ids),
       supabase.from("scorecard_imports").select("session_id,reviewed_total_targets,reviewed_hits,reviewed_misses,inserted_misses,skipped_duplicates,created_at").in("session_id", ids).order("created_at", { ascending: false }),
-      supabase.from("private_reflection_evidence").select("session_id,category,normalized_value,label,evidence_basis,confidence,reference").in("session_id", ids).eq("review_status", "accepted"),
+      supabase.from("private_reflection_evidence").select("session_id,category,normalized_value,label,evidence_basis,confidence,reference,source_note_id,source_note_updated_at").in("session_id", ids).eq("review_status", "accepted"),
     ]) : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
     setSessions(rows);
     setMisses((missRows || []) as MissRow[]);
     setScorecardImports((importRows || []) as ScorecardImportRow[]);
-    setAcceptedEvidence((evidenceRows || []) as EvidenceRow[]);
+    setAcceptedEvidence((evidenceRows || []).filter((item: any) => noteRows?.some((note: any) => note.id === item.source_note_id && note.updated_at === item.source_note_updated_at)) as EvidenceRow[]);
     const privateNotes = ((noteRows || []) as NoteRow[]).filter((note) => String(note.body || "").trim() || (Array.isArray(note.context_tags) && note.context_tags.length > 0));
     setNotes(privateNotes);
     const visible = rows.filter((session) => inRange(session, fromDate, toDate)).map((session) => session.id);

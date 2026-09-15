@@ -17,6 +17,14 @@ const categories = new Set<string>(REFLECTION_EVIDENCE_CATEGORIES);
 const bases = new Set<string>(REFLECTION_EVIDENCE_BASES);
 const confidences = new Set<string>(REFLECTION_EVIDENCE_CONFIDENCES);
 const safeText = (value: unknown, max: number) => typeof value === "string" && value.trim().length > 0 && value.trim().length <= max && !/[\r\n]/.test(value);
+export const REFLECTION_REFERENCE_PATTERN = /^(post|stand|course) [1-9]\d?$/i;
+
+export function reflectionSupportsReference(reflection: string, reference: string | null | undefined) {
+  if (reference == null) return true;
+  const candidate = reference.trim();
+  if (!REFLECTION_REFERENCE_PATTERN.test(candidate)) return false;
+  return new RegExp(`\\b${candidate.replace(" ", "\\s+")}\\b`, "i").test(reflection);
+}
 
 export function validateReflectionEvidenceOutput(value: unknown): ReflectionEvidenceItem[] {
   if (!value || typeof value !== "object" || !Array.isArray((value as any).items)) throw new Error("Malformed structured interpretation.");
@@ -27,14 +35,14 @@ export function validateReflectionEvidenceOutput(value: unknown): ReflectionEvid
     const row = item as Record<string, unknown>;
     if (!categories.has(String(row.category)) || !bases.has(String(row.evidence_basis)) || !confidences.has(String(row.confidence))) throw new Error("Unsupported interpretation value.");
     if (!safeText(row.normalized_value, 80) || !safeText(row.label, 160)) throw new Error("Invalid interpretation text.");
-    if (row.reference != null && !safeText(row.reference, 60)) throw new Error("Invalid interpretation reference.");
+    if (row.reference != null && (!safeText(row.reference, 20) || !REFLECTION_REFERENCE_PATTERN.test(String(row.reference).trim()))) throw new Error("Invalid interpretation reference.");
     return { category: row.category as ReflectionEvidenceCategory, normalized_value: String(row.normalized_value).trim(), label: String(row.label).trim(), evidence_basis: row.evidence_basis as ReflectionEvidenceBasis, confidence: row.confidence as ReflectionEvidenceConfidence, reference: row.reference == null ? null : String(row.reference).trim() };
   });
 }
 
 export const reflectionEvidenceJsonSchema = {
   type: "object", additionalProperties: false, required: ["items"], properties: { items: { type: "array", maxItems: 8, items: { type: "object", additionalProperties: false, required: ["category", "normalized_value", "label", "evidence_basis", "confidence", "reference"], properties: {
-    category: { type: "string", enum: REFLECTION_EVIDENCE_CATEGORIES }, normalized_value: { type: "string", minLength: 1, maxLength: 80 }, label: { type: "string", minLength: 1, maxLength: 160 }, evidence_basis: { type: "string", enum: REFLECTION_EVIDENCE_BASES }, confidence: { type: "string", enum: REFLECTION_EVIDENCE_CONFIDENCES }, reference: { type: ["string", "null"], maxLength: 60 },
+    category: { type: "string", enum: REFLECTION_EVIDENCE_CATEGORIES }, normalized_value: { type: "string", minLength: 1, maxLength: 80 }, label: { type: "string", minLength: 1, maxLength: 160 }, evidence_basis: { type: "string", enum: REFLECTION_EVIDENCE_BASES }, confidence: { type: "string", enum: REFLECTION_EVIDENCE_CONFIDENCES }, reference: { type: ["string", "null"], maxLength: 20, pattern: "^(?:[Pp]ost|[Ss]tand|[Cc]ourse) [1-9][0-9]?$" },
   } } } },
 } as const;
 
