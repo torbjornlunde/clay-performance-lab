@@ -1,4 +1,5 @@
 "use client";
+import { ReflectionEvidenceReview } from "@/app/components/ReflectionEvidenceReview";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -953,6 +954,7 @@ export default function Page() {
             <span className="small muted">Optional — you can edit this later.</span>
             {noteStatus.session && <span className="small privateNoteSyncStatus" role="status">{noteStatus.session}</span>}
           </div>
+          <ReflectionEvidenceReview sessionId={session.id} note={noteFor("session") ? { id: noteFor("session")!.id, body: noteFor("session")!.body, updated_at: noteFor("session")!.updated_at } : null} canInterpret={noteSavingKey !== "session" && Boolean(noteFor("session")) && (noteDrafts.session || "") === (noteFor("session")?.body || "")} />
         </section>
       )}
 

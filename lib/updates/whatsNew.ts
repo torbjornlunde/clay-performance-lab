@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v3.09.26", title: "Review insights from your competition reflection", bullets: ["Choose when to interpret a saved private Competition reflection.", "Edit, accept or reject each suggestion before it can support coaching analysis.", "Keep your own reports separate from reviewed AI hypotheses and observed results."] },
   { id: "v2.09.26", title: "Add quick context after a competition", bullets: ["Mark conditions, focus, target types or equipment changes in seconds.", "Save a short private reflection without setting up targets or logging every miss.", "Use your own context in private analysis while keeping it separate from proven scorecard facts."] },
   { id: "v1.09.26", title: "Keep scoring through connection loss", bullets: ["Continue using an opened Training or Competition Score Sheet when your connection drops.", "See when changes are saved on your device and sync them safely when you reconnect.", "Review both versions before deciding what to keep if the server changed elsewhere."] },
   { id: "v14.08.26", title: "Add scored competition results to your profile", bullets: ["Review a finalized Competition Score Sheet result when an organizer linked your CPL profile.", "Add it to your own Results with known missed target positions ready for personal review.", "Claiming is explicit and duplicate-safe while the organizer's scored result remains separate."] },
