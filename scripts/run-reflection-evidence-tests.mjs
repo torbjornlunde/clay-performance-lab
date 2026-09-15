@@ -144,7 +144,9 @@ assert.match(evidence.acceptedEvidenceSentence(current[1]), /^One reviewed AI hy
 const component = readFileSync("app/components/ReflectionEvidenceReview.tsx", "utf8");
 assert.match(component, /Evidence could not be loaded/); assert.match(component, /!canInterpret/);
 const analysisPage = readFileSync("app/sessions/[id]/analysis/page.tsx", "utf8");
-assert.match(analysisPage, /Reviewed reflection evidence/); assert.match(analysisPage, /currentAcceptedReflectionEvidence/);
+assert.match(analysisPage, /Reflection context/); assert.match(analysisPage, /deterministic\.reflectionContext/);
+const deterministicAnalysis = readFileSync("lib/analysis/deterministicSessionAnalysis.ts", "utf8");
+assert.match(deterministicAnalysis, /currentAcceptedReflectionEvidence/, "deterministic Analysis reuses current-revision filtering");
 const sessionPage = readFileSync("app/sessions/[id]/page.tsx", "utf8");
 assert.match(sessionPage, /\(noteDrafts\.session \|\| ""\) === \(noteFor\("session"\)\?\.body \|\| ""\)/);
 const migration = readFileSync("supabase/migrations/20260915120000_private_reflection_evidence.sql", "utf8");

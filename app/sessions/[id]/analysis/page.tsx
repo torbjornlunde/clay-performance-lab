@@ -16,8 +16,7 @@ import {
 } from "@/lib/misses/labels";
 import { supabase } from "@/lib/supabase/client";
 import { AppBackButton } from "@/app/components/navigation/AppBackButton";
-import { acceptedEvidenceSentence, type ReflectionEvidenceItem } from "@/lib/ai/reflectionEvidence";
-import { currentAcceptedReflectionEvidence } from "@/lib/ai/currentReflectionEvidence";
+import type { ReviewableReflectionEvidence } from "@/lib/ai/currentReflectionEvidence";
 
 export default function AnalysisPage() {
   const params = useParams<{ id: string }>();
@@ -30,7 +29,7 @@ export default function AnalysisPage() {
   const [imports, setImports] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [privateNotes, setPrivateNotes] = useState<any[]>([]);
-  const [acceptedReflectionEvidence, setAcceptedReflectionEvidence] = useState<ReflectionEvidenceItem[]>([]);
+  const [reflectionEvidence, setReflectionEvidence] = useState<ReviewableReflectionEvidence[]>([]);
   const [includePrivateNotes, setIncludePrivateNotes] = useState(true);
 
   useEffect(() => {
@@ -77,8 +76,7 @@ export default function AnalysisPage() {
       supabase
         .from("private_reflection_evidence")
         .select("category,normalized_value,label,evidence_basis,confidence,reference,source_note_id,source_note_updated_at,review_status")
-        .eq("session_id", params.id)
-        .eq("review_status", "accepted"),
+        .eq("session_id", params.id),
     ]);
     const useScorecardPath = Boolean(importData?.[0]) && isPostBasedSportingDiscipline(sessionData?.discipline);
     const { data: definitionData } = useScorecardPath
@@ -95,7 +93,7 @@ export default function AnalysisPage() {
     const notes = (privateNoteData || []).filter((note) => String(note.body || "").trim().length > 0 || (Array.isArray(note.context_tags) && note.context_tags.length > 0));
     setHistory(historyData || []);
     setPrivateNotes(notes);
-    setAcceptedReflectionEvidence(currentAcceptedReflectionEvidence(evidenceData || [], privateNoteData || []));
+    setReflectionEvidence(evidenceData || []);
     setIncludePrivateNotes(notes.length > 0);
   }
 
@@ -128,6 +126,8 @@ export default function AnalysisPage() {
     postTargets,
     history,
     privateNotes,
+    reflectionEvidence,
+    reflectionEvidenceSources: privateNotes,
     includePrivateNotes,
   });
   const hasReviewedPostScorecard = Boolean(scorecardImport) && isPostBasedSportingDiscipline(session.discipline);
@@ -206,15 +206,6 @@ export default function AnalysisPage() {
           {searchParams.get("ownScoreUpdated") === "true" && " Your official score was updated."}
         </div>
       )}
-      {includePrivateNotes && acceptedReflectionEvidence.length > 0 && (
-        <section className="card analysisSection">
-          <h2>Reviewed reflection evidence</h2>
-          {acceptedReflectionEvidence.map((item, index) => (
-            <p key={`${item.category}-${item.normalized_value}-${index}`}>• {acceptedEvidenceSentence(item)}</p>
-          ))}
-          <p className="small muted">Included only from your current saved reflection. Self-reports remain your observations; reviewed AI hypotheses are possibilities, not causal findings.</p>
-        </section>
-      )}
       {hasReviewedPostScorecard ? (
         <>
           <section className="card analysisSection">
@@ -231,9 +222,10 @@ export default function AnalysisPage() {
 
           {deterministic.notesBasedContext && (
             <section className="card analysisSection">
-              <h2>Notes-based context</h2>
+              <h2>Reflection context</h2>
               {deterministic.notesBasedContext.summary.map((text) => <p key={text}>• {text}</p>)}
-              <p className="small muted">Private notes are user-provided context, not proven facts. The analysis uses them carefully and does not send note text to analytics.</p>
+              {deterministic.reflectionContext.map((item, index) => <p key={`${item.category}-${item.normalizedValue}-${index}`}>• {item.sentence}</p>)}
+              <p className="small muted">Observed scorecard facts, what you reported, and reviewed AI hypotheses remain separate. Raw note text is not interpreted into coaching themes or sent to analytics.</p>
             </section>
           )}
           <section className="card analysisSection">
