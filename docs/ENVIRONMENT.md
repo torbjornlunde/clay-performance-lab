@@ -30,6 +30,7 @@ Notes:
 - In Resend, create a webhook for `https://clayperformancelab.com/api/webhooks/resend` and subscribe to `email.delivered`, `email.bounced`, `email.failed`, and `email.suppressed`. Copy its signing secret to `RESEND_WEBHOOK_SECRET`.
 - Webhooks are verified from the unmodified request body with Resend's official Node verification helper before the server-only Supabase service role updates delivery state. Because Resend webhooks are account-level, events whose message IDs do not match a tracked beta approval email are safely acknowledged and ignored.
 - Vercel deployments must be redeployed after environment variable changes.
+- After adding or rotating `RESEND_WEBHOOK_SECRET`, verify that a new production deployment has been created before testing delivery events; existing deployments keep their previous runtime environment.
 - Beta access approval still grants access if sending or delivery fails. Resend API acceptance is shown as `Accepted`, not `Delivered`; only a verified delivery webhook changes that state to `Delivered`.
 
 ## Beta admin last sign-in
