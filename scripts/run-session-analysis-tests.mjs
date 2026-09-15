@@ -17,14 +17,39 @@ assert(!result.findings.join(' ').match(/early|middle|late|final third/i), 'targ
 assert(!result.recommendations.map(x=>x.title+x.evidence).join(' ').match(/reset|fatigue|late/i), 'no unsupported late-round recommendation');
 assert.equal(result.notesBasedContext, null, 'notes context is absent when private notes are not included');
 result=a.buildDeterministicSessionAnalysis({session:baseSession,scorecardImport:imports,misses,postTargets:[],history:[],includePrivateNotes:true,privateNotes:[{note_scope:'session',post_number:null,body:'tired at the end and rushed the second target'},{note_scope:'post',post_number:4,body:'bad light on post 4 and felt behind the bird'}]});
-assert.equal(result.notesBasedContext.heading, 'Notes-based context', 'analysis output supports Notes-based context');
+assert.equal(result.notesBasedContext.heading, 'Reflection context', 'analysis output supports Reflection context');
 assert(result.notesBasedContext.hasSessionNote, 'session-level notes can be included');
 assert(result.notesBasedContext.hasPostNotes, 'per-post notes can be included');
-assert(result.notesBasedContext.summary.join(' ').includes('Your notes suggest'), 'notes are worded as suggestions');
 assert(result.notesBasedContext.summary.join(' ').includes('post 4'), 'post-specific note comments are summarized without repeating full notes');
 assert(result.notesBasedContext.instructions.includes('user-provided context, not proven facts'), 'AI instruction says notes are context, not proven facts');
 assert(result.notesBasedContext.instructions.includes('Observed score and miss data are observed facts'), 'prompt/context separates observed facts from private notes');
 assert(!result.notesBasedContext.summary.join(' ').includes('bad light on post 4 and felt behind the bird'), 'raw note text is not repeated');
+assert.deepEqual(result.notesBasedContext.themes, [], 'raw tired, light, focus, and gun language creates no semantic themes');
+assert(!result.recommendations.map(x=>x.title+x.evidence).join(' ').match(/fatigue|visual conditions|pre-shot|technical feeling/i), 'raw note language creates no training priority');
+
+const noteSource={id:'note-current',updated_at:'2026-09-15T12:00:00Z'};
+const evidenceBase={source_note_id:noteSource.id,source_note_updated_at:noteSource.updated_at,review_status:'accepted',confidence:'high',reference:null};
+const reflectionEvidence=[
+ {...evidenceBase,id:'self',category:'mental_state',normalized_value:'rushed routine',label:'your routine felt rushed',evidence_basis:'self_report'},
+ {...evidenceBase,id:'ai',category:'possible_issue',normalized_value:'inconsistent mount',label:'the gun mount may have varied',evidence_basis:'ai_inference'},
+ {...evidenceBase,id:'pending',category:'conditions',normalized_value:'wind',label:'wind affected the targets',evidence_basis:'self_report',review_status:'pending'},
+ {...evidenceBase,id:'rejected',category:'physical_state',normalized_value:'fatigue',label:'fatigue late in the round',evidence_basis:'self_report',review_status:'rejected'},
+ {...evidenceBase,id:'stale',category:'target_type',normalized_value:'rabbit',label:'rabbit targets were difficult',evidence_basis:'self_report',source_note_updated_at:'2026-09-14T12:00:00Z'},
+];
+result=a.buildDeterministicSessionAnalysis({session:baseSession,scorecardImport:imports,misses:[],postTargets:[],history:[],includePrivateNotes:true,privateNotes:[{note_scope:'session',body:'tired wind focus gun',context_tags:['wind']}],reflectionEvidence,reflectionEvidenceSources:[noteSource]});
+assert(result.notesBasedContext.summary.join(' ').includes('You marked'), 'explicit context tags remain visible as self-report');
+assert.equal(result.reflectionContext.length,2,'pending, rejected, and stale accepted evidence is excluded');
+assert(result.reflectionContext.some(x=>x.sentence.startsWith('You reported')),'accepted current self-report is used with an explicit basis');
+assert(result.reflectionContext.some(x=>x.sentence.includes('reviewed AI hypothesis')),'accepted current AI inference is qualified as a hypothesis');
+const reflectionTraining=result.recommendations.map(x=>`${x.title} ${x.evidence}`).join(' ');
+assert(reflectionTraining.includes('self-reported context, not a proven cause'),'self-report recommendation is non-causal');
+assert(reflectionTraining.includes('reviewed AI hypothesis') && reflectionTraining.includes('not a proven cause'),'AI-only recommendation is qualified and non-causal');
+
+const threeObservedMisses=[1,2,3].map((target_position,index)=>({course_number:1,target_position,target_number:index+1,missed_target:'Single target'}));
+result=a.buildDeterministicSessionAnalysis({session:{...baseSession,total_targets:5,post_count:1,targets_per_post:5},scorecardImport:{...imports,reviewed_total_targets:5,reviewed_hits:2,reviewed_misses:3},misses:threeObservedMisses,postTargets:[{post_number:1,target_position:1,position_in_presentation:2},{post_number:1,target_position:2,position_in_presentation:2},{post_number:1,target_position:3,position_in_presentation:2}],history:[],includePrivateNotes:true,privateNotes:[{note_scope:'session',body:'reflection'}],reflectionEvidence,reflectionEvidenceSources:[noteSource]});
+assert.equal(result.recommendations.length,3,'training focus remains capped at three priorities');
+assert(result.recommendations[0].evidence.includes('reviewed scorecard') && result.recommendations[1].evidence.includes('proven presentation position'),'observed priorities are selected before reflection evidence');
+assert(result.recommendations.every(x=>!x.evidence.includes('reviewed AI hypothesis')),'observed scorecard priorities outrank reviewed reflection evidence');
 result=a.buildDeterministicSessionAnalysis({session:baseSession,scorecardImport:imports,misses,postTargets:[],history:[],includePrivateNotes:false,privateNotes:[{note_scope:'session',body:'tired at the end'}]});
 assert.equal(result.notesBasedContext, null, 'toggle OFF prevents notes from being included');
 const postTargets=[
