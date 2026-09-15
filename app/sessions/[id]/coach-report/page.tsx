@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { buildCoachReport } from "@/lib/analysis/coachReport";
 import { recordAnalyticsEvent } from "@/lib/analytics";
 import { supabase } from "@/lib/supabase/client";
+import { currentAcceptedReflectionEvidence } from "@/lib/ai/currentReflectionEvidence";
 
 export default function CoachReportPage() {
   const params = useParams<{ id: string }>();
@@ -36,7 +37,7 @@ export default function CoachReportPage() {
       supabase.from("scorecard_imports").select("reviewed_total_targets,reviewed_hits,reviewed_misses,inserted_misses,skipped_duplicates,created_at").eq("session_id", params.id).order("created_at", { ascending: false }),
       sessionData ? supabase.from("sessions").select("id,name,discipline,session_type,own_score,total_targets,winning_score,competition_date,created_at").eq("user_id", sessionData.user_id).order("competition_date", { ascending: false, nullsFirst: false }) : Promise.resolve({ data: [] }),
       supabase.from("private_session_notes").select("id,note_scope,post_number,body,context_tags,updated_at").eq("session_id", params.id),
-      supabase.from("private_reflection_evidence").select("category,normalized_value,label,evidence_basis,confidence,reference,source_note_id,source_note_updated_at").eq("session_id", params.id).eq("review_status", "accepted"),
+      supabase.from("private_reflection_evidence").select("category,normalized_value,label,evidence_basis,confidence,reference,source_note_id,source_note_updated_at,review_status").eq("session_id", params.id).eq("review_status", "accepted"),
     ]);
     const notes = (privateNoteData || []).filter((note) => String(note.body || "").trim().length > 0 || (Array.isArray(note.context_tags) && note.context_tags.length > 0));
     setSession(sessionData);
@@ -45,7 +46,7 @@ export default function CoachReportPage() {
     setImports(importData || []);
     setHistory(historyData || []);
     setPrivateNotes(notes);
-    setAcceptedEvidence((evidenceData || []).filter((item: any) => privateNoteData?.some((note: any) => note.id === item.source_note_id && note.updated_at === item.source_note_updated_at)));
+    setAcceptedEvidence(currentAcceptedReflectionEvidence(evidenceData || [], privateNoteData || []));
     setIncludeNotesContext(notes.length > 0);
   }
 

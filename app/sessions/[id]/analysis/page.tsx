@@ -16,6 +16,8 @@ import {
 } from "@/lib/misses/labels";
 import { supabase } from "@/lib/supabase/client";
 import { AppBackButton } from "@/app/components/navigation/AppBackButton";
+import { acceptedEvidenceSentence, type ReflectionEvidenceItem } from "@/lib/ai/reflectionEvidence";
+import { currentAcceptedReflectionEvidence } from "@/lib/ai/currentReflectionEvidence";
 
 export default function AnalysisPage() {
   const params = useParams<{ id: string }>();
@@ -28,6 +30,7 @@ export default function AnalysisPage() {
   const [imports, setImports] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [privateNotes, setPrivateNotes] = useState<any[]>([]);
+  const [acceptedReflectionEvidence, setAcceptedReflectionEvidence] = useState<ReflectionEvidenceItem[]>([]);
   const [includePrivateNotes, setIncludePrivateNotes] = useState(true);
 
   useEffect(() => {
@@ -50,7 +53,7 @@ export default function AnalysisPage() {
       .select("*")
       .eq("session_id", params.id)
       .order("created_at");
-    const [{ data: postTargetData }, { data: importData }, { data: historyData }, { data: privateNoteData }] = await Promise.all([
+    const [{ data: postTargetData }, { data: importData }, { data: historyData }, { data: privateNoteData }, { data: evidenceData }] = await Promise.all([
       supabase
         .from("session_post_targets")
         .select("post_number,target_position,presentation_number,presentation_type,position_in_presentation,target_label,target_type,direction,angle,speed,distance,difficulty,notes")
@@ -69,8 +72,13 @@ export default function AnalysisPage() {
         : Promise.resolve({ data: [] }),
       supabase
         .from("private_session_notes")
-        .select("note_scope,post_number,body,context_tags")
+        .select("id,note_scope,post_number,body,context_tags,updated_at")
         .eq("session_id", params.id),
+      supabase
+        .from("private_reflection_evidence")
+        .select("category,normalized_value,label,evidence_basis,confidence,reference,source_note_id,source_note_updated_at,review_status")
+        .eq("session_id", params.id)
+        .eq("review_status", "accepted"),
     ]);
     const useScorecardPath = Boolean(importData?.[0]) && isPostBasedSportingDiscipline(sessionData?.discipline);
     const { data: definitionData } = useScorecardPath
@@ -87,6 +95,7 @@ export default function AnalysisPage() {
     const notes = (privateNoteData || []).filter((note) => String(note.body || "").trim().length > 0 || (Array.isArray(note.context_tags) && note.context_tags.length > 0));
     setHistory(historyData || []);
     setPrivateNotes(notes);
+    setAcceptedReflectionEvidence(currentAcceptedReflectionEvidence(evidenceData || [], privateNoteData || []));
     setIncludePrivateNotes(notes.length > 0);
   }
 
@@ -196,6 +205,15 @@ export default function AnalysisPage() {
           {searchParams.get("alreadyImported") === "true" && " This scorecard had already been imported."}
           {searchParams.get("ownScoreUpdated") === "true" && " Your official score was updated."}
         </div>
+      )}
+      {includePrivateNotes && acceptedReflectionEvidence.length > 0 && (
+        <section className="card analysisSection">
+          <h2>Reviewed reflection evidence</h2>
+          {acceptedReflectionEvidence.map((item, index) => (
+            <p key={`${item.category}-${item.normalized_value}-${index}`}>• {acceptedEvidenceSentence(item)}</p>
+          ))}
+          <p className="small muted">Included only from your current saved reflection. Self-reports remain your observations; reviewed AI hypotheses are possibilities, not causal findings.</p>
+        </section>
       )}
       {hasReviewedPostScorecard ? (
         <>
