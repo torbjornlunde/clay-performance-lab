@@ -128,6 +128,13 @@ const componentExpectations = [
   ['.mobileRankingRow', [['background', '--surface-inset'], ['color', '--text-primary'], ['border', '--border-subtle']]],
   ['.mobileBreakdownCard', [['background', '--surface-inset'], ['color', '--text-primary'], ['border', '--border-subtle']]],
   ['.mobilePostCell', [['background', '--surface-cell'], ['color', '--text-primary'], ['border', '--border-subtle']]],
+  ['.candidateCard', [['background', '--surface-secondary'], ['color', '--text-primary'], ['border', '--border-subtle']]],
+  ['.manualImportMethodCard', [['background', '--surface-secondary'], ['color', '--text-primary'], ['border', '--line']]],
+  ['.manualLinkImportPanel', [['background', '--notice-bg'], ['color', '--text-primary'], ['border', '--line']]],
+  ['.searchProgressPanel', [['background', '--surface-secondary'], ['color', '--text-primary'], ['border', '--border-subtle']]],
+  ['.leirdueResultEditor', [['background', '--surface-secondary'], ['border', '--lineStrong']]],
+  ['.coachReportSessionCard', [['background', '--surface-secondary'], ['color', '--text-primary'], ['border', '--border-subtle']]],
+  ['.statsFilterCard', [['background', '--surface-primary'], ['border-color', '--border-subtle']]],
   ['.leirdueHealthPage .compactSummaryGrid span', [['background', '--surface-cell'], ['color', '--text-secondary'], ['border-color', '--border-subtle']]],
   ['.leirdueHealthPage .compactSummaryGrid strong', [['color', '--text-primary']]],
   ['.leirdueHealthPage .callout', [['background', '--notice-bg'], ['color', '--notice-text'], ['border-color', '--border-subtle']]],
@@ -139,6 +146,35 @@ const componentExpectations = [
 ];
 
 for (const [selector, expectations] of componentExpectations) expectRule(selector, expectations);
+
+// Reusable content surfaces must not silently fall back to dark-theme literals.
+// The list is intentionally focused on user-facing containers rather than banning
+// every literal: brand accents, charts, shadows, and modal backdrops remain valid.
+const literalAuditedSelectors = [
+  '.candidateCard',
+  '.manualImportMethodCard',
+  '.manualLinkImportPanel',
+  '.searchProgressPanel',
+  '.leirdueResultEditor',
+  '.resultsSummaryTable',
+  '.sessionItem',
+  '.analysisBox',
+  '.coachReportSessionCard',
+  '.statsFilterCard',
+  '.equipmentListItem',
+];
+const obviousColorLiteral = /(?:#[0-9a-fA-F]{3,8}|rgba?\s*\()/;
+for (const selector of literalAuditedSelectors) {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const match of css.matchAll(new RegExp(`([^{}]*${escaped}[^{}]*)\\{([^{}]+)\\}`, 'g'))) {
+    for (const declaration of match[2].split(';')) {
+      const property = declaration.match(/^\s*(background(?:-color)?|color|border(?:-color)?)\s*:\s*(.+)$/);
+      if (property && obviousColorLiteral.test(property[2])) {
+        failures.push(`${selector}: ${property[1]} uses literal ${property[2].trim()}; use a semantic theme token`);
+      }
+    }
+  }
+}
 
 for (const token of ['--action-unselected-bg', '--action-unselected-text', '--action-unselected-border']) {
   if ((css.match(new RegExp(`var\\(${token}\\)`, 'g')) ?? []).length < 1) {

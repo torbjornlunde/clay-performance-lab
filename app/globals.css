@@ -572,7 +572,8 @@ button:disabled,
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
   align-items: center;
-  background: rgba(12, 18, 27, 0.9);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 14px;
@@ -1738,8 +1739,9 @@ body {
 }
 
 .candidateCard {
-  background: rgba(12, 18, 27, 0.9);
-  border: 1px solid var(--line);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
   border-radius: 18px;
   padding: 14px;
   margin: 10px 0;
@@ -2082,8 +2084,9 @@ body {
 }
 
 .searchProgressPanel {
-  border: 1px solid rgba(117, 184, 255, 0.24);
-  background: rgba(117, 184, 255, 0.08);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
   border-radius: 16px;
   margin: 14px 0;
   padding: 12px 14px;
@@ -5931,7 +5934,8 @@ html[data-theme="light"] .scoreSheetSyncBanner.syncStatus-conflict strong {
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 14px;
-  background: rgba(216, 165, 58, 0.08);
+  background: var(--notice-bg);
+  color: var(--text-primary);
   overflow-wrap: anywhere;
 }
 
@@ -5940,7 +5944,8 @@ html[data-theme="light"] .scoreSheetSyncBanner.syncStatus-conflict strong {
   border-radius: 18px;
   padding: 16px;
   margin-top: 14px;
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
   overflow-wrap: anywhere;
 }
 
@@ -5979,14 +5984,14 @@ html[data-theme="light"] .scoreSheetSyncBanner.syncStatus-conflict strong {
 }
 
 .selectedResultCard {
-  border-color: var(--gold2);
-  background: rgba(216, 165, 58, 0.12);
+  border-color: var(--action-selected-border);
+  background: var(--notice-bg);
 }
 
 .selectedResultButton {
   background: var(--gold2);
-  color: #15110a;
-  border-color: var(--gold2);
+  color: var(--text-on-gold);
+  border-color: var(--action-selected-border);
   font-weight: 900;
 }
 
@@ -6082,10 +6087,11 @@ html[data-theme="light"] .scoreSheetSyncBanner.syncStatus-conflict strong {
 }
 
 .ignoredCandidatesGroup {
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-subtle);
   border-radius: 18px;
   padding: 12px;
-  background: rgba(12, 18, 27, 0.58);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
 }
 
 .ignoredCandidatesGroup > summary {
@@ -9004,7 +9010,9 @@ select {
 
 .coachReportSessionCard {
   align-items: start;
-  border: 1px solid var(--border);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
   border-radius: 16px;
   grid-template-columns: auto 1fr;
   padding: 0.85rem;
@@ -9512,6 +9520,8 @@ select {
 
 .statsFilterCard,
 .statsRecentFormCard {
+  background: var(--surface-primary);
+  border-color: var(--border-subtle);
   max-width: 860px;
   margin-left: auto;
   margin-right: auto;
