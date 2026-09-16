@@ -1,5 +1,6 @@
 import type { AnalysisSession, ScorecardImportSummary, PostTargetAnalysisRow, AnalysisMiss, PrivateSessionAnalysisNote } from "./deterministicSessionAnalysis";
-import { acceptedEvidenceSentence, type ReflectionEvidenceItem } from "../ai/reflectionEvidence";
+import { acceptedEvidenceSentence } from "../ai/reflectionEvidence";
+import { currentAcceptedReflectionEvidence, type ReviewableReflectionEvidence } from "../ai/currentReflectionEvidence";
 import { buildDeterministicSessionAnalysis } from "./deterministicSessionAnalysis";
 
 export type CoachReportInput = {
@@ -9,7 +10,7 @@ export type CoachReportInput = {
   postTargets?: PostTargetAnalysisRow[];
   history?: AnalysisSession[];
   privateNotes?: PrivateSessionAnalysisNote[];
-  acceptedEvidence?: ReflectionEvidenceItem[];
+  acceptedEvidence?: ReviewableReflectionEvidence[];
   includeNotesContext?: boolean;
 };
 
@@ -22,7 +23,9 @@ export function formatCoachReportDate(session: AnalysisSession) {
 }
 
 export function buildCoachReport(input: CoachReportInput) {
-  const analysis = buildDeterministicSessionAnalysis({ ...input, includePrivateNotes: input.includeNotesContext });
+  const noteSources = (input.privateNotes || []).filter((note): note is PrivateSessionAnalysisNote & { id: string; updated_at: string } => Boolean(note.id && note.updated_at));
+  const acceptedEvidence = currentAcceptedReflectionEvidence(input.acceptedEvidence || [], noteSources);
+  const analysis = buildDeterministicSessionAnalysis({ ...input, reflectionEvidence: acceptedEvidence, reflectionEvidenceSources: noteSources, includePrivateNotes: input.includeNotesContext });
   const title = clean(input.session.name) || "Untitled session";
   const discipline = clean(input.session.discipline) || "Discipline not recorded";
   const venue = clean(input.session.shooting_ground) || "Venue/ground not recorded";
@@ -34,8 +37,8 @@ export function buildCoachReport(input: CoachReportInput) {
     { title: "Key findings", items: analysis.findings.map((text) => `Observed data shows ${text}`) },
     { title: "Training focus", items: analysis.recommendations.map((item) => `The analysis suggests ${item.title} Evidence: ${item.evidence}`) },
     { title: "Recommended drills/priorities", items: analysis.recommendations.map((item) => item.title) },
-    ...(input.includeNotesContext && analysis.notesBasedContext ? [{ title: "Notes-based context", items: [...analysis.notesBasedContext.summary.map((text) => `Private notes suggest ${text}`), "This should be treated as context, not a confirmed cause."] }] : []),
-    ...(input.includeNotesContext && input.acceptedEvidence?.length ? [{ title: "Reviewed reflection evidence", items: input.acceptedEvidence.map(acceptedEvidenceSentence) }] : []),
+    ...(input.includeNotesContext && analysis.notesBasedContext ? [{ title: "Reviewed context", items: analysis.notesBasedContext.summary }] : []),
+    ...(input.includeNotesContext && acceptedEvidence.length ? [{ title: "Reviewed reflection evidence", items: acceptedEvidence.map(acceptedEvidenceSentence) }] : []),
     { title: "Missing data / confidence notes", items: analysis.missingData.length ? analysis.missingData : ["No major missing-data notes were produced for this session."] },
     { title: "Disclaimer", items: ["This is a training-support summary, not a replacement for a coach watching you shoot."] },
   ].filter((section) => section.items.length > 0);

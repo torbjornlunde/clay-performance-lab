@@ -34,12 +34,12 @@ assert(report.sections.some((section) => section.title === 'Data quality and wha
 assert(!report.plainText.includes('RAW SECRET NOTE'), 'raw private note text is not included');
 assert(!/[<>][a-z]/i.test(report.plainText), 'copied report is plain text, not HTML');
 report = buildPeriodCoachReport({ fromDate: '2026-06-13', toDate: '2026-07-13', sessions: selected, missesBySession, privateNotesBySession, includeNotesContext: false });
-assert(report.plainText.includes('Notes context is available only when the toggle is on'), 'notes-based context can be turned off');
+assert(report.plainText.includes('Reviewed notes context is available only when the toggle is on'), 'reviewed context can be turned off');
 assert(!report.plainText.includes('tired'), 'notes context is omitted when toggle is off');
 assert(!report.plainText.includes('Old session'), 'report only includes selected sessions');
 
 const page = readFileSync('app/coach-report/page.tsx', 'utf8');
-for (const text of ['Coach report', 'From date', 'To date', 'Include notes-based context', 'Raw private notes are not shown', 'Update evidence preview', 'Evidence preview needs update', 'Generate AI coach report', 'Copy visible report', 'Copied', 'Copy only what is visible here.']) assert(page.includes(text), `/coach-report page includes ${text}`);
+for (const text of ['Coach report', 'From date', 'To date', 'Include reviewed context', 'Raw private note text is not interpreted', 'Update evidence preview', 'Evidence preview needs update', 'Generate AI coach report', 'Copy visible report', 'Copied', 'Copy only what is visible here.']) assert(page.includes(text), `/coach-report page includes ${text}`);
 assert.doesNotMatch(page.match(/<section className="card coachReportHero">[\s\S]*?<\/section>/)?.[0] || '', /Copy visible report|Copy report/, 'copy button is not in top settings card');
 assert.match(page.match(/<article className="card coachReportPreview"[\s\S]*?<\/article>/)?.[0] || '', /Copy visible report/, 'copy button is in report preview section');
 assert.match(page, /coachReportAiCards/, 'AI report renders card container');
