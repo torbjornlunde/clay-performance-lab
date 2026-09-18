@@ -17,6 +17,7 @@ import {
 import { supabase } from "@/lib/supabase/client";
 import { AppBackButton } from "@/app/components/navigation/AppBackButton";
 import type { ReviewableReflectionEvidence } from "@/lib/ai/currentReflectionEvidence";
+import { isPostBasedScorecardImportDiscipline } from "@/lib/scorecards/scorecardProfiles";
 
 export default function AnalysisPage() {
   const params = useParams<{ id: string }>();
@@ -78,7 +79,7 @@ export default function AnalysisPage() {
         .select("category,normalized_value,label,evidence_basis,confidence,reference,source_note_id,source_note_updated_at,review_status")
         .eq("session_id", params.id),
     ]);
-    const useScorecardPath = Boolean(importData?.[0]) && isPostBasedSportingDiscipline(sessionData?.discipline);
+    const useScorecardPath = Boolean(importData?.[0]) && isPostBasedScorecardImportDiscipline(sessionData?.discipline);
     const { data: definitionData } = useScorecardPath
       ? { data: [] }
       : await supabase
@@ -130,7 +131,7 @@ export default function AnalysisPage() {
     reflectionEvidenceSources: privateNotes,
     includePrivateNotes,
   });
-  const hasReviewedPostScorecard = Boolean(scorecardImport) && isPostBasedSportingDiscipline(session.discipline);
+  const hasReviewedPostScorecard = Boolean(scorecardImport) && isPostBasedScorecardImportDiscipline(session.discipline);
   const legacyAnalysis = analyzeMisses(enrichedMisses as MissForAnalysis[]);
   const importedNotice = searchParams.get("scorecardImported") === "1";
   const isSporttrap = session.discipline === "Sporttrap";
