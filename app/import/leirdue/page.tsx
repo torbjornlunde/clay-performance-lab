@@ -499,7 +499,6 @@ function ReviewAction({ candidate, update }: { candidate: EditableCandidate; upd
 
 function CandidateCard({ candidate, shooterName, onChange }: { candidate: EditableCandidate; shooterName: string; onChange: (candidate: EditableCandidate) => void }) {
   const percent = performance(candidate);
-  const sourceIds = candidateSourceIds(candidate);
   const warnings = candidateWarnings(candidate);
   const original = parsedValues(candidate);
   const validation = validateLeirdueReviewedCandidate(candidate);
@@ -566,11 +565,11 @@ function CandidateCard({ candidate, shooterName, onChange }: { candidate: Editab
       </section> : null}
       {!validation.valid && !candidate.editorOpen ? <p className="error small"><strong>Cannot import:</strong> Open Review / edit result to fix the highlighted fields.</p> : null}
 
-      <details className="candidateDetails"><summary>Technical details</summary>
+      <details className="candidateDetails"><summary>Result details</summary>
         <p className="small muted"><strong>Review reason:</strong> {candidateReason(candidate)}</p>
-        <div className="metricsRow"><span className="metricChip"><strong>{candidate.shooterClass || "?"}</strong> class</span><span className="metricChip"><strong>{candidate.placement ?? "?"}</strong> placement</span>{percent !== null ? <span className="metricChip highlightMetric"><strong>{percent.toFixed(1)}%</strong> performance</span> : null}<span className="metricChip"><strong>{sourceIds.stevneId || "?"}</strong> stevne_id</span><span className="metricChip"><strong>{sourceIds.listeId || "?"}</strong> liste_id</span></div>
+        <div className="metricsRow"><span className="metricChip"><strong>{candidate.shooterClass || "?"}</strong> class</span><span className="metricChip"><strong>{candidate.placement ?? "?"}</strong> placement</span>{percent !== null ? <span className="metricChip highlightMetric"><strong>{percent.toFixed(1)}%</strong> performance</span> : null}</div>
         {warnings.length ? <div className={candidate.duplicateStatus === "exact" ? "error" : "notice"}><strong>Import warnings</strong><ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div> : null}
-        <p className="small muted">Source: <a href={candidate.leirdueUrl} target="_blank" rel="noreferrer">Open Leirdue link</a></p><p className="small muted">Parser notes: {candidate.notes || "None"}</p>
+        <p className="small muted">Source: <a href={candidate.leirdueUrl} target="_blank" rel="noreferrer">Open Leirdue link</a></p>
         {candidate.category !== "control" && canSelectCandidate(candidate) ? <button type="button" className="secondary smallButton" onClick={skipAsNotMe}>Mark as not me</button> : null}
       </details>
       {candidate.saveMessage ? <div className={candidate.saveStatus === "error" ? "error" : "notice"}>{candidate.saveMessage}</div> : null}
@@ -583,8 +582,6 @@ function ManualImportSummaryCard({ candidates, year }: { candidates: EditableCan
   if (visible.length === 0) return null;
   const first = visible[0];
   const likely = visible.find((candidate) => candidate.shooterMatchStatus === "matched_to_you") || visible.find((candidate) => candidate.shooterMatchStatus === "possible_match");
-  const sourceIds = candidateSourceIds(first);
-
   return (
     <section className="card manualFoundSummary">
       <p className="eyebrow">Review step</p>
@@ -610,186 +607,11 @@ function ManualImportSummaryCard({ candidates, year }: { candidates: EditableCan
       <details className="candidateDetails">
         <summary>Source details</summary>
         <p className="small muted">Source URL: <a href={first.leirdueUrl} target="_blank" rel="noreferrer">{first.leirdueUrl}</a></p>
-        <p className="small muted">stevne_id: {sourceIds.stevneId || "unknown"} · liste_id: {sourceIds.listeId || "unknown"}</p>
       </details>
     </section>
   );
 }
 
-
-function CoverageDiagnostics({ debug, groupedCounts }: { debug: LeirdueSearchDebug | null; groupedCounts: { confirmed: number; possible: number; alreadyImported: number; ignored: number } }) {
-  if (!debug) return null;
-  const coverage = debug.coverage;
-  const checkedLists = debug.checkedLists || [];
-  const rowsParsed = coverage?.rowsParsed ?? checkedLists.reduce((total, item) => total + item.rowsFound, 0);
-  const failedOrUnsupported = coverage?.failedOrUnsupportedPages ?? checkedLists.filter((item) => item.status === "failed fetch" || item.status === "unsupported format").length;
-  return (
-    <details className="card coverageDiagnostics">
-      <summary>Coverage diagnostics</summary>
-      <div className="compactSummaryGrid" aria-label="Leirdue import coverage">
-        <span><strong>{coverage?.eventsChecked ?? debug.completedEventsInspected}</strong> Events checked</span>
-        <span><strong>{coverage?.resultListsChecked ?? checkedLists.length}</strong> Result lists checked</span>
-        <span><strong>{rowsParsed}</strong> Rows parsed</span>
-        <span><strong>{groupedCounts.confirmed || coverage?.confirmedMatches || 0}</strong> Confirmed</span>
-        <span><strong>{groupedCounts.possible || coverage?.possibleMatches || 0}</strong> Possible</span>
-        <span><strong>{groupedCounts.alreadyImported || coverage?.alreadyImported || 0}</strong> Already imported</span>
-        <span><strong>{groupedCounts.ignored || coverage?.ignoredOrFailed || failedOrUnsupported}</strong> Ignored/failed</span>
-        <span><strong>{failedOrUnsupported}</strong> Failed/unsupported pages</span>
-      </div>
-      <details>
-        <summary>Checked lists</summary>
-        {checkedLists.length > 0 ? (
-          <ul className="small muted checkedListDiagnostics">
-            {checkedLists.slice(0, 120).map((item, index) => (
-              <li key={`${item.sourceUrl}-${index}`}>
-                <strong>{item.status}</strong> — {item.date || "unknown date"} — {item.eventName || "unknown event"} — rows {item.rowsFound}, shooter rows {item.candidateShooterRows} — stevne_id {item.stevneId || "?"}, liste_id {item.listeId || "?"} — <a href={item.sourceUrl} target="_blank" rel="noreferrer">source</a>{item.reason ? ` — ${item.reason}` : ""}
-              </li>
-            ))}
-          </ul>
-        ) : <p className="small muted">No checked-list records were returned for this search batch.</p>}
-      </details>
-      <div className="notice small missingResultHelper">
-        <strong>Missing a result?</strong>
-        <div className="btns compactDetailActions">
-          <button type="button" className="secondary smallButton" onClick={() => document.querySelector<HTMLInputElement>('input[placeholder^="https://www.leirdue.net"]')?.focus()}>Try direct result list URL</button>
-          <span className="small muted">Open Checked lists above to see every list scanned.</span>
-          <Link className="button secondary smallButton" href="/results/new">Add manual result</Link>
-        </div>
-      </div>
-    </details>
-  );
-}
-
-function DebugDetails({ debug, candidatesFound }: { debug: LeirdueSearchDebug | null; candidatesFound: number }) {
-  if (!debug) return null;
-  const recentStatuses = debug.fetchedUrls.slice(-6);
-  return (
-    <details className="card" open={candidatesFound === 0}>
-      <summary>Debug details</summary>
-      <div className="metricsRow">
-        <span className="metricChip"><strong>{debug.selectedYear ?? "?"}</strong> selected year</span>
-        <span className="metricChip"><strong>{debug.normalizedSearchName || "?"}</strong> normalized name</span>
-        <span className="metricChip"><strong>{debug.fetchedUrls.length}</strong> pages fetched</span>
-        <span className="metricChip"><strong>{debug.eventInfoPagesFetched}</strong> event info pages</span>
-        <span className="metricChip"><strong>{debug.eventResultMenuPagesFetched}</strong> result menu pages</span>
-        <span className="metricChip"><strong>{debug.resultMenusBeforeFirstListeIdScan}</strong> menus before first liste_id scan</span>
-        <span className="metricChip"><strong>{debug.listeIdLinksExtracted}</strong> liste_id links</span>
-        <span className="metricChip"><strong>{debug.listeIdLinksFromResultMenus}</strong> from result menus</span>
-        <span className="metricChip"><strong>{debug.listeIdPagesQueued}</strong> liste_id pages queued</span>
-        <span className="metricChip"><strong>{debug.listeIdPagesScannedForName}</strong> liste_id pages scanned for name</span>
-        <span className="metricChip"><strong>{debug.listeIdPagesFetched}</strong> liste_id pages fetched</span>
-        <span className="metricChip"><strong>{debug.listeIdShooterPagesFound}</strong> liste_id shooter pages</span>
-        <span className="metricChip"><strong>{debug.shooterPagesParsed}</strong> shooter pages parsed</span>
-        <span className="metricChip"><strong>{debug.completedEventsInspected}</strong> completed events inspected</span>
-        <span className={`metricChip ${debug.timedOut ? "danger" : ""}`}><strong>{debug.timedOut ? debug.timedOutAtPhase || "yes" : "no"}</strong> timed out</span>
-        <span className={`metricChip ${debug.timedOutBeforeFirstListeIdScan ? "danger" : ""}`}><strong>{debug.timedOutBeforeFirstListeIdScan ? "yes" : "no"}</strong> timeout before liste_id scan</span>
-        <span className="metricChip"><strong>{debug.selectedYearEventIdsCount}</strong> selected-year events</span>
-        <span className={`metricChip ${debug.limitReached ? "danger" : ""}`}><strong>{debug.limitReached ? debug.whichLimit || "yes" : "no"}</strong> limit reached</span>
-        <span className={`metricChip ${debug.overviewYearMismatch ? "danger" : ""}`}><strong>{debug.overviewYearMismatch ? "yes" : "no"}</strong> overview year mismatch</span>
-        <span className="metricChip"><strong>{debug.futureEventsSkipped}</strong> future events skipped</span>
-        <span className="metricChip"><strong>{debug.skippedOutsideSelectedYear}</strong> outside-year skipped</span>
-        <span className="metricChip"><strong>{debug.candidateRowsCreated}</strong> candidates created</span>
-        <span className="metricChip"><strong>{debug.candidateCategoryCounts.recommended}/{debug.candidateCategoryCounts.review}/{debug.candidateCategoryCounts.control}</strong> rec/review/control</span>
-        <span className="metricChip"><strong>{debug.candidateConfidenceCounts.high}/{debug.candidateConfidenceCounts.medium}/{debug.candidateConfidenceCounts.low}</strong> high/med/low</span>
-        <span className="metricChip"><strong>{debug.duplicatesRemoved}</strong> duplicates removed</span>
-        <span className="metricChip"><strong>{debug.candidatesWithOwnScore}</strong> own score</span>
-        <span className="metricChip"><strong>{debug.candidatesWithWinningScore}</strong> winning score</span>
-        <span className="metricChip"><strong>{debug.candidatesWithTotalTargets}</strong> total targets</span>
-        <span className="metricChip"><strong>{debug.candidatesWithShootingGround}</strong> shooting ground</span>
-        <span className="metricChip"><strong>{debug.recommendedWithShootingGround}</strong> recommended ground</span>
-        <span className="metricChip"><strong>{debug.recommendedWithCompleteScore}</strong> recommended complete score</span>
-        <span className="metricChip"><strong>{debug.hiddenControlCandidates}</strong> debug/control hidden from useful sections</span>
-        <span className={`metricChip ${debug.continuationAvailable ? "badgeGold" : ""}`}><strong>{debug.continuationAvailable ? "yes" : "no"}</strong> continuation</span>
-        <span className={`metricChip ${debug.cacheDiagnostics?.cacheUsed ? "badgeGold" : ""}`}><strong>{debug.cacheDiagnostics?.cacheUsed ? "yes" : "no"}</strong> cache used</span>
-        <span className={`metricChip ${debug.cacheDiagnostics?.cacheReadOk ? "badgeGold" : "danger"}`}><strong>{debug.cacheDiagnostics?.cacheReadOk ? "yes" : "no"}</strong> cache read ok</span>
-        <span className={`metricChip ${debug.cacheDiagnostics?.cacheWriteOk ? "badgeGold" : debug.cacheDiagnostics?.serviceRoleCacheWriteEnabled ? "" : "danger"}`}><strong>{debug.cacheDiagnostics?.cacheWriteOk ? "yes" : "no"}</strong> cache write ok</span>
-        <span className="metricChip"><strong>{debug.cacheDiagnostics?.cachedCandidatesFound ?? 0}/{debug.cacheDiagnostics?.cachedImportableCandidatesFound ?? 0}</strong> cached/all importable</span>
-        <span className="metricChip"><strong>{debug.cacheDiagnostics?.cachedInvalidListsFound ?? 0}</strong> cached invalid lists</span>
-        <span className="metricChip"><strong>{debug.cacheDiagnostics?.liveFetchesStarted ?? 0}</strong> live fetches started</span>
-        <span className="metricChip"><strong>{debug.cacheDiagnostics?.liveFetchesSkippedBecauseCached ?? 0}/{debug.cacheDiagnostics?.liveFetchesSkippedBecauseCachedInvalid ?? 0}</strong> live skipped cached/invalid</span>
-        <span className="metricChip"><strong>{debug.cacheDiagnostics?.cacheMisses ?? 0}/{debug.cacheDiagnostics?.staleCacheRows ?? 0}</strong> cache misses/stale</span>
-        <span className="metricChip"><strong>{debug.cacheDiagnostics?.serviceRoleCacheWriteEnabled ? "yes" : "no"}</strong> service-role cache write</span>
-        <span className="metricChip"><strong>{debug.batchNumber}</strong> batch</span>
-        <span className="metricChip"><strong>{debug.scannedListeIdTotal}</strong> total liste_id scanned</span>
-        <span className="metricChip"><strong>{debug.scannedEventTotal}</strong> total events scanned</span>
-        <span className="metricChip"><strong>{debug.remainingEventQueueCount}</strong> remaining events</span>
-        <span className="metricChip"><strong>{debug.confirmedSelectedYearEventsRemaining}/{debug.likelySelectedYearEventsRemaining}/{debug.unknownYearEventsRemaining}/{debug.outsideYearFallbackEventsRemaining}/{debug.pendingListeIdQueueRemaining}</strong> confirmed/likely/unknown/outside/pending</span>
-        <span className="metricChip"><strong>{debug.oldYearEventsSkippedThisBatch}/{debug.likelySelectedYearEventsProcessedThisBatch}</strong> old skipped / likely processed</span>
-        <span className={`metricChip ${debug.autoStoppedBecauseOnlyOldFallbackRemains ? "badgeGold" : ""}`}><strong>{debug.autoStoppedBecauseOnlyOldFallbackRemains ? "yes" : "no"}</strong> old-fallback stop</span>
-      </div>
-      {candidatesFound === 0 ? <p className="small muted">No candidates found. Try broader filters or add result manually.</p> : null}
-      {recentStatuses.length > 0 ? (
-        <>
-          <p className="small muted">Recent fetch statuses:</p>
-          <ul className="small muted">
-            {recentStatuses.map((item) => (
-              <li key={`${item.url}-${item.status}-${item.note || ""}`}>{item.status ?? "network"} {item.ok ? "OK" : "failed"} — {item.url}{item.note ? ` (${item.note})` : ""}</li>
-            ))}
-          </ul>
-        </>
-      ) : null}
-      {debug.message ? <p className="small muted">Search warning: {debug.message}</p> : null}
-      {debug.cacheDiagnostics ? <p className="small muted">Cache diagnostics: used={debug.cacheDiagnostics.cacheUsed ? "yes" : "no"}; readOk={debug.cacheDiagnostics.cacheReadOk ? "yes" : "no"}; writeOk={debug.cacheDiagnostics.cacheWriteOk ? "yes" : "no"}; cached={debug.cacheDiagnostics.cachedCandidatesFound}; importable={debug.cacheDiagnostics.cachedImportableCandidatesFound}; invalidLists={debug.cacheDiagnostics.cachedInvalidListsFound}; liveStarted={debug.cacheDiagnostics.liveFetchesStarted}; liveSkippedCached={debug.cacheDiagnostics.liveFetchesSkippedBecauseCached}; liveSkippedInvalid={debug.cacheDiagnostics.liveFetchesSkippedBecauseCachedInvalid}; loaded={debug.cacheDiagnostics.cachedCandidatesLoaded}; scopeComplete={debug.cacheDiagnostics.cacheScopeComplete ? "yes" : "no"}; scopeStatus={debug.cacheDiagnostics.cacheScopeStatus}; continuationRequired={debug.cacheDiagnostics.continuationRequired ? "yes" : "no"}; resumed={debug.cacheDiagnostics.resumedFromSavedProgress ? "yes" : "no"}; processedThisBatch={debug.cacheDiagnostics.processedThisBatch}; previouslyProcessed={debug.cacheDiagnostics.previouslyProcessed}; remainingWork={debug.cacheDiagnostics.remainingWork ?? "unknown"}; liveRefresh={debug.cacheDiagnostics.liveRefreshStarted ? "yes" : "no"}; liveReason={debug.cacheDiagnostics.liveRefreshReason || "none"}; markedComplete={debug.cacheDiagnostics.crawlMarkedComplete ? "yes" : "no"}; crawlStop={debug.cacheDiagnostics.crawlStopReason || "none"}; crawlStateFound={debug.cacheDiagnostics.crawlStateFound ? "yes" : "no"}; tokenPresent={debug.cacheDiagnostics.savedContinuationTokenPresent ? "yes" : "no"}; decodeOk={debug.cacheDiagnostics.continuationDecodeOk ? "yes" : "no"}; decodeError={debug.cacheDiagnostics.continuationDecodeError || "none"}; stateVersion={debug.cacheDiagnostics.continuationStateVersion ?? "none"}; storedQueues={debug.cacheDiagnostics.storedEventQueueCount}/{debug.cacheDiagnostics.storedListeIdQueueCount}; restoredQueues={debug.cacheDiagnostics.restoredEventQueueCount}/{debug.cacheDiagnostics.restoredListeIdQueueCount}; eligibleAfterRestore={debug.cacheDiagnostics.eligibleWorkAfterRestore}; recovery={debug.cacheDiagnostics.recoveryRediscoveryUsed ? "yes" : "no"}; recoveryReason={debug.cacheDiagnostics.recoveryRediscoveryReason || "none"}; emptyQueueInterpretation={debug.cacheDiagnostics.emptyQueueInterpretation || "none"}; unfinishedWorkExpected={debug.cacheDiagnostics.unfinishedWorkExpected ? "yes" : "no"}; allRediscoveredEventsAlreadyProcessed={debug.cacheDiagnostics.allRediscoveredEventsAlreadyProcessed ? "yes" : "no"}; finalReconciliationComplete={debug.cacheDiagnostics.finalReconciliationComplete ? "yes" : "no"}; recoveryErrorAffectsCompletion={debug.cacheDiagnostics.recoveryErrorAffectsCompletion ? "yes" : "no"}; completionMarkedThisBatch={debug.cacheDiagnostics.completionMarkedThisBatch ? "yes" : "no"}; completionBefore={JSON.stringify(debug.cacheDiagnostics.completionCheckBeforeBatch)}; completionAfter={JSON.stringify(debug.cacheDiagnostics.completionCheckAfterBatch)}; queuesBefore={JSON.stringify(debug.cacheDiagnostics.queuesBeforeBatch)}; queuesAfter={JSON.stringify(debug.cacheDiagnostics.queuesAfterBatch)}; remainingAfterMutation={debug.cacheDiagnostics.remainingWorkAfterMutation ?? "unknown"}; completionEligibleAfterBatch={debug.cacheDiagnostics.completionEligibleAfterBatch ? "yes" : "no"}; completionPersistedInSameRequest={debug.cacheDiagnostics.completionPersistedInSameRequest ? "yes" : "no"}; extraCompletionRequestRequired={debug.cacheDiagnostics.extraCompletionRequestRequired ? "yes" : "no"}; invalidComplete={debug.cacheDiagnostics.invalidCompleteStateDetected ? "yes" : "no"}; invalidCompleteReason={debug.cacheDiagnostics.invalidCompleteStateReason || "none"}; completionProof={JSON.stringify(debug.cacheDiagnostics.completionProof)}; candidatePipelineReconciled={debug.cacheDiagnostics.candidatePipelineReconciled ? "yes" : "no"}; renderedCandidateCountMatchesBackend={debug.cacheDiagnostics.renderedCandidateCountMatchesBackend ? "yes" : "no"}; uniqueCandidateKeysValid={debug.cacheDiagnostics.uniqueCandidateKeysValid ? "yes" : "no"}; expectedRegressionReviewableCount={debug.cacheDiagnostics.expectedRegressionReviewableCount ?? "none"}; actualRegressionReviewableCount={debug.cacheDiagnostics.actualRegressionReviewableCount ?? "none"}; regressionReviewableCountPass={debug.cacheDiagnostics.regressionReviewableCountPass ? "yes" : "no"}; requestMode={debug.cacheDiagnostics.requestMode}; explicitContinue={debug.cacheDiagnostics.explicitContinuationRequested ? "yes" : "no"}; buttonAction={debug.cacheDiagnostics.buttonAction || "none"}; sentMode={debug.cacheDiagnostics.sentRequestMode || "none"}; sentExplicit={debug.cacheDiagnostics.sentExplicitContinue ? "yes" : "no"}; inFlight={debug.cacheDiagnostics.continuationRequestInFlight ? "yes" : "no"}; scopeKey={debug.cacheDiagnostics.requestScopeKey || "none"}; progressCounts={debug.cacheDiagnostics.progressProcessedCount ?? "unknown"}/{debug.cacheDiagnostics.progressRemainingCount ?? "unknown"}/{debug.cacheDiagnostics.progressTotalCount ?? "unknown"}; calculatedProgress={debug.cacheDiagnostics.calculatedProgressPercent?.toFixed(1) ?? "unknown"}; displayedProgress={debug.cacheDiagnostics.displayedProgressPercent?.toFixed(1) ?? "unknown"}; progressSource={debug.cacheDiagnostics.progressCalculationSource || "none"}; progressCappedReason={debug.cacheDiagnostics.progressCappedReason || "none"}; progressScopeKey={debug.cacheDiagnostics.progressScopeKey || "none"}; progressGenerationId={debug.cacheDiagnostics.progressGenerationId || "none"}; persistedHighestProgress={debug.cacheDiagnostics.persistedHighestProgress ?? "unknown"}; currentSessionHighestProgress={debug.cacheDiagnostics.currentSessionHighestProgress ?? "unknown"}; progressResetReason={debug.cacheDiagnostics.progressResetReason || "none"}; progressScopeMatch={debug.cacheDiagnostics.progressScopeMatch ? "yes" : "no"}; stage={debug.cacheDiagnostics.currentProgressStage || "none"}; stageWork={debug.cacheDiagnostics.stageProcessed ?? "unknown"}/{debug.cacheDiagnostics.stageRemaining ?? "unknown"}/{debug.cacheDiagnostics.stageTotal ?? "unknown"}; rawOverall={debug.cacheDiagnostics.rawOverallProgressPercent?.toFixed(1) ?? "unknown"}; highestDisplayed={debug.cacheDiagnostics.highestDisplayedProgressPercent?.toFixed(1) ?? "unknown"}; newlyDiscovered={debug.cacheDiagnostics.newlyDiscoveredWorkThisBatch}; progressHeld={debug.cacheDiagnostics.progressHeldReason || "none"}; requestStartedAt={debug.cacheDiagnostics.requestStartedAt ?? "unknown"}; batchDeadlineAt={debug.cacheDiagnostics.batchDeadlineAt ?? "unknown"}; beforeFirstEvent={debug.cacheDiagnostics.elapsedBeforeFirstEventMs ?? "unknown"}/{debug.cacheDiagnostics.remainingBudgetBeforeFirstEventMs ?? "unknown"}; scanReserveMs={debug.cacheDiagnostics.scanReserveMs ?? "unknown"}; eventBudgetMs={debug.cacheDiagnostics.eventProcessingBudgetMs ?? "unknown"}; firstEventAttempted={debug.cacheDiagnostics.firstEventProcessingAttempted ? "yes" : "no"}; firstFetchStarted={debug.cacheDiagnostics.firstEventFetchStarted ? "yes" : "no"}; firstFetchResult={debug.cacheDiagnostics.firstEventFetchResult || "none"}; earlyReturn={debug.cacheDiagnostics.earlyReturnReason || "none"}; noProgress={debug.cacheDiagnostics.noProgressReason || "none"}; rejectionCounts={JSON.stringify(debug.cacheDiagnostics.restoredEventRejectionCounts || {})}; firstRestored={JSON.stringify((debug.cacheDiagnostics.firstRestoredEventDiagnostics || []).slice(0, 10))}; progressWrite={debug.cacheDiagnostics.progressWriteOk ? "ok" : "not-ok"}; progressError={debug.cacheDiagnostics.progressWriteError || "none"}; misses={debug.cacheDiagnostics.cacheMisses}; stale={debug.cacheDiagnostics.staleCacheRows}; serviceRole={debug.cacheDiagnostics.serviceRoleCacheWriteEnabled ? "yes" : "no"}; elapsedMs={debug.cacheDiagnostics.elapsedMs ?? "n/a"}; stop={debug.cacheDiagnostics.stopReason || "none"}; repeatFaster={debug.cacheDiagnostics.repeatedSearchShouldBeFaster ? "yes" : "no"}; notUsedReason={debug.cacheDiagnostics.cacheNotUsedReason || "none"}; readErrors={(debug.cacheDiagnostics.cacheReadErrors || []).join(" | ") || "none"}; writeErrors={(debug.cacheDiagnostics.cacheWriteErrors || []).join(" | ") || "none"}; writeWarnings={(debug.cacheDiagnostics.cacheWriteWarnings || []).join(" | ") || "none"}</p> : null}
-      {debug.errorMessage ? <p className="small muted">Last error: {debug.errorMessage}</p> : null}
-      {debug.lastFetchUrl ? <p className="small muted">Last fetch URL: {debug.lastFetchUrl}</p> : null}
-      {debug.listInspectionLimitReached ? <p className="small muted">Result list inspection limit reached.</p> : null}
-      {debug.validationUrlsInspected > 0 ? <p className="small muted">Validation URLs inspected: {debug.validationUrlsInspected}; validation shooter matches: {debug.validationShooterMatches}</p> : null}
-      <p className="small muted">Guessed overview URLs tried: {debug.guessedYearOverviewUrlsTried.join("; ") || "none"}</p>
-      <p className="small muted">Selected-year overview URL used: {debug.selectedYearOverviewUrlUsed || "none"}</p>
-      <p className="small muted">Event overview URLs: {debug.eventOverviewUrls.join("; ") || "none"}</p>
-      <p className="small muted">Discovered year links: {debug.discoveredYearLinks.slice(0, 15).map((item) => `${item.text || "link"} -> ${item.url}`).join("; ") || "none"}</p>
-      <p className="small muted">Selected-year links found: {debug.selectedYearLinksFound.slice(0, 15).map((item) => `${item.text || "link"} -> ${item.url}`).join("; ") || "none"}</p>
-      {debug.overviewDiagnostics.length > 0 ? <p className="small muted">Overview diagnostics: {debug.overviewDiagnostics.map((item) => `${item.url} selectedYear=${item.containsSelectedYear ? "yes" : "no"} selectedYearLinks=${item.selectedYearLinkCount}: ${item.snippet.slice(0, 220)}`).join(" | ")}</p> : null}
-      {debug.noSelectedYearEventsReason ? <p className="small muted">No selected-year events reason: {debug.noSelectedYearEventsReason}</p> : null}
-      <p className="small muted">Selected discipline filters: {debug.selectedDisciplineFilters.join(", ") || "none"}</p>
-      <p className="small muted">Events before filtering: {debug.eventsFoundBeforeFiltering}; after soft filter: {debug.selectedYearEventLinksAfterSoftFilter}; fallback added: {debug.genericFallbackEventsAdded}; relevant inspected: {debug.relevantEventsInspected}; selected-year event links: {debug.selectedYearEventLinksCount}; actual selected-year events: {debug.actualSelectedYearEventsCount}; unknown-year fallbacks: {debug.unknownYearFallbackEventsCount}; actual-year mismatches skipped: {debug.actualYearMismatchSkippedCount}; hard skipped unselected: {debug.hardSkippedUnselectedDiscipline}; hard skipped ranking/control: {debug.hardSkippedRankingOrControl}; skipped: {JSON.stringify(debug.eventLinksSkippedByReason)}</p>
-      <p className="small muted">Phase: {debug.phaseReached || "unknown"}; scan stopped: {debug.scanStoppedReason || "unknown"}; event stop: {debug.eventStopReason || "unknown"}; quality stop: {debug.candidateQualityStopReason || "unknown"}; target complete candidates: {debug.expectedCandidateTarget}; continuation reason: {debug.continuationReason || "none"}; disabled: {debug.continuationDisabledReason || "none"}; totals complete/visible/hidden: {debug.completeCandidatesFoundTotal}/{debug.visibleCandidatesCountTotal}/{debug.hiddenLowQualityCandidatesCountTotal}; complete total/visible/hidden/importable: {debug.completeCandidatesTotal}/{debug.visibleCompleteCandidates}/{debug.hiddenCompleteCandidates}/{debug.importableCompleteCandidates}; target reached by: {debug.targetReachedBy || "none"}; previous/returned visible: {debug.previousVisibleCandidatesCount}/{debug.returnedVisibleCandidatesCount}; accumulated complete: {debug.accumulatedCompleteCandidatesCount}; batch queued/scanned/fetched/menus: {debug.queuedThisBatch}/{debug.scannedThisBatch}/{debug.fetchedThisBatch}/{debug.eventMenusFetchedThisBatch}; pending queue start/end: {debug.pendingListeIdQueueAtStart}/{debug.pendingListeIdQueueAtEnd}; liste_ids queued/scanned this batch: {debug.listeIdsQueuedThisBatch}/{debug.listeIdsScannedThisBatch}; scan-first: {debug.scanFirstMode ? "yes" : "no"}; time budget: {debug.timeBudgetReason || "none"}; continuation stop: {debug.continuationStopReason || "none"}; batch stop: {debug.batchStopReason || "none"}; event batches: {debug.eventBatchesProcessed}; event queue remaining: {debug.eventQueueRemainingWhenStopped}; candidates per batch: {debug.candidatesFoundPerBatch.join(", ") || "none"}; liste_id scanned per batch: {debug.listeIdPagesScannedPerBatch.join(", ") || "none"}; candidate quality complete/partial/low/percent: {debug.completeCandidatesFound}/{debug.partialCandidatesFound}/{debug.lowQualityCandidatesFound}/{debug.percentageHeavyCandidates}; visible/hidden low-quality: {debug.visibleCandidatesCount}/{debug.hiddenLowQualityCandidatesCount}; complete list: {debug.completeCandidatesFoundList.map((item) => `${item.date || "no date"} ${item.name} ${item.ownScore ?? "?"}/${item.totalTargets ?? "?"}`).join(" | ") || "none"}; continued after low-quality only: {debug.searchContinuedBecauseOnlyLowQualityCandidates ? "yes" : "no"}; candidates after discovery/scan/final: {debug.candidatesFoundAfterDiscovery}/{debug.candidatesFoundAfterScan}/{debug.candidatesFoundBeforeTimeout}; high-priority liste_id pages fetched: {debug.highPriorityListeIdPagesFetched}; low-priority liste_id skipped: {debug.lowPriorityListeIdPagesSkipped}</p>
-      {debug.prioritizedEventLinks.length > 0 ? <p className="small muted">Top event priorities: {debug.prioritizedEventLinks.slice(0, 20).map((item) => `${item.eventId} ${item.score}: ${item.title} [actualYear ${item.actualEventYear ?? "unknown"}; overviewYear ${item.overviewMatchedYear ? "yes" : "no"}; ${item.inspected ? "inspected" : "not inspected"}; ${item.skippedReason || "not skipped"}; ${item.titleParseSource || "unknown"}; matches ${(item.selectedDisciplineMatches || []).join("/") || "none"}] (${item.reason})`).join(" | ")}</p> : null}
-      {debug.nextUnscannedEventQueue.length > 0 ? <p className="small muted">Next unscanned events: {debug.nextUnscannedEventQueue.map((item) => `${item.eventId} ${item.priority}: ${item.title} [actualYear ${item.actualEventYear ?? "unknown"}] (${item.reason})`).join(" | ")}</p> : null}
-      {debug.eventTitleDebugRows.length > 0 ? <p className="small muted">Parsed event titles: {debug.eventTitleDebugRows.slice(0, 20).map((item) => `${item.eventId} ${item.priority}: ${item.title} (${item.titleParseSource}; actualYear ${item.actualEventYear ?? "unknown"}; ${item.inspected ? "inspected" : "not inspected"}; ${item.skippedReason || "not skipped"}; ${item.selectedDisciplineMatches.join("/") || "no discipline match"}; ${item.rawRowSnippet.slice(0, 120)})`).join(" | ")}</p> : null}
-      {debug.prioritizedListeIdLinks.length > 0 ? <p className="small muted">Top liste_id priorities: {debug.prioritizedListeIdLinks.slice(0, 10).map((item) => `${item.score}: ${item.title} (${item.reason})`).join(" | ")}</p> : null}
-      {debug.resultMenuDebug.length > 0 ? <p className="small muted">Result menu liste_id counts: {debug.resultMenuDebug.slice(0, 10).map((item) => `${item.eventId}: ${item.listeIdCount} (${item.firstListeIdUrls.slice(0, 3).join(", ")})`).join(" | ")}</p> : null}
-      {debug.knownTorbjorn2025Debug.length > 0 ? <p className="small muted">Regression priority: {debug.regressionPriorityApplied ? "applied" : "not applied"}; boosted: {debug.regressionEventsBoosted.join(", ") || "none"}. Torbjørn 2025 debug assertions: {debug.knownTorbjorn2025Debug.map((item) => `${item.eventId}/${item.listeId}: discovered=${item.discovered ? "yes" : "no"}, inspected=${item.inspected ? "yes" : "no"}, resultMenu=${item.resultMenuFetched ? "yes" : "no"}, listeIds=[${item.listeIdsFound.join(",") || "none"}], queued=${item.listeQueued ? "yes" : "no"}, scanned=${item.listeScanned ? "yes" : "no"}${item.reason ? `, reason=${item.reason}` : ""}`).join(" | ")}</p> : null}
-      <p className="small muted">Event IDs found: {debug.eventIdsFound.slice(0, 40).join(", ") || "none"}</p>
-      <p className="small muted">Event IDs inspected: {debug.eventIdsInspected.slice(0, 40).join(", ") || "none"}</p>
-      <p className="small muted">Event years found: {JSON.stringify(debug.eventYearsFound)}; inspected: {JSON.stringify(debug.eventYearsInspected)}; candidates by year: {JSON.stringify(debug.candidatesByYear)}</p>
-      <p className="small muted">Skipped outside selected year: {debug.eventIdsSkippedOutsideYear.slice(0, 20).join(", ") || "none"}; skipped future: {debug.eventIdsSkippedFuture.slice(0, 20).join(", ") || "none"}</p>
-      {debug.shooterMatchSnippets.length > 0 ? <p className="small muted">Shooter snippets: {debug.shooterMatchSnippets.slice(0, 5).map((item) => `${item.url}: ${item.snippet.slice(0, 220)}`).join(" | ")}</p> : null}
-      {debug.resultMenuDiagnostics.length > 0 ? <p className="small muted">Result menu diagnostics: {debug.resultMenuDiagnostics.map((item) => `${item.eventUrl} contains ${Object.entries(item.contains).filter(([, value]) => value).map(([key]) => key).join(", ") || "none"}: ${item.snippet.slice(0, 240)}`).join(" | ")}</p> : null}
-
-      {debug.validationChecklist.length > 0 ? (
-        <>
-          <p className="small muted">Validation checklist:</p>
-          <ul className="small muted">
-            {debug.validationChecklist.map((item) => (
-              <li key={item.label}>
-                {item.label}. {item.expectedName} — {item.status} — {item.found ? "found" : "not found"} — {item.parsedOwnScore ?? "?"}/{item.parsedTotalTargets ?? "?"} winner {item.parsedWinningScore ?? "?"} — {item.parsedDiscipline || "unknown discipline"} — {item.parsedShootingGround || "unknown ground"} — {item.matchedUrl || "no URL"} — {item.reason}
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : null}
-
-      {debug.candidateDebugRows.length > 0 ? (
-        <>
-          <p className="small muted">Candidate table:</p>
-          <ul className="small muted">
-            {debug.candidateDebugRows.slice(0, 20).map((item) => (
-              <li key={`${item.url}-${item.date}-${item.ownScore}`}>
-                {item.date || "no date"} — {item.name} — {item.discipline} — {item.shootingGround || "unknown ground"} ({item.shootingGroundSource}) — {item.ownScore ?? "?"}/{item.totalTargets ?? "?"} winner {item.winningScore ?? "?"} — {item.category}/{item.confidence} — {item.importRecommended ? "recommended" : "not checked"} — {item.hiddenFromNormalUi ? `hidden/debug${item.hiddenReason ? ` (${item.hiddenReason})` : ""}` : "visible"} — targets {item.inferredTotalTargets ?? "?"} via {item.totalTargetsSource || "existingParser"}/{item.inferenceConfidence || "n/a"} — {item.url} — {item.reason} — {item.notes.slice(0, 260)}
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : null}
-      {debug.firstListeIdUrlsInspected.length > 0 ? <p className="small muted">First liste_id URLs inspected: {debug.firstListeIdUrlsInspected.join("; ")}</p> : null}
-      {debug.firstShooterMatchUrls.length > 0 ? <p className="small muted">Shooter found on: {debug.firstShooterMatchUrls.join("; ")}</p> : null}
-      {debug.candidateReasons.length > 0 ? <p className="small muted">Candidate reasons: {debug.candidateReasons.slice(0, 8).join("; ")}</p> : null}
-      {debug.rejectedReasons.length > 0 ? <p className="small muted">Rejected/skip reasons: {debug.rejectedReasons.slice(0, 5).join("; ")}</p> : null}
-      {debug.firstUsefulSnippet ? <p className="small muted">First useful snippet: {debug.firstUsefulSnippet}</p> : null}
-    </details>
-  );
-}
 
 export default function LeirdueImportPage() {
   const [shooterName, setShooterName] = useState("");
@@ -817,7 +639,6 @@ export default function LeirdueImportPage() {
   const [leirdueTotalListeIdScanned, setLeirdueTotalListeIdScanned] = useState(0);
   const [savedImport, setSavedImport] = useState<SavedImportSummary | null>(null);
   const [manualReviewActive, setManualReviewActive] = useState(false);
-  const [candidatePipelineDiagnostics, setCandidatePipelineDiagnostics] = useState<CandidatePipelineDiagnostics | null>(null);
   const [progressScopeKey, setProgressScopeKey] = useState("");
   const continuationRequestInFlightRef = useRef(false);
   const progressHighByScopeRef = useRef(new Map<string, number>());
@@ -861,7 +682,6 @@ export default function LeirdueImportPage() {
         setSearchStatus("");
         setSearchCounterText("");
         setContinuationToken(null);
-        setCandidatePipelineDiagnostics(null);
         return currentSearchScopeKey;
       }
       return previous;
@@ -1065,7 +885,6 @@ export default function LeirdueImportPage() {
       setDebug(null);
       setContinuationToken(null);
       setManualReviewActive(false);
-      setCandidatePipelineDiagnostics(null);
     }
 
     let currentCandidates = reset ? [] : candidates;
@@ -1108,7 +927,6 @@ export default function LeirdueImportPage() {
         reviewedCandidates,
         grouped: reviewedCounts,
       });
-      setCandidatePipelineDiagnostics(pipelineDiagnostics);
       if (data.debug?.cacheDiagnostics) {
         data.debug.cacheDiagnostics.frontendReviewableCount = reviewedCounts.reviewableCount;
         data.debug.cacheDiagnostics.candidatePipelineReconciled = pipelineDiagnostics.lostDuringDeduplication.length === 0 && pipelineDiagnostics.lostDuringFrontendFiltering.length === 0 && pipelineDiagnostics.lostDuringRendering.length === 0 && (data.debug.cacheDiagnostics.backendReviewableCount || pipelineDiagnostics.frontendReceivedCandidateCount) === reviewedCounts.reviewableCount;
@@ -1144,7 +962,7 @@ export default function LeirdueImportPage() {
       setLeirdueVisibleCandidatesCount(reviewedCounts.reviewableCount);
       setLeirdueTotalListeIdScanned(data.debug?.scannedListeIdTotal || 0);
       setSearchCounterText(cacheOnlyInitialSearch
-        ? `${data.debug?.cacheDiagnostics?.ingestionComplete ? "Shared index complete." : "Shared index incomplete."} Found ${reviewedCounts.reviewableCount} cached reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. Total shared rows=${data.debug?.cacheDiagnostics?.totalSharedRows ?? "unknown"}; valid=${data.debug?.cacheDiagnostics?.validSharedRows ?? "unknown"}; possible=${data.debug?.cacheDiagnostics?.needsReviewSharedRows ?? "unknown"}; ignored=${(data.debug?.cacheDiagnostics?.invalidSharedRows || 0) + (data.debug?.cacheDiagnostics?.failedSharedRows || 0)}.`
+        ? `${reviewedCounts.reviewableCount} result${reviewedCounts.reviewableCount === 1 ? "" : "s"} ready to review.`
         : `${data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete ? "Search complete." : "Checking event result lists…"} Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}.${(data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch || 0) > 0 ? ` ${data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch} more result lists were discovered.` : ""}`);
 
       const provenComplete = Boolean(data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete);
@@ -1394,9 +1212,6 @@ export default function LeirdueImportPage() {
         </div>
       </form>
 
-      <CoverageDiagnostics debug={debug} groupedCounts={{ confirmed: groupedCandidates.confirmed.length, possible: groupedCandidates.possible.length, alreadyImported: groupedCandidates.alreadyImported.length, ignored: groupedCandidates.ignored.length }} />
-      <DebugDetails debug={debug} candidatesFound={candidates.length} />
-
       {manualReviewActive ? <ManualImportSummaryCard candidates={[...groupedCandidates.confirmed, ...groupedCandidates.possible]} year={year} /> : null}
 
       {candidates.length > 0 ? (
@@ -1405,7 +1220,7 @@ export default function LeirdueImportPage() {
             <div>
               <p className="eyebrow">Leirdue.net import — {year}</p>
               <h2>Review candidates</h2>
-              <p className="small muted">Season results are sorted earliest to latest. Technical metadata stays collapsed under Show details.</p>
+              <p className="small muted">Season results are sorted earliest to latest. Review any uncertain values before importing.</p>
             </div>
             <span className="countPill">{checkingDuplicates ? "Checking duplicates… · " : ""}{selectedCount} selected</span>
           </div>
@@ -1415,8 +1230,6 @@ export default function LeirdueImportPage() {
             <span><strong>{groupedCandidates.alreadyImportedCount}</strong> Already imported</span>
             <span><strong>{groupedCandidates.ignoredFailedCount}</strong> Ignored/failed</span>
           </div>
-          {debug ? <p className="small muted">Candidate count diagnostics: statusResultCount={reviewableCount}; confirmedCount={groupedCandidates.confirmedCount}; possibleCount={groupedCandidates.possibleCount}; alreadyImportedCount={groupedCandidates.alreadyImportedCount}; ignoredFailedCount={groupedCandidates.ignoredFailedCount}; reviewableCount={groupedCandidates.reviewableCount}; hiddenControlCount={hiddenControlCount}; duplicateFilteredCount={groupedCandidates.alreadyImportedCount}; excludedCandidateCount={hiddenFromNormalListCount}; excludedCandidateReasons={groupedCandidates.ignored.slice(0, 5).map(candidateReason).join(" | ") || "none"}; candidateIdsIncludedInStatus={renderedReviewCandidates.map(candidateIdentity).slice(0, 10).join(", ") || "none"}; candidateIdsIncludedInReview={renderedReviewCandidates.map(candidateIdentity).slice(0, 10).join(", ") || "none"}</p> : null}
-          {candidatePipelineDiagnostics ? <p className="small muted">Candidate pipeline diagnostics: backendCandidateCount={candidatePipelineDiagnostics.backendCandidateCount}; frontendReceivedCandidateCount={candidatePipelineDiagnostics.frontendReceivedCandidateCount}; finalFilteredCandidateCount={candidatePipelineDiagnostics.finalFilteredCandidateCount}; renderedCardCount={candidatePipelineDiagnostics.renderedCardCount}; confirmedRenderedCount={candidatePipelineDiagnostics.confirmedRenderedCount}; possibleRenderedCount={candidatePipelineDiagnostics.possibleRenderedCount}; selectedRenderedCount={candidatePipelineDiagnostics.selectedRenderedCount}; duplicateReactKeys={candidatePipelineDiagnostics.duplicateReactKeys.join(", ") || "none"}; renderedUniqueKeyCount={candidatePipelineDiagnostics.renderedUniqueKeyCount}; loadedFromCache={candidatePipelineDiagnostics.loadedFromCacheCandidateIds.slice(0, 8).join(" || ") || "none"}; returnedByBackend={candidatePipelineDiagnostics.returnedByBackendCandidateIds.slice(0, 8).join(" || ") || "none"}; receivedByFrontend={candidatePipelineDiagnostics.receivedByFrontendCandidateIds.slice(0, 8).join(" || ") || "none"}; afterDedup={candidatePipelineDiagnostics.afterFrontendDeduplicationCandidateIds.slice(0, 8).join(" || ") || "none"}; afterStatusCategoryFiltering={candidatePipelineDiagnostics.afterStatusCategoryFilteringCandidateIds.slice(0, 8).join(" || ") || "none"}; afterDisciplineFiltering={candidatePipelineDiagnostics.afterDisciplineFilteringCandidateIds.slice(0, 8).join(" || ") || "none"}; afterVisibilityFiltering={candidatePipelineDiagnostics.afterVisibilityFilteringCandidateIds.slice(0, 8).join(" || ") || "none"}; rendered={candidatePipelineDiagnostics.renderedCandidateIds.slice(0, 8).join(" || ") || "none"}; lostBetweenCacheAndBackend={candidatePipelineDiagnostics.lostBetweenCacheAndBackend.slice(0, 5).join(" || ") || "none"}; lostBetweenBackendAndFrontend={candidatePipelineDiagnostics.lostBetweenBackendAndFrontend.slice(0, 5).join(" || ") || "none"}; lostDuringDeduplication={candidatePipelineDiagnostics.lostDuringDeduplication.slice(0, 5).join(" || ") || "none"}; lostDuringFrontendFiltering={candidatePipelineDiagnostics.lostDuringFrontendFiltering.slice(0, 5).join(" || ") || "none"}; lostDuringRendering={candidatePipelineDiagnostics.lostDuringRendering.slice(0, 5).join(" || ") || "none"}; exactLossReasonByCandidate={candidatePipelineDiagnostics.exactLossReasonByCandidate.slice(0, 5).join(" || ") || "none"}; candidatesPerReactKey={candidatePipelineDiagnostics.candidatesPerReactKey.slice(0, 5).join(" || ") || "none"}</p> : null}
           <div className="btns">
             <button onClick={saveSelected} disabled={saving || checkingDuplicates || selectedCount === 0}>{saving ? "Importing..." : manualReviewActive && selectedCount === 1 ? "Import this result" : selectedCount === 1 ? "Import selected result" : "Import selected results"}</button>
             <Link href="/stats" className="button secondary">Stats</Link>
