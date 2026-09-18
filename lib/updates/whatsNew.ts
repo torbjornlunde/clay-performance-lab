@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v6.09.26", title: "Review Leirdue results more clearly", bullets: ["Focus on the event, score, series and shooter match before importing a result.", "Use a simpler review flow without technical import details getting in the way.", "Read import, result and analysis screens more reliably in both Light and Dark appearance."] },
   { id: "v5.09.26", title: "Bring clearer evidence to Coach Report", bullets: ["See recurring self-reports separately from reviewed AI hypotheses across selected sessions.", "Understand report confidence through plain-language reasons and source sessions.", "Take focused questions to your coach without private note text becoming an unsupported diagnosis."] },
   { id: "v4.09.26", title: "Keep reflection evidence clear in Analysis", bullets: ["See your selected context and accepted self-reports separately from observed scorecard facts.", "Treat accepted AI suggestions as reviewed hypotheses to investigate, never proven causes.", "Keep raw private reflection text from silently creating training priorities."] },
   { id: "v3.09.26", title: "Review insights from your competition reflection", bullets: ["Choose when to interpret a saved private Competition reflection.", "Edit, accept or reject each suggestion before it can support coaching analysis.", "Keep your own reports separate from reviewed AI hypotheses and observed results."] },

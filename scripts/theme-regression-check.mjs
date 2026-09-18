@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import postcss from 'postcss';
 
 const css = fs.readFileSync('app/globals.css', 'utf8');
 
@@ -147,33 +148,63 @@ const componentExpectations = [
 
 for (const [selector, expectations] of componentExpectations) expectRule(selector, expectations);
 
-// Reusable content surfaces must not silently fall back to dark-theme literals.
-// The list is intentionally focused on user-facing containers rather than banning
-// every literal: brand accents, charts, shadows, and modal backdrops remain valid.
-const literalAuditedSelectors = [
-  '.candidateCard',
-  '.manualImportMethodCard',
-  '.manualLinkImportPanel',
-  '.searchProgressPanel',
-  '.leirdueResultEditor',
-  '.resultsSummaryTable',
-  '.sessionItem',
-  '.analysisBox',
-  '.coachReportSessionCard',
-  '.statsFilterCard',
-  '.equipmentListItem',
+// Audit every component rule, rather than a selector allowlist, for the failure
+// mode that caused #291: an opaque dark literal surface paired with literal light
+// text. Only deliberate decorative/brand cases may be excluded, with a reason.
+const literalAuditAllowlist = [
+  { selector: /(?:Chart|chart|Graph|graph)/, reason: 'data visualisation colors are not content surfaces' },
+  { selector: /(?:Overlay|overlay|Backdrop|backdrop|Lightbox|lightbox|cropShade|cropFrame)/, reason: 'transient backdrop treatment' },
+  { selector: /(?:\.mark\b|\.notificationBadge\b|\.proBadge\b)/, reason: 'deliberate product/brand badge treatment' },
+  { selector: /(?:\.hitButton\b|\.missButton\b|\.scorecardMiniCell\b)/, reason: 'scoring-state accent treatment' },
+  { selector: /\.competitionResult(?:Page|Document|Print)/, reason: 'fixed black-on-white print document' },
 ];
-const obviousColorLiteral = /(?:#[0-9a-fA-F]{3,8}|rgba?\s*\()/;
-for (const selector of literalAuditedSelectors) {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  for (const match of css.matchAll(new RegExp(`([^{}]*${escaped}[^{}]*)\\{([^{}]+)\\}`, 'g'))) {
-    for (const declaration of match[2].split(';')) {
-      const property = declaration.match(/^\s*(background(?:-color)?|color|border(?:-color)?)\s*:\s*(.+)$/);
-      if (property && obviousColorLiteral.test(property[2])) {
-        failures.push(`${selector}: ${property[1]} uses literal ${property[2].trim()}; use a semantic theme token`);
-      }
-    }
+
+function literalRgb(value) {
+  const hex = value.match(/#([0-9a-f]{3}|[0-9a-f]{6})\b/i)?.[1];
+  if (hex) {
+    const full = hex.length === 3 ? [...hex].map((part) => part + part).join('') : hex;
+    return [0, 2, 4].map((index) => Number.parseInt(full.slice(index, index + 2), 16));
   }
+  const rgb = value.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?/i);
+  if (!rgb || (rgb[4] !== undefined && Number(rgb[4]) < 0.65)) return null;
+  return rgb.slice(1, 4).map(Number);
+}
+
+function isDarkLiteral(value) {
+  const rgb = literalRgb(value);
+  return rgb ? luminance(rgb) < 0.12 : false;
+}
+
+function isLightLiteral(value) {
+  const rgb = literalRgb(value);
+  return rgb ? luminance(rgb) > 0.72 : false;
+}
+
+export function auditLiteralSurfaces(source) {
+  const auditFailures = [];
+  postcss.parse(source).walkRules((rule) => {
+    if (rule.selector.startsWith(':root') || rule.selector.includes('html[data-theme=')) return;
+    const allowed = literalAuditAllowlist.find(({ selector }) => selector.test(rule.selector));
+    if (allowed) return;
+    const declarations = rule.nodes.filter((node) => node.type === 'decl');
+    const darkSurface = declarations.find((declaration) => /^background(?:-color)?$/.test(declaration.prop) && isDarkLiteral(declaration.value));
+    const lightText = declarations.find((declaration) => declaration.prop === 'color' && isLightLiteral(declaration.value));
+    if (darkSurface && lightText) {
+      auditFailures.push(`${rule.selector}: hard-coded dark surface and light text (${darkSurface.value}; ${lightText.value}); use semantic theme tokens`);
+    }
+  });
+  return auditFailures;
+}
+
+failures.push(...auditLiteralSurfaces(css));
+
+// Regression fixtures prove the broad detector catches an arbitrary, previously
+// unknown component while retaining the documented decorative exclusions.
+if (!auditLiteralSurfaces('.futureBadCard { background: #101820; color: #fff; }').length) {
+  failures.push('literal audit fixture: an unlisted dark component must fail');
+}
+if (auditLiteralSurfaces('.futureChart { background: #101820; color: #fff; }').length) {
+  failures.push('literal audit fixture: an allowed chart decoration must pass');
 }
 
 for (const token of ['--action-unselected-bg', '--action-unselected-text', '--action-unselected-border']) {
