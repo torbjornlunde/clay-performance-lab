@@ -1,5 +1,6 @@
 import {
   COMPAK_SPORTING,
+  FITASC_SPORTING,
   LEIRDUESTI,
   SPORTTRAP,
   isPostBasedSportingDiscipline,
@@ -41,6 +42,12 @@ export function scorecardDisciplineProfile(
       reviewLabel: "Series",
       defaultTargetsPerSeries: 25,
     };
+  if (normalized === FITASC_SPORTING.toLowerCase())
+    return {
+      key: "post_based",
+      unitLabel: "Stand",
+      reviewLabel: "Stand",
+    };
   if (isPostBasedSportingDiscipline(discipline))
     return {
       key: "post_based",
@@ -52,6 +59,12 @@ export function scorecardDisciplineProfile(
 
 export function isScorecardImportDiscipline(discipline?: string | null) {
   return Boolean(scorecardDisciplineProfile(discipline));
+}
+
+export function isPostBasedScorecardImportDiscipline(
+  discipline?: string | null,
+) {
+  return scorecardDisciplineProfile(discipline)?.key === "post_based";
 }
 
 export function formatScorecardSetupSummary(

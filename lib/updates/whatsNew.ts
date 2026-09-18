@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v7.09.26", title: "Import FITASC Sporting scorecards", bullets: ["Add a scorecard photo to a FITASC Sporting competition without setting up every target first.", "Review the stands and target counts detected from the card before applying the result.", "Keep missing target details unknown instead of filling them with guesses."] },
   { id: "v6.09.26", title: "Review Leirdue results more clearly", bullets: ["Focus on the event, score, series and shooter match before importing a result.", "Use a simpler review flow without technical import details getting in the way.", "Read import, result and analysis screens more reliably in both Light and Dark appearance."] },
   { id: "v5.09.26", title: "Bring clearer evidence to Coach Report", bullets: ["See recurring self-reports separately from reviewed AI hypotheses across selected sessions.", "Understand report confidence through plain-language reasons and source sessions.", "Take focused questions to your coach without private note text becoming an unsupported diagnosis."] },
   { id: "v4.09.26", title: "Keep reflection evidence clear in Analysis", bullets: ["See your selected context and accepted self-reports separately from observed scorecard facts.", "Treat accepted AI suggestions as reviewed hypotheses to investigate, never proven causes.", "Keep raw private reflection text from silently creating training priorities."] },

@@ -32,6 +32,7 @@ import { equipmentSnapshotLines } from "@/lib/equipment/logSnapshots";
 import ScorecardEvidenceSection from "@/app/components/ScorecardEvidenceSection";
 import { deleteSessionWithEvidenceCleanup } from "@/lib/sessionDeletion";
 import { COMPETITION_CONTEXT_TAGS, normalizeCompetitionContextTags, shortCompetitionReflectionMaxLength } from "@/lib/competitionContext";
+import { isPostBasedScorecardImportDiscipline } from "@/lib/scorecards/scorecardProfiles";
 
 type Miss = {
   id: string;
@@ -973,7 +974,7 @@ export default function Page() {
               <small>{setupAction.progress}</small>
             </Link>
           )}
-          {isPostBasedSportingDiscipline(session.discipline) &&
+          {isPostBasedScorecardImportDiscipline(session.discipline) &&
             setupComplete &&
             count === 0 && (
               <Link
@@ -983,7 +984,7 @@ export default function Page() {
                 Import scorecard
               </Link>
             )}
-          {isPostBasedSportingDiscipline(session.discipline) &&
+          {isPostBasedScorecardImportDiscipline(session.discipline) &&
             (!setupComplete || count > 0) && (
               <Link
                 href={`/sessions/${session.id}/scorecard-import`}
