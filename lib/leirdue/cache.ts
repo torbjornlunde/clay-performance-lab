@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { LeirdueCandidate, LeirdueCheckedListDebug, LeirdueSearchDebug } from "@/lib/leirdue/types";
-import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, nordicSafeNameKey, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
+import { extractLeirdueSourceIdentifiers, leirdueDisciplineMatchesSelection, leirdueNameMatchReason, namesLikelyMatch, nordicSafeNameKey, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 
 const CURRENT_YEAR_TTL_DAYS = 7;
 const PAST_YEAR_TTL_DAYS = 90;
@@ -244,7 +244,9 @@ export async function getCachedLeirdueCandidates(input: { shooterName: string; y
   const invalidListKeys = listRows
     .filter((row) => !row.is_valid_single_event_result || row.is_ranking_or_control || row.is_multi_event_or_cup)
     .map((row) => leirdueCanonicalListeIdKey(row.source_url || `https://www.leirdue.net/?stevne=${row.event_id}&meny=resultater&liste_id=${row.liste_id}`));
-  const filtered = input.disciplines.length > 0 ? rows.filter((row) => !row.discipline || input.disciplines.includes(row.discipline)) : rows;
+  const filtered = [...rows].sort((left, right) =>
+    Number(leirdueDisciplineMatchesSelection(right.discipline, input.disciplines)) - Number(leirdueDisciplineMatchesSelection(left.discipline, input.disciplines)),
+  );
   const candidates = filtered.map(cacheRowToCandidate);
   const reviewableCachedCandidates = candidates.filter((candidate) => candidate.category !== "control" && candidate.ownScore !== null && candidate.totalTargets !== null);
   const readErrors = [
@@ -624,7 +626,7 @@ function effectiveSharedValidationStatus(row: SharedResultRow): SharedResultRow[
 
 function sharedDisciplineMatches(rowDiscipline: string | null, selectedDisciplines: string[]) {
   if (selectedDisciplines.length === 0 || !rowDiscipline) return true;
-  if (selectedDisciplines.includes(rowDiscipline)) return true;
+  if (leirdueDisciplineMatchesSelection(rowDiscipline, selectedDisciplines)) return true;
   const row = rowDiscipline.toLowerCase();
   return selectedDisciplines.some((discipline) => {
     const selected = discipline.toLowerCase();
@@ -633,6 +635,21 @@ function sharedDisciplineMatches(rowDiscipline: string | null, selectedDisciplin
     if (selected.includes("leirduesti")) return row.includes("leirduesti");
     return false;
   });
+}
+
+export function sharedLeirdueNameRetrievalPattern(shooterName: string) {
+  const parts = nordicSafeNameKey(shooterName).split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return null;
+  return `${parts[0]}%${parts.at(-1)}%`;
+}
+
+export function orderSharedRowsByDisciplinePreference<T extends SharedResultRow>(rows: T[], selectedDisciplines: string[]) {
+  // Discipline is a preference, not an exclusion. An older UI default or a
+  // spelling variant must never make a valid name match look absent.
+  return rows
+    .map((row, index) => ({ row, index, preferred: sharedDisciplineMatches(sharedEffectiveDiscipline(row), selectedDisciplines) }))
+    .sort((left, right) => Number(right.preferred) - Number(left.preferred) || left.index - right.index)
+    .map(({ row }) => row);
 }
 
 function sharedEffectiveDiscipline(row: SharedResultRow) {
@@ -794,7 +811,11 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
   if (!supabase) return { candidates: [] as LeirdueCandidate[], stats: emptyStats("Shared Leirdue cache read skipped: missing authenticated cache read context.") };
   const normalizedName = nordicSafeNameKey(input.shooterName);
   const selectColumns = "event_id,liste_id,normalized_name,original_name,club,placement,score,total_targets,winning_score,series_scores,discipline,event_date,event_title,organizer,source_url,raw_row,validation_status,parsed_at";
-  const [{ data: exactData, error: exactError }, { data: prefixedData, error: prefixedError }, statusResult] = await Promise.all([
+  const variantPattern = sharedLeirdueNameRetrievalPattern(input.shooterName);
+  const variantQuery = variantPattern
+    ? supabase.from("leirdue_shared_shooter_results").select(selectColumns).eq("year", input.year).ilike("normalized_name", variantPattern).in("validation_status", ["valid", "needs_review", "invalid", "failed"]).order("event_date", { ascending: true }).limit(1000)
+    : Promise.resolve({ data: [] as SharedResultRow[], error: null });
+  const [{ data: exactData, error: exactError }, { data: prefixedData, error: prefixedError }, { data: variantData, error: variantError }, statusResult] = await Promise.all([
     supabase
       .from("leirdue_shared_shooter_results")
       .select(selectColumns)
@@ -811,18 +832,20 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
       .in("validation_status", ["valid", "needs_review", "invalid", "failed"])
       .order("event_date", { ascending: true })
       .limit(1000),
+    variantQuery,
     supabase
       .from("leirdue_year_ingestion_status")
       .select("status")
       .eq("year", input.year)
       .maybeSingle(),
   ]);
-  const error = exactError || prefixedError;
+  const error = exactError || prefixedError || variantError;
   if (error) return { candidates: [] as LeirdueCandidate[], stats: emptyStats(`Shared Leirdue cache read failed: ${error.message}`) };
   const exactRows = (exactData || []) as SharedResultRow[];
   const prefixedRows = (prefixedData || []) as SharedResultRow[];
   const rowMap = new Map<string, SharedResultRow>();
-  for (const row of [...exactRows, ...prefixedRows]) rowMap.set(`${row.source_url}|${row.normalized_name}|${row.score ?? ""}|${row.total_targets ?? ""}`, row);
+  const variantRows = (variantData || []) as SharedResultRow[];
+  for (const row of [...exactRows, ...prefixedRows, ...variantRows]) rowMap.set(`${row.source_url}|${row.normalized_name}|${row.score ?? ""}|${row.total_targets ?? ""}`, row);
   let ambiguousNameRowsRejected = 0;
   const acceptedNameMatchReasons: string[] = [];
   const nameMatchedRows = Array.from(rowMap.values()).filter((row) => {
@@ -832,7 +855,7 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
     else if (acceptedNameMatchReasons.length < 25) acceptedNameMatchReasons.push(`${row.original_name || row.normalized_name}: ${reason}`);
     return accepted;
   });
-  const rows = nameMatchedRows.filter((row) => sharedDisciplineMatches(sharedEffectiveDiscipline(row), input.disciplines));
+  const rows = orderSharedRowsByDisciplinePreference(nameMatchedRows, input.disciplines);
   const rowsWithEffectiveStatus = rows.map((row) => ({ row, effectiveStatus: effectiveSharedValidationStatus(row) }));
   const validCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "valid").length;
   const needsReviewCount = rowsWithEffectiveStatus.filter((item) => item.effectiveStatus === "needs_review").length;

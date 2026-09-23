@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { COMPAK_SPORTING, DISCIPLINE_OPTIONS, KOMPAKT_LEIRDUESTI, LEIRDUESTI } from "@/lib/disciplines";
+import { canonicalizeDiscipline, COMPAK_SPORTING, DISCIPLINE_OPTIONS, KOMPAKT_LEIRDUESTI, LEIRDUESTI } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
 import { recordAnalyticsEvent } from "@/lib/analytics";
 import { normalizeDisciplines, prioritizedDisciplineOptions, shooterProfileDisplayName, type ShooterProfile } from "@/lib/profile";
@@ -656,7 +656,12 @@ export default function LeirdueImportPage() {
       const profileName = shooterProfileDisplayName(data);
       if (profileName) setShooterName((current) => current || profileName);
       setShooterCountry(data?.country || "");
-      setProfileDisciplines(normalizeDisciplines(data?.my_disciplines).filter((discipline) => DISCIPLINE_OPTIONS.includes(discipline)));
+      const preferredDisciplines = normalizeDisciplines(data?.my_disciplines)
+        .map(canonicalizeDiscipline)
+        .filter((discipline) => DISCIPLINE_OPTIONS.some((option) => option.toLowerCase() === discipline.toLowerCase()))
+        .map((discipline) => DISCIPLINE_OPTIONS.find((option) => option.toLowerCase() === discipline.toLowerCase()) || discipline);
+      setProfileDisciplines(preferredDisciplines);
+      if (preferredDisciplines.length > 0) setDisciplines(preferredDisciplines);
     }
     loadShooterName();
   }, []);
@@ -967,8 +972,8 @@ export default function LeirdueImportPage() {
 
       const provenComplete = Boolean(data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete);
       if (cacheOnlyInitialSearch) {
-        setSearchStatus(data.debug?.cacheDiagnostics?.ingestionComplete ? "Shared index complete" : "Shared index incomplete");
-        setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No shared cached results found yet. Additional Leirdue.net results may become available as the shared index is updated." : `Found ${reviewedCounts.reviewableCount} cached reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. ${data.debug?.cacheDiagnostics?.ingestionComplete ? "Shared indexing is complete." : "Shared indexing is incomplete; more results may become available."}`);
+        setSearchStatus("Search complete");
+        setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No matching results found for this name and year. Check the name, try a direct Leirdue.net result link, or add the result manually." : `Found ${reviewedCounts.reviewableCount} result${reviewedCounts.reviewableCount === 1 ? "" : "s"} to review.`);
       } else if (shouldContinue) {
         continuationFailuresByScopeRef.current.set(activeScopeKey, 0);
         setSearchStatus("More Leirdue.net work remains. Use Continue search to run another short batch.");
@@ -977,7 +982,7 @@ export default function LeirdueImportPage() {
         setSearchStatus("Search complete");
         setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No candidates found. Try broader filters or add a result manually." : `Search complete. Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. Please review the list before saving.`);
       } else {
-        setSearchStatus("Shared index incomplete");
+        setSearchStatus("Search paused");
         setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No candidates found yet. Try broader filters or add a result manually." : `Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. More results may still be available.`);
       }
       if (reset) void recordAnalyticsEvent(supabase, "leirdue_search_completed", { route: "/import/leirdue", feature: "leirdue_import", metadata: { candidateCount: reviewedCounts.reviewableCount, completed: !shouldContinue } });
