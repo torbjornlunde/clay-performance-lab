@@ -16,6 +16,20 @@ export function normalizeLeirdueText(value: string) {
 
 export type LeirdueNameMatchReason = "exact normalized match" | "diacritic-insensitive match" | "partial/initial match" | "fuzzy/possible match" | "no match";
 
+export function isStrongLeirdueIdentityMatch(reason: LeirdueNameMatchReason) {
+  return reason === "exact normalized match" || reason === "diacritic-insensitive match";
+}
+
+export function sharedLeirdueCandidateIdentity(reason: LeirdueNameMatchReason, rowIsValid: boolean) {
+  const strongIdentity = isStrongLeirdueIdentityMatch(reason);
+  return {
+    shooterMatchStatus: strongIdentity ? "matched_to_you" as const : "possible_match" as const,
+    shooterMatchReason: reason,
+    category: rowIsValid && strongIdentity ? "recommended" as const : "review" as const,
+    importRecommended: rowIsValid && strongIdentity,
+  };
+}
+
 export function normalizeLeirdueName(value: string) {
   return normalizeLeirdueText(value)
     .replace(/[’'`´]/g, "")
@@ -82,6 +96,13 @@ function initialsMatch(shortName: string, fullName: string) {
   return shortFirst.length === 1 ? fullFirst.startsWith(shortFirst) : fullFirst.length === 1 ? shortFirst.startsWith(fullFirst) : false;
 }
 
+function sameFirstAndLastName(first: string, second: string) {
+  const firstParts = nameParts(first).map(nordicSafeNameKey);
+  const secondParts = nameParts(second).map(nordicSafeNameKey);
+  if (firstParts.length < 2 || secondParts.length < 2) return false;
+  return firstParts[0] === secondParts[0] && firstParts.at(-1) === secondParts.at(-1);
+}
+
 export function leirdueNameMatchReason(first: string | null | undefined, second: string | null | undefined): LeirdueNameMatchReason {
   const normalizedFirst = normalizeLeirdueName(first || "");
   const normalizedSecond = normalizeLeirdueName(second || "");
@@ -94,6 +115,10 @@ export function leirdueNameMatchReason(first: string | null | undefined, second:
   const firstWithoutClub = stripLikelyClubSuffix(normalizedFirst);
   const secondWithoutClub = stripLikelyClubSuffix(normalizedSecond);
   if (firstWithoutClub && secondWithoutClub && firstWithoutClub === secondWithoutClub) return "diacritic-insensitive match";
+  // Leirdue rows and CPL profiles do not always include the same middle names.
+  // Requiring both full first and last names keeps this narrower than a
+  // surname-only fuzzy match.
+  if (sameFirstAndLastName(normalizedFirst, normalizedSecond)) return "partial/initial match";
   if (profileNameContainedInShooterText(first, second) || profileNameContainedInShooterText(second, first)) return "partial/initial match";
   if (foldedFirst.length >= 5 && foldedSecond.length >= 5 && (foldedFirst.includes(foldedSecond) || foldedSecond.includes(foldedFirst))) return "partial/initial match";
   if (initialsMatch(normalizedFirst, normalizedSecond) || initialsMatch(normalizedSecond, normalizedFirst)) return "partial/initial match";
@@ -136,6 +161,13 @@ export function normalizeLeirdueDisciplineLabel(label: string | null | undefined
   if (/\b(engelsk sporting|sporting)\b/.test(normalized)) return { discipline: "Sporting", warning: null };
 
   return { discipline: "Other", warning: "Unknown discipline." };
+}
+
+export function leirdueDisciplineMatchesSelection(rowDiscipline: string | null | undefined, selectedDisciplines: string[]) {
+  if (selectedDisciplines.length === 0 || !rowDiscipline) return true;
+  const canonical = (value: string) => normalizeLeirdueDisciplineLabel(value).discipline.toLowerCase();
+  const row = canonical(rowDiscipline);
+  return selectedDisciplines.some((discipline) => canonical(discipline) === row);
 }
 
 export function extractLeirdueSourceIdentifiers(sourceUrl: string | null | undefined): LeirdueSourceIdentifiers {

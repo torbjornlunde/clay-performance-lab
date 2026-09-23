@@ -12,9 +12,20 @@ assert.ok(disciplines.DISCIPLINE_OPTIONS.includes(disciplines.TRAP), 'generic Tr
 assert.equal(normalize.normalizeLeirdueDisciplineLabel('Jegertrap 50 skudd').discipline, disciplines.JEGERTRAP_NORDISK_TRAP, 'Jegertrap alias normalizes to canonical label');
 assert.equal(normalize.normalizeLeirdueDisciplineLabel('Nordisk trap').discipline, disciplines.JEGERTRAP_NORDISK_TRAP, 'Nordisk trap alias normalizes to canonical label');
 assert.equal(normalize.normalizeLeirdueDisciplineLabel('Trap').discipline, disciplines.TRAP, 'generic Trap stays separate');
+assert.equal(normalize.leirdueNameMatchReason('Kari Nordmann', 'Kari Anne Nordmann'), 'partial/initial match', 'middle-name differences remain an ambiguous match');
+const ambiguousMiddleNameIdentity = normalize.sharedLeirdueCandidateIdentity(normalize.leirdueNameMatchReason('Kari Marie Nordmann', 'Kari Anne Nordmann'), true);
+assert.deepEqual(ambiguousMiddleNameIdentity, { shooterMatchStatus: 'possible_match', shooterMatchReason: 'partial/initial match', category: 'review', importRecommended: false }, 'different middle names keep an otherwise valid shared row review-only');
+const exactSharedIdentity = normalize.sharedLeirdueCandidateIdentity(normalize.leirdueNameMatchReason('Kari Anne Nordmann', 'Kari Anne Nordmann'), true);
+assert.deepEqual(exactSharedIdentity, { shooterMatchStatus: 'matched_to_you', shooterMatchReason: 'exact normalized match', category: 'recommended', importRecommended: true }, 'a genuinely exact identity may still be recommended');
+assert.equal(normalize.namesLikelyMatch('Kari Nordmann Oslo JFF', 'Kari Nordmann'), true, 'harmless club suffixes remain matchable');
+assert.equal(normalize.namesLikelyMatch('Kari Nordmann', 'Ola Nordmann'), false, 'a shared surname alone remains ambiguous and is not automatically matched');
+assert.equal(normalize.leirdueDisciplineMatchesSelection('compak sporting', ['Compak Sporting']), true, 'discipline matching ignores harmless casing differences');
+assert.equal(normalize.leirdueDisciplineMatchesSelection('Nordisk trap', ['Jegertrap / Nordisk trap']), true, 'discipline aliases match the canonical profile value');
+assert.equal(normalize.leirdueDisciplineMatchesSelection('Skeet', []), true, 'an empty optional preference searches Skeet');
+assert.equal(normalize.leirdueDisciplineMatchesSelection('FITASC Sporting', []), true, 'an empty optional preference searches FITASC Sporting');
 
 const page = readFileSync('app/import/leirdue/page.tsx', 'utf8');
-assert.match(page, /OPTIONAL_DISCIPLINES = \[JEGERTRAP_NORDISK_TRAP, TRAP, SKEET, "Other"\]/, 'Leirdue checkbox choices include canonical trap before generic Trap');
+assert.match(page, /prioritizedDisciplineOptions\(DISCIPLINE_OPTIONS, profileDisciplines, shooterCountry\)/, 'Leirdue checkbox choices use the complete shared discipline list');
 
 const parser = readFileSync('lib/leirdue/parser.ts', 'utf8');
 assert.match(parser, /d === normalizeText\(JEGERTRAP_NORDISK_TRAP\)[\s\S]*nordisk\\s\+trap\|jegertrap/, 'normal search matches Jegertrap/Nordisk trap only for canonical selection');
@@ -79,5 +90,13 @@ const leirdueSearchRoute = readFileSync('app/api/leirdue/search/route.ts', 'utf8
 assert.match(leirdueSearchRoute, /shared\.stats\.ok && shared\.stats\.reviewableCount > 0/, 'initial shared cache only returns early when reviewable candidates exist');
 assert.match(leirdueSearchRoute, /Shared cache unavailable; live\/cached fallback continued\./, 'shared cache read errors continue into live/cached fallback');
 assert.match(leirdueSearchRoute, /live\/cached fallback continued/, 'empty incomplete shared cache continues into fallback search');
+const leirdueCache = readFileSync('lib/leirdue/cache.ts', 'utf8');
+assert.match(leirdueCache, /sharedLeirdueNameRetrievalPattern[\s\S]*\.ilike\("normalized_name", variantPattern\)/, 'shared-index lookup retrieves first/last variants before conservative matching');
+assert.match(leirdueCache, /orderSharedRowsByDisciplinePreference\(nameMatchedRows, input\.disciplines\)/, 'shared-index discipline choices order rather than hide valid name matches');
+assert.doesNotMatch(leirdueCache, /nameMatchedRows\.filter\(\(row\) => sharedDisciplineMatches/, 'shared-index lookup does not discard valid rows because of discipline defaults');
+assert.match(page, /setDisciplines\(preferredDisciplines\)/, 'recognized profile disciplines replace the old hard-coded defaults');
+assert.match(page, /Discipline preferences \(optional\)/, 'discipline controls describe their ordering semantics');
+assert.match(page, /<button disabled=\{searching\}>\{searching \? "Searching\.\.\." : "Search Leirdue\.net"\}<\/button>/, 'all-disciplines search remains available with no preferences selected');
+assert.match(page, /Import from Leirdue\.net link[\s\S]*Find result from link/, 'manual-link import remains available');
 
 console.log('Leirdue import filter normalization tests passed');

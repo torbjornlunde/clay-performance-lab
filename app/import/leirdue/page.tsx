@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { COMPAK_SPORTING, DISCIPLINE_OPTIONS, KOMPAKT_LEIRDUESTI, LEIRDUESTI } from "@/lib/disciplines";
+import { canonicalizeDiscipline, COMPAK_SPORTING, DISCIPLINE_OPTIONS, KOMPAKT_LEIRDUESTI, LEIRDUESTI } from "@/lib/disciplines";
 import { supabase } from "@/lib/supabase/client";
 import { recordAnalyticsEvent } from "@/lib/analytics";
 import { normalizeDisciplines, prioritizedDisciplineOptions, shooterProfileDisplayName, type ShooterProfile } from "@/lib/profile";
 import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
-import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
+import { extractLeirdueSourceIdentifiers, isStrongLeirdueIdentityMatch, leirdueDisciplineMatchesSelection, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 import { ContextualHelpCard } from "@/app/components/OnboardingHelp";
 import { applyReviewedValue, candidateRenderIdentity, candidateSourceIdentity, correctedFieldNames, mergeReviewedCandidate, parsedValues, useReviewedSeriesTotal, validateLeirdueReviewedCandidate } from "@/lib/leirdue/review";
 import { requestLeirdueDuplicateCheck } from "@/lib/leirdue/duplicateCheck";
@@ -209,11 +209,13 @@ function candidateTime(candidate: LeirdueCandidate) {
   return candidate.date ? new Date(`${candidate.date}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
 }
 
-function sortCandidatesForReview(candidateList: EditableCandidate[]) {
+function sortCandidatesForReview(candidateList: EditableCandidate[], disciplinePreferences: string[] = []) {
   return [...candidateList].sort((a, b) => {
     const matchRank = (candidate: EditableCandidate) => candidate.shooterMatchStatus === "matched_to_you" ? 3 : candidate.shooterMatchStatus === "possible_match" ? 2 : 1;
     const matchDiff = matchRank(b) - matchRank(a);
     if (matchDiff !== 0) return matchDiff;
+    const preferenceDiff = Number(leirdueDisciplineMatchesSelection(b.discipline, disciplinePreferences)) - Number(leirdueDisciplineMatchesSelection(a.discipline, disciplinePreferences));
+    if (preferenceDiff !== 0) return preferenceDiff;
     const dateDiff = candidateTime(a) - candidateTime(b);
     if (dateDiff !== 0) return dateDiff;
     const statusDiff = candidateStatusRank(b) - candidateStatusRank(a);
@@ -228,8 +230,8 @@ function visibleCandidateCount(candidates: EditableCandidate[]) {
   return candidates.filter((candidate) => candidate.category !== "control").length;
 }
 
-function candidateReviewCounts(candidateList: EditableCandidate[]) {
-  const sorted = sortCandidatesForReview(candidateList);
+function candidateReviewCounts(candidateList: EditableCandidate[], disciplinePreferences: string[] = []) {
+  const sorted = sortCandidatesForReview(candidateList, disciplinePreferences);
   const confirmed = sorted.filter((candidate) => candidate.category === "recommended" && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported);
   const possible = sorted.filter((candidate) => (candidate.category === "review" || isManualLinkCandidate(candidate)) && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported);
   const alreadyImported = sorted.filter((candidate) => candidate.duplicateStatus === "exact" || candidate.alreadyImported);
@@ -656,12 +658,17 @@ export default function LeirdueImportPage() {
       const profileName = shooterProfileDisplayName(data);
       if (profileName) setShooterName((current) => current || profileName);
       setShooterCountry(data?.country || "");
-      setProfileDisciplines(normalizeDisciplines(data?.my_disciplines).filter((discipline) => DISCIPLINE_OPTIONS.includes(discipline)));
+      const preferredDisciplines = normalizeDisciplines(data?.my_disciplines)
+        .map(canonicalizeDiscipline)
+        .filter((discipline) => DISCIPLINE_OPTIONS.some((option) => option.toLowerCase() === discipline.toLowerCase()))
+        .map((discipline) => DISCIPLINE_OPTIONS.find((option) => option.toLowerCase() === discipline.toLowerCase()) || discipline);
+      setProfileDisciplines(preferredDisciplines);
+      if (preferredDisciplines.length > 0) setDisciplines(preferredDisciplines);
     }
     loadShooterName();
   }, []);
 
-  const groupedCandidates = useMemo(() => candidateReviewCounts(candidates), [candidates]);
+  const groupedCandidates = useMemo(() => candidateReviewCounts(candidates, disciplines), [candidates, disciplines]);
   const renderedReviewCandidates = useMemo(() => [...groupedCandidates.confirmed, ...groupedCandidates.possible], [groupedCandidates]);
   const reviewableCount = groupedCandidates.reviewableCount;
   const hiddenFromNormalListCount = groupedCandidates.ignored.length;
@@ -698,8 +705,9 @@ export default function LeirdueImportPage() {
       const manualMatch = /Manual link import parsed row/i.test(candidate.notes || "") ? manualLinkNameMatchStatus(candidate.shooterName, shooterName) : null;
       if (manualMatch) return { ...candidate, shooterMatchStatus: manualMatch.status, shooterMatchReason: manualMatch.reason };
       const matchReason = leirdueNameMatchReason(candidate.shooterName, shooterName);
-      if (namesLikelyMatch(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "matched_to_you" as const, shooterMatchReason: matchReason };
-      if (profileNameContainedInShooterText(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "matched_to_you" as const, shooterMatchReason: "partial/initial match" as const };
+      if (isStrongLeirdueIdentityMatch(matchReason)) return { ...candidate, shooterMatchStatus: "matched_to_you" as const, shooterMatchReason: matchReason };
+      if (namesLikelyMatch(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "possible_match" as const, shooterMatchReason: matchReason };
+      if (profileNameContainedInShooterText(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "possible_match" as const, shooterMatchReason: "partial/initial match" as const };
       const parsedParts = candidate.shooterName.split(/\s+/).filter(Boolean);
       const searchedParts = shooterName.split(/\s+/).filter(Boolean);
       const possible = parsedParts.length >= 2 && searchedParts.length >= 2 && namesLikelyMatch(parsedParts.at(-1), searchedParts.at(-1));
@@ -966,9 +974,9 @@ export default function LeirdueImportPage() {
         : `${data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete ? "Search complete." : "Checking event result lists…"} Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}.${(data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch || 0) > 0 ? ` ${data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch} more result lists were discovered.` : ""}`);
 
       const provenComplete = Boolean(data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete);
-      if (cacheOnlyInitialSearch) {
-        setSearchStatus(data.debug?.cacheDiagnostics?.ingestionComplete ? "Shared index complete" : "Shared index incomplete");
-        setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No shared cached results found yet. Additional Leirdue.net results may become available as the shared index is updated." : `Found ${reviewedCounts.reviewableCount} cached reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. ${data.debug?.cacheDiagnostics?.ingestionComplete ? "Shared indexing is complete." : "Shared indexing is incomplete; more results may become available."}`);
+      if (cacheOnlyInitialSearch && !shouldContinue) {
+        setSearchStatus("Search complete");
+        setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No matching results found for this name and year. Check the name, try a direct Leirdue.net result link, or add the result manually." : `Found ${reviewedCounts.reviewableCount} result${reviewedCounts.reviewableCount === 1 ? "" : "s"} to review.`);
       } else if (shouldContinue) {
         continuationFailuresByScopeRef.current.set(activeScopeKey, 0);
         setSearchStatus("More Leirdue.net work remains. Use Continue search to run another short batch.");
@@ -977,7 +985,7 @@ export default function LeirdueImportPage() {
         setSearchStatus("Search complete");
         setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No candidates found. Try broader filters or add a result manually." : `Search complete. Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. Please review the list before saving.`);
       } else {
-        setSearchStatus("Shared index incomplete");
+        setSearchStatus("Search paused");
         setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No candidates found yet. Try broader filters or add a result manually." : `Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}. More results may still be available.`);
       }
       if (reset) void recordAnalyticsEvent(supabase, "leirdue_search_completed", { route: "/import/leirdue", feature: "leirdue_import", metadata: { candidateCount: reviewedCounts.reviewableCount, completed: !shouldContinue } });
@@ -1128,8 +1136,8 @@ export default function LeirdueImportPage() {
           <input value={year} onChange={(event) => setYear(event.target.value)} type="number" min="1990" max={new Date().getFullYear() + 1} required />
 
           <fieldset className="checkboxGroup">
-            <legend>Disciplines</legend>
-            <p className="small muted">Select every relevant discipline to search at once.</p>
+            <legend>Discipline preferences (optional)</legend>
+            <p className="small muted">Preferred disciplines appear first. The search still checks all disciplines.</p>
             <div className="checkboxGrid">
               {disciplineChoices.map((discipline) => (
                 <label key={discipline} className="checkboxLabel">
@@ -1140,7 +1148,7 @@ export default function LeirdueImportPage() {
             </div>
           </fieldset>
           <div className="btns">
-            <button disabled={searching || disciplines.length === 0}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
+            <button disabled={searching}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
             {/* TODO: Replace this temporary testing control with bounded, non-blocking background continuation that keeps cached results visible and merges new results automatically. */}
             {continuationToken ? <button type="button" className="secondary" disabled={searching || continuationRequestInFlightRef.current} onClick={continueSearch}>{searching ? "Continuing..." : "Continue search"}</button> : null}
           </div>
