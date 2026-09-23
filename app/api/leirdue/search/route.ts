@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { getCachedLeirdueCandidates, getLeirdueCrawlProgress, getSharedLeirdueShooterResults, repairLeirdueInvalidCompleteState, storeLeirdueCandidatesInCache, storeLeirdueCrawlIndexesInCache, storeLeirdueCrawlProgress, storeLeirdueInvalidListDecisionsInCache } from "@/lib/leirdue/cache";
 import { emptyLeirdueSearchDebug, FETCH_ERROR_MESSAGE, searchLeirdueCandidates } from "@/lib/leirdue/parser";
 
@@ -92,7 +93,10 @@ export async function POST(request: Request) {
 
   const shooterName = typeof body.shooterName === "string" ? body.shooterName.trim() : "";
   const year = validYear(body.year);
-  const disciplines = Array.isArray(body.disciplines) ? body.disciplines.filter((value): value is string => typeof value === "string" && value.trim().length > 0) : [];
+  const disciplinePreferences = Array.isArray(body.disciplines) ? body.disciplines.filter((value): value is string => typeof value === "string" && value.trim().length > 0) : [];
+  // Preferences only affect presentation. Keep cache, crawl and continuation
+  // scopes on the same complete discipline set, including when none are chosen.
+  const disciplines = [...DISCIPLINE_OPTIONS];
   const continuationToken = typeof body.continuationToken === "string" && body.continuationToken.length > 0 ? body.continuationToken : null;
   const restartIncompleteScopeToken = "__restart_incomplete_leirdue_scope__";
   const restartRequested = continuationToken === restartIncompleteScopeToken;
@@ -109,14 +113,14 @@ export async function POST(request: Request) {
         ? "continue"
         : "initial";
 
-  if (!shooterName || !year || disciplines.length === 0) {
-    return NextResponse.json({ error: "Shooter name, year and at least one discipline are required." }, { status: 400 });
+  if (!shooterName || !year) {
+    return NextResponse.json({ error: "Shooter name and year are required." }, { status: 400 });
   }
 
   try {
     let initialShared: Awaited<ReturnType<typeof getSharedLeirdueShooterResults>> | null = null;
     if (requestMode === "initial" && !explicitContinue && !continuationToken && !sourceUrl) {
-      const shared = await getSharedLeirdueShooterResults({ shooterName, year, disciplines, authorization: request.headers.get("authorization") });
+      const shared = await getSharedLeirdueShooterResults({ shooterName, year, disciplines: disciplinePreferences, authorization: request.headers.get("authorization") });
       initialShared = shared;
       const debug = emptyLeirdueSearchDebug();
       debug.selectedYear = year;
@@ -157,7 +161,15 @@ export async function POST(request: Request) {
       debug.continuationAvailable = false;
       debug.message = shared.stats.indexingComplete ? "Search complete. Shared Leirdue cache returned indexed results." : "Results still being indexed. Cached results are shown now. Additional Leirdue.net results may become available as the shared index is updated.";
       debug.candidateReasons.unshift(`Shared cache-only search: ${shared.stats.totalRows} total rows, ${shared.stats.validCount} valid, ${shared.stats.needsReviewCount} needs_review, ${shared.stats.invalidCount} invalid, ${shared.stats.failedCount} failed, exactNameRows=${shared.stats.exactNameRowsFound}, clubSuffixedRows=${shared.stats.clubSuffixedRowsFound}, ambiguousRejected=${shared.stats.ambiguousNameRowsRejected}, beforeSemanticDedup=${shared.stats.rowsBeforeSemanticDeduplication}, afterSemanticDedup=${shared.stats.canonicalCandidatesAfterSemanticDeduplication}, duplicateSourcesHidden=${shared.stats.duplicateSourceListsHidden}, ${shared.stats.reviewableCount} reviewable, coverage=${shared.stats.coverageStatus}, liveCrawlStarted=false.`);
-      if (shared.stats.ok && shared.stats.reviewableCount > 0) return NextResponse.json({ candidates: shared.candidates, debug, continuationToken: null });
+      if (shared.stats.ok && shared.stats.reviewableCount > 0) {
+        // Show available rows immediately, but do not let an incomplete index
+        // prevent the user from finding results in other disciplines.
+        const nextToken = shared.stats.indexingComplete ? null : restartIncompleteScopeToken;
+        debug.continuationAvailable = Boolean(nextToken);
+        debug.pendingListeIdQueueRemaining = nextToken ? 1 : 0;
+        debug.cacheDiagnostics.continuationRequired = Boolean(nextToken);
+        return NextResponse.json({ candidates: shared.candidates, debug, continuationToken: nextToken });
+      }
     }
 
     const cached = !sourceUrl

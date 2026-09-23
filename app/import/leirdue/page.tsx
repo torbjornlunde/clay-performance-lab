@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase/client";
 import { recordAnalyticsEvent } from "@/lib/analytics";
 import { normalizeDisciplines, prioritizedDisciplineOptions, shooterProfileDisplayName, type ShooterProfile } from "@/lib/profile";
 import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
-import { extractLeirdueSourceIdentifiers, isStrongLeirdueIdentityMatch, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
+import { extractLeirdueSourceIdentifiers, isStrongLeirdueIdentityMatch, leirdueDisciplineMatchesSelection, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 import { ContextualHelpCard } from "@/app/components/OnboardingHelp";
 import { applyReviewedValue, candidateRenderIdentity, candidateSourceIdentity, correctedFieldNames, mergeReviewedCandidate, parsedValues, useReviewedSeriesTotal, validateLeirdueReviewedCandidate } from "@/lib/leirdue/review";
 import { requestLeirdueDuplicateCheck } from "@/lib/leirdue/duplicateCheck";
@@ -209,11 +209,13 @@ function candidateTime(candidate: LeirdueCandidate) {
   return candidate.date ? new Date(`${candidate.date}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
 }
 
-function sortCandidatesForReview(candidateList: EditableCandidate[]) {
+function sortCandidatesForReview(candidateList: EditableCandidate[], disciplinePreferences: string[] = []) {
   return [...candidateList].sort((a, b) => {
     const matchRank = (candidate: EditableCandidate) => candidate.shooterMatchStatus === "matched_to_you" ? 3 : candidate.shooterMatchStatus === "possible_match" ? 2 : 1;
     const matchDiff = matchRank(b) - matchRank(a);
     if (matchDiff !== 0) return matchDiff;
+    const preferenceDiff = Number(leirdueDisciplineMatchesSelection(b.discipline, disciplinePreferences)) - Number(leirdueDisciplineMatchesSelection(a.discipline, disciplinePreferences));
+    if (preferenceDiff !== 0) return preferenceDiff;
     const dateDiff = candidateTime(a) - candidateTime(b);
     if (dateDiff !== 0) return dateDiff;
     const statusDiff = candidateStatusRank(b) - candidateStatusRank(a);
@@ -228,8 +230,8 @@ function visibleCandidateCount(candidates: EditableCandidate[]) {
   return candidates.filter((candidate) => candidate.category !== "control").length;
 }
 
-function candidateReviewCounts(candidateList: EditableCandidate[]) {
-  const sorted = sortCandidatesForReview(candidateList);
+function candidateReviewCounts(candidateList: EditableCandidate[], disciplinePreferences: string[] = []) {
+  const sorted = sortCandidatesForReview(candidateList, disciplinePreferences);
   const confirmed = sorted.filter((candidate) => candidate.category === "recommended" && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported);
   const possible = sorted.filter((candidate) => (candidate.category === "review" || isManualLinkCandidate(candidate)) && visibleImportCandidate(candidate) && candidate.duplicateStatus !== "exact" && !candidate.alreadyImported);
   const alreadyImported = sorted.filter((candidate) => candidate.duplicateStatus === "exact" || candidate.alreadyImported);
@@ -666,7 +668,7 @@ export default function LeirdueImportPage() {
     loadShooterName();
   }, []);
 
-  const groupedCandidates = useMemo(() => candidateReviewCounts(candidates), [candidates]);
+  const groupedCandidates = useMemo(() => candidateReviewCounts(candidates, disciplines), [candidates, disciplines]);
   const renderedReviewCandidates = useMemo(() => [...groupedCandidates.confirmed, ...groupedCandidates.possible], [groupedCandidates]);
   const reviewableCount = groupedCandidates.reviewableCount;
   const hiddenFromNormalListCount = groupedCandidates.ignored.length;
@@ -972,7 +974,7 @@ export default function LeirdueImportPage() {
         : `${data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete ? "Search complete." : "Checking event result lists…"} Found ${reviewedCounts.reviewableCount} reviewable result${reviewedCounts.reviewableCount === 1 ? "" : "s"}.${(data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch || 0) > 0 ? ` ${data.debug?.cacheDiagnostics?.newlyDiscoveredWorkThisBatch} more result lists were discovered.` : ""}`);
 
       const provenComplete = Boolean(data.debug?.cacheDiagnostics?.completionProof?.valid && data.debug.cacheDiagnostics.cacheScopeComplete);
-      if (cacheOnlyInitialSearch) {
+      if (cacheOnlyInitialSearch && !shouldContinue) {
         setSearchStatus("Search complete");
         setSuccess(reviewedCounts.reviewableCount === 0 && reset ? "No matching results found for this name and year. Check the name, try a direct Leirdue.net result link, or add the result manually." : `Found ${reviewedCounts.reviewableCount} result${reviewedCounts.reviewableCount === 1 ? "" : "s"} to review.`);
       } else if (shouldContinue) {
