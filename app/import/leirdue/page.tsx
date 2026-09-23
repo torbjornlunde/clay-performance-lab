@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase/client";
 import { recordAnalyticsEvent } from "@/lib/analytics";
 import { normalizeDisciplines, prioritizedDisciplineOptions, shooterProfileDisplayName, type ShooterProfile } from "@/lib/profile";
 import type { LeirdueCandidate, LeirdueDebugParseResult, LeirdueDuplicateMatch, LeirdueManualLinkParseResult, LeirdueSearchDebug } from "@/lib/leirdue/types";
-import { extractLeirdueSourceIdentifiers, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
+import { extractLeirdueSourceIdentifiers, isStrongLeirdueIdentityMatch, leirdueNameMatchReason, namesLikelyMatch, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
 import { ContextualHelpCard } from "@/app/components/OnboardingHelp";
 import { applyReviewedValue, candidateRenderIdentity, candidateSourceIdentity, correctedFieldNames, mergeReviewedCandidate, parsedValues, useReviewedSeriesTotal, validateLeirdueReviewedCandidate } from "@/lib/leirdue/review";
 import { requestLeirdueDuplicateCheck } from "@/lib/leirdue/duplicateCheck";
@@ -703,8 +703,9 @@ export default function LeirdueImportPage() {
       const manualMatch = /Manual link import parsed row/i.test(candidate.notes || "") ? manualLinkNameMatchStatus(candidate.shooterName, shooterName) : null;
       if (manualMatch) return { ...candidate, shooterMatchStatus: manualMatch.status, shooterMatchReason: manualMatch.reason };
       const matchReason = leirdueNameMatchReason(candidate.shooterName, shooterName);
-      if (namesLikelyMatch(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "matched_to_you" as const, shooterMatchReason: matchReason };
-      if (profileNameContainedInShooterText(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "matched_to_you" as const, shooterMatchReason: "partial/initial match" as const };
+      if (isStrongLeirdueIdentityMatch(matchReason)) return { ...candidate, shooterMatchStatus: "matched_to_you" as const, shooterMatchReason: matchReason };
+      if (namesLikelyMatch(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "possible_match" as const, shooterMatchReason: matchReason };
+      if (profileNameContainedInShooterText(candidate.shooterName, shooterName)) return { ...candidate, shooterMatchStatus: "possible_match" as const, shooterMatchReason: "partial/initial match" as const };
       const parsedParts = candidate.shooterName.split(/\s+/).filter(Boolean);
       const searchedParts = shooterName.split(/\s+/).filter(Boolean);
       const possible = parsedParts.length >= 2 && searchedParts.length >= 2 && namesLikelyMatch(parsedParts.at(-1), searchedParts.at(-1));
@@ -1133,8 +1134,8 @@ export default function LeirdueImportPage() {
           <input value={year} onChange={(event) => setYear(event.target.value)} type="number" min="1990" max={new Date().getFullYear() + 1} required />
 
           <fieldset className="checkboxGroup">
-            <legend>Disciplines</legend>
-            <p className="small muted">Select every relevant discipline to search at once.</p>
+            <legend>Discipline preferences (optional)</legend>
+            <p className="small muted">Preferred disciplines appear first. The search still checks all disciplines.</p>
             <div className="checkboxGrid">
               {disciplineChoices.map((discipline) => (
                 <label key={discipline} className="checkboxLabel">
@@ -1145,7 +1146,7 @@ export default function LeirdueImportPage() {
             </div>
           </fieldset>
           <div className="btns">
-            <button disabled={searching || disciplines.length === 0}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
+            <button disabled={searching}>{searching ? "Searching..." : "Search Leirdue.net"}</button>
             {/* TODO: Replace this temporary testing control with bounded, non-blocking background continuation that keeps cached results visible and merges new results automatically. */}
             {continuationToken ? <button type="button" className="secondary" disabled={searching || continuationRequestInFlightRef.current} onClick={continueSearch}>{searching ? "Continuing..." : "Continue search"}</button> : null}
           </div>

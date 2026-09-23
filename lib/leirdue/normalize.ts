@@ -16,6 +16,20 @@ export function normalizeLeirdueText(value: string) {
 
 export type LeirdueNameMatchReason = "exact normalized match" | "diacritic-insensitive match" | "partial/initial match" | "fuzzy/possible match" | "no match";
 
+export function isStrongLeirdueIdentityMatch(reason: LeirdueNameMatchReason) {
+  return reason === "exact normalized match" || reason === "diacritic-insensitive match";
+}
+
+export function sharedLeirdueCandidateIdentity(reason: LeirdueNameMatchReason, rowIsValid: boolean) {
+  const strongIdentity = isStrongLeirdueIdentityMatch(reason);
+  return {
+    shooterMatchStatus: strongIdentity ? "matched_to_you" as const : "possible_match" as const,
+    shooterMatchReason: reason,
+    category: rowIsValid && strongIdentity ? "recommended" as const : "review" as const,
+    importRecommended: rowIsValid && strongIdentity,
+  };
+}
+
 export function normalizeLeirdueName(value: string) {
   return normalizeLeirdueText(value)
     .replace(/[’'`´]/g, "")

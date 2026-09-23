@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { LeirdueCandidate, LeirdueCheckedListDebug, LeirdueSearchDebug } from "@/lib/leirdue/types";
-import { extractLeirdueSourceIdentifiers, leirdueDisciplineMatchesSelection, leirdueNameMatchReason, namesLikelyMatch, nordicSafeNameKey, profileNameContainedInShooterText } from "@/lib/leirdue/normalize";
+import { extractLeirdueSourceIdentifiers, leirdueDisciplineMatchesSelection, leirdueNameMatchReason, namesLikelyMatch, nordicSafeNameKey, profileNameContainedInShooterText, sharedLeirdueCandidateIdentity, type LeirdueNameMatchReason } from "@/lib/leirdue/normalize";
 
 const CURRENT_YEAR_TTL_DAYS = 7;
 const PAST_YEAR_TTL_DAYS = 90;
@@ -662,11 +662,12 @@ function sharedEffectiveDiscipline(row: SharedResultRow) {
   return row.discipline || "Other";
 }
 
-function sharedResultRowToCandidate(row: SharedResultRow): LeirdueCandidate {
+function sharedResultRowToCandidate(row: SharedResultRow, identityReason: LeirdueNameMatchReason): LeirdueCandidate {
   const effectiveStatus = effectiveSharedValidationStatus(row);
   const derived = sharedRowDerivedScoreAndTargets(row);
   const reviewable = effectiveStatus === "valid" || effectiveStatus === "needs_review";
-  const category = effectiveStatus === "valid" ? "recommended" : effectiveStatus === "needs_review" ? "review" : "control";
+  const identity = sharedLeirdueCandidateIdentity(identityReason, effectiveStatus === "valid");
+  const category = reviewable ? identity.category : "control";
   return {
     date: row.event_date,
     name: row.event_title || "Leirdue.net cached result",
@@ -685,14 +686,14 @@ function sharedResultRowToCandidate(row: SharedResultRow): LeirdueCandidate {
     warnings: effectiveStatus === "needs_review" ? ["Shared Leirdue cache row needs review."] : effectiveStatus === "invalid" ? ["Shared Leirdue cache row marked invalid."] : [],
     duplicateStatus: "new",
     duplicateMatches: [],
-    shooterMatchStatus: reviewable ? "matched_to_you" : null,
-    shooterMatchReason: reviewable ? "exact normalized match" : null,
+    shooterMatchStatus: reviewable ? identity.shooterMatchStatus : null,
+    shooterMatchReason: reviewable ? identity.shooterMatchReason : null,
     leirdueUrl: row.source_url,
     listType: null,
-    confidence: effectiveStatus === "valid" ? "high" : effectiveStatus === "needs_review" ? "medium" : "low",
+    confidence: effectiveStatus === "valid" && identity.importRecommended ? "high" : reviewable ? "medium" : "low",
     notes: `${row.raw_row || ""} Shared Leirdue cache source. Score evidence: ${derived.evidence}. Cached at ${row.parsed_at || "unknown"}.`.trim(),
     category,
-    importRecommended: effectiveStatus === "valid",
+    importRecommended: reviewable && identity.importRecommended,
   };
 }
 
@@ -848,11 +849,15 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
   for (const row of [...exactRows, ...prefixedRows, ...variantRows]) rowMap.set(`${row.source_url}|${row.normalized_name}|${row.score ?? ""}|${row.total_targets ?? ""}`, row);
   let ambiguousNameRowsRejected = 0;
   const acceptedNameMatchReasons: string[] = [];
+  const nameMatchReasons = new Map<SharedResultRow, LeirdueNameMatchReason>();
   const nameMatchedRows = Array.from(rowMap.values()).filter((row) => {
     const reason = leirdueNameMatchReason(row.original_name || row.normalized_name, input.shooterName);
     const accepted = row.normalized_name === normalizedName || profileNameContainedInShooterText(row.original_name || row.normalized_name, input.shooterName) || namesLikelyMatch(row.original_name || row.normalized_name, input.shooterName);
     if (!accepted) ambiguousNameRowsRejected += 1;
-    else if (acceptedNameMatchReasons.length < 25) acceptedNameMatchReasons.push(`${row.original_name || row.normalized_name}: ${reason}`);
+    else {
+      nameMatchReasons.set(row, reason);
+      if (acceptedNameMatchReasons.length < 25) acceptedNameMatchReasons.push(`${row.original_name || row.normalized_name}: ${reason}`);
+    }
     return accepted;
   });
   const rows = orderSharedRowsByDisciplinePreference(nameMatchedRows, input.disciplines);
@@ -866,10 +871,10 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
   const rowStageDiagnostics = rowsWithEffectiveStatus.slice(0, 100).map(({ row, effectiveStatus }) => {
     const disciplineAccepted = sharedDisciplineMatches(sharedEffectiveDiscipline(row), input.disciplines);
     const rejection = effectiveStatus === "valid" || effectiveStatus === "needs_review" ? "reviewable before semantic grouping" : sharedRowHasNonReviewableEvidence(row) ? "validation/non-reviewable evidence" : effectiveStatus;
-    const candidate = effectiveStatus === "valid" || effectiveStatus === "needs_review" ? sharedResultRowToCandidate(row) : null;
+    const candidate = effectiveStatus === "valid" || effectiveStatus === "needs_review" ? sharedResultRowToCandidate(row, nameMatchReasons.get(row) || "no match") : null;
     return `row event=${row.event_id || "none"} liste=${row.liste_id || "none"} name=${row.original_name || row.normalized_name} normalized=${row.normalized_name} date=${row.event_date || "unknown"} title=${row.event_title || "unknown"} discipline=${row.discipline || "unknown"} effectiveDiscipline=${sharedEffectiveDiscipline(row)} raw=${row.score ?? "?"}/${row.total_targets ?? "?"} series=${Array.isArray(row.series_scores) ? row.series_scores.join("+") : "none"} storedStatus=${row.validation_status} effectiveStatus=${effectiveStatus} disciplineAccepted=${disciplineAccepted ? "yes" : "no"} semanticKey=${candidate ? sharedCandidateSemanticKey(candidate, normalizedName) : "not-reviewable"} rejection=${rejection}`;
   });
-  const candidatesBeforeSemanticDeduplication = reviewableRows.map(sharedResultRowToCandidate);
+  const candidatesBeforeSemanticDeduplication = reviewableRows.map((row) => sharedResultRowToCandidate(row, nameMatchReasons.get(row) || "no match"));
   const deduped = dedupeSharedCandidatesSemantically(candidatesBeforeSemanticDeduplication, normalizedName);
   const candidates = deduped.candidates;
   const reviewableCount = candidates.filter((candidate) => candidate.category !== "control" && candidate.ownScore !== null && candidate.totalTargets !== null).length;
