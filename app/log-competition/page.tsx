@@ -4,6 +4,7 @@ const primaryActions = [
   { href: "/competition-score-sheets", title: "Competition Score Sheet", description: "Set up several shooters and score every target live from one device." },
   { href: "/results/new", title: "Register competition", description: "Start with competition basics. Add score, posts, targets and misses when you are ready." },
   { href: "/import/leirdue", title: "Import from Leirdue.net", description: "Bring in a published result from Leirdue.net." },
+  { href: "/import/clayarena", title: "Import from ClayArena", description: "Paste a public ClayArena results link, then review your result before saving." },
   { href: "/results", title: "My results", description: "Open, review, edit and delete saved competition results." },
 ];
 

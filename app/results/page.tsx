@@ -237,11 +237,12 @@ export default function ResultsPage() {
         <div>
           <p className="eyebrow">Results history</p>
           <h2>Manage competition results</h2>
-          <p>Open, review, and delete your saved quick results, detailed competition logs, manual entries, and Leirdue.net imports.</p>
+          <p>Open, review, and delete your saved quick results, detailed competition logs, manual entries, and imported results.</p>
         </div>
         <div className="btns heroActions">
           <Link href="/results/new" className="button">Register competition</Link>
           <Link href="/import/leirdue" className="button secondary">Import from Leirdue.net</Link>
+          <Link href="/import/clayarena" className="button secondary">Import from ClayArena</Link>
         </div>
       </div>
 
@@ -335,6 +336,7 @@ export default function ResultsPage() {
             <div className="btns compactEmptyActions">
               <Link href="/results/new" className="button smallButton">Register competition</Link>
               {sessions.length === 0 && <Link href="/import/leirdue" className="button secondary smallButton">Import from Leirdue.net</Link>}
+              {sessions.length === 0 && <Link href="/import/clayarena" className="button secondary smallButton">Import from ClayArena</Link>}
             </div>
           </div>
         ) : (
