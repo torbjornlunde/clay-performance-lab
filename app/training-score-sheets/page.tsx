@@ -241,6 +241,7 @@ export default function TrainingScoreSheetsPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("view") === "drafts") setFilter("drafts");
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -455,20 +456,6 @@ export default function TrainingScoreSheetsPage() {
           </div>
         </div>
 
-        <section className="subcard scoreSheetStructurePanel" aria-label="Training score sheet actions">
-          <div>
-            <p className="eyebrow">Score sheets</p>
-            <h2>Create or continue a score sheet</h2>
-            <p className="small muted">Choose discipline and setup inside the new score sheet flow.</p>
-          </div>
-          <div className="quickStartPresetActions">
-            <Link href="/training-score-sheets/new" className="button primaryAction">New training score sheet</Link>
-            <Link href="/import/scorecard" className="button secondary smallButton">Import scorecard photo</Link>
-            <a href="#existing-score-sheets" className="button secondary smallButton">Existing score sheets</a>
-            <button type="button" className="button secondary smallButton" onClick={() => setFilter("drafts")}>Drafts / incomplete</button>
-          </div>
-        </section>
-
         <details className="subcard quickStartCard">
           <summary>
             <span>Quick start</span>
@@ -479,6 +466,7 @@ export default function TrainingScoreSheetsPage() {
               <li key={step}>{step}</li>
             ))}
           </ol>
+          <Link href="/import/scorecard" className="button secondary smallButton">Import scorecard photo</Link>
         </details>
 
         {err && <p className="error">{err}</p>}
@@ -509,8 +497,9 @@ export default function TrainingScoreSheetsPage() {
             <p>
               {items.length === 0
                 ? "No training score sheets yet. Create one to start tracking a multi-shooter training round."
-                : "No training score sheets match this filter."}
+                : filter === "drafts" ? "No drafts or incomplete score sheets to continue." : "No training score sheets match this filter."}
             </p>
+            {filter === "drafts" && items.length > 0 && <button type="button" className="button secondary smallButton" onClick={() => setFilter("all")}>View all score sheets</button>}
           </div>
         ) : (
           <div className="scoreSheetArchiveList">

@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v25.09.26", title: "Pick up training faster", bullets: ["Continue a draft or incomplete score sheet directly from Log training.", "Start a simple log or new score sheet with fewer choices on screen; detailed logging remains available when needed."] },
   { id: "v24.09.26", title: "Save competition scores with less setup", bullets: ["Enter your score and target count right on the competition form, or leave both blank until the result is known.", "Find optional winning score, source link and shared target setup when you need them; saved results no longer repeat the same next-step prompts."] },
   { id: "v23.09.26", title: "Import a result from one link", bullets: ["Paste a Leirdue.net or ClayArena link first; we open its results automatically for review.", "Choose a Leirdue.net result list only when the event link needs it. Search earlier Leirdue.net results when you do not have a link."] },
   { id: "v22.09.26", title: "Reliable Leirdue.net source checks", bullets: ["If a source comparison cannot be saved, see a clear error and retry the check.", "Only saved comparisons are shown as ready for review and update."] },
