@@ -10342,3 +10342,21 @@ select {
 
 .publishedResultLinkForm { margin-top: 20px; min-width: 0; }
 .publishedResultLinkForm input { font-size: 16px; max-width: 100%; }
+.postManualPhotoReference {
+  max-width: 100%;
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+.postManualPhotoReference summary {
+  min-height: 44px;
+  padding: .6rem 0;
+  cursor: pointer;
+  color: var(--text);
+}
+.postManualPhotoReference img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+}

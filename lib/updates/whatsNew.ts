@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v17.09.26", title: "Continue when sign analysis fails", bullets: ["Go straight to manual post setup if a sign photo cannot be analyzed.", "Keep the saved sign photo available while entering the targets yourself."] },
   { id: "v16.09.26", title: "Read repeated pairs on post signs", bullets: ["A clearly marked count such as four report pairs can fill four presentations in the sign review.", "Check the proposed order and labels against your photo before applying the setup."] },
   { id: "v15.09.26", title: "Keep the right post sign with its review", bullets: ["Replace a post sign photo without a late analysis from the previous photo taking over.", "Review the latest photo before applying its target setup."] },
   { id: "v14.09.26", title: "Keep shooters separate in scorecard review", bullets: ["Recognize separate named shooters when a scorecard has short rows.", "Review each person’s result before applying scorecard details."] },

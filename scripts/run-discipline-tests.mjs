@@ -23,5 +23,7 @@ assert.match(page, /<PostTargetEditor/, 'post-based sporting disciplines render 
 const editor = readFileSync('app/sessions/[id]/targets/PostTargetEditor.tsx', 'utf8');
 assert.match(editor, /fetch\(`\/api\/sessions\/\$\{sessionId\}\/post-sign\/analyze`/, 'stand sign upload uses the existing post-sign analysis API');
 assert.match(editor, /posts\.map\(\(p, i\) => i === current - 1 \? normalizePost\(current, presentations, review\.instructions, review\.rawText\) : p\)/, 'applying a stand sign only replaces the selected stand');
+assert.match(editor, /analysis_failed" && <div className="btns"><button[^>]*onClick=\{props\.manualReview\}>Use photo and add manually/, 'failed sign analysis offers an immediate manual path');
+assert.match(editor, /manualOpen &&[^\n]*photoUrl && <details className="postManualPhotoReference"/, 'manual editor keeps saved photo available at the point of entry');
 execSync('rm -rf .discipline-test-build');
 console.log('discipline routing and stand photo scoping tests passed');
