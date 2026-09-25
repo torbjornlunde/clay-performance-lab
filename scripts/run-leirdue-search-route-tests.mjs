@@ -6,6 +6,8 @@ import { resolve } from 'node:path';
 // Execute the real POST handler and parser diagnostics; replace only external
 // cache/crawl I/O. Full project typechecking is a separate check.
 const build = '.leirdue-search-route-test-build';
+process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'public-test-key';
 try {
   execFileSync('npx', ['tsc', 'app/api/leirdue/search/route.ts', 'lib/disciplines.ts', 'lib/leirdue/normalize.ts', 'lib/leirdue/parser.ts', 'lib/leirdue/scoringRules.ts', 'lib/publishedResultImport.ts', '--ignoreConfig', '--noCheck', '--module', 'commonjs', '--target', 'ES2022', '--rootDir', '.', '--outDir', build], { stdio: 'inherit' });
   function load(path, dependencies = {}) {
@@ -31,7 +33,7 @@ try {
   const sharedResult = (candidates, indexingComplete = true) => ({ candidates, stats: { ok: true, error: null, totalRows: candidates.length, reviewableCount: candidates.length, validCount: candidates.length, needsReviewCount: 0, invalidCount: 0, failedCount: 0, indexingComplete, queryDurationMs: 0, acceptedNameMatchReasons: [], semanticEventGroupDiagnostics: [] } });
   const cachedResult = { candidates: [], stats: { cachedImportableCandidatesFound: 0, cacheUsed: false, cacheReadOk: true, cacheReadErrors: [], invalidListKeys: [], cachedCandidatesFound: 0 } };
 
-  function setup({ shared = sharedResult([trap, skeet]), live = [skeet] } = {}) {
+  function setup({ shared = sharedResult([trap, skeet]), live = [skeet], authValid = true } = {}) {
     const calls = [];
     const record = (name, result) => async (...args) => { calls.push({ name, args }); return typeof result === 'function' ? result() : result; };
     const writeStats = { serviceRoleCacheWriteEnabled: true, cacheWriteOk: true, cacheWriteErrors: [], invalidListsStored: 0, liveCandidatesStored: live.length };
@@ -47,12 +49,13 @@ try {
     };
     const route = load('app/api/leirdue/search/route.js', {
       'next/server': { NextResponse: { json: (body, options) => Response.json(body, options) } },
+      '@supabase/supabase-js': { createClient: () => ({ auth: { getUser: async () => ({ data: { user: authValid ? { id: 'beta-user' } : null }, error: authValid ? null : new Error('Expired token') }) } }) },
       '@/lib/disciplines': disciplines,
       '@/lib/leirdue/cache': cache,
       '@/lib/leirdue/parser': { ...parser, searchLeirdueCandidates: record('live', () => ({ candidates: [...live], debug: parser.emptyLeirdueSearchDebug(), continuationToken: null })) },
       '@/lib/publishedResultImport': publishedResultImport,
     });
-    const post = (body) => route.POST(new Request('https://example.test/api/leirdue/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shooterName: 'Kari Nordmann', year: 2026, ...body }) }));
+    const post = (body, authorization = 'Bearer valid-beta-token') => route.POST(new Request('https://example.test/api/leirdue/search', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) }, body: JSON.stringify({ shooterName: 'Kari Nordmann', year: 2026, ...body }) }));
     return { post, calls };
   }
 
@@ -108,6 +111,12 @@ try {
     assert.equal((await invalid.post(body)).status, 400, 'name/year validation is preserved');
     assert.equal(invalid.calls.length, 0);
   }
+  const missingToken = setup();
+  assert.equal((await missingToken.post({}, '')).status, 401, 'missing session fails fast');
+  assert.equal(missingToken.calls.length, 0);
+  const expiredToken = setup({ authValid: false });
+  assert.equal((await expiredToken.post({})).status, 401, 'expired beta session fails fast');
+  assert.equal(expiredToken.calls.length, 0);
   assert.deepEqual(normalize.sharedLeirdueCandidateIdentity(normalize.leirdueNameMatchReason('Kari Anne Nordmann', 'Kari Marie Nordmann'), true), { shooterMatchStatus: 'possible_match', shooterMatchReason: 'partial/initial match', category: 'review', importRecommended: false }, 'ambiguous identities remain review-only');
   console.log('Leirdue search route behavioral tests passed (optional preferences, full search scopes, shared index continuation, direct link, fallback and validation).');
 } finally {
