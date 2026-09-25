@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v21.09.26", title: "Match the right Leirdue.net shooter", bullets: ["A source check now requires the saved shooter and result list to match before suggesting an update.", "If the source contains equally likely rows, review the result manually instead of applying an uncertain change."] },
   { id: "v20.09.26", title: "Review the latest result before updating", bullets: ["If you edit a result after checking Leirdue.net, refresh the source before applying its changes.", "Your newer corrections stay intact until you review a fresh comparison."] },
   { id: "v19.09.26", title: "Safer Leirdue.net source updates", bullets: ["Keep your saved score and event details when a value is missing from the source page.", "Review unavailable source fields without accidentally applying an empty value."] },
   { id: "v18.09.26", title: "Clearer Leirdue.net search recovery", bullets: ["If your sign-in has expired, see that immediately instead of waiting through a long search.", "Sign in again, then search your results as usual."] },
