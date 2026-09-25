@@ -12,6 +12,8 @@ assert.deepEqual(crop.clampCrop({x:0,y:0,width:1,height:1}), crop.fullImageCrop)
 assert.equal(crop.moveCrop({x:.8,y:.8,width:.3,height:.3}, .3, .3).x + crop.moveCrop({x:.8,y:.8,width:.3,height:.3}, .3, .3).width <= 1, true);
 assert.equal(crop.resizeCrop({x:.1,y:.1,width:.2,height:.2}, 'nw', .5, .5).width >= .02, true);
 assert.equal(crop.sameCrop({x:0,y:0,width:1,height:1}, crop.fullImageCrop), true);
+assert.equal(crop.frameDragMode(crop.fullImageCrop), 'draw', 'first drag on the full-image frame creates a crop');
+assert.equal(crop.frameDragMode({x:.1,y:.1,width:.8,height:.8}), 'move', 'dragging a selected crop moves it');
 const drawn = crop.cropFromDrag(0.75, 0.8, 0.25, 0.2);
 assert.equal(drawn.x, 0.25, 'dragging up/left normalizes x');
 assert.equal(drawn.y, 0.2, 'dragging up/left normalizes y');

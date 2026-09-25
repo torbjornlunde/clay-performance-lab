@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v13.09.26", title: "Select a scorecard crop by dragging", bullets: ["Drag across a scorecard photo to mark the area you want to keep, including on a phone.", "Move or resize the selected area before analyzing the photo."] },
   { id: "v12.09.26", title: "Choose where to import a result", bullets: ["Open Import and choose Leirdue.net or ClayArena before searching.", "Already have a results link? Paste it to open the right import page."] },
   { id: "v11.09.26", title: "Short guides when you need them", bullets: ["Getting started now gives you a simple path from your profile to your first result and Performance.", "Follow short guides for result import, scorecard photos and Training Score Sheets.", "Reopen page help with How this works, even after choosing Got it or Skip."] },
   { id: "v10.09.26", title: "Save competitions with fewer choices", bullets: ["Start with one recommended Add competition action and add detail only when it is useful.", "Import a published ClayArena or Leirdue.net result from Log competition or Results history.", "Find live score sheets, quick scoring and detailed setup under Other ways to start."] },

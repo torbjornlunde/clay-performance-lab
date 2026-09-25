@@ -13,6 +13,7 @@ export function clampCrop(crop: NormalizedCrop): NormalizedCrop {
 }
 export const fullImageCrop: NormalizedCrop = { x: 0, y: 0, width: 1, height: 1, mode: "full" };
 export function isFullImageCrop(crop?: NormalizedCrop | null) { if (!crop) return true; const c = clampCrop(crop); return c.x === 0 && c.y === 0 && c.width === 1 && c.height === 1; }
+export function frameDragMode(crop: NormalizedCrop): "draw" | "move" { return isFullImageCrop(crop) ? "draw" : "move"; }
 export function cropToPercent(crop: NormalizedCrop) { const c = clampCrop(crop); return { left: `${c.x * 100}%`, top: `${c.y * 100}%`, width: `${c.width * 100}%`, height: `${c.height * 100}%` }; }
 export function cropFromDrag(startX: number, startY: number, currentX: number, currentY: number): NormalizedCrop {
   const x1 = Math.min(startX, currentX), y1 = Math.min(startY, currentY);
