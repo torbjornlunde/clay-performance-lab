@@ -10339,3 +10339,6 @@ select {
 @media (max-width: 520px) {
   .contextualHelpActions { width: 100%; }
 }
+
+.publishedResultLinkForm { margin-top: 20px; min-width: 0; }
+.publishedResultLinkForm input { font-size: 16px; max-width: 100%; }

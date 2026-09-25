@@ -31,9 +31,9 @@ export default function LogCompetitionPage() {
 
         <section aria-labelledby="published-result-action">
           <h2 id="published-result-action" className="sectionTitle">Already published online?</h2>
-          <Link href="/import/result" className="dashboardActionCard productActionCard secondaryAction">
-            <span>Import published result</span>
-            <small>Paste a ClayArena or Leirdue.net link and we will send you to the right importer.</small>
+          <Link href="/import" className="dashboardActionCard productActionCard secondaryAction">
+            <span>Import</span>
+            <small>Choose Leirdue.net or ClayArena, or paste a results link.</small>
           </Link>
         </section>
 

@@ -69,7 +69,7 @@ export default function ClayArenaImportPage() {
       <p>Paste a public competition results link, then review your result before saving.</p>
       <label htmlFor="clayarena-url">ClayArena results URL</label>
       <input id="clayarena-url" type="url" inputMode="url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://clayarena.com/en/competitions/.../results/" required />
-      <div className="btns"><button disabled={busy}>{busy ? "Finding result..." : "Find my result"}</button><Link className="button secondary" href="/import/result">Use another result service</Link></div>
+      <div className="btns"><button disabled={busy}>{busy ? "Finding result..." : "Find my result"}</button><Link className="button secondary" href="/import">Use another result service</Link></div>
       {message ? <div className={message.kind}>{message.text}</div> : null}
       {savedSessionId ? <Link className="button" href={`/sessions/${savedSessionId}?context=1#competition-context`}>Open result</Link> : null}
     </form>
