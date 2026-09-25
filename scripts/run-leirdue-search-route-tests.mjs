@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 // cache/crawl I/O. Full project typechecking is a separate check.
 const build = '.leirdue-search-route-test-build';
 try {
-  execFileSync('npx', ['tsc', 'app/api/leirdue/search/route.ts', 'lib/disciplines.ts', 'lib/leirdue/normalize.ts', 'lib/leirdue/parser.ts', 'lib/leirdue/scoringRules.ts', '--ignoreConfig', '--noCheck', '--module', 'commonjs', '--target', 'ES2022', '--rootDir', '.', '--outDir', build], { stdio: 'inherit' });
+  execFileSync('npx', ['tsc', 'app/api/leirdue/search/route.ts', 'lib/disciplines.ts', 'lib/leirdue/normalize.ts', 'lib/leirdue/parser.ts', 'lib/leirdue/scoringRules.ts', 'lib/publishedResultImport.ts', '--ignoreConfig', '--noCheck', '--module', 'commonjs', '--target', 'ES2022', '--rootDir', '.', '--outDir', build], { stdio: 'inherit' });
   function load(path, dependencies = {}) {
     const module = { exports: {} };
     const require = (name) => {
@@ -24,6 +24,7 @@ try {
     '@/lib/leirdue/normalize': normalize,
     '@/lib/leirdue/scoringRules': load('lib/leirdue/scoringRules.js'),
   });
+  const publishedResultImport = load('lib/publishedResultImport.js', { './clayarena/url': load('lib/clayarena/url.js') });
   const candidate = (discipline, id) => ({ discipline, leirdueUrl: `https://www.leirdue.net/?stevne=${id}&liste_id=1`, stevneId: String(id), listeId: '1', date: '2026-06-01', shooterName: 'Kari Nordmann', ownScore: 23, totalTargets: 25, category: 'recommended' });
   const trap = candidate('Trap', 1);
   const skeet = candidate('Skeet', 2);
@@ -49,9 +50,16 @@ try {
       '@/lib/disciplines': disciplines,
       '@/lib/leirdue/cache': cache,
       '@/lib/leirdue/parser': { ...parser, searchLeirdueCandidates: record('live', () => ({ candidates: [...live], debug: parser.emptyLeirdueSearchDebug(), continuationToken: null })) },
+      '@/lib/publishedResultImport': publishedResultImport,
     });
     const post = (body) => route.POST(new Request('https://example.test/api/leirdue/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shooterName: 'Kari Nordmann', year: 2026, ...body }) }));
     return { post, calls };
+  }
+
+  for (const sourceUrl of ['ftp://leirdue.net/?stevne=42', 'https://user@leirdue.net/?stevne=42', 'https://leirdue.net:8080/?liste_id=1']) {
+    const { post, calls } = setup();
+    assert.equal((await post({ sourceUrl })).status, 400, 'unsafe direct result links are rejected before any cache or live request');
+    assert.equal(calls.length, 0);
   }
 
   for (const preferences of [[], undefined, ['Skeet']]) {
