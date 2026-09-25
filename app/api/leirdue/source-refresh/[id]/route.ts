@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { applyableSessionPatch, refreshLeirdueSource, storedSourceDiffsFromSummary, type LeirdueRefreshSession } from "@/lib/leirdue/sourceRefresh";
+import { applyableSessionPatch, refreshLeirdueSource, sourcePatchStillCurrent, storedSourceDiffsFromSummary, type LeirdueRefreshSession } from "@/lib/leirdue/sourceRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -45,9 +45,17 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   if (!diffs) return NextResponse.json({ error: "Refresh and review Leirdue.net source changes before applying them." }, { status: 409 });
   const patch = applyableSessionPatch(diffs, Array.isArray(body.selectedFields) ? body.selectedFields : []);
   if (Object.keys(patch).length === 0) return NextResponse.json({ error: "No selected safe source changes to apply." }, { status: 400 });
+  const staleMessage = "This result changed after the source check. Refresh from Leirdue.net and review the changes again.";
+  if (!sourcePatchStillCurrent(diffs, patch, loaded.session)) return NextResponse.json({ error: staleMessage }, { status: 409 });
   const checkedAt = new Date().toISOString();
-  const { error } = await loaded.supabase.from("sessions").update({ ...patch, last_source_checked_at: checkedAt, last_source_status: "applied", source_change_summary: { checkedAt, status: "applied", appliedFields: Object.keys(patch), diffs } }).eq("id", id).eq("user_id", loaded.session.user_id);
+  let update = loaded.supabase.from("sessions").update({ ...patch, last_source_checked_at: checkedAt, last_source_status: "applied", source_change_summary: { checkedAt, status: "applied", appliedFields: Object.keys(patch), diffs } }).eq("id", id).eq("user_id", loaded.session.user_id).eq("last_source_status", "changed");
+  update = loaded.session.last_source_checked_at ? update.eq("last_source_checked_at", loaded.session.last_source_checked_at) : update.is("last_source_checked_at", null);
+  for (const item of diffs.filter((diff) => Object.hasOwn(patch, diff.field))) {
+    update = item.currentValue === null ? update.is(item.field, null) : update.eq(item.field, item.currentValue);
+  }
+  const { data, error } = await update.select("id").maybeSingle();
   if (error) return NextResponse.json({ error: "Could not apply selected source changes." }, { status: 500 });
+  if (!data) return NextResponse.json({ error: staleMessage }, { status: 409 });
   return NextResponse.json({ status: "applied", appliedFields: Object.keys(patch), checkedAt });
 }
 

@@ -11,6 +11,9 @@ assert.match(route, /selectedFields/, 'confirmed update applies selected fields 
 assert.match(route, /storedSourceDiffsFromSummary\(loaded\.session\.source_change_summary\)/, 'PATCH reads diffs only from stored server source_change_summary');
 assert.match(route, /status: 409/, 'PATCH rejects missing or non-changed stored source_change_summary');
 assert.doesNotMatch(route, /body\.diffs|diffs\?:/, 'PATCH does not accept or trust client-supplied diffs');
+assert.match(route, /sourcePatchStillCurrent\(diffs, patch, loaded\.session\)/, 'PATCH rejects a review of values that have changed since refresh');
+assert.match(route, /update\.select\("id"\)\.maybeSingle\(\)/, 'PATCH checks whether its conditional write actually matched');
+assert.match(route, /update\.eq\(item\.field, item\.currentValue\)/, 'PATCH compares saved field values during the database update');
 assert.match(route, /refreshLeirdueSource/, 'endpoint fetches and compares direct Leirdue source');
 assert.doesNotMatch(route, /leirdue_shared_shooter_results/, 'manual refresh does not rely only on shared cache');
 
@@ -61,6 +64,9 @@ const storedDiffs = source.storedSourceDiffsFromSummary({ status: 'changed', dif
   { field: 'name', label: 'Event title', currentValue: 'Cup', sourceValue: 'Server Cup', changed: true, safeToApply: true },
 ] });
 assert.deepEqual(source.applyableSessionPatch(storedDiffs, ['name']), { name: 'Server Cup' }, 'PATCH applies only selected fields from stored server diffs');
+assert.equal(source.sourcePatchStillCurrent(storedDiffs, { name:'Server Cup' }, baseSession), true, 'unchanged reviewed event title can be applied');
+assert.equal(source.sourcePatchStillCurrent(storedDiffs, { name:'Server Cup' }, { ...baseSession, name:'User edited title' }), false, 'a later manual edit cannot be overwritten by an old source review');
+assert.equal(source.sourcePatchStillCurrent(storedDiffs, { winning_score:99 }, { ...baseSession, winning_score:97 }), false, 'a later score correction requires a new source check');
 assert.equal(source.storedSourceDiffsFromSummary(null), null, 'PATCH without stored source_change_summary is rejected');
 assert.equal(source.storedSourceDiffsFromSummary({ status: 'no_changes', diffs: [] }), null, 'PATCH with stored status not changed is rejected');
 const fabricatedClientDiffs = [{ field: 'own_score', label: 'Own score', currentValue: 95, sourceValue: 1, changed: true, safeToApply: true }];

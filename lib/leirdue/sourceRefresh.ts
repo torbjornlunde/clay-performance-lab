@@ -105,3 +105,7 @@ export function applyableSessionPatch(diffs: LeirdueSourceDiff[], selectedFields
   for (const item of diffs) if (item.changed && item.safeToApply && hasUsableSourceValue(item.sourceValue) && allowed.has(item.field) && selected.has(item.field)) patch[item.field] = item.sourceValue;
   return patch;
 }
+
+export function sourcePatchStillCurrent(diffs: LeirdueSourceDiff[], patch: Record<string, string | number | null>, session: LeirdueRefreshSession) {
+  return diffs.filter((item) => Object.hasOwn(patch, item.field)).every((item) => eq(session[item.field as keyof LeirdueRefreshSession], item.currentValue));
+}
