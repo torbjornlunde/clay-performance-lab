@@ -1811,6 +1811,24 @@ body {
   min-height: 122px;
 }
 
+.competitionRecommendedAction {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.competitionHistoryLink {
+  margin: 0;
+  text-align: center;
+}
+
+.publishedResultProviders {
+  margin-top: 18px;
+}
+
+.publishedResultProviders h2 {
+  font-size: 18px;
+}
+
 .scoreSheetStructurePanel {
   display: grid;
   gap: 14px;

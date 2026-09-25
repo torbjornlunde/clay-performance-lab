@@ -1,14 +1,8 @@
 import Link from "next/link";
 
-const primaryActions = [
-  { href: "/competition-score-sheets", title: "Competition Score Sheet", description: "Set up several shooters and score every target live from one device." },
-  { href: "/results/new", title: "Register competition", description: "Start with competition basics. Add score, posts, targets and misses when you are ready." },
-  { href: "/import/leirdue", title: "Import from Leirdue.net", description: "Bring in a published result from Leirdue.net." },
-  { href: "/results", title: "My results", description: "Open, review, edit and delete saved competition results." },
-];
-
 const advancedActions = [
-  { href: "/results/quick", title: "Live quick score", description: "Score hits and misses quickly during a live competition." },
+  { href: "/competition-score-sheets", title: "Competition Score Sheet", description: "Set up several shooters and score every target live from one device." },
+  { href: "/results/quick", title: "Live quick score", description: "Score your hits and misses quickly during a live competition." },
   { href: "/sessions/new?type=competition", title: "Start with detailed setup", description: "Create courses, schemes or post setup before logging misses." },
 ];
 
@@ -19,27 +13,34 @@ export default function LogCompetitionPage() {
         <div className="heroTopline">
           <div>
             <p className="eyebrow">Log competition</p>
-            <h1>What do you want to do?</h1>
-            <p className="muted">Most users should start with Register competition. You can add posts, targets and detailed misses afterward.</p>
+            <h1>Save a competition</h1>
+            <p className="muted">Add the competition first. You can record a score, context, scorecard or detailed misses now or later.</p>
           </div>
           <div className="btns heroActions">
             <Link href="/dashboard" className="button secondary smallButton">Dashboard</Link>
           </div>
         </div>
 
-        <div className="productActionGrid" aria-label="Competition actions">
-          {primaryActions.map((action, index) => (
-            <Link key={action.href} href={action.href} className={`dashboardActionCard productActionCard ${index === 0 ? "primaryAction" : "secondaryAction"}`}>
-              <span>{action.title}</span>
-              <small>{action.description}</small>
-            </Link>
-          ))}
-        </div>
+        <section aria-labelledby="recommended-competition-action">
+          <p className="eyebrow">Recommended</p>
+          <Link href="/results/new" className="dashboardActionCard productActionCard primaryAction competitionRecommendedAction">
+            <span id="recommended-competition-action">Add competition</span>
+            <small>Save the basics and your result, then add more detail only when it is useful.</small>
+          </Link>
+        </section>
+
+        <section aria-labelledby="published-result-action">
+          <h2 id="published-result-action" className="sectionTitle">Already published online?</h2>
+          <Link href="/import/result" className="dashboardActionCard productActionCard secondaryAction">
+            <span>Import published result</span>
+            <small>Paste a ClayArena or Leirdue.net link and we will send you to the right importer.</small>
+          </Link>
+        </section>
 
         <details className="detailAccordion">
-          <summary><span>Advanced ways to start</span></summary>
+          <summary><span>Other ways to start</span></summary>
           <div className="detailAccordionBody">
-            <p className="small muted">Use these specialist flows only when you need live scoring or full setup before creating the competition.</p>
+            <p className="small muted">Use these options when you need live scoring or want to build the full setup before saving.</p>
             <div className="productActionGrid">
               {advancedActions.map((action) => (
                 <Link key={action.href} href={action.href} className="dashboardActionCard productActionCard secondaryAction">
@@ -50,6 +51,8 @@ export default function LogCompetitionPage() {
             </div>
           </div>
         </details>
+
+        <p className="small muted competitionHistoryLink">Looking for a saved competition? <Link href="/results">View My results</Link>.</p>
       </div>
     </main>
   );
