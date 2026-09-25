@@ -40,6 +40,10 @@ writeFileSync('.leirdue-source-refresh-test-tsconfig.json', JSON.stringify({
 }));
 execSync('rm -rf .leirdue-source-refresh-test-build && npx tsc -p .leirdue-source-refresh-test-tsconfig.json && mkdir -p .leirdue-source-refresh-test-build/node_modules/@ && ln -s ../../lib .leirdue-source-refresh-test-build/node_modules/@/lib', { stdio: 'inherit' });
 const source = await import('../.leirdue-source-refresh-test-build/lib/leirdue/sourceRefresh.js');
+assert.equal(source.sourceFieldDiff('own_score', 'Own score', 95, null).safeToApply, false, 'unreadable source score cannot erase a reviewed score');
+assert.equal(source.sourceFieldDiff('name', 'Event title', 'Cup', '   ').safeToApply, false, 'blank source title stays review-only');
+assert.equal(source.sourceFieldDiff('own_score', 'Own score', 95, 0).safeToApply, true, 'zero is a valid source score');
+assert.deepEqual(source.applyableSessionPatch([{field:'own_score',label:'Own score',currentValue:95,sourceValue:null,changed:true,safeToApply:true}], ['own_score']), {}, 'PATCH rejects a null value even if a stored diff was marked safe');
 const baseSession = { id: 's1', name: 'Cup', competition_date: '2026-06-01', discipline: 'Leirduesti', shooting_ground: 'Club', own_score: 95, winning_score: null, total_targets: 100, leirdue_result_url: 'https://www.leirdue.net/?stevne=1&meny=resultater&liste_id=2', notes: 'source: leirdue_net. shooter_name: Test Shooter. shooter_class: A. placement: 3. liste_id: 2' };
 const candidate = { date: '2026-06-01', name: 'Cup', shootingGround: 'Club', discipline: 'Leirduesti', ownScore: 95, totalTargets: 100, winningScore: 99, placement: 3, shooterName: 'Test Shooter', shooterClass: 'A', listeId: '2', leirdueUrl: baseSession.leirdue_result_url, listType: 'resultater', confidence: 'high', notes: '', category: 'recommended', importRecommended: true };
 assert.equal(source.leirdueSourceUrlForSession(baseSession), baseSession.leirdue_result_url, 'Leirdue-linked sessions expose refresh URL');

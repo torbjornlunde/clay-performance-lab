@@ -1445,7 +1445,7 @@ export default function Page() {
                     ))}
                     <div className="btns">
                       <button type="button" className="primary smallButton" onClick={() => void applyLeirdueSourceChanges(false)} disabled={sourceApplying || selectedSourceFields.length === 0}>{sourceApplying ? "Applying…" : "Apply selected changes"}</button>
-                      <button type="button" className="secondary smallButton" onClick={() => void applyLeirdueSourceChanges(true)} disabled={sourceApplying}>Apply all safe changes</button>
+                      <button type="button" className="secondary smallButton" onClick={() => void applyLeirdueSourceChanges(true)} disabled={sourceApplying || !sourceRefresh.diffs.some((item: any) => item.changed && item.safeToApply)}>Apply all safe changes</button>
                     </div>
                   </div>
                 )}
