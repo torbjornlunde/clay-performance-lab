@@ -26,10 +26,20 @@ for (const route of ['/competition-score-sheets', '/results/quick', '/sessions/n
 
 const hub = readFileSync('app/import/page.tsx', 'utf8');
 assert.match(hub, /<h1 id="import-heading">Import<\/h1>/, 'hub title is simply Import');
-assert.match(hub, /Choose result service/, 'provider choice precedes the optional link field');
+assert.match(hub, /<label htmlFor="published-result-url">Results link<\/label>/, 'one results-link field is the primary import action');
+assert.ok(hub.indexOf('publishedResultLinkForm') < hub.indexOf('Other ways to import'), 'link entry precedes optional alternatives');
+assert.match(hub, /<summary>Other ways to import<\/summary>/, 'historical search and direct provider paths remain available on demand');
 assert.match(readFileSync('app/import/result/page.tsx', 'utf8'), /redirect\("\/import"\)/, 'previous hub route remains usable');
 for (const provider of ['ClayArena', 'Leirdue.net']) assert.match(hub, new RegExp(provider.replace('.', '\\.')), `${provider} is first-class in import hub`);
 for (const [file, expected] of [['app/import/clayarena/page.tsx', 'new URLSearchParams(window.location.search)'], ['app/import/leirdue/page.tsx', 'new URLSearchParams(window.location.search)']]) assert.match(readFileSync(file, 'utf8'), new RegExp(expected.replace(/[().]/g, '\\$&')), `${file} accepts forwarded URL`);
+const leirdue = readFileSync('app/import/leirdue/page.tsx', 'utf8');
+assert.ok(leirdue.indexOf('manualLinkImportPanel') < leirdue.indexOf('<summary>Search older Leirdue.net results</summary>'), 'Leirdue link precedes historical search');
+assert.match(leirdue, /void fetchManualLink\(forwardedUrl\)/, 'forwarded Leirdue link starts lookup after profile loads');
+assert.match(leirdue, /void fetchManualLink\(choice\.url\)/, 'choosing a result list continues lookup in one tap');
+assert.match(leirdue, /onKeyDown=\{\(event\) => \{ if \(event\.key === "Enter"\)/, 'Enter in link field does not accidentally submit historical search');
+const clayArena = readFileSync('app/import/clayarena/page.tsx', 'utf8');
+assert.match(clayArena, /void findResult\(undefined, sharedUrl\)/, 'forwarded ClayArena link starts lookup automatically');
+assert.match(clayArena, /<summary>Correct result details<\/summary>/, 'ClayArena corrections are available after the compact review');
 
 rmSync(output, { recursive: true, force: true });
 console.log('competition entry navigation and routing tests passed');

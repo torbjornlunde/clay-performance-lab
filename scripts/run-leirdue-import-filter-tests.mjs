@@ -97,6 +97,6 @@ assert.doesNotMatch(leirdueCache, /nameMatchedRows\.filter\(\(row\) => sharedDis
 assert.match(page, /setDisciplines\(preferredDisciplines\)/, 'recognized profile disciplines replace the old hard-coded defaults');
 assert.match(page, /Discipline preferences \(optional\)/, 'discipline controls describe their ordering semantics');
 assert.match(page, /<button disabled=\{searching\}>\{searching \? "Searching\.\.\." : "Search Leirdue\.net"\}<\/button>/, 'all-disciplines search remains available with no preferences selected');
-assert.match(page, /Import from Leirdue\.net link[\s\S]*Find result from link/, 'manual-link import remains available');
+assert.match(page, /<label htmlFor="leirdue-link">Leirdue\.net link<\/label>[\s\S]*Find result/, 'manual-link import is the primary action');
 
 console.log('Leirdue import filter normalization tests passed');

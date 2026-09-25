@@ -71,7 +71,7 @@ export function OnboardingHelpPanel() {
       <h2 id="getting-started-heading">Save something useful today</h2>
       <ol className="helpList">
         <li><Link href="/profile" onClick={() => dismiss("get_started")}>Check your profile and disciplines.</Link></li>
-        <li><Link href="/log-competition" onClick={() => dismiss("get_started")}>Add your first competition</Link> or <Link href="/import" onClick={() => dismiss("get_started")}>choose an import service</Link>. A score is enough to start.</li>
+        <li><Link href="/log-competition" onClick={() => dismiss("get_started")}>Add your first competition</Link> or <Link href="/import" onClick={() => dismiss("get_started")}>paste a results link</Link>. A score is enough to start.</li>
         <li><Link href="/stats" onClick={() => dismiss("get_started")}>Review Performance</Link> as you build your history. More results make trends more useful.</li>
       </ol>
       <details>
