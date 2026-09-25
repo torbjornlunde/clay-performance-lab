@@ -15,6 +15,8 @@ assert.match(route, /sourcePatchStillCurrent\(diffs, patch, loaded\.session\)/, 
 assert.match(route, /update\.select\("id"\)\.maybeSingle\(\)/, 'PATCH checks whether its conditional write actually matched');
 assert.match(route, /update\.eq\(item\.field, item\.currentValue\)/, 'PATCH compares saved field values during the database update');
 assert.match(route, /refreshLeirdueSource/, 'endpoint fetches and compares direct Leirdue source');
+assert.match(route, /const \{ data, error \} = await loaded\.supabase\.from\("sessions"\)\.update\(\{ last_source_checked_at: checkedAt, last_source_status: result\.status,[\s\S]*?\.select\("id"\)\.maybeSingle\(\);/, 'POST confirms the source comparison was saved');
+assert.match(route, /if \(error \|\| !data\) return NextResponse\.json\(\{ error: "Could not save the Leirdue\.net source check\. Please try again\." \}, \{ status: 500 \}\);/, 'POST reports write errors and missing rows rather than claiming success');
 assert.doesNotMatch(route, /leirdue_shared_shooter_results/, 'manual refresh does not rely only on shared cache');
 
 const page = readFileSync('app/sessions/[id]/page.tsx', 'utf8');
