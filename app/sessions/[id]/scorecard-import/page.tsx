@@ -42,6 +42,7 @@ import {
   cropToPercent,
   displayedPointToCrop,
   fingerprintCrop,
+  frameDragMode,
   fullImageCrop,
   moveCrop,
   renderCropBlob,
@@ -1516,7 +1517,7 @@ function CropOverlay({
       <div
         className="cropFrame"
         style={cropToPercent(crop)}
-        onPointerDown={(e) => start(e, "move")}
+        onPointerDown={(e) => start(e, frameDragMode(crop))}
         role="group"
         aria-label="Selected scorecard crop"
       >
