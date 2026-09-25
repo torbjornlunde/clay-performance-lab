@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { parseLeirdueManualResultLink } from "@/lib/leirdue/parser";
+import { publishedResultProvider } from "@/lib/publishedResultImport";
 
 export const dynamic = "force-dynamic";
 
@@ -16,17 +17,6 @@ function validYear(value: unknown) {
   return Number.isInteger(year) && year >= 1990 && year <= currentYear ? year : null;
 }
 
-function validLeirdueUrl(value: string) {
-  try {
-    const url = new URL(value);
-    const isLeirdue = url.hostname === "www.leirdue.net" || url.hostname === "leirdue.net";
-    const hasResultIdentifier = Boolean(url.searchParams.get("stevne") || url.searchParams.get("liste_id"));
-    return isLeirdue && hasResultIdentifier;
-  } catch {
-    return false;
-  }
-}
-
 export async function POST(request: Request) {
   let body: ParseLinkBody;
   try {
@@ -41,7 +31,7 @@ export async function POST(request: Request) {
     ? body.selectedDisciplines.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
     : [];
 
-  if (!url || !validLeirdueUrl(url)) {
+  if (publishedResultProvider(url) !== "leirdue") {
     return NextResponse.json({ error: "Please paste a valid Leirdue.net result or event link." }, { status: 400 });
   }
 

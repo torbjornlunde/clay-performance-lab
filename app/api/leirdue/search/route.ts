@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { getCachedLeirdueCandidates, getLeirdueCrawlProgress, getSharedLeirdueShooterResults, repairLeirdueInvalidCompleteState, storeLeirdueCandidatesInCache, storeLeirdueCrawlIndexesInCache, storeLeirdueCrawlProgress, storeLeirdueInvalidListDecisionsInCache } from "@/lib/leirdue/cache";
 import { emptyLeirdueSearchDebug, FETCH_ERROR_MESSAGE, searchLeirdueCandidates } from "@/lib/leirdue/parser";
+import { publishedResultProvider } from "@/lib/publishedResultImport";
 
 export const dynamic = "force-dynamic";
 
@@ -115,6 +116,9 @@ export async function POST(request: Request) {
 
   if (!shooterName || !year) {
     return NextResponse.json({ error: "Shooter name and year are required." }, { status: 400 });
+  }
+  if (sourceUrl && publishedResultProvider(sourceUrl) !== "leirdue") {
+    return NextResponse.json({ error: "Please paste a valid Leirdue.net result or event link." }, { status: 400 });
   }
 
   try {
