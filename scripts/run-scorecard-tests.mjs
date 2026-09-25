@@ -330,6 +330,9 @@ const trueMulti = a.normalizeScorecardAnalysis({
   })),
 }, {postCount: 5, targetsPerPost: 10});
 assert.equal(trueMulti.shooterRows.length, 5, 'true multi-shooter scorecards are not collapsed accidentally');
+const namedShortRows = malformedPhysicalPostRows({labels: false, usePostOne: true});
+namedShortRows.shooterRows.forEach((row, index) => { row.displayName = ['Alice Example', 'Bob Example', 'Chris Example', 'Dana Example', 'Eli Example'][index]; });
+assert.equal(a.normalizeScorecardAnalysis(namedShortRows, {postCount: 5, targetsPerPost: 10}).shooterRows.length, 5, 'distinct named shooters with short rows are not merged into one person');
 assert.match(pageSource, /shooterRows\.length > 1/, 'UI hides Shooter row selector when only one candidate remains');
 assert.match(pageSource, /savedSelection \|\| auto \|\| null/, 'restored selection resets safely when candidate list changes after re-analysis');
 
