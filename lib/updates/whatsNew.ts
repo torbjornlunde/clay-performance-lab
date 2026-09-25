@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v15.09.26", title: "Keep the right post sign with its review", bullets: ["Replace a post sign photo without a late analysis from the previous photo taking over.", "Review the latest photo before applying its target setup."] },
   { id: "v14.09.26", title: "Keep shooters separate in scorecard review", bullets: ["Recognize separate named shooters when a scorecard has short rows.", "Review each person’s result before applying scorecard details."] },
   { id: "v13.09.26", title: "Select a scorecard crop by dragging", bullets: ["Drag across a scorecard photo to mark the area you want to keep, including on a phone.", "Move or resize the selected area before analyzing the photo."] },
   { id: "v12.09.26", title: "Choose where to import a result", bullets: ["Open Import and choose Leirdue.net or ClayArena before searching.", "Already have a results link? Paste it to open the right import page."] },

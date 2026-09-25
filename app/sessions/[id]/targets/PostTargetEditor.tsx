@@ -4,7 +4,7 @@ import { ChangeEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 import { LEIRDUESTI, postTargetUnitLabel } from "@/lib/disciplines";
-import { deletePendingPostSignPhoto, getPendingPostSignPhoto, listPendingPostSignPhotos, savePendingPostSignPhoto, updatePendingPostSignPhoto, type PendingPostSignPhoto } from "@/lib/targets/postSignPhotos";
+import { deletePendingPostSignPhoto, getPendingPostSignPhoto, listPendingPostSignPhotos, savePendingPostSignPhoto, updatePendingPostSignPhotoIfCurrent, type PendingPostSignPhoto } from "@/lib/targets/postSignPhotos";
 import { type PostSignAnalysisResult, type PostSignPresentation } from "@/lib/targets/postSignAnalysis";
 import { applyPairConventions, detectedTargetLabels, displayNotation, hasBlockingUnresolvedPairs, notationLabel, renameDetectedTargetLabel, resolvedTypeLabel, summarizePresentations, unresolvedKinds, validateReviewTargetLabels, type PairConventionChoices } from "@/lib/targets/postSignReview";
 import { affectedTargetReferences, applyPartialRepeatedProgramme, applyRepeatedProgramme, blankPhysicalTarget, copyPresentationToRemaining, deletePhysicalTargetAndClearReferences, detectCompactRepeatedProgramme, detectRepeatedProgramme, formatSetupSyncValidationMessage, detailRowsFromPosts, directions, distances, difficulties, angles, Draft, emptyPosts, ensurePostCount, isSharedPresentationComplete, migrateDraft, normalizePost, normalizeSharedPost, normalizeTargetLabel, postHasMeaningfulData, PostTargets, PresentationType, presentationLabels, duplicateSharedPresentation, removeSharedPresentation, resolvePhysicalTargetOverrides, rowsFromPosts, hasLegacyOccurrenceDifferences, shouldConfirmPhysicalTargetDeletion, speeds, targetTypes, template, targetCountFor, validatePostsForSetupSync, validateRepeatedProgrammeSelection, validateRepeatCount, type PhysicalTarget } from "@/lib/targets/postTargets";
@@ -68,7 +68,7 @@ export function PostTargetEditor({ session, courseRows }: Props) {
   useEffect(() => { if (!pendingPhoto?.image) { setPhotoUrl(""); return; } const url = URL.createObjectURL(pendingPhoto.image); setPhotoUrl(url); return () => URL.revokeObjectURL(url); }, [pendingPhoto?.queueId, pendingPhoto?.updatedAt]);
   async function loadPendingPhotos(sessionId: string) { return listPendingPostSignPhotos(sessionId); }
   function rememberPending(item: PendingPostSignPhoto | null) { setPendingPhotos((old) => { const next = { ...old }; if (item) next[item.postNumber] = item; else delete next[currentPostRef.current]; return next; }); if (item?.postNumber === currentPostRef.current && item.sessionId === sessionIdRef.current) setPendingPhoto(item); }
-  function persistReview(next: PostSignAnalysisResult | null) { setReview(next); if (pendingPhoto && next) { void updatePendingPostSignPhoto(pendingPhoto.sessionId, pendingPhoto.postNumber, { analysis: next, status: "ready_for_review" }).then((updated) => { if (updated) rememberPending(updated); }); } }
+  function persistReview(next: PostSignAnalysisResult | null) { setReview(next); if (pendingPhoto && next) { void updatePendingPostSignPhotoIfCurrent(pendingPhoto.sessionId, pendingPhoto.postNumber, pendingPhoto.imageId, { analysis: next, status: "ready_for_review" }).then((updated) => { if (updated) rememberPending(updated); }); } }
   function defaultCompactDraft() { const validation = validateRepeatCount(targetsPerPost, "report_pair"); return { presentationType: "report_pair" as PresentationType, repeatCount: validation.ok ? validation.repeatCount : 5, firstId: "", secondId: "" }; }
   function resetDestructiveConfirmationState() { setTargetConfirm(null); setTargetFeedback({}); setRemoveProgrammeConfirm(false); setReplaceRepeatedConfirm(false); setCompactValidation(""); }
   function resetPerPostUiState() { resetDestructiveConfirmationState(); setReplaceRepeatedOpen(false); setAdvancedOpen(false); setCompactDraft(defaultCompactDraft()); }
@@ -180,10 +180,84 @@ export function PostTargetEditor({ session, courseRows }: Props) {
   function fail(message: string) { setError(message); setStatus("Sync failed"); saveLocal(posts, postCount, true); }
 
   async function capture(event: ChangeEvent<HTMLInputElement>) { const file = event.target.files?.[0]; event.target.value = ""; if (file) await processImage(file); }
-  async function processImage(file: File) { if (pendingPhoto && !window.confirm(`Replace the existing pending sign photo or review for ${unit} ${current}?`)) return; try { const blob = await resizeImage(file); const saved = await savePendingPostSignPhoto({ sessionId: session.id, postNumber: current, image: blob, mimeType: blob.type, status: navigator.onLine ? "saved_on_device" : "waiting_for_connection" }); rememberPending(saved); setReview(null); if (navigator.onLine) void analyze(saved); } catch (e) { setError((e as Error).message); } }
-  async function analyze(item = pendingPhoto) { if (!item) return; const sessionId = item.sessionId; const postNumber = item.postNumber; const isStillCurrent = () => sessionIdRef.current === sessionId && currentPostRef.current === postNumber; if (sessionIdRef.current !== sessionId) return; if (!navigator.onLine) { const updated = await updatePendingPostSignPhoto(sessionId, postNumber, { status: "waiting_for_connection", lastError: "Waiting for connection" }); if (updated) rememberPending(updated); return; } setError(""); setAnalysisStage("Preparing image"); setAnalysisElapsed(0); const analyzing = await updatePendingPostSignPhoto(sessionId, postNumber, { status: "analyzing", lastError: undefined }); if (analyzing) rememberPending(analyzing); const form = new FormData(); form.append("postNumber", String(postNumber)); form.append("image", item.image, "post-sign.jpg"); signAbortRef.current?.abort(); signAbortRef.current = new AbortController(); if (signTimerRef.current) window.clearInterval(signTimerRef.current); signTimerRef.current = window.setInterval(() => setAnalysisElapsed((v) => v + 1), 1000); try { const { data: auth } = await supabase.auth.getSession(); setAnalysisStage("Sending image"); const response = await fetch(`/api/sessions/${sessionId}/post-sign/analyze`, { method: "POST", headers: auth.session?.access_token ? { Authorization: `Bearer ${auth.session.access_token}` } : undefined, body: form, signal: signAbortRef.current.signal }); setAnalysisStage("Reading programme"); const json = await response.json().catch(() => ({})); if (signTimerRef.current) { window.clearInterval(signTimerRef.current); signTimerRef.current = null; } if (!response.ok) { const updated = await updatePendingPostSignPhoto(sessionId, postNumber, { status: "analysis_failed", lastError: json.error || "Analysis failed" }); if (updated) rememberPending(updated); if (isStillCurrent()) setError(json.error || "Analysis failed"); setAnalysisStage(""); return; } setAnalysisStage("Checking detected results"); const updated = await updatePendingPostSignPhoto(sessionId, postNumber, { status: "ready_for_review", analysis: json.result }); if (updated) rememberPending(updated); if (isStillCurrent()) { setReview(json.result); setAnalysisStage("Preparing review"); } } catch (e: any) { if (signTimerRef.current) { window.clearInterval(signTimerRef.current); signTimerRef.current = null; } if (e?.name === "AbortError") { setAnalysisStage(""); return; } const updated = await updatePendingPostSignPhoto(sessionId, postNumber, { status: "analysis_failed", lastError: "Network error. Retry analysis when connected." }); if (updated) rememberPending(updated); if (isStillCurrent()) setError("Network error. Retry analysis when connected."); setAnalysisStage(""); } }
-  function cancelSignAnalysis() { signAbortRef.current?.abort(); signAbortRef.current = null; if (signTimerRef.current) { window.clearInterval(signTimerRef.current); signTimerRef.current = null; } setAnalysisStage(""); setAnalysisElapsed(0); if (pendingPhoto?.status === "analyzing") void updatePendingPostSignPhoto(pendingPhoto.sessionId, pendingPhoto.postNumber, { status: "saved_on_device" }).then((updated) => { if (updated) rememberPending(updated); }); }
-  async function discardPhoto() { if (!window.confirm("Discard this pending sign photo or review?")) return; await deletePendingPostSignPhoto(session.id, current); rememberPending(null); setPendingPhoto(null); setReview(null); }
+  async function processImage(file: File) {
+    if (pendingPhoto && !window.confirm(`Replace the existing pending sign photo or review for ${unit} ${current}?`)) return;
+    signAbortRef.current?.abort();
+    const sessionId = session.id;
+    const postNumber = current;
+    try {
+      const blob = await resizeImage(file);
+      if (sessionIdRef.current !== sessionId || currentPostRef.current !== postNumber) return;
+      const saved = await savePendingPostSignPhoto({ sessionId, postNumber, image: blob, mimeType: blob.type, status: navigator.onLine ? "saved_on_device" : "waiting_for_connection" });
+      rememberPending(saved);
+      setReview(null);
+      if (navigator.onLine) void analyze(saved);
+    } catch (e) { setError((e as Error).message); }
+  }
+  async function analyze(item = pendingPhoto) {
+    if (!item || sessionIdRef.current !== item.sessionId) return;
+    const { sessionId, postNumber, imageId } = item;
+    signAbortRef.current?.abort();
+    const controller = new AbortController();
+    signAbortRef.current = controller;
+    const active = () => signAbortRef.current === controller && !controller.signal.aborted;
+    const current = () => sessionIdRef.current === sessionId && currentPostRef.current === postNumber;
+    const update = (patch: Partial<PendingPostSignPhoto>) => updatePendingPostSignPhotoIfCurrent(sessionId, postNumber, imageId, patch);
+    if (!navigator.onLine) {
+      const updated = await update({ status: "waiting_for_connection", lastError: "Waiting for connection" });
+      if (updated && active()) rememberPending(updated);
+      return;
+    }
+    setError(""); setAnalysisStage("Preparing image"); setAnalysisElapsed(0);
+    const analyzing = await update({ status: "analyzing", lastError: undefined });
+    if (!analyzing || !active()) return;
+    rememberPending(analyzing);
+    const form = new FormData();
+    form.append("postNumber", String(postNumber));
+    form.append("image", item.image, "post-sign.jpg");
+    if (signTimerRef.current) window.clearInterval(signTimerRef.current);
+    signTimerRef.current = window.setInterval(() => setAnalysisElapsed((value) => value + 1), 1000);
+    try {
+      const { data: auth } = await supabase.auth.getSession();
+      if (!active()) return;
+      setAnalysisStage("Sending image");
+      const response = await fetch(`/api/sessions/${sessionId}/post-sign/analyze`, { method: "POST", headers: auth.session?.access_token ? { Authorization: `Bearer ${auth.session.access_token}` } : undefined, body: form, signal: controller.signal });
+      const json = await response.json().catch(() => ({}));
+      if (!active()) return;
+      if (!response.ok) {
+        const updated = await update({ status: "analysis_failed", lastError: json.error || "Analysis failed" });
+        if (updated && active()) { rememberPending(updated); if (current()) setError(json.error || "Analysis failed"); }
+        return;
+      }
+      setAnalysisStage("Checking detected results");
+      const updated = await update({ status: "ready_for_review", analysis: json.result });
+      if (updated && active()) { rememberPending(updated); if (current()) setReview(json.result); }
+    } catch (error: any) {
+      if (error?.name !== "AbortError" && active()) {
+        const updated = await update({ status: "analysis_failed", lastError: "Network error. Retry analysis when connected." });
+        if (updated && active()) { rememberPending(updated); if (current()) setError("Network error. Retry analysis when connected."); }
+      }
+    } finally {
+      if (active()) {
+        if (signTimerRef.current) window.clearInterval(signTimerRef.current);
+        signTimerRef.current = null;
+        signAbortRef.current = null;
+        setAnalysisStage("");
+      }
+    }
+  }
+  function cancelSignAnalysis() {
+    signAbortRef.current?.abort(); signAbortRef.current = null;
+    if (signTimerRef.current) { window.clearInterval(signTimerRef.current); signTimerRef.current = null; }
+    setAnalysisStage(""); setAnalysisElapsed(0);
+    if (pendingPhoto?.status === "analyzing") void updatePendingPostSignPhotoIfCurrent(pendingPhoto.sessionId, pendingPhoto.postNumber, pendingPhoto.imageId, { status: "saved_on_device" }).then((updated) => { if (updated) rememberPending(updated); });
+  }
+  async function discardPhoto() {
+    if (!window.confirm("Discard this pending sign photo or review?")) return;
+    signAbortRef.current?.abort();
+    await deletePendingPostSignPhoto(session.id, current);
+    rememberPending(null); setPendingPhoto(null); setReview(null);
+  }
   function setReviewPresentation(index: number, patch: Partial<PostSignPresentation>) { if (!review) return; const presentations = review.presentations.map((p, i) => i === index ? normalizeReviewPresentation({ ...p, ...patch }, i) : normalizeReviewPresentation(p, i)); persistReview({ ...review, presentations }); }
   function moveReview(index: number, delta: number) { if (!review) return; const next = [...review.presentations]; const to = index + delta; if (to < 0 || to >= next.length) return; [next[index], next[to]] = [next[to], next[index]]; persistReview({ ...review, presentations: next.map(normalizeReviewPresentation) }); }
   function applyReview() { if (hasBlockingUnresolvedPairs(review)) { setError("Choose a pair notation convention or review every unresolved pair before applying."); return; } if (!review || pendingPhoto?.postNumber !== current || pendingPhoto.sessionId !== session.id) { setError("This analysis belongs to another post. Select the original post and retry."); return; } const validation = validateReviewTargetLabels(review); if (!validation.ok) { setError(validation.message); return; } const post = posts[current - 1]; if (postHasMeaningfulData(post) && !window.confirm(`Apply to ${unit} ${current} will replace the current post structure, descriptions and instructions. Continue?`)) return; const presentations = review.presentations.map((p, i) => ({ presentation_number: i + 1, presentation_type: p.presentationType, targets: p.targetLabels.map((label, ti) => ({ target_position: 0, position_in_presentation: ti + 1, target_label: label.trim().toUpperCase(), target_type: "Unknown", direction: "Unknown", angle: "Unknown", speed: "Unknown", distance: "Unknown", difficulty: "Unknown", notes: "" })) })); const next = posts.map((p, i) => i === current - 1 ? normalizePost(current, presentations, review.instructions, review.rawText) : p); mutate(next); void deletePendingPostSignPhoto(session.id, current); rememberPending(null); setPendingPhoto(null); setReview(null); }

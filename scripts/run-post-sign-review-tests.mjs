@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-execSync('rm -rf .post-sign-test-build && npx tsc lib/targets/postSignAnalysis.ts lib/targets/postSignReview.ts lib/targets/postTargets.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM --jsx react-jsx --outDir .post-sign-test-build --skipLibCheck', {stdio:'inherit'});
+import { readFileSync } from 'node:fs';
+execSync('rm -rf .post-sign-test-build && npx tsc lib/targets/postSignAnalysis.ts lib/targets/postSignReview.ts lib/targets/postSignPhotos.ts lib/targets/postTargets.ts --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM --jsx react-jsx --outDir .post-sign-test-build --skipLibCheck', {stdio:'inherit'});
 const r = await import('../.post-sign-test-build/postSignReview.js');
+const photo = await import('../.post-sign-test-build/postSignPhotos.js');
+assert.equal(photo.matchesPostSignPhoto({imageId:'new'}, 'old'), false, 'old analysis cannot update a replacement photo');
+assert.equal(photo.matchesPostSignPhoto({imageId:'new'}, 'new'), true, 'current analysis can update its own photo');
+assert.equal(photo.matchesPostSignPhoto({imageId:undefined}, undefined), true, 'existing offline photos remain reviewable');
+assert.equal(photo.matchesPostSignPhoto(null, 'deleted'), false, 'discarded photos cannot receive late analysis');
+const editor = readFileSync('app/sessions/[id]/targets/PostTargetEditor.tsx', 'utf8');
+assert.match(editor, /updatePendingPostSignPhotoIfCurrent\(sessionId, postNumber, imageId, patch\)/, 'analysis writes use image-aware guarded updates');
 const rows = [
   { presentationNumber: 1, presentationType: 'single', structuralKind: 'single', targetLabels: ['A'], sourceNotation: 'A', notationKind: 'single', typeEvidence: 'explicit_wording', confidence: 'high', warnings: [] },
   { presentationNumber: 2, presentationType: 'unknown', structuralKind: 'pair', targetLabels: ['A','B'], sourceNotation: 'A+B', notationKind: 'plus', typeEvidence: 'user_convention_required', confidence: 'low', warnings: ['notation convention required'] },
