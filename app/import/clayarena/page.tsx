@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import type { ClayArenaCandidate } from "@/lib/clayarena/types";
@@ -15,6 +15,12 @@ export default function ClayArenaImportPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "error" | "success"; text: string } | null>(null);
   const candidate = candidates[selected];
+  const [savedSessionId, setSavedSessionId] = useState("");
+
+  useEffect(() => {
+    const sharedUrl = new URLSearchParams(window.location.search).get("url");
+    if (sharedUrl) setUrl(sharedUrl);
+  }, []);
 
   async function authorization(): Promise<Record<string, string>> {
     const { data } = await supabase.auth.getSession();
@@ -40,11 +46,15 @@ export default function ClayArenaImportPage() {
   function update(patch: Partial<ClayArenaCandidate>) { setCandidates((items) => items.map((item, index) => index === selected ? { ...item, ...patch } : item)); }
 
   async function save() {
-    if (!candidate) return; setBusy(true); setMessage(null);
+    if (!candidate) return; setBusy(true); setMessage(null); setSavedSessionId("");
     try {
       const response = await fetch("/api/clayarena/save", { method: "POST", headers: { "Content-Type": "application/json", ...(await authorization()) }, body: JSON.stringify({ candidate }) });
       const data = await response.json().catch(() => null);
-      if (!response.ok) return setMessage({ kind: "error", text: data?.error || "Could not save this result." });
+      if (!response.ok) {
+        if (data?.id) setSavedSessionId(data.id);
+        return setMessage({ kind: "error", text: data?.error || "Could not save this result." });
+      }
+      setSavedSessionId(data.id);
       setMessage({ kind: "success", text: "ClayArena result imported." });
     } catch {
       setMessage({ kind: "error", text: "Could not save this result. Check your connection and try again." });
@@ -59,8 +69,9 @@ export default function ClayArenaImportPage() {
       <p>Paste a public competition results link, then review your result before saving.</p>
       <label htmlFor="clayarena-url">ClayArena results URL</label>
       <input id="clayarena-url" type="url" inputMode="url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://clayarena.com/en/competitions/.../results/" required />
-      <div className="btns"><button disabled={busy}>{busy ? "Finding result..." : "Find my result"}</button><Link className="button secondary" href="/import/leirdue">Use Leirdue.net instead</Link></div>
+      <div className="btns"><button disabled={busy}>{busy ? "Finding result..." : "Find my result"}</button><Link className="button secondary" href="/import/result">Use another result service</Link></div>
       {message ? <div className={message.kind}>{message.text}</div> : null}
+      {savedSessionId ? <Link className="button" href={`/sessions/${savedSessionId}?context=1#competition-context`}>Open result</Link> : null}
     </form>
     {candidate ? <section className="card">
       <p className="eyebrow">Review before save</p><h2>{candidate.competition}</h2>

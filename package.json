@@ -50,6 +50,7 @@
     "test:simple-training-upgrade": "node scripts/run-simple-training-upgrade-tests.mjs",
     "test:leirdue-import-edit": "node scripts/run-leirdue-import-edit-tests.mjs",
     "test:clayarena-import": "node scripts/run-clayarena-import-tests.mjs",
+    "test:competition-entry": "node scripts/run-competition-entry-tests.mjs",
     "test:leirdue-normal-ui": "node scripts/leirdue-normal-ui-check.mjs",
     "test:compak-partial-programme": "node scripts/run-compak-partial-programme-tests.mjs",
     "test:scorecard-evidence": "node scripts/run-scorecard-evidence-tests.mjs",
