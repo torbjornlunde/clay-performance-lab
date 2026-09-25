@@ -10,7 +10,7 @@ These instructions apply to the entire repository unless a more specific `AGENTS
 - Inspect the existing implementation, schema and migrations before changing anything.
 - Prefer the smallest complete fix over a broad refactor.
 - Reuse existing components, utilities and project conventions where practical.
-- Do not merge the PR. Leave it ready for review and field testing.
+- The product owner authorizes automatic merge after relevant tests and the production build pass, remote checks are green, and known review findings are resolved. Do not request routine merge confirmation. Check the expected head SHA when merging, then verify deployment. Report any remaining field-testing limitations honestly.
 
 ## Product rules
 
@@ -95,4 +95,4 @@ Every completed task should report:
 - tests actually run and their results
 - known limitations or unverified device behavior
 - confirmation that unrelated features were not added
-- confirmation that the PR was not merged
+- merge and deployment status, including any remaining blocker

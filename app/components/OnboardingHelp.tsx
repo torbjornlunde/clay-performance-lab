@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useId, useState } from "react";
 import { recordAnalyticsEvent } from "@/lib/analytics";
 import { supabase } from "@/lib/supabase/client";
 
@@ -67,14 +68,31 @@ export function OnboardingHelpPanel() {
   return (
     <section className="card onboardingHelpPanel" aria-labelledby="getting-started-heading">
       <p className="eyebrow">Getting started</p>
-      <h2 id="getting-started-heading">Start with the workflow you need today</h2>
-      <ul className="helpList">
-        <li>Import competition results from supported result services.</li>
-        <li>Add a result manually when you only need the basics.</li>
-        <li>Use scorecard/photo import to review scores from a card.</li>
-        <li>Use Training Score Sheet when one person scores several shooters.</li>
-        <li>Review misses and analysis later from each saved session.</li>
-      </ul>
+      <h2 id="getting-started-heading">Save something useful today</h2>
+      <ol className="helpList">
+        <li><Link href="/profile" onClick={() => dismiss("get_started")}>Check your profile and disciplines.</Link></li>
+        <li><Link href="/log-competition" onClick={() => dismiss("get_started")}>Add your first competition</Link> or <Link href="/import/result" onClick={() => dismiss("get_started")}>import a published result</Link>. A score is enough to start.</li>
+        <li><Link href="/stats" onClick={() => dismiss("get_started")}>Review Performance</Link> as you build your history. More results make trends more useful.</li>
+      </ol>
+      <details>
+        <summary>Explore when you need more</summary>
+        <ul className="helpList">
+          <li><strong>Scorecards:</strong> open a saved competition to import a photo and review its scores. Target setup is optional.</li>
+          <li><Link href="/log-training" onClick={() => dismiss("get_started")}>Training:</Link> save a simple training log or use Training Score Sheet for several shooters.</li>
+          <li><strong>Target details:</strong> add posts, targets and misses later from your saved competition.</li>
+          <li><Link href="/coach-report" onClick={() => dismiss("get_started")}>Coach Report:</Link> bring scores and optional notes together for a discussion with your coach. Missing detail stays uncertain.</li>
+          <li><Link href="/notifications" onClick={() => dismiss("get_started")}>Notifications:</Link> review updates in the app. You can also install CPL from your browser for easier access.</li>
+        </ul>
+      </details>
+      <details>
+        <summary>Short feature guides</summary>
+        <p className="small muted">Open How this works on the relevant page at any time.</p>
+        <ul className="helpList">
+          <li><Link href="/import/leirdue" onClick={() => dismiss("get_started")}>Find and review Leirdue.net results</Link></li>
+          <li><Link href="/results" onClick={() => dismiss("get_started")}>Scorecard photos:</Link> open a competition, choose scorecard import, then How this works.</li>
+          <li><Link href="/training-score-sheets" onClick={() => dismiss("get_started")}>Training Score Sheet</Link></li>
+        </ul>
+      </details>
       <div className="btns onboardingActions">
         <button type="button" onClick={() => dismiss("get_started")}>Get started</button>
         <button type="button" className="secondary" onClick={() => dismiss("remind_me_later")}>Remind me later</button>
@@ -89,25 +107,50 @@ export function openOnboardingHelp() {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(HELP_EVENT));
 }
 
+const TUTORIAL_STEPS: Record<string, readonly string[]> = {
+  "leirdue-import": [
+    "Search with your shooter name and year, or paste a result link.",
+    "Check the event, shooter name, score and target total. Review uncertain matches yourself.",
+    "Import only your chosen results. Use Continue search if more results remain.",
+  ],
+  "scorecard-photo-import": [
+    "Upload a clear photo showing the whole scorecard. Crop to the relevant card if needed.",
+    "Check the detected posts, scores and target counts against the photo. Correct anything uncertain.",
+    "Apply only after review. Add target details later if they will be useful.",
+  ],
+  "training-score-sheet": [
+    "Choose the discipline, posts and target counts, then add the shooters.",
+    "Record scores for each shooter as training progresses. Check the totals before finishing.",
+    "Save the sheet and reopen it from Training Score Sheets when needed.",
+  ],
+};
+
 export function ContextualHelpCard({ storageKey, children }: { storageKey: string; children: React.ReactNode }) {
   const fullKey = `clay-performance-lab:contextual-help:${storageKey}:dismissed:v1`;
+  const panelId = useId();
   const [visible, setVisible] = useState(false);
   useEffect(() => { setVisible(safeGet(fullKey) !== "true"); }, [fullKey]);
-  if (!visible) return null;
+  const steps = TUTORIAL_STEPS[storageKey];
+  function dismiss() {
+    safeSet(fullKey, "true");
+    setVisible(false);
+    recordHelpEvent("contextual_help_dismissed", storageKey);
+  }
   return (
-    <aside className="contextualHelpCard" aria-label="Page help">
-      <p>{children}</p>
-      <button
-        type="button"
-        className="secondary smallButton"
-        onClick={() => {
-          safeSet(fullKey, "true");
-          setVisible(false);
-          recordHelpEvent("contextual_help_dismissed", storageKey);
-        }}
-      >
-        Dismiss
-      </button>
-    </aside>
+    <div className="contextualHelp">
+      <button type="button" className="secondary smallButton" aria-expanded={visible} aria-controls={panelId} onClick={() => {
+        if (visible) dismiss(); else setVisible(true);
+      }}>How this works</button>
+      {visible ? <aside id={panelId} className="contextualHelpCard" aria-label="Page help">
+        <div className="contextualHelpContent">
+          <p>{children}</p>
+          {steps ? <ol className="helpList">{steps.map((step) => <li key={step}>{step}</li>)}</ol> : null}
+        </div>
+        <div className="btns contextualHelpActions">
+          <button type="button" className="secondary smallButton" onClick={dismiss}>Got it</button>
+          <button type="button" className="secondary smallButton" onClick={dismiss}>Skip</button>
+        </div>
+      </aside> : null}
+    </div>
   );
 }
