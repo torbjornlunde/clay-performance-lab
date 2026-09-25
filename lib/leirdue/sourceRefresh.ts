@@ -34,8 +34,9 @@ export function leirdueSourceUrlForSession(session: LeirdueRefreshSession) {
 function asNumber(value: unknown) { return typeof value === "number" && Number.isFinite(value) ? value : null; }
 function normText(value: string | null | undefined) { return (value || "").trim().toLowerCase(); }
 function eq(a: unknown, b: unknown) { return (a ?? null) === (b ?? null); }
-function diff(field: LeirdueSourceField, label: string, currentValue: string | number | null, sourceValue: string | number | null, safeToApply = true): LeirdueSourceDiff {
-  return { field, label, currentValue: currentValue ?? null, sourceValue: sourceValue ?? null, changed: !eq(currentValue, sourceValue), safeToApply };
+function hasUsableSourceValue(value: string | number | null) { return value !== null && (typeof value !== "string" || value.trim().length > 0); }
+export function sourceFieldDiff(field: LeirdueSourceField, label: string, currentValue: string | number | null, sourceValue: string | number | null, safeToApply = true): LeirdueSourceDiff {
+  return { field, label, currentValue: currentValue ?? null, sourceValue: sourceValue ?? null, changed: !eq(currentValue, sourceValue), safeToApply: safeToApply && hasUsableSourceValue(sourceValue) };
 }
 
 export function matchLeirdueSourceCandidate(session: LeirdueRefreshSession, candidates: LeirdueCandidate[]) {
@@ -70,17 +71,17 @@ export async function refreshLeirdueSource(session: LeirdueRefreshSession) {
   if (!candidate) return { status: "could_not_match" as const, sourceUrl, diffs: [], error: "Could not safely match source result." };
   const ids = extractLeirdueSourceIdentifiers(candidate.leirdueUrl || sourceUrl);
   const diffs = [
-    diff("own_score", "Own score", asNumber(session.own_score), asNumber(candidate.ownScore)),
-    diff("winning_score", "Winning score", asNumber(session.winning_score), asNumber(candidate.winningScore)),
-    diff("total_targets", "Total targets", asNumber(session.total_targets), asNumber(candidate.totalTargets)),
-    diff("placement", "Placement", Number(leirdueImportDetail(session.notes, "placement")) || null, asNumber(candidate.placement), false),
-    diff("name", "Event title", session.name, candidate.name),
-    diff("competition_date", "Event date", session.competition_date, candidate.date ?? null),
-    diff("discipline", "Discipline", session.discipline, candidate.discipline),
-    diff("shooting_ground", "Ground / organizer", session.shooting_ground, candidate.shootingGround ?? null),
-    diff("shooter_class", "Class / category", leirdueImportDetail(session.notes, "shooter_class"), candidate.shooterClass ?? null, false),
-    diff("source_url", "Source URL", sourceUrl, candidate.leirdueUrl, false),
-    diff("liste_id", "Liste id", leirdueImportDetail(session.notes, "liste_id"), ids.listeId, false),
+    sourceFieldDiff("own_score", "Own score", asNumber(session.own_score), asNumber(candidate.ownScore)),
+    sourceFieldDiff("winning_score", "Winning score", asNumber(session.winning_score), asNumber(candidate.winningScore)),
+    sourceFieldDiff("total_targets", "Total targets", asNumber(session.total_targets), asNumber(candidate.totalTargets)),
+    sourceFieldDiff("placement", "Placement", Number(leirdueImportDetail(session.notes, "placement")) || null, asNumber(candidate.placement), false),
+    sourceFieldDiff("name", "Event title", session.name, candidate.name),
+    sourceFieldDiff("competition_date", "Event date", session.competition_date, candidate.date ?? null),
+    sourceFieldDiff("discipline", "Discipline", session.discipline, candidate.discipline),
+    sourceFieldDiff("shooting_ground", "Ground / organizer", session.shooting_ground, candidate.shootingGround ?? null),
+    sourceFieldDiff("shooter_class", "Class / category", leirdueImportDetail(session.notes, "shooter_class"), candidate.shooterClass ?? null, false),
+    sourceFieldDiff("source_url", "Source URL", sourceUrl, candidate.leirdueUrl, false),
+    sourceFieldDiff("liste_id", "Liste id", leirdueImportDetail(session.notes, "liste_id"), ids.listeId, false),
   ];
   return { status: diffs.some((item) => item.changed) ? "changed" as const : "no_changes" as const, sourceUrl, diffs, error: null };
 }
@@ -101,6 +102,6 @@ export function applyableSessionPatch(diffs: LeirdueSourceDiff[], selectedFields
   const allowed = new Set<LeirdueSourceField>(["own_score", "winning_score", "total_targets", "name", "competition_date", "discipline", "shooting_ground"]);
   const selected = new Set(selectedFields);
   const patch: Record<string, string | number | null> = {};
-  for (const item of diffs) if (item.changed && item.safeToApply && allowed.has(item.field) && selected.has(item.field)) patch[item.field] = item.sourceValue;
+  for (const item of diffs) if (item.changed && item.safeToApply && hasUsableSourceValue(item.sourceValue) && allowed.has(item.field) && selected.has(item.field)) patch[item.field] = item.sourceValue;
   return patch;
 }
