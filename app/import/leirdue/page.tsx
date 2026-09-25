@@ -641,6 +641,9 @@ export default function LeirdueImportPage() {
   const [leirdueTotalListeIdScanned, setLeirdueTotalListeIdScanned] = useState(0);
   const [savedImport, setSavedImport] = useState<SavedImportSummary | null>(null);
   const [manualReviewActive, setManualReviewActive] = useState(false);
+  const [profileReady, setProfileReady] = useState(false);
+  const forwardedUrlRef = useRef<string | null>(null);
+  const forwardedUrlLoadedRef = useRef(false);
   const [progressScopeKey, setProgressScopeKey] = useState("");
   const continuationRequestInFlightRef = useRef(false);
   const progressHighByScopeRef = useRef(new Map<string, number>());
@@ -648,13 +651,13 @@ export default function LeirdueImportPage() {
 
   useEffect(() => {
     const sharedUrl = new URLSearchParams(window.location.search).get("url");
-    if (sharedUrl) setSourceUrl(sharedUrl);
+    if (sharedUrl) { forwardedUrlRef.current = sharedUrl; setSourceUrl(sharedUrl); }
   }, []);
 
   useEffect(() => {
     async function loadShooterName() {
       const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!userData.user) { setProfileReady(true); return; }
       const { data } = await supabase
         .from("shooter_profiles")
         .select("shooter_name,first_name,last_name,country,my_disciplines")
@@ -669,6 +672,7 @@ export default function LeirdueImportPage() {
         .map((discipline) => DISCIPLINE_OPTIONS.find((option) => option.toLowerCase() === discipline.toLowerCase()) || discipline);
       setProfileDisciplines(preferredDisciplines);
       if (preferredDisciplines.length > 0) setDisciplines(preferredDisciplines);
+      setProfileReady(true);
     }
     loadShooterName();
   }, []);
@@ -797,13 +801,13 @@ export default function LeirdueImportPage() {
     }
   }
 
-  async function fetchManualLink() {
+  async function fetchManualLink(link = sourceUrl) {
     setError("");
     setSuccess("");
     setSavedImport(null);
     setManualListChoices([]);
     setManualReviewActive(false);
-    if (!sourceUrl.trim()) {
+    if (!link.trim()) {
       setError("Please paste a valid Leirdue.net result or event link.");
       return;
     }
@@ -814,7 +818,7 @@ export default function LeirdueImportPage() {
       const response = await fetch("/api/leirdue/parse-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: sourceUrl.trim(), year: Number(year), selectedDisciplines: disciplines }),
+        body: JSON.stringify({ url: link.trim(), year: Number(year), selectedDisciplines: disciplines }),
       });
       const data = (await response.json()) as LinkParseResponse;
       if (!response.ok || !data.ok) {
@@ -845,6 +849,15 @@ export default function LeirdueImportPage() {
       setSearchProgress(100);
     }
   }
+
+  useEffect(() => {
+    const forwardedUrl = forwardedUrlRef.current;
+    if (!profileReady || !forwardedUrl || forwardedUrlLoadedRef.current) return;
+    forwardedUrlLoadedRef.current = true;
+    void fetchManualLink(forwardedUrl);
+  // The forwarded link is intentionally opened once after profile-based matching is ready.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileReady]);
 
   function updateCandidate(updated: EditableCandidate) {
     setCandidates((current) => current.map((candidate) => (candidate.localId === updated.localId ? updated : candidate)));
@@ -1123,24 +1136,24 @@ export default function LeirdueImportPage() {
   return (
     <main>
       <form className="card" onSubmit={search}>
-        <p className="eyebrow">Leirdue.net import</p>
+        <p className="eyebrow"><Link href="/import">Import</Link> / Leirdue.net</p>
         <h2>Import from Leirdue.net</h2>
-        <p>Find old competition results and review before saving.</p>
-        <div className="btns" aria-label="Other result sources">
-          <Link href="/import/clayarena" className="button secondary">Import from ClayArena</Link>
-          <Link href="/import" className="button secondary">All result services</Link>
-        </div>
-        <ContextualHelpCard storageKey="leirdue-import">Search your Leirdue.net results, review matches, then import only the results you want.</ContextualHelpCard>
-        <div className="notice small">
-          Leirdue import is currently in beta. It can save time by finding many results automatically, but it may not find every result yet. Please review the imported results before saving, and add any missing results manually.
-        </div>
-        <div className="notice small">
-          This v1 imports result-only sessions after your review. It does not import misses, target-by-target miss data, scorecard photos, finals or control lists automatically.
-        </div>
+        <p>Paste an event or result-list link. We will find the available results for you to review.</p>
+        <section className="manualImportMethodCard manualLinkImportPanel">
+          <label htmlFor="leirdue-link">Leirdue.net link</label>
+          <input id="leirdue-link" type="url" inputMode="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void fetchManualLink(); } }} placeholder="https://www.leirdue.net/?stevne=..." />
+          <div className="btns">
+            <button type="button" disabled={searching || !sourceUrl.trim()} onClick={() => void fetchManualLink()}>{searching ? "Finding..." : "Find result"}</button>
+          </div>
+          {error && sourceUrl.trim() && shooterName.trim() ? <details><summary>Having trouble with this link?</summary><button type="button" className="secondary smallButton" disabled={searching} onClick={parseDirectUrl}>Try another result parser</button></details> : null}
+        </section>
+        <p className="small muted">Leirdue.net import is in beta. Review scores and shooter names before saving; some results may be missing.</p>
 
-        <section className="manualImportMethodCard">
+        <details className="manualImportMethodCard detailAccordion">
+          <summary>Search older Leirdue.net results</summary>
+          <div className="detailAccordionBody">
           <h3>Search Leirdue.net</h3>
-          <p className="small muted">Find results by shooter name, year and discipline. You do not need a link for this search.</p>
+          <p className="small muted">Use this when you do not have a link or want to check your earlier competitions.</p>
           <label>Shooter name</label>
           <input value={shooterName} onChange={(event) => setShooterName(event.target.value)} placeholder="Enter shooter name" required />
 
@@ -1164,18 +1177,9 @@ export default function LeirdueImportPage() {
             {/* TODO: Replace this temporary testing control with bounded, non-blocking background continuation that keeps cached results visible and merges new results automatically. */}
             {continuationToken ? <button type="button" className="secondary" disabled={searching || continuationRequestInFlightRef.current} onClick={continueSearch}>{searching ? "Continuing..." : "Continue search"}</button> : null}
           </div>
-        </section>
-
-        <section className="manualImportMethodCard manualLinkImportPanel">
-          <h3>Import from Leirdue.net link</h3>
-          <p className="small muted">Already have a specific Leirdue.net result link? Paste it here to import from that event/list.</p>
-          <label>Leirdue.net URL</label>
-          <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://www.leirdue.net/?stevne=..." />
-          <div className="btns">
-            <button type="button" className="secondary" disabled={searching || !sourceUrl.trim()} onClick={fetchManualLink}>{searching ? "Finding..." : "Find result from link"}</button>
-            {sourceUrl.trim() && shooterName.trim() ? <button type="button" className="secondary" disabled={searching} onClick={parseDirectUrl}>Parse for shooter name</button> : null}
           </div>
-        </section>
+        </details>
+        <ContextualHelpCard storageKey="leirdue-import">Check your shooter row and result before importing. This adds a result, not target-by-target misses or scorecard photos.</ContextualHelpCard>
 
         {error ? <div className="error" role="alert">{error}{error === "Sign in again to search Leirdue.net." ? <> <Link href="/login">Sign in</Link></> : null}</div> : null}
         {savedImport ? (
@@ -1215,10 +1219,10 @@ export default function LeirdueImportPage() {
         {manualListChoices.length > 0 ? (
           <div className="notice small manualListChoices">
             <strong>Result lists found</strong>
-            <p>Choose a result list, then fetch again.</p>
+            <p>Choose the list with your result.</p>
             <div className="btns compactDetailActions">
               {manualListChoices.map((choice) => (
-                <button key={choice.url} type="button" className="secondary smallButton" onClick={() => setSourceUrl(choice.url)}>
+                <button key={choice.url} type="button" className="secondary smallButton" disabled={searching} onClick={() => { setSourceUrl(choice.url); void fetchManualLink(choice.url); }}>
                   {choice.label || `Result list ${choice.listeId || ""}`}
                 </button>
               ))}
@@ -1226,11 +1230,7 @@ export default function LeirdueImportPage() {
           </div>
         ) : null}
 
-        <div className="btns">
-          <Link className="button secondary" href="/results">Results history</Link>
-          <Link className="button secondary" href="/results/new">Add result manually</Link>
-          <Link className="button secondary" href="/dashboard">Dashboard</Link>
-        </div>
+        <p className="small muted"><Link href="/results">Back to results</Link> · <Link href="/results/new">Add result manually</Link></p>
       </form>
 
       {manualReviewActive ? <ManualImportSummaryCard candidates={[...groupedCandidates.confirmed, ...groupedCandidates.possible]} year={year} /> : null}

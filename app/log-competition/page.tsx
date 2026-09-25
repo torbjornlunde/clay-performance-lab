@@ -33,7 +33,7 @@ export default function LogCompetitionPage() {
           <h2 id="published-result-action" className="sectionTitle">Already published online?</h2>
           <Link href="/import" className="dashboardActionCard productActionCard secondaryAction">
             <span>Import</span>
-            <small>Choose Leirdue.net or ClayArena, or paste a results link.</small>
+            <small>Paste a Leirdue.net or ClayArena results link.</small>
           </Link>
         </section>
 
