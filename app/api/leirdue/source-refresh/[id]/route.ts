@@ -30,7 +30,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!loaded.ok) return NextResponse.json({ error: loaded.error }, { status: loaded.status });
   const checkedAt = new Date().toISOString();
   const result = await refreshLeirdueSource(loaded.session);
-  await loaded.supabase.from("sessions").update({ last_source_checked_at: checkedAt, last_source_status: result.status, source_change_summary: { checkedAt, status: result.status, diffs: result.diffs, error: result.error, sourceUrl: result.sourceUrl } }).eq("id", id).eq("user_id", loaded.session.user_id);
+  const { data, error } = await loaded.supabase.from("sessions").update({ last_source_checked_at: checkedAt, last_source_status: result.status, source_change_summary: { checkedAt, status: result.status, diffs: result.diffs, error: result.error, sourceUrl: result.sourceUrl } }).eq("id", id).eq("user_id", loaded.session.user_id).select("id").maybeSingle();
+  if (error || !data) return NextResponse.json({ error: "Could not save the Leirdue.net source check. Please try again." }, { status: 500 });
   return NextResponse.json({ ...result, checkedAt });
 }
 
