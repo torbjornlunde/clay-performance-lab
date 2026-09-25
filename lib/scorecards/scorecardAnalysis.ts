@@ -177,6 +177,10 @@ function rowLooksLikePhysicalPost(row: any, idx: number, postCount: number, targ
 function repairPhysicalPostRows(input: any, postCount: number, targetsPerPostByPost: number[]) {
   const shooterRows: any[] = Array.isArray(input?.shooterRows) ? input.shooterRows : [];
   if (shooterRows.length !== postCount || postCount < 2) return input;
+  // A sheet with one short row per named shooter can have exactly as many
+  // shooters as posts. Do not turn distinct people into one scorecard.
+  const names = shooterRows.map((row) => cleanString(row.displayName, 100)).filter((name): name is string => Boolean(name));
+  if (names.length > 1 && new Set(names.map((name) => name.toLocaleLowerCase())).size > 1) return input;
   if (!shooterRows.every((row, idx) => rowLooksLikePhysicalPost(row, idx, postCount, targetsPerPostByPost))) return input;
   const labels = shooterRows.map((row: any) => cleanString(row.rowLabel, 20));
   const hasSequentialLabels = labels.every((label: string | null, idx: number) => label && Number(label.replace(/\D/g, "")) === idx + 1);
