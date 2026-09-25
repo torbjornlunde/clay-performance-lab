@@ -53,6 +53,12 @@ assert.equal(source.leirdueSourceUrlForSession(baseSession), baseSession.leirdue
 assert.equal(source.leirdueSourceUrlForSession({ ...baseSession, leirdue_result_url: null, notes: null }), null, 'manual sessions without source URL do not expose refresh URL');
 assert.equal(source.matchLeirdueSourceCandidate(baseSession, [candidate])?.shooterName, 'Test Shooter', 'safe source matching uses shooter, id, score and event fields');
 assert.equal(source.matchLeirdueSourceCandidate({ ...baseSession, notes: 'source: leirdue_net. shooter_name: Other Shooter. placement: 8. liste_id: 2', own_score: 10 }, [candidate]), null, 'low-confidence match leaves saved data unchanged');
+assert.equal(source.matchLeirdueSourceCandidate(baseSession, [{ ...candidate, shooterName: 'Other Shooter' }]), null, 'matching score and placement cannot select another shooter');
+assert.equal(source.matchLeirdueSourceCandidate(baseSession, [{ ...candidate, listeId: '3' }]), null, 'a different result list cannot replace the saved list');
+assert.equal(source.matchLeirdueSourceCandidate({ ...baseSession, notes: 'source: leirdue_net. liste_id: 2' }, [candidate]), null, 'missing saved shooter identity requires manual review');
+assert.equal(source.matchLeirdueSourceCandidate(baseSession, [candidate, { ...candidate, ownScore: 96 }])?.ownScore, 95, 'a stronger unique match is selected');
+assert.equal(source.matchLeirdueSourceCandidate(baseSession, [candidate, { ...candidate }]), null, 'equally strong rows are ambiguous');
+assert.equal(source.matchLeirdueSourceCandidate({ ...baseSession, own_score: 94 }, [candidate])?.ownScore, 95, 'a changed score can still match the same shooter');
 let patch = source.applyableSessionPatch([
   { field: 'winning_score', label: 'Winning score', currentValue: null, sourceValue: 99, changed: true, safeToApply: true },
   { field: 'own_score', label: 'Own score', currentValue: 95, sourceValue: 96, changed: true, safeToApply: true },

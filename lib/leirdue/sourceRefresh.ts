@@ -45,20 +45,25 @@ export function matchLeirdueSourceCandidate(session: LeirdueRefreshSession, cand
   const savedPlacement = Number(leirdueImportDetail(session.notes, "placement"));
   const ids = extractLeirdueSourceIdentifiers(leirdueSourceUrlForSession(session) || "");
   const normalizedSavedShooter = normalizeLeirdueName(savedShooter || "");
+  if (!normalizedSavedShooter) return null;
   let best: { candidate: LeirdueCandidate; score: number } | null = null;
+  let tied = false;
   for (const candidate of candidates) {
+    if (normalizeLeirdueName(candidate.shooterName || "") !== normalizedSavedShooter) continue;
+    if (ids.listeId && candidate.listeId !== ids.listeId) continue;
     let score = 0;
     if (ids.listeId && candidate.listeId === ids.listeId) score += 2;
-    if (normalizedSavedShooter && normalizeLeirdueName(candidate.shooterName || "") === normalizedSavedShooter) score += 5;
+    score += 5;
     if (Number.isFinite(savedPlacement) && candidate.placement === savedPlacement) score += 2;
     if (session.own_score !== null && candidate.ownScore === session.own_score) score += 2;
     if (session.total_targets !== null && candidate.totalTargets === session.total_targets) score += 1;
     if (session.competition_date && candidate.date === session.competition_date) score += 1;
     if (session.discipline && normText(candidate.discipline) === normText(session.discipline)) score += 1;
     if (savedClass && normText(candidate.shooterClass) === normText(savedClass)) score += 1;
-    if (!best || score > best.score) best = { candidate, score };
+    if (!best || score > best.score) { best = { candidate, score }; tied = false; }
+    else if (score === best.score) tied = true;
   }
-  return best && best.score >= 6 ? best.candidate : null;
+  return best && best.score >= 6 && !tied ? best.candidate : null;
 }
 
 export async function refreshLeirdueSource(session: LeirdueRefreshSession) {
