@@ -5,16 +5,8 @@ import type { ClayArenaCandidate, ClayArenaMatchStatus } from "./types";
 
 const decode = (value: string) => value.replace(/<[^>]*>/g, " ").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'").replace(/\s+/g, " ").trim();
 
-export function validateClayArenaUrl(value: string) {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:" || !["clayarena.com", "www.clayarena.com"].includes(url.hostname.toLowerCase()) || url.username || url.password || url.port) return null;
-    const match = url.pathname.match(/^\/(?:[a-z]{2}\/)?competitions\/([^/]+)\/results\/?$/i);
-    if (!match || !/^[a-z0-9-]+$/i.test(match[1])) return null;
-    url.hash = "";
-    return { url: url.toString(), competitionId: match[1] };
-  } catch { return null; }
-}
+import { validateClayArenaUrl } from "./url";
+export { validateClayArenaUrl } from "./url";
 
 function disciplineFrom(text: string) {
   const value = text.toLowerCase();

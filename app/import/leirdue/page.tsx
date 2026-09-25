@@ -1122,7 +1122,10 @@ export default function LeirdueImportPage() {
         <p className="eyebrow">Leirdue.net import</p>
         <h2>Import from Leirdue.net</h2>
         <p>Find old competition results and review before saving.</p>
-        <div className="notice small">Using another result service? <Link href="/import/result">Return to Import published result</Link>.</div>
+        <div className="btns" aria-label="Other result sources">
+          <Link href="/import/clayarena" className="button secondary">Import from ClayArena</Link>
+          <Link href="/import/result" className="button secondary">All result services</Link>
+        </div>
         <ContextualHelpCard storageKey="leirdue-import">Search your Leirdue.net results, review matches, then import only the results you want.</ContextualHelpCard>
         <div className="notice small">
           Leirdue import is currently in beta. It can save time by finding many results automatically, but it may not find every result yet. Please review the imported results before saving, and add any missing results manually.

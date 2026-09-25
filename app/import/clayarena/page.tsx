@@ -28,7 +28,7 @@ export default function ClayArenaImportPage() {
   }
 
   async function findResult(event: React.FormEvent) {
-    event.preventDefault(); setBusy(true); setMessage(null); setCandidates([]);
+    event.preventDefault(); setBusy(true); setMessage(null); setCandidates([]); setSavedSessionId("");
     try {
       const response = await fetch("/api/clayarena/parse", { method: "POST", headers: { "Content-Type": "application/json", ...(await authorization()) }, body: JSON.stringify({ url }) });
       const data = await response.json().catch(() => null);
@@ -76,7 +76,7 @@ export default function ClayArenaImportPage() {
     {candidate ? <section className="card">
       <p className="eyebrow">Review before save</p><h2>{candidate.competition}</h2>
       <div className="notice small"><strong>{statusLabel[candidate.matchStatus]}</strong>{candidate.matchStatus === "possible_match" ? " — confirm that this is your row before saving." : ""}</div>
-      {candidates.length > 1 ? <><label htmlFor="match-row">Shooter row</label><select id="match-row" value={selected} onChange={(event) => setSelected(Number(event.target.value))}>{candidates.map((item, index) => <option key={item.resultIdentity} value={index}>{item.shooterName} · {item.ownScore}</option>)}</select></> : null}
+      {candidates.length > 1 ? <><label htmlFor="match-row">Shooter row</label><select id="match-row" value={selected} onChange={(event) => { setSelected(Number(event.target.value)); setSavedSessionId(""); setMessage(null); }}>{candidates.map((item, index) => <option key={item.resultIdentity} value={index}>{item.shooterName} · {item.ownScore}</option>)}</select></> : null}
       <label htmlFor="competition">Competition</label><input id="competition" value={candidate.competition} onChange={(event) => update({ competition: event.target.value })} />
       <label htmlFor="date">Date</label><input id="date" type="date" value={candidate.date || ""} onChange={(event) => update({ date: event.target.value || null })} />
       <label htmlFor="discipline">Discipline</label><select id="discipline" value={candidate.discipline} onChange={(event) => update({ discipline: event.target.value })}>{DISCIPLINE_OPTIONS.map((item) => <option key={item}>{item}</option>)}</select>

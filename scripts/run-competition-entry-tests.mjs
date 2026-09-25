@@ -8,10 +8,13 @@ execFileSync('npx', ['tsc', 'lib/publishedResultImport.ts', '--ignoreConfig', '-
 const { publishedResultImportHref, publishedResultProvider } = await import(`../${output}/publishedResultImport.js`);
 
 assert.equal(publishedResultProvider('https://clayarena.com/en/competitions/open/results/'), 'clayarena');
-assert.equal(publishedResultProvider('https://results.clayarena.com/event/1'), 'clayarena');
+assert.equal(publishedResultProvider('https://results.clayarena.com/event/1'), null);
+for (const url of ['http://clayarena.com/en/competitions/open/results/', 'ftp://leirdue.net/resultater', 'https://name@clayarena.com/en/competitions/open/results/', 'https://clayarena.com:8080/en/competitions/open/results/', 'https://results.leirdue.net/resultater', 'https://clayarena.com/en/profile/x', 'https://clayarena.com/en/competitions/open/', 'https://leirdue.net/', 'https://leirdue.net/?stevne=']) assert.equal(publishedResultProvider(url), null, `unsupported importer address: ${url}`);
 assert.equal(publishedResultProvider('https://www.leirdue.net/resultater?stevne=42'), 'leirdue');
 assert.equal(publishedResultProvider('https://fakeleirdue.net/resultater'), null);
 assert.equal(publishedResultProvider('not a URL'), null);
+assert.equal(publishedResultProvider('http://leirdue.net/?liste_id=12'), 'leirdue');
+assert.equal(publishedResultProvider('https://www.clayarena.com/competitions/open-2026/results/'), 'clayarena');
 assert.equal(publishedResultImportHref('clayarena', ' https://clayarena.com/results?a=1&b=2 '), '/import/clayarena?url=https%3A%2F%2Fclayarena.com%2Fresults%3Fa%3D1%26b%3D2');
 
 const entry = readFileSync('app/log-competition/page.tsx', 'utf8');
