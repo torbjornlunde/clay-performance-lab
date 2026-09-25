@@ -19,11 +19,14 @@ assert.equal(publishedResultImportHref('clayarena', ' https://clayarena.com/resu
 
 const entry = readFileSync('app/log-competition/page.tsx', 'utf8');
 assert.match(entry, /href="\/results\/new"[\s\S]*Add competition/, 'recommended action adds a competition');
-assert.match(entry, /href="\/import\/result"[\s\S]*Import published result/, 'one published-result entry is visible');
+assert.match(entry, /href="\/import"[\s\S]*Import/, 'one published-result entry is visible');
 assert.doesNotMatch(entry, /primaryAction[^\n]*(Competition Score Sheet|My results)/, 'live sheet and history are not primary actions');
 for (const route of ['/competition-score-sheets', '/results/quick', '/sessions/new?type=competition', '/results']) assert.match(entry, new RegExp(route.replace(/[/?]/g, '\\$&')), `${route} remains reachable`);
 
-const hub = readFileSync('app/import/result/page.tsx', 'utf8');
+const hub = readFileSync('app/import/page.tsx', 'utf8');
+assert.match(hub, /<h1 id="import-heading">Import<\/h1>/, 'hub title is simply Import');
+assert.match(hub, /Choose result service/, 'provider choice precedes the optional link field');
+assert.match(readFileSync('app/import/result/page.tsx', 'utf8'), /redirect\("\/import"\)/, 'previous hub route remains usable');
 for (const provider of ['ClayArena', 'Leirdue.net']) assert.match(hub, new RegExp(provider.replace('.', '\\.')), `${provider} is first-class in import hub`);
 for (const [file, expected] of [['app/import/clayarena/page.tsx', 'new URLSearchParams(window.location.search)'], ['app/import/leirdue/page.tsx', 'new URLSearchParams(window.location.search)']]) assert.match(readFileSync(file, 'utf8'), new RegExp(expected.replace(/[().]/g, '\\$&')), `${file} accepts forwarded URL`);
 

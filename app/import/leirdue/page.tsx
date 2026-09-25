@@ -1124,7 +1124,7 @@ export default function LeirdueImportPage() {
         <p>Find old competition results and review before saving.</p>
         <div className="btns" aria-label="Other result sources">
           <Link href="/import/clayarena" className="button secondary">Import from ClayArena</Link>
-          <Link href="/import/result" className="button secondary">All result services</Link>
+          <Link href="/import" className="button secondary">All result services</Link>
         </div>
         <ContextualHelpCard storageKey="leirdue-import">Search your Leirdue.net results, review matches, then import only the results you want.</ContextualHelpCard>
         <div className="notice small">

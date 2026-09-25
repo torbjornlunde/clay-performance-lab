@@ -241,7 +241,7 @@ export default function ResultsPage() {
         </div>
         <div className="btns heroActions">
           <Link href="/results/new" className="button">Register competition</Link>
-          <Link href="/import/result" className="button secondary">Import published result</Link>
+          <Link href="/import" className="button secondary">Import</Link>
         </div>
       </div>
 
@@ -334,7 +334,7 @@ export default function ResultsPage() {
             </p>
             <div className="btns compactEmptyActions">
               <Link href="/results/new" className="button smallButton">Register competition</Link>
-              {sessions.length === 0 && <Link href="/import/result" className="button secondary smallButton">Import published result</Link>}
+              {sessions.length === 0 && <Link href="/import" className="button secondary smallButton">Import</Link>}
             </div>
           </div>
         ) : (
