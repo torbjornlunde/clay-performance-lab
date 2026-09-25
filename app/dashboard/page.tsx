@@ -595,7 +595,6 @@ export default function DashboardPage() {
   const [simpleTrainingLogs, setSimpleTrainingLogs] = useState<SimpleTrainingLogRow[]>([]);
   const [missCounts, setMissCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const [showAllResults, setShowAllResults] = useState(false);
   const [showAllTraining, setShowAllTraining] = useState(false);
   useEffect(() => {
     load();
@@ -644,7 +643,7 @@ export default function DashboardPage() {
 
   const results = useMemo(() => sessions.filter(isResultSession).sort(sortNewestFirst), [sessions]);
   const training = useMemo(() => sessions.filter(isTrainingSession).sort(sortNewestFirst), [sessions]);
-  const visibleResults = showAllResults ? results : results.slice(0, 3);
+  const visibleResults = results.slice(0, 3);
   const trainingHistoryItems = useMemo<TrainingHistoryItem[]>(() => [
     ...trainingScoreSheets.map((sheet) => ({
       kind: "training_score_sheet" as const,
@@ -677,7 +676,7 @@ export default function DashboardPage() {
           <div>
             <p className="eyebrow">Shooter workspace</p>
             <h2>Dashboard</h2>
-            <p className="dashboardHeroCopy">Choose a product area and continue with the right workflow.</p>
+            <p className="dashboardHeroCopy">Your recent shooting and next steps.</p>
           </div>
 
         </div>
@@ -694,11 +693,8 @@ export default function DashboardPage() {
             <span>Performance</span>
             <small>View trends, results, and performance insights.</small>
           </Link>
-          <Link href="/coach-report" className="dashboardActionCard secondaryAction">
-            <span>Coach report</span>
-            <small>Select sessions from a date range and copy a private coach-ready summary.</small>
-          </Link>
         </div>
+        <p className="small muted">Sharing with a coach? <Link href="/coach-report">Coach report</Link>.</p>
       </div>
 
       <PerformanceTrendCard sessions={sessions} missCounts={missCounts} />
@@ -709,7 +705,10 @@ export default function DashboardPage() {
             <p className="eyebrow">Competitions and scores</p>
             <h2 id="results-heading">Results</h2>
           </div>
-          {!loading && <span className="countPill">{results.length}</span>}
+          <div className="sectionHeaderActions">
+            {!loading && <span className="countPill">{results.length}</span>}
+            <Link href="/results" className="button secondary smallButton">View all results</Link>
+          </div>
         </div>
         {loading ? (
           <p>Loading...</p>
@@ -725,11 +724,6 @@ export default function DashboardPage() {
             {visibleResults.map((session) => (
               <ResultCard key={session.id} session={session} missCounts={missCounts} />
             ))}
-            {results.length > 3 && (
-              <button type="button" className="button secondary showMoreButton" onClick={() => setShowAllResults((value) => !value)}>
-                {showAllResults ? "Show less" : "Show more results"}
-              </button>
-            )}
           </>
         )}
       </section>

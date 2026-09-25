@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { buildCompetitionActivitySummary } from "@/lib/competitionActivity";
 import { countMissesBySession, scoreFromMisses } from "@/lib/misses/scoring";
 import { supabase } from "@/lib/supabase/client";
 import { isQuickScoreNotes, parseQuickScoreMetadata } from "@/lib/quick-score/metadata";
@@ -53,10 +52,6 @@ function formatDate(value: string) {
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
-}
-
-function formatMetricNumber(value: number) {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
 }
 
 function sortableDate(session: SessionRow) {
@@ -127,16 +122,6 @@ function statusBadges(session: SessionRow, missCounts: Record<string, number>, c
   return Array.from(new Set(badges));
 }
 
-function ResultActivityMetric({ label, value, helper }: { label: string; value: string; helper?: string }) {
-  return (
-    <div className="trainingVolumeMetric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      {helper && <small>{helper}</small>}
-    </div>
-  );
-}
-
 function resultMatchesFilter(session: SessionRow, filter: ResultFilter, missCounts: Record<string, number>, courseCounts: Record<string, number>) {
   const source = resultSource(session, missCounts, courseCounts);
   if (filter === "all") return true;
@@ -153,7 +138,6 @@ export default function ResultsPage() {
   const [missCounts, setMissCounts] = useState<Record<string, number>>({});
   const [courseCounts, setCourseCounts] = useState<Record<string, number>>({});
   const [filter, setFilter] = useState<ResultFilter>("all");
-  const [selectedCompetitionYear, setSelectedCompetitionYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -216,14 +200,6 @@ export default function ResultsPage() {
     setCourseCounts(({ [session.id]: _removed, ...rest }) => rest);
   }
 
-  const competitionActivity = useMemo(
-    () => buildCompetitionActivitySummary(sessions, selectedCompetitionYear),
-    [sessions, selectedCompetitionYear],
-  );
-  const competitionActivityYears = competitionActivity.years.includes(selectedCompetitionYear)
-    ? competitionActivity.years
-    : [selectedCompetitionYear, ...competitionActivity.years];
-
   const visibleResults = useMemo(
     () => sessions
       .filter((session) => resultMatchesFilter(session, filter, missCounts, courseCounts))
@@ -247,65 +223,11 @@ export default function ResultsPage() {
 
       <CompetitionResultClaims initialResults={claimResults} onClaimed={load} />
 
-      <section className="card statsCompetitionActivityCard" aria-labelledby="results-competition-activity-heading">
-        <div className="sectionHeader listSectionHeader">
-          <div>
-            <p className="eyebrow">Competition only</p>
-            <h2 id="results-competition-activity-heading">Competition activity</h2>
-            <p className="small muted">Training sessions are excluded. Exact duplicate Leirdue.net result links are counted once.</p>
-          </div>
-          <label className="competitionYearSelector">
-            <span>Year</span>
-            <select
-              value={selectedCompetitionYear}
-              onChange={(event) => setSelectedCompetitionYear(Number(event.target.value))}
-              disabled={loading || competitionActivityYears.length === 0}
-              aria-label="Competition activity year"
-            >
-              {competitionActivityYears.map((year) => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        {loading ? (
-          <p>Loading...</p>
-        ) : competitionActivity.allTimeCompetitionCount === 0 ? (
-          <div className="emptyState compactEmptyState">
-            <p>No saved competitions yet. Register a competition or import one from Leirdue.net to see your activity here.</p>
-          </div>
-        ) : (
-          <>
-            <div className="competitionActivityGrid">
-              <ResultActivityMetric label="All-time competitions" value={formatMetricNumber(competitionActivity.allTimeCompetitionCount)} />
-              <ResultActivityMetric
-                label="All-time competition targets"
-                value={formatMetricNumber(competitionActivity.allTimeCompetitionTargetCount)}
-                helper={competitionActivity.hasUnknownAllTimeTargets ? "Known targets only; some competitions have no target count" : undefined}
-              />
-              <ResultActivityMetric label={`${selectedCompetitionYear} competitions`} value={formatMetricNumber(competitionActivity.selectedYearCompetitionCount)} />
-              <ResultActivityMetric
-                label={`${selectedCompetitionYear} competition targets`}
-                value={formatMetricNumber(competitionActivity.selectedYearCompetitionTargetCount)}
-                helper={competitionActivity.hasUnknownSelectedYearTargets ? "Known targets only; some competitions have no target count" : undefined}
-              />
-            </div>
-            {competitionActivity.selectedYearCompetitionCount === 0 && (
-              <p className="small muted competitionActivityNote">No saved competitions in {selectedCompetitionYear}. Choose another year from your competition history to review activity.</p>
-            )}
-          </>
-        )}
-      </section>
-
       <div className="card">
         <div className="sectionHeader">
           <div>
             <p className="eyebrow">Archive</p>
             <h2>Saved results</h2>
-          </div>
-          <div className="sectionHeaderActions">
-            <Link href="/stats" className="button secondary smallButton">Performance</Link>
           </div>
         </div>
 
@@ -353,37 +275,29 @@ export default function ResultsPage() {
                       {session.shooting_ground ? ` · ${session.shooting_ground}` : ""}
                       {` · ${session.discipline}`}
                     </div>
-                    <div className="small muted">
-                      Score {score === null ? "-" : score} / {session.total_targets ?? "-"}
-                      {isUsableNumber(session.winning_score) ? ` · Winning score ${session.winning_score}` : ""}
-                      {badges.length ? ` · ${badges.join(", ")}` : " · Complete"}
-                    </div>
-                    <div className="small muted">Source: {source}</div>
-                    {parseQuickScoreMetadata(session.notes) && (
-                      <div className="small muted">
-                        Order {parseQuickScoreMetadata(session.notes)?.courseOrder.join(" → ")} · Misses {parseQuickScoreMetadata(session.notes)?.totalMisses}
-                      </div>
-                    )}
-                    <div className="small muted">Created {formatDateTime(session.created_at)}</div>
-                    {source === "Leirdue.net import" && (
-                      <div className="small muted">
-                        Source: Leirdue.net
-                        {session.leirdue_result_url ? ` · URL saved` : ""}
-                        {importedAtValue ? ` · Imported ${formatDateTime(importedAtValue)}` : ""}
-                      </div>
-                    )}
                     <div className="sheetStatusBadges">
                       <span className="badge badgeBlue">{productStatus(session, missCounts, courseCounts)}</span>
-                      {badges.map((badge) => <span className="badge" key={badge}>{badge}</span>)}
                     </div>
                     <div className="btns archiveActions">
                       <Link className="button secondary smallButton" href={`/sessions/${session.id}`}>Open</Link>
-                      <Link className="button secondary smallButton" href={`/sessions/${session.id}/edit`}>Edit</Link>
-                      {session.leirdue_result_url && <a className="button secondary smallButton" href={session.leirdue_result_url} target="_blank" rel="noreferrer">Open Leirdue.net</a>}
-                      <button className="button danger smallButton" type="button" disabled={deletingId === session.id} onClick={() => deleteResult(session)}>
-                        {deletingId === session.id ? "Deleting..." : "Delete"}
-                      </button>
                     </div>
+                    <details className="archiveDetails">
+                      <summary>Details and actions</summary>
+                      <div className="small muted">Source: {source} · Created {formatDateTime(session.created_at)}</div>
+                      {isUsableNumber(session.winning_score) && <div className="small muted">Winning score {session.winning_score}</div>}
+                      {parseQuickScoreMetadata(session.notes) && (
+                        <div className="small muted">Order {parseQuickScoreMetadata(session.notes)?.courseOrder.join(" → ")} · Misses {parseQuickScoreMetadata(session.notes)?.totalMisses}</div>
+                      )}
+                      {source === "Leirdue.net import" && importedAtValue && <div className="small muted">Imported {formatDateTime(importedAtValue)}</div>}
+                      {badges.length > 0 && <div className="sheetStatusBadges">{badges.map((badge) => <span className="badge" key={badge}>{badge}</span>)}</div>}
+                      <div className="btns archiveActions">
+                        <Link className="button secondary smallButton" href={`/sessions/${session.id}/edit`}>Edit</Link>
+                        {session.leirdue_result_url && <a className="button secondary smallButton" href={session.leirdue_result_url} target="_blank" rel="noreferrer">Open Leirdue.net</a>}
+                        <button className="button danger smallButton" type="button" disabled={deletingId === session.id} onClick={() => deleteResult(session)}>
+                          {deletingId === session.id ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
+                    </details>
                   </div>
                   <span className="statPercent">{score === null ? "No score" : `${score}/${session.total_targets ?? "?"}`}</span>
                 </div>
