@@ -23,6 +23,12 @@ assert.match(entry, /href="\/results\/new"[\s\S]*Add competition/, 'recommended 
 assert.match(entry, /href="\/import"[\s\S]*Import/, 'one published-result entry is visible');
 assert.doesNotMatch(entry, /primaryAction[^\n]*(Competition Score Sheet|My results)/, 'live sheet and history are not primary actions');
 for (const route of ['/competition-score-sheets', '/results/quick', '/sessions/new?type=competition', '/results']) assert.match(entry, new RegExp(route.replace(/[/?]/g, '\\$&')), `${route} remains reachable`);
+const manualResult = readFileSync('app/results/new/page.tsx', 'utf8');
+assert.ok(manualResult.indexOf('<label>Total targets</label>') < manualResult.indexOf('<summary><span>More result details</span></summary>'), 'score and target fields remain visible before optional details');
+assert.ok(manualResult.indexOf('<label>Own score</label>') < manualResult.indexOf('<summary><span>More result details</span></summary>'), 'own score is not hidden in an accordion');
+assert.match(manualResult, /<summary><span>Use a shared target setup \(optional\)<\/span><\/summary>/, 'advanced setup remains available on request');
+const detail = readFileSync('app/sessions/[id]/page.tsx', 'utf8');
+assert.doesNotMatch(detail, /Optional next steps:|Skip for now|shouldPromptMissDetails/, 'saved result no longer repeats optional-miss prompts');
 
 const hub = readFileSync('app/import/page.tsx', 'utf8');
 assert.match(hub, /<h1 id="import-heading">Import<\/h1>/, 'hub title is simply Import');

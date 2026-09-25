@@ -731,10 +731,6 @@ export default function Page() {
   const sourceUrl =
     importDetail(session, "source_url") || session.leirdue_result_url;
   const canRefreshLeirdueSource = Boolean(sourceUrl && /^https?:\/\/(www\.)?leirdue\.net\//i.test(sourceUrl));
-  const shouldPromptMissDetails =
-    searchParams.get("describeMisses") === "1" ||
-    searchParams.get("resultSaved") === "1" ||
-    searchParams.get("scorecardImported") === "1";
   const missedTargetCtaHref = count > 0
     ? `/sessions/${session.id}/misses`
     : `/sessions/${session.id}/log`;
@@ -906,26 +902,6 @@ export default function Page() {
               : ""}
           </div>
         )}
-        {shouldPromptMissDetails && (
-          <div className="compactNotice">
-            <strong>Optional next steps:</strong> add quick overall context, or describe individual missed targets for detailed analysis.
-            <div className="btns compactNoticeActions">
-              <Link className="button smallButton" href="#competition-context">Add quick context</Link>
-              <Link className="button secondary smallButton" href={missedTargetCtaHref}>
-                {missedTargetCtaLabel}
-              </Link>
-              <Link className="button secondary smallButton" href={`/sessions/${session.id}`}>
-                Skip for now
-              </Link>
-            </div>
-          </div>
-        )}
-        {resultOnly && !hasScoreMismatch ? (
-          <div className="compactNotice">
-            This is a result-only entry. Detailed misses have not been logged
-            yet.
-          </div>
-        ) : null}
         <div className="compactMetricGrid" aria-label="Session metrics">
           {summaryMetrics.map((metric) => (
             <DetailMetric

@@ -159,28 +159,27 @@ export default function NewResultPage() {
       <form className="card" onSubmit={save}>
         <p className="eyebrow">Competition</p>
         <h2>Register competition</h2>
-        <p>Start with the basics. You can add posts, targets, misses, equipment and analysis afterward.</p>
-        <ContextualHelpCard storageKey="manual-result">Use this when you only want to save a result quickly without detailed target logging.</ContextualHelpCard>
+        <p>Save your result now. Add detailed scoring later if you want to.</p>
         <label>Competition name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Competition name" required />
         <div className="row">
           <div><label>Date</label><input value={competitionDate} onChange={(e) => setCompetitionDate(e.target.value)} type="date" required /></div>
           <div><label>Discipline</label><select value={discipline} onChange={(e) => setDiscipline(e.target.value)} required>{disciplineOptions.map((option) => (<option key={option}>{option}</option>))}</select></div>
         </div>
+        <div className="row">
+          <div><label>Total targets</label><input value={totalTargets} onChange={(e) => setTotalTargets(e.target.value)} type="number" min="1" inputMode="numeric" /></div>
+          <div><label>Own score</label><input value={ownScore} onChange={(e) => setOwnScore(e.target.value)} type="number" min="0" inputMode="numeric" /></div>
+        </div>
+        <p className="small muted">No final score yet? Leave both fields empty and add it later.</p>
         <label>Shooting ground</label>
         <input value={shootingGround} onChange={(e) => setShootingGround(e.target.value)} placeholder="Optional" />
-        <label>Leirdue.net result link</label>
-        <input value={leirdueResultUrl} onChange={(e) => setLeirdueResultUrl(e.target.value)} placeholder="Paste optional Leirdue.net result URL" type="url" />
         <details className="detailAccordion">
-          <summary><span>Add result now</span></summary>
+          <summary><span>More result details</span></summary>
           <div className="detailAccordionBody">
-            <p className="small muted">Optional. Leave blank if the final result is not known yet.</p>
-            <div className="row">
-              <div><label>Total targets</label><input value={totalTargets} onChange={(e) => setTotalTargets(e.target.value)} type="number" min="1" inputMode="numeric" /></div>
-              <div><label>Own score</label><input value={ownScore} onChange={(e) => setOwnScore(e.target.value)} type="number" min="0" inputMode="numeric" /></div>
-            </div>
             <label>Winning score</label>
             <input value={winningScore} onChange={(e) => setWinningScore(e.target.value)} type="number" min="0" inputMode="numeric" />
+            <label>Leirdue.net result link</label>
+            <input value={leirdueResultUrl} onChange={(e) => setLeirdueResultUrl(e.target.value)} placeholder="Optional source link" type="url" />
           </div>
         </details>
         <details className="detailAccordion">
@@ -191,19 +190,24 @@ export default function NewResultPage() {
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
           </div>
         </details>
-        <CompetitionTemplateSuggestions
-          metadata={{ name, competitionDate, shootingGround, discipline, targetCount: suggestionTargetCount }}
-          candidates={suggestions.candidates}
-          loading={suggestions.loading}
-          error={suggestions.error}
-          onFind={suggestions.findCandidates}
-          canFind={suggestions.canFind}
-            searchKey={suggestions.searchKey}
-          onUse={(candidate) => setSelectedTemplateCandidate(candidate)}
-          selectedCandidateId={selectedTemplateCandidate?.id}
-          applyingCandidateId={applyingTemplate ? selectedTemplateCandidate?.id : undefined}
-          isApplying={applyingTemplate}
-        />
+        <details className="detailAccordion">
+          <summary><span>Use a shared target setup (optional)</span></summary>
+          <div className="detailAccordionBody">
+            <CompetitionTemplateSuggestions
+              metadata={{ name, competitionDate, shootingGround, discipline, targetCount: suggestionTargetCount }}
+              candidates={suggestions.candidates}
+              loading={suggestions.loading}
+              error={suggestions.error}
+              onFind={suggestions.findCandidates}
+              canFind={suggestions.canFind}
+              searchKey={suggestions.searchKey}
+              onUse={(candidate) => setSelectedTemplateCandidate(candidate)}
+              selectedCandidateId={selectedTemplateCandidate?.id}
+              applyingCandidateId={applyingTemplate ? selectedTemplateCandidate?.id : undefined}
+              isApplying={applyingTemplate}
+            />
+          </div>
+        </details>
         {selectedTemplateCandidate && (
           <div className="subcard selectedTemplateNotice">
             <p><strong>Selected setup:</strong> {selectedTemplateCandidate.name}</p>
@@ -216,6 +220,7 @@ export default function NewResultPage() {
           <button disabled={saving || applyingTemplate}>{saving || applyingTemplate ? "Saving..." : "Save and continue"}</button>
           <Link className="button secondary" href="/log-competition">Cancel</Link>
         </div>
+        <ContextualHelpCard storageKey="manual-result">Save a score now, then add post, target or scorecard detail later if useful.</ContextualHelpCard>
       </form>
     </main>
   );

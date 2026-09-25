@@ -39,10 +39,10 @@ const dashboard = readFileSync('app/dashboard/page.tsx', 'utf8');
 assert.doesNotMatch(dashboard, /<OnboardingHelpPanel \/>|from "@\/app\/components\/OnboardingHelp"/, 'dashboard does not keep a duplicate dashboard-only onboarding mount');
 
 const contexts = [
-  ['app/import/leirdue/page.tsx', 'leirdue-import', 'Search your Leirdue.net results, review matches, then import only the results you want.'],
+  ['app/import/leirdue/page.tsx', 'leirdue-import', 'Check your shooter row and result before importing. This adds a result, not target-by-target misses or scorecard photos.'],
   ['app/sessions/[id]/scorecard-import/page.tsx', 'scorecard-photo-import', 'Upload a scorecard photo, crop if needed, review the detected post structure and target results, then apply.'],
   ['app/training-score-sheets/page.tsx', 'training-score-sheet', 'Use this when one person records scores for several shooters during training.'],
-  ['app/results/new/page.tsx', 'manual-result', 'Use this when you only want to save a result quickly without detailed target logging.'],
+  ['app/results/new/page.tsx', 'manual-result', 'Save a score now, then add post, target or scorecard detail later if useful.'],
 ];
 for (const [file, key, copy] of contexts) {
   const source = readFileSync(file, 'utf8');
