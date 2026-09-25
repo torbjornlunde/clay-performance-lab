@@ -853,9 +853,10 @@ export default function LeirdueImportPage() {
   async function fetchSearchBatch(token: string | null, mode: "initial" | "continue" | "revalidateInvalidComplete", explicitContinue: boolean) {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), BATCH_TIMEOUT_MS);
-    const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData.session?.access_token;
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error("Sign in again to search Leirdue.net.");
       const response = await fetch("/api/leirdue/search", {
         method: "POST",
         headers: {
@@ -924,7 +925,7 @@ export default function LeirdueImportPage() {
 
       if (!response.ok) {
         setError(data.error || "Could not fetch Leirdue results right now.");
-        setContinuationToken(startToken);
+        setContinuationToken(response.status === 401 ? null : startToken);
         return;
       }
 
@@ -1000,6 +1001,9 @@ export default function LeirdueImportPage() {
         const visibleCount = visibleCandidateCount(currentCandidates);
         if (visibleCount > 0) setSuccess(autoSearchIncompleteMessage(visibleCount, "request timeout"));
         else setError("The Leirdue search took too long before finding candidates. Try again or choose a narrower year.");
+      } else if (requestError instanceof Error && requestError.message === "Sign in again to search Leirdue.net.") {
+        setContinuationToken(null);
+        setError(requestError.message);
       } else {
         setError("Could not fetch Leirdue results right now.");
       }
@@ -1173,7 +1177,7 @@ export default function LeirdueImportPage() {
           </div>
         </section>
 
-        {error ? <div className="error">{error}</div> : null}
+        {error ? <div className="error" role="alert">{error}{error === "Sign in again to search Leirdue.net." ? <> <Link href="/login">Sign in</Link></> : null}</div> : null}
         {savedImport ? (
           <div className="success importSuccessCard">
             <strong>Result imported</strong>

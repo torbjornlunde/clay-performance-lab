@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v18.09.26", title: "Clearer Leirdue.net search recovery", bullets: ["If your sign-in has expired, see that immediately instead of waiting through a long search.", "Sign in again, then search your results as usual."] },
   { id: "v17.09.26", title: "Continue when sign analysis fails", bullets: ["Go straight to manual post setup if a sign photo cannot be analyzed.", "Keep the saved sign photo available while entering the targets yourself."] },
   { id: "v16.09.26", title: "Read repeated pairs on post signs", bullets: ["A clearly marked count such as four report pairs can fill four presentations in the sign review.", "Check the proposed order and labels against your photo before applying the setup."] },
   { id: "v15.09.26", title: "Keep the right post sign with its review", bullets: ["Replace a post sign photo without a late analysis from the previous photo taking over.", "Review the latest photo before applying its target setup."] },

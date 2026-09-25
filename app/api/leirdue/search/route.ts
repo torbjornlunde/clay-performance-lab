@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { DISCIPLINE_OPTIONS } from "@/lib/disciplines";
 import { getCachedLeirdueCandidates, getLeirdueCrawlProgress, getSharedLeirdueShooterResults, repairLeirdueInvalidCompleteState, storeLeirdueCandidatesInCache, storeLeirdueCrawlIndexesInCache, storeLeirdueCrawlProgress, storeLeirdueInvalidListDecisionsInCache } from "@/lib/leirdue/cache";
 import { emptyLeirdueSearchDebug, FETCH_ERROR_MESSAGE, searchLeirdueCandidates } from "@/lib/leirdue/parser";
@@ -120,6 +121,16 @@ export async function POST(request: Request) {
   if (sourceUrl && publishedResultProvider(sourceUrl) !== "leirdue") {
     return NextResponse.json({ error: "Please paste a valid Leirdue.net result or event link." }, { status: 400 });
   }
+  const authorization = request.headers.get("authorization");
+  if (!authorization?.startsWith("Bearer ") || !authorization.slice(7).trim()) {
+    return NextResponse.json({ error: "Sign in again to search Leirdue.net." }, { status: 401 });
+  }
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !anonKey) return NextResponse.json({ error: "Search is temporarily unavailable." }, { status: 503 });
+  const authClient = createClient(supabaseUrl, anonKey, { auth: { persistSession: false }, global: { headers: { Authorization: authorization } } });
+  const { data: authenticated, error: authError } = await authClient.auth.getUser();
+  if (authError || !authenticated.user) return NextResponse.json({ error: "Sign in again to search Leirdue.net." }, { status: 401 });
 
   try {
     let initialShared: Awaited<ReturnType<typeof getSharedLeirdueShooterResults>> | null = null;
