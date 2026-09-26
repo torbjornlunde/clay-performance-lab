@@ -20,7 +20,7 @@ const HEALTH_COLUMNS = "job_name,started_at,finished_at,status,refreshed_count,e
 
 type Service = SupabaseClient;
 type EventRow = { event_id: string; source_url: string | null; event_title: string | null; event_date: string | null; year: number | null };
-type ListRow = { event_id: string; liste_id: string; source_url: string | null; list_title: string | null; year?: number | null; ingestion_error?: string | null };
+type ListRow = { event_id: string; liste_id: string; source_url: string | null; list_title: string | null; year?: number | null; ingestion_status?: string | null; ingestion_error?: string | null };
 
 function serviceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -118,6 +118,24 @@ async function recordJobHealth(service: Service, input: { startedAt: string; sta
   await service.from("leirdue_job_health").update({ last_alert_email_status: email.status, last_alert_email_error: email.error, last_alert_incident_key: email.incidentKey || current.last_alert_incident_key, last_alert_email_sent_at: email.sentAt || current.last_alert_email_sent_at, last_recovery_email_sent_at: email.recoverySentAt || current.last_recovery_email_sent_at }).eq("job_name", JOB_NAME);
 }
 
+async function updateYearCoverage(service: Service, year: number) {
+  const [events, pendingEvents, pendingLists, reviewLists, shooterRows] = await Promise.all([
+    service.from("leirdue_event_index").select("id", { count: "exact", head: true }).eq("year", year),
+    service.from("leirdue_event_index").select("id", { count: "exact", head: true }).eq("year", year).eq("ingestion_status", "pending"),
+    service.from("leirdue_result_list_index").select("id", { count: "exact", head: true }).eq("year", year).eq("ingestion_status", "pending"),
+    service.from("leirdue_result_list_index").select("id", { count: "exact", head: true }).eq("year", year).eq("ingestion_status", "needs_review"),
+    service.from("leirdue_shared_shooter_results").select("id", { count: "exact", head: true }).eq("year", year),
+  ]);
+  for (const result of [events, pendingEvents, pendingLists, reviewLists, shooterRows]) if (result.error) throw result.error;
+  const remaining = (pendingEvents.count || 0) + (pendingLists.count || 0) + (reviewLists.count || 0);
+  const status = remaining === 0 && (shooterRows.count || 0) > 0 ? "complete" : "incomplete";
+  const fields = { status, discovered_events: events.count || 0, pending_events: pendingEvents.count || 0, pending_result_lists: pendingLists.count || 0, needs_review_result_lists: reviewLists.count || 0, shooter_result_rows: shooterRows.count || 0, remaining_work_count: remaining, updated_at: new Date().toISOString() };
+  const { data: existing, error: readError } = await service.from("leirdue_year_ingestion_status").select("year").eq("year", year).maybeSingle();
+  if (readError) throw readError;
+  const write = existing ? await service.from("leirdue_year_ingestion_status").update(fields).eq("year", year) : await service.from("leirdue_year_ingestion_status").insert({ year, parser_version: PARSER_VERSION, ...fields });
+  if (write.error) throw write.error;
+}
+
 async function refreshRecent(service: Service, now = new Date()) {
   const year = now.getUTCFullYear();
   const cutoff = cutoffDate(now);
@@ -126,26 +144,34 @@ async function refreshRecent(service: Service, now = new Date()) {
   const html = await fetchHtml(`${BASE}?resultater=`);
   const recentEvents = eventLinksForRecentWindow(html, year, cutoff);
   eventsDiscovered = recentEvents.length;
-  if (recentEvents.length) await service.from("leirdue_event_index").upsert(recentEvents.map((event) => ({ ...event, year, ingestion_status: "pending", last_seen_at: new Date().toISOString(), updated_at: new Date().toISOString() })), { onConflict: "event_id" });
+  // Discovery must not reset completed events to pending every morning.
+  if (recentEvents.length) await service.from("leirdue_event_index").upsert(recentEvents.map((event) => ({ ...event, year, ingestion_status: "pending", last_seen_at: new Date().toISOString(), updated_at: new Date().toISOString() })), { onConflict: "event_id", ignoreDuplicates: true });
 
-  const { data: eventData } = await service.from("leirdue_event_index").select("event_id,source_url,event_title,event_date,year").eq("year", year).or(`event_date.gte.${cutoff},event_date.is.null`).order("event_date", { ascending: false, nullsFirst: false }).limit(EVENT_BATCH_LIMIT);
+  const { data: pendingEvents } = await service.from("leirdue_event_index").select("event_id,source_url,event_title,event_date,year").eq("year", year).eq("ingestion_status", "pending").order("event_date", { ascending: false, nullsFirst: false }).limit(EVENT_BATCH_LIMIT - 2);
+  const { data: completedEvents } = await service.from("leirdue_event_index").select("event_id,source_url,event_title,event_date,year").eq("year", year).eq("ingestion_status", "completed").or(`event_date.gte.${cutoff},event_date.is.null`).order("last_fetched_at", { ascending: true, nullsFirst: true }).limit(EVENT_BATCH_LIMIT - (pendingEvents?.length || 0));
+  const eventData = [...(pendingEvents || []), ...(completedEvents || [])];
   for (const event of (eventData || []) as EventRow[]) {
     try {
       const eventHtml = await fetchHtml(event.source_url || eventMenuUrl(event.event_id));
       const lists = listeLinksFromHtml(eventHtml, event.event_id, year);
-      if (lists.length) await service.from("leirdue_result_list_index").upsert(lists.map((list) => ({ ...list, list_type: list.list_title, ingestion_status: "pending", updated_at: new Date().toISOString() })), { onConflict: "event_id,liste_id" });
+      if (lists.length) await service.from("leirdue_result_list_index").upsert(lists.map((list) => ({ ...list, list_type: list.list_title, ingestion_status: "pending", updated_at: new Date().toISOString() })), { onConflict: "event_id,liste_id", ignoreDuplicates: true });
       await service.from("leirdue_event_index").update({ ingestion_status: "completed", last_fetched_at: new Date().toISOString(), updated_at: new Date().toISOString(), ingestion_error: null }).eq("event_id", event.event_id);
       eventsProcessed += 1; listsDiscovered += lists.length;
     } catch (error) { errors.push({ eventId: event.event_id, error: String(error) }); }
   }
 
-  const { data: listData } = await service.from("leirdue_result_list_index").select("event_id,liste_id,source_url,list_title,year,ingestion_error").eq("year", year).in("ingestion_status", ["pending", "completed", "needs_review"]).limit(LIST_BATCH_LIMIT);
+  const listColumns = "event_id,liste_id,source_url,list_title,year,ingestion_status,ingestion_error";
+  const { data: pendingLists } = await service.from("leirdue_result_list_index").select(listColumns).eq("year", year).eq("ingestion_status", "pending").order("updated_at", { ascending: true }).limit(LIST_BATCH_LIMIT - 4);
+  const { data: reviewLists } = await service.from("leirdue_result_list_index").select(listColumns).eq("year", year).eq("ingestion_status", "needs_review").order("updated_at", { ascending: true }).limit(2);
+  const { data: completedLists } = await service.from("leirdue_result_list_index").select(listColumns).eq("year", year).eq("ingestion_status", "completed").order("last_fetched_at", { ascending: true, nullsFirst: true }).limit(LIST_BATCH_LIMIT - (pendingLists?.length || 0) - (reviewLists?.length || 0));
+  const listData = [...(pendingLists || []), ...(reviewLists || []), ...(completedLists || [])];
   for (const list of (listData || []) as ListRow[]) {
     try {
       const listHtml = await fetchHtml(list.source_url || `${BASE}?stevne=${list.event_id}&meny=resultater&liste_id=${list.liste_id}`);
       const rows = rowsFromResultList(listHtml, list, year);
       if (rows.length) await service.from("leirdue_shared_shooter_results").upsert(rows, { onConflict: "result_identity" });
-      await service.from("leirdue_result_list_index").update({ ingestion_status: rows.length ? "completed" : "needs_review", is_valid_single_event_result: rows.length > 0, last_fetched_at: new Date().toISOString(), ingestion_error: rows.length ? null : "Recent refresh found no shooter rows", updated_at: new Date().toISOString() }).eq("event_id", list.event_id).eq("liste_id", list.liste_id);
+      const unsupportedAfterRetry = rows.length === 0 && list.ingestion_status === "needs_review" && Boolean(list.ingestion_error);
+      await service.from("leirdue_result_list_index").update({ ingestion_status: rows.length ? "completed" : unsupportedAfterRetry ? "failed" : "needs_review", is_valid_single_event_result: rows.length > 0, last_fetched_at: new Date().toISOString(), ingestion_error: rows.length ? null : unsupportedAfterRetry ? "No shooter rows after bounded retry" : "Recent refresh found no shooter rows", updated_at: new Date().toISOString() }).eq("event_id", list.event_id).eq("liste_id", list.liste_id);
       listsProcessed += 1; shooterRows += rows.length;
     } catch (error) { errors.push({ listeId: list.liste_id, error: String(error) }); }
   }
@@ -159,6 +185,7 @@ export async function GET(request: Request) {
   const startedAt = new Date().toISOString();
   try {
     const result = await refreshRecent(service);
+    await updateYearCoverage(service, result.year);
     const status = result.errors.length === 0 ? "success" : result.shooterRows > 0 || result.listsProcessed > 0 || result.eventsProcessed > 0 ? "partial" : "failed";
     await recordJobHealth(service, { startedAt, status, refreshedCount: result.shooterRows, errorCount: result.errors.length, failureReason: result.errors.length ? JSON.stringify(result.errors.slice(-3)) : null, affectedScope: { year: result.year, recentWindowDays: RECENT_WINDOW_DAYS, cutoff: result.cutoff, eventsDiscovered: result.eventsDiscovered, eventsProcessed: result.eventsProcessed, listsDiscovered: result.listsDiscovered, listsProcessed: result.listsProcessed } });
     return NextResponse.json({ ok: status !== "failed", jobName: JOB_NAME, status, recentWindowDays: RECENT_WINDOW_DAYS, ...result });

@@ -1118,19 +1118,22 @@ export default function LeirdueImportPage() {
 
     const saved = data.results.filter((result) => result.status === "saved").length;
     const duplicates = data.results.filter((result) => result.status === "duplicate").length;
+    const errors = data.results.filter((result) => result.status === "error").length;
     const firstSaved = data.results.find((result) => result.status === "saved");
-    if (firstSaved) {
+    if (saved === 1 && firstSaved) {
       setSavedImport({
         id: firstSaved.id,
         eventName: firstSaved.candidate.name,
         date: firstSaved.candidate.date,
         score: `${firstSaved.candidate.ownScore ?? "?"}/${firstSaved.candidate.totalTargets ?? firstSaved.candidate.maxScore ?? "?"}`,
       });
-      setSuccess("Result imported.");
-    } else {
-      void recordAnalyticsEvent(supabase, "leirdue_import_saved", { route: "/import/leirdue", feature: "leirdue_import", metadata: { savedCount: saved, duplicateCount: duplicates } });
-      setSuccess(`${saved} result${saved === 1 ? "" : "s"} imported. ${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped.`);
     }
+    if (saved === 0 && errors > 0) {
+      setError(data.results.find((result) => result.status === "error")?.message || "The results could not be saved.");
+      return;
+    }
+    void recordAnalyticsEvent(supabase, "leirdue_import_saved", { route: "/import/leirdue", feature: "leirdue_import", metadata: { savedCount: saved, duplicateCount: duplicates, errorCount: errors } });
+    setSuccess(`${saved} result${saved === 1 ? "" : "s"} imported. ${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped.${errors ? ` ${errors} could not be saved; review and retry them.` : ""}`);
   }
 
   return (

@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { LeirdueCandidate, LeirdueCheckedListDebug, LeirdueSearchDebug } from "@/lib/leirdue/types";
 import { extractLeirdueSourceIdentifiers, leirdueDisciplineMatchesSelection, leirdueNameMatchReason, namesLikelyMatch, nordicSafeNameKey, profileNameContainedInShooterText, sharedLeirdueCandidateIdentity, type LeirdueNameMatchReason } from "@/lib/leirdue/normalize";
+import { readAllSharedRows } from "@/lib/leirdue/paging";
 
 const CURRENT_YEAR_TTL_DAYS = 7;
 const PAST_YEAR_TTL_DAYS = 90;
@@ -810,42 +811,40 @@ export async function getSharedLeirdueShooterResults(input: { shooterName: strin
   const supabase = supabaseReadClient(input.authorization);
   const emptyStats = (error: string | null = null): SharedLeirdueSearchStats => ({ ok: !error, error, queryDurationMs: Date.now() - started, rowsFound: 0, totalRows: 0, validCount: 0, needsReviewCount: 0, invalidCount: 0, failedCount: 0, reviewableCount: 0, ignoredInvalidCount: 0, exactNameRowsFound: 0, clubSuffixedRowsFound: 0, ambiguousNameRowsRejected: 0, rowsBeforeSemanticDeduplication: 0, canonicalCandidatesAfterSemanticDeduplication: 0, duplicateSourceListsHidden: 0, acceptedNameMatchReasons: [], semanticEventGroupDiagnostics: [], coverageStatus: "unknown", indexingComplete: false, liveCrawlStarted: false });
   if (!supabase) return { candidates: [] as LeirdueCandidate[], stats: emptyStats("Shared Leirdue cache read skipped: missing authenticated cache read context.") };
+  const readClient = supabase;
   const normalizedName = nordicSafeNameKey(input.shooterName);
   const selectColumns = "event_id,liste_id,normalized_name,original_name,club,placement,score,total_targets,winning_score,series_scores,discipline,event_date,event_title,organizer,source_url,raw_row,validation_status,parsed_at";
   const variantPattern = sharedLeirdueNameRetrievalPattern(input.shooterName);
-  const variantQuery = variantPattern
-    ? supabase.from("leirdue_shared_shooter_results").select(selectColumns).eq("year", input.year).ilike("normalized_name", variantPattern).in("validation_status", ["valid", "needs_review", "invalid", "failed"]).order("event_date", { ascending: true }).limit(1000)
-    : Promise.resolve({ data: [] as SharedResultRow[], error: null });
-  const [{ data: exactData, error: exactError }, { data: prefixedData, error: prefixedError }, { data: variantData, error: variantError }, statusResult] = await Promise.all([
-    supabase
-      .from("leirdue_shared_shooter_results")
-      .select(selectColumns)
-      .eq("year", input.year)
-      .eq("normalized_name", normalizedName)
-      .in("validation_status", ["valid", "needs_review", "invalid", "failed"])
-      .order("event_date", { ascending: true })
-      .limit(500),
-    supabase
-      .from("leirdue_shared_shooter_results")
-      .select(selectColumns)
-      .eq("year", input.year)
-      .like("normalized_name", `${normalizedName} %`)
-      .in("validation_status", ["valid", "needs_review", "invalid", "failed"])
-      .order("event_date", { ascending: true })
-      .limit(1000),
-    variantQuery,
+  // A prolific shooter can have more than 500 source rows in one year. Read
+  // every page so a fast indexed search does not silently omit older results.
+  async function readNameRows(kind: "exact" | "club" | "variant", value: string) {
+    return readAllSharedRows<SharedResultRow>(async (start, end) => {
+      const query = readClient.from("leirdue_shared_shooter_results").select(selectColumns)
+        .eq("year", input.year)
+        .in("validation_status", ["valid", "needs_review", "invalid", "failed"]);
+      const filtered = kind === "exact" ? query.eq("normalized_name", value)
+        : kind === "club" ? query.like("normalized_name", value)
+          : query.ilike("normalized_name", value);
+      return filtered.order("event_date", { ascending: true })
+        .order("id", { ascending: true }).range(start, end);
+    });
+  }
+  const [exactResult, prefixedResult, variantResult, statusResult] = await Promise.all([
+    readNameRows("exact", normalizedName),
+    readNameRows("club", `${normalizedName} %`),
+    variantPattern ? readNameRows("variant", variantPattern) : Promise.resolve({ rows: [] as SharedResultRow[], error: null }),
     supabase
       .from("leirdue_year_ingestion_status")
       .select("status")
       .eq("year", input.year)
       .maybeSingle(),
   ]);
-  const error = exactError || prefixedError || variantError;
+  const error = exactResult.error || prefixedResult.error || variantResult.error;
   if (error) return { candidates: [] as LeirdueCandidate[], stats: emptyStats(`Shared Leirdue cache read failed: ${error.message}`) };
-  const exactRows = (exactData || []) as SharedResultRow[];
-  const prefixedRows = (prefixedData || []) as SharedResultRow[];
+  const exactRows = exactResult.rows;
+  const prefixedRows = prefixedResult.rows;
   const rowMap = new Map<string, SharedResultRow>();
-  const variantRows = (variantData || []) as SharedResultRow[];
+  const variantRows = variantResult.rows;
   for (const row of [...exactRows, ...prefixedRows, ...variantRows]) rowMap.set(`${row.source_url}|${row.normalized_name}|${row.score ?? ""}|${row.total_targets ?? ""}`, row);
   let ambiguousNameRowsRejected = 0;
   const acceptedNameMatchReasons: string[] = [];

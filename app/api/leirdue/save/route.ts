@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "crypto";
 import type { LeirdueCandidate, LeirdueDuplicateMatch } from "@/lib/leirdue/types";
 import { extractLeirdueSourceIdentifiers } from "@/lib/leirdue/normalize";
 import { compareLeirdueDuplicate, type LeirdueDuplicateSessionRow } from "@/lib/leirdue/duplicates";
 import { isLeirdueSaveCandidate, leirdueWinningScoreForInsert } from "@/lib/leirdue/saveValidation";
 import { correctedFieldNames, parsedValues, validateLeirdueReviewedCandidate } from "@/lib/leirdue/review";
+import { readAllSharedRows } from "@/lib/leirdue/paging";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +85,19 @@ export async function POST(request: Request) {
   if (userError || !userData.user) return NextResponse.json({ error: "You must be logged in to import Leirdue results." }, { status: 401 });
 
   const results: SaveResult[] = [];
+  // Reuse one owner-scoped snapshot for the whole selected year. Include each
+  // successful insert below so later candidates in this request still see it.
+  const { rows: existingRows, error: duplicateReadError } = await readAllSharedRows<LeirdueDuplicateSessionRow>(async (start, end) => supabase
+    .from("sessions")
+    .select("id,name,discipline,competition_date,own_score,total_targets,winning_score,leirdue_result_url,notes")
+    .eq("user_id", userData.user.id)
+    .order("id", { ascending: true })
+    .range(start, end));
+  if (duplicateReadError) return NextResponse.json({ error: duplicateReadError.message }, { status: 500 });
+  const duplicateRows: LeirdueDuplicateSessionRow[] = [...existingRows];
+  const pendingInserts: Array<{ resultIndex: number; row: LeirdueDuplicateSessionRow & { user_id: string; session_type: "Competition"; shooting_ground: string | null; shooting_format: null; course_count: null } }> = [];
+  const pendingIds = new Set<string>();
+  const pendingDependentResults: number[] = [];
 
   for (const candidate of candidates) {
     const ownScore = Number(candidate.ownScore);
@@ -95,61 +110,46 @@ export async function POST(request: Request) {
       continue;
     }
 
-    const { data: duplicateRows, error: duplicateError } = await supabase
-      .from("sessions")
-      .select("id,name,discipline,competition_date,own_score,total_targets,winning_score,leirdue_result_url,notes")
-      .eq("user_id", userData.user.id)
-      .returns<LeirdueDuplicateSessionRow[]>();
-
-    if (duplicateError) {
-      results.push({ clientCandidateId: candidate.clientCandidateId, candidate, status: "error", message: duplicateError.message });
-      continue;
-    }
-
-    const duplicateMatches = (duplicateRows || [])
+    const duplicateMatches = duplicateRows
       .map((row) => compareLeirdueDuplicate(candidate, row))
       .filter((match): match is LeirdueDuplicateMatch => Boolean(match));
     const exactDuplicate = duplicateMatches.find((match) => match.exact);
     const possibleDuplicate = duplicateMatches.find((match) => !match.exact);
 
     if (exactDuplicate) {
+      if (pendingIds.has(exactDuplicate.id)) pendingDependentResults.push(results.length);
       results.push({ clientCandidateId: candidate.clientCandidateId, candidate: { ...candidate, alreadyImported: true, duplicateStatus: "exact", duplicateMatches }, status: "duplicate", id: exactDuplicate.id, message: "Already imported from the same Leirdue source.", duplicateMatches });
       continue;
     }
 
     if (possibleDuplicate && !candidate.allowDuplicateSave) {
+      if (pendingIds.has(possibleDuplicate.id)) pendingDependentResults.push(results.length);
       results.push({ clientCandidateId: candidate.clientCandidateId, candidate: { ...candidate, duplicateStatus: "possible", duplicateMatches }, status: "duplicate", id: possibleDuplicate.id, message: "Possible duplicate found. Review it and choose Save anyway if this is a separate result.", duplicateMatches });
       continue;
     }
 
     const importedAt = new Date().toISOString();
     const notes = sourceNotes(candidate, importedAt);
-    const { data: inserted, error: insertError } = await supabase
-      .from("sessions")
-      .insert({
-        user_id: userData.user.id,
-        session_type: "Competition",
-        name: candidate.name.trim(),
-        discipline: candidate.discipline,
-        competition_date: candidate.date,
-        shooting_ground: candidate.shootingGround?.trim() || null,
-        total_targets: totalTargets,
-        own_score: ownScore,
-        winning_score: winningScore,
-        leirdue_result_url: url,
-        notes,
-        shooting_format: null,
-        course_count: null,
-      })
-      .select("id")
-      .single<{ id: string }>();
-
-    if (insertError) {
-      results.push({ clientCandidateId: candidate.clientCandidateId, candidate, status: "error", message: insertError.message });
-    } else {
-      results.push({ clientCandidateId: candidate.clientCandidateId, candidate, status: "saved", id: inserted.id });
-    }
+    const id = randomUUID();
+    const row = { id, user_id: userData.user.id, session_type: "Competition" as const, name: candidate.name.trim(), discipline: candidate.discipline, competition_date: candidate.date, shooting_ground: candidate.shootingGround?.trim() || null, total_targets: totalTargets, own_score: ownScore, winning_score: winningScore, leirdue_result_url: url, notes, shooting_format: null, course_count: null };
+    pendingInserts.push({ resultIndex: results.length, row });
+    pendingIds.add(id);
+    results.push({ clientCandidateId: candidate.clientCandidateId, candidate, status: "saved", id });
+    duplicateRows.push(row);
   }
 
+  if (pendingInserts.length > 0) {
+    // One atomic insert avoids a database round trip per competition. The
+    // generated IDs keep response mapping stable regardless of row order.
+    const { error: insertError } = await supabase.from("sessions").insert(pendingInserts.map(({ row }) => row));
+    if (insertError) {
+      for (const { resultIndex } of pendingInserts) {
+        results[resultIndex] = { ...results[resultIndex], status: "error", id: undefined, message: `No results in this batch were saved. ${insertError.message}` };
+      }
+      for (const resultIndex of pendingDependentResults) {
+        results[resultIndex] = { ...results[resultIndex], status: "error", id: undefined, message: "This result was not saved because the batch failed." };
+      }
+    }
+  }
   return NextResponse.json({ results });
 }
