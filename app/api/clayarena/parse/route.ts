@@ -4,7 +4,9 @@ import { parseClayArenaResults, validateClayArenaUrl } from "@/lib/clayarena/par
 import { shooterProfileDisplayName, type ShooterProfile } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
-const MAX_PAGE_BYTES = 3_000_000;
+// International championships can contain hundreds of shooters and several
+// megabytes of server-rendered HTML. Keep a bound, but allow their results.
+const MAX_PAGE_BYTES = 8_000_000;
 
 function client(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -67,3 +69,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "We could not read this public ClayArena results page." }, { status: 502 });
   }
 }
+
+export const __test = { readLimitedHtml };
