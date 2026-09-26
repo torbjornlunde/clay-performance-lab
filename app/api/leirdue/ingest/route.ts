@@ -143,7 +143,7 @@ async function refreshStatus(service: Service, year: number, duration: number, e
 async function discoverYear(service: Service, year: number) {
   const html = await fetchHtml(`${BASE}?resultater=`);
   const events = eventLinksForYear(html, year);
-  if (events.length) await service.from("leirdue_event_index").upsert(events.map((event) => ({ ...event, year, ingestion_status: "pending", last_seen_at: new Date().toISOString(), updated_at: new Date().toISOString() })), { onConflict: "event_id" });
+  if (events.length) await service.from("leirdue_event_index").upsert(events.map((event) => ({ ...event, year, ingestion_status: "pending", last_seen_at: new Date().toISOString(), updated_at: new Date().toISOString() })), { onConflict: "event_id", ignoreDuplicates: true });
   return { eventsDiscovered: events.length };
 }
 
@@ -154,7 +154,7 @@ async function eventBatch(service: Service, year: number) {
     try {
       const html = await fetchHtml(event.source_url || eventMenuUrl(event.event_id));
       const lists = listeLinksFromHtml(html, event.event_id, year);
-      if (lists.length) await service.from("leirdue_result_list_index").upsert(lists.map((list) => ({ ...list, list_type: list.list_title, ingestion_status: "pending", updated_at: new Date().toISOString() })), { onConflict: "event_id,liste_id" });
+      if (lists.length) await service.from("leirdue_result_list_index").upsert(lists.map((list) => ({ ...list, list_type: list.list_title, ingestion_status: "pending", updated_at: new Date().toISOString() })), { onConflict: "event_id,liste_id", ignoreDuplicates: true });
       await service.from("leirdue_event_index").update({ ingestion_status: "completed", last_fetched_at: new Date().toISOString(), updated_at: new Date().toISOString(), ingestion_error: null }).eq("event_id", event.event_id);
       eventsProcessed += 1; listeIdsDiscovered += lists.length;
     } catch (error) {
