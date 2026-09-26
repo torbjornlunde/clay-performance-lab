@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v28.09.26", title: "Import results from large ClayArena competitions", bullets: ["Open public results pages with hundreds of shooters, including the Compak Sporting World Championship.", "Find your result when ClayArena shows your surname first with an extra profile initial, then review the score before saving."], href: "/import/clayarena", linkLabel: "Import a ClayArena result" },
   { id: "v27.09.26", title: "Import a full year of Leirdue.net results faster", bullets: ["Searches load all matching rows from the shared year index, including busy seasons with hundreds of source rows.", "Selected results are checked and saved together, while already imported results stay protected from duplicates."] },
   { id: "v26.09.26", title: "A calmer overview of your shooting", bullets: ["Dashboard shows recent results with one path to the full history and keeps coach reports close at hand.", "Result history focuses on saved results; competition activity lives on Performance, with less-used result actions under Details."] },
   { id: "v25.09.26", title: "Pick up training faster", bullets: ["Continue a draft or incomplete score sheet directly from Log training.", "Start a simple log or new score sheet with fewer choices on screen; detailed logging remains available when needed."] },

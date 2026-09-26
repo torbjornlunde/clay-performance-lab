@@ -33,11 +33,17 @@ function parseScore(value: string) {
 }
 
 function matchStatus(name: string, profileName: string): ClayArenaMatchStatus {
-  const reason = leirdueNameMatchReason(name, profileName);
+  // ClayArena sometimes renders the avatar initial directly before a
+  // "SURNAME, Given" result. Compare the actual name in natural order.
+  const commaName = name.match(/^\s*(?:([\p{L}])\s+)?([^,]+),\s*(.+?)\s*$/u);
+  const surname = commaName?.[2]?.trim() || "";
+  const avatarInitialMatches = !commaName?.[1] || commaName[1].toLocaleLowerCase() === surname[0]?.toLocaleLowerCase();
+  const comparableName = commaName && avatarInitialMatches ? `${commaName[3]} ${surname}` : name;
+  const reason = leirdueNameMatchReason(comparableName, profileName);
   if (reason === "exact normalized match" || reason === "diacritic-insensitive match") return "matched_to_you";
   if (reason === "partial/initial match" || reason === "fuzzy/possible match") return "possible_match";
   const tokens = (value: string) => decode(value).toLocaleLowerCase("en").split(/[^\p{L}\p{N}]+/u).filter(Boolean).sort().join("|");
-  if (tokens(name) && tokens(name) === tokens(profileName)) return "matched_to_you";
+  if (tokens(comparableName) && tokens(comparableName) === tokens(profileName)) return "matched_to_you";
   return "no_match";
 }
 
