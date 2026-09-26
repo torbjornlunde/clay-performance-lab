@@ -19,6 +19,12 @@ function load(path, dependencies = {}) {
 }
 
 const { readAllSharedRows } = load('lib/leirdue/paging.ts');
+const { runBoundedLeirdueBatches } = load('lib/leirdue/recentBackfill.ts');
+let clock = 0;
+const bounded = await runBoundedLeirdueBatches(async () => { clock += 31_000; return clock; }, { now: () => clock });
+assert.deepEqual(bounded, [31_000, 62_000, 93_000], 'daily backfill stops starting new batches at its time budget');
+assert.equal((await runBoundedLeirdueBatches(async () => 1)).length, 4, 'a healthy daily run advances multiple bounded batches');
+assert.equal((await runBoundedLeirdueBatches(async () => ({ hadPendingWork: false }), { shouldContinue: (batch) => batch.hadPendingWork })).length, 1, 'a settled year is refreshed only once');
 const records = Array.from({ length: 875 }, (_, id) => id);
 const pages = [];
 const lookup = await readAllSharedRows(async (start, end) => {
@@ -85,5 +91,8 @@ assert.match(cache, /readAllSharedRows<SharedResultRow>/, 'year lookup uses the 
 const refresh = readFileSync('app/api/leirdue/refresh-recent/route.ts', 'utf8');
 assert.match(refresh, /ignoreDuplicates: true/g, 'daily discovery preserves completed ingestion states');
 assert.match(refresh, /eq\("ingestion_status", "pending"\)/, 'unprocessed work is selected before refreshing completed lists');
+assert.match(refresh, /runBoundedLeirdueBatches\(\(\) => refreshRecent\(service\), \{ shouldContinue: \(batch\) => batch\.hadPendingWork \}\)/, 'scheduled refresh drains pending work and stops on a settled year');
+const adminIngest = readFileSync('app/api/leirdue/ingest/route.ts', 'utf8');
+assert.equal((adminIngest.match(/ignoreDuplicates: true/g) || []).length, 2, 'admin rediscovery does not return completed events and lists to pending');
 
 console.log('Leirdue full-year loading and bulk save tests passed');

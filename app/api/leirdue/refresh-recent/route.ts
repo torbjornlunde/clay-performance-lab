@@ -6,8 +6,10 @@ import { maybeSendLeirdueHealthEmailAlert } from "@/lib/leirdue/adminEmailAlerts
 import type { LeirdueJobHealthRow } from "@/lib/leirdue/jobHealth";
 import { isAuthorizedLeirdueRefreshRequest } from "@/lib/leirdue/refreshAuth";
 import { parseLeirdueSharedResultListHtml } from "@/lib/leirdue/parser";
+import { runBoundedLeirdueBatches } from "@/lib/leirdue/recentBackfill";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 240;
 
 const BASE = "https://www.leirdue.net/";
 const RECENT_WINDOW_DAYS = 14;
@@ -175,7 +177,8 @@ async function refreshRecent(service: Service, now = new Date()) {
       listsProcessed += 1; shooterRows += rows.length;
     } catch (error) { errors.push({ listeId: list.liste_id, error: String(error) }); }
   }
-  return { year, cutoff, eventsDiscovered, eventsProcessed, listsDiscovered, listsProcessed, shooterRows, errors };
+  const hadPendingWork = Boolean(pendingEvents?.length || pendingLists?.length || reviewLists?.length);
+  return { year, cutoff, eventsDiscovered, eventsProcessed, listsDiscovered, listsProcessed, shooterRows, errors, hadPendingWork };
 }
 
 export async function GET(request: Request) {
@@ -184,7 +187,21 @@ export async function GET(request: Request) {
   if (!service) return NextResponse.json({ error: "Missing service-role Supabase context." }, { status: 500 });
   const startedAt = new Date().toISOString();
   try {
-    const result = await refreshRecent(service);
+    // Each daily run advances several small batches. A single pass left a
+    // year-long backlog for months after discovery marked old work pending.
+    const batches = await runBoundedLeirdueBatches(() => refreshRecent(service), { shouldContinue: (batch) => batch.hadPendingWork });
+    const latest = batches.at(-1)!;
+    const result = {
+      year: latest.year,
+      cutoff: latest.cutoff,
+      eventsDiscovered: Math.max(...batches.map((batch) => batch.eventsDiscovered)),
+      eventsProcessed: batches.reduce((total, batch) => total + batch.eventsProcessed, 0),
+      listsDiscovered: batches.reduce((total, batch) => total + batch.listsDiscovered, 0),
+      listsProcessed: batches.reduce((total, batch) => total + batch.listsProcessed, 0),
+      shooterRows: batches.reduce((total, batch) => total + batch.shooterRows, 0),
+      errors: batches.flatMap((batch) => batch.errors),
+      batchesRun: batches.length,
+    };
     await updateYearCoverage(service, result.year);
     const status = result.errors.length === 0 ? "success" : result.shooterRows > 0 || result.listsProcessed > 0 || result.eventsProcessed > 0 ? "partial" : "failed";
     await recordJobHealth(service, { startedAt, status, refreshedCount: result.shooterRows, errorCount: result.errors.length, failureReason: result.errors.length ? JSON.stringify(result.errors.slice(-3)) : null, affectedScope: { year: result.year, recentWindowDays: RECENT_WINDOW_DAYS, cutoff: result.cutoff, eventsDiscovered: result.eventsDiscovered, eventsProcessed: result.eventsProcessed, listsDiscovered: result.listsDiscovered, listsProcessed: result.listsProcessed } });
