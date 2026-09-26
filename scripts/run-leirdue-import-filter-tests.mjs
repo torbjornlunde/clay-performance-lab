@@ -91,7 +91,7 @@ assert.match(leirdueSearchRoute, /shared\.stats\.ok && shared\.stats\.reviewable
 assert.match(leirdueSearchRoute, /Shared cache unavailable; live\/cached fallback continued\./, 'shared cache read errors continue into live/cached fallback');
 assert.match(leirdueSearchRoute, /live\/cached fallback continued/, 'empty incomplete shared cache continues into fallback search');
 const leirdueCache = readFileSync('lib/leirdue/cache.ts', 'utf8');
-assert.match(leirdueCache, /sharedLeirdueNameRetrievalPattern[\s\S]*\.ilike\("normalized_name", variantPattern\)/, 'shared-index lookup retrieves first/last variants before conservative matching');
+assert.match(leirdueCache, /sharedLeirdueNameRetrievalPattern[\s\S]*readNameRows\("variant", variantPattern\)/, 'shared-index lookup retrieves first/last variants before conservative matching');
 assert.match(leirdueCache, /orderSharedRowsByDisciplinePreference\(nameMatchedRows, input\.disciplines\)/, 'shared-index discipline choices order rather than hide valid name matches');
 assert.doesNotMatch(leirdueCache, /nameMatchedRows\.filter\(\(row\) => sharedDisciplineMatches/, 'shared-index lookup does not discard valid rows because of discipline defaults');
 assert.match(page, /setDisciplines\(preferredDisciplines\)/, 'recognized profile disciplines replace the old hard-coded defaults');
