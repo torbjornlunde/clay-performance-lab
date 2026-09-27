@@ -77,7 +77,7 @@ Disse beslutningene skal ikke åpnes på nytt uten en tydelig ny begrunnelse.
 13. **AI må være datagrunnlagt og ærlig.** Den skal ikke finne på årsaker eller presentere spekulasjon som fakta.
 14. **AI App Copilot skal ikke endre viktig data i skjul.** Viktige handlinger må forhåndsvises og bekreftes.
 15. **Betaling og roller er separate systemer.** Pro gir ikke automatisk tilgang til andres data.
-16. **Closed beta skal ikke ha synlige paywalls.** Godkjente beta-/adminbrukere skal i praksis ha Pro-lignende tilgang mens billing er skjult.
+16. **Åpen beta skal ikke ha synlige paywalls.** Registrerte brukere skal i praksis ha Pro-lignende tilgang mens billing er skjult. Admin kan pause eller stenge kontoer.
 17. **Betalte AI-kall skal gates server-side.** Frontend alene er ikke sikkerhet.
 18. **Kjernefriksjon fra ekte bruk går foran spekulative funksjoner.**
 19. **En funksjon er først ferdig når kode, database og faktisk brukerflyt er kontrollert.**
@@ -96,8 +96,8 @@ Disse beslutningene skal ikke åpnes på nytt uten en tydelig ny begrunnelse.
 
 ### 4.1 Beta, tilgang og drift
 
-- Closed beta-tilgang og godkjenningsflyt.
-- Adminvisning for beta approvals.
+- Åpen betatilgang etter e-postbekreftelse, med adminstyrt pause, stenging og fjerning av kontoer.
+- Søkbar, filtrerbar og sorterbar brukerliste for admin; eldre beta approval-data bevares for historikk.
 - Feedback-innsending med admintriage og skjermbildevedlegg.
 - Export my data.
 - Hidden Free/Pro entitlement foundation.

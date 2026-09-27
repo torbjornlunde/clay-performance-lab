@@ -6,18 +6,19 @@ import type { UserAccessProfile } from "@/lib/access";
 import { supabase } from "@/lib/supabase/client";
 
 function copyForStatus(status: UserAccessProfile["access_status"] | null | undefined) {
-  if (status === "rejected" || status === "revoked") {
+  if (status === "paused") return { title: "Account paused", body: "Your account is temporarily paused. Your saved data is still here.", note: "Contact support if this seems unexpected." };
+  if (status === "rejected" || status === "revoked" || status === "removed") {
     return {
       title: "Access not available",
-      body: "Your account does not currently have access to Clay Performance Lab.",
+      body: "This account has been closed and cannot use Clay Performance Lab.",
       note: "",
     };
   }
 
   return {
     title: "Account pending approval",
-    body: "Clay Performance Lab is currently in closed beta. Your account has been created, but access must be approved before you can use the app.",
-    note: "If you were invited as a beta tester, please wait for approval from the app owner.",
+    body: "We could not activate your account yet. Please try signing in again or contact support.",
+    note: "",
   };
 }
 

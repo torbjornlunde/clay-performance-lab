@@ -25,12 +25,10 @@ export default function HomeEntry() {
           <p>Plan sessions, view schemes, log misses, save results, and track your progress over time.</p>
         </div>
         <div className="btns heroActions">
-          <Link href="/login" className="button">
-            Login / create account
+          <Link href="/login?signup=1" className="button">
+            Get started
           </Link>
-          <Link href="/join-beta" className="button secondary">
-            Join the closed beta
-          </Link>
+          <Link href="/login" className="button secondary">Sign in</Link>
         </div>
       </div>
     </main>

@@ -26,6 +26,10 @@ export default function LoginPage() {
   const entrySession = useEntrySession();
 
   useEffect(() => {
+    if (window.location.search.includes("signup=1")) setMode("signUp");
+  }, []);
+
+  useEffect(() => {
     if (entrySession === "authenticated") router.replace("/dashboard");
   }, [entrySession, router]);
 
@@ -107,7 +111,7 @@ export default function LoginPage() {
     }
 
     if (mode === "signUp") {
-      setMsg("Account created. After email confirmation, sign in to request closed beta approval.");
+      setMsg("Account created. Confirm your email, then sign in to get started.");
       setMessageKind("success");
       setMode("signIn");
       setPassword("");
@@ -139,9 +143,9 @@ export default function LoginPage() {
             <h2>{title}</h2>
           </div>
         </div>
-        <p className="compactCopy">Closed beta access is reviewed after account creation.</p>
+        <p className="compactCopy">Create an account and confirm your email to get started.</p>
         <p className="small muted compactCopy">
-          New beta tester? Create an account using the email you were invited with. If you already created an account but cannot log in, use Forgot password.
+          Already have an account? Sign in below. If you cannot log in, use Forgot password.
         </p>
 
         <label htmlFor="email">Email</label>

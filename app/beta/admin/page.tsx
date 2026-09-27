@@ -56,7 +56,7 @@ function isInterestApproved(interest: BetaInterestSubmission | null) {
 }
 
 function isRejectedOrRevoked(item: ApprovalInboxItem) {
-  return item.user?.access_status === "rejected" || item.user?.access_status === "revoked" || item.interest?.admin_status === "rejected";
+  return item.user?.access_status === "rejected" || item.user?.access_status === "revoked" || item.user?.access_status === "paused" || item.user?.access_status === "removed" || item.interest?.admin_status === "rejected";
 }
 
 function hasEmailIssue(item: ApprovalInboxItem) {
@@ -201,7 +201,7 @@ export default function BetaAdminPage() {
     () => ({
       pending: groupUsers(users, "pending"),
       approved: groupUsers(users, "approved"),
-      restricted: users.filter((user) => user.access_status === "rejected" || user.access_status === "revoked"),
+      restricted: users.filter((user) => ["rejected", "revoked", "paused", "removed"].includes(user.access_status)),
     }),
     [users],
   );
@@ -527,7 +527,7 @@ export default function BetaAdminPage() {
 
             <UserSection title="Pending users" users={grouped.pending} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
             <UserSection title="Approved users" users={grouped.approved} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
-            <UserSection title="Rejected / revoked users" users={grouped.restricted} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
+            <UserSection title="Restricted users" users={grouped.restricted} currentUser={me} saving={saving} onUpdate={updateUserAccess} />
 
             <section className="subcard">
             <div className="sectionHeader">
@@ -781,7 +781,7 @@ function ApprovalInboxCard({
   const accountApproved = user ? user.access_status === "approved" : true;
   const approved = user ? user.access_status === "approved" : interestApproved || Boolean(accessEntry && !interest);
   const fullyHandled = accountApproved && (!interest || interestApproved || Boolean(accessEntry));
-  const rejected = user?.access_status === "rejected" || user?.access_status === "revoked" || interest?.admin_status === "rejected";
+  const rejected = user?.access_status === "rejected" || user?.access_status === "revoked" || user?.access_status === "paused" || user?.access_status === "removed" || interest?.admin_status === "rejected";
   const canApprove = !fullyHandled && !rejected && Boolean(user || interest);
   const canReject = !approved && !rejected && Boolean(user || interest);
   const emailFailed = Boolean(interest && (["bounced", "failed", "suppressed"].includes(interest.approval_email_delivery_status || "") || interest.approval_email_error));

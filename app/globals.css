@@ -10380,3 +10380,24 @@ select {
   max-height: 70vh;
   object-fit: contain;
 }
+.adminUserFilters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.adminUserFilters label { min-width: 0; }
+.adminUserFilters input, .adminUserFilters select { width: 100%; min-width: 0; font-size: 16px; }
+.adminUserList { display: grid; gap: 10px; }
+.adminUserRow { display: flex; justify-content: space-between; align-items: start; gap: 16px; min-width: 0; }
+.adminUserIdentity { min-width: 0; overflow-wrap: anywhere; }
+.adminUserIdentity h3 { margin: 0; }
+.adminUserControls { display: grid; justify-items: end; gap: 12px; min-width: 0; }
+.adminUserControls .tableActions { flex-wrap: wrap; justify-content: flex-end; }
+.adminUserPagination { align-items: center; justify-content: space-between; margin-top: 18px; }
+@media (max-width: 600px) {
+  .adminUserRow { display: block; }
+  .adminUserControls { justify-items: start; margin-top: 12px; }
+  .adminUserControls .tableActions { justify-content: flex-start; }
+}
