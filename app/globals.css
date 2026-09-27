@@ -10390,17 +10390,24 @@ select {
 .adminUserFilters label { min-width: 0; }
 .adminUserFilters input, .adminUserFilters select { width: 100%; min-width: 0; font-size: 16px; }
 .adminUserList { display: grid; gap: 10px; }
-.adminUserRow { display: flex; justify-content: space-between; align-items: start; gap: 16px; min-width: 0; }
-.adminUserIdentity { min-width: 0; overflow-wrap: anywhere; }
-.adminUserIdentity h3 { margin: 0; }
-.adminUserControls { display: grid; justify-items: end; gap: 12px; min-width: 0; }
-.adminUserControls .tableActions { flex-wrap: wrap; justify-content: flex-end; }
+.adminUserRow { min-width: 0; padding: 0; overflow: hidden; }
+.adminUserRow h3 { margin: 0; }
+.adminUserNameButton { width: 100%; min-height: 48px; padding: 12px 16px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; display: flex; justify-content: space-between; align-items: center; gap: 16px; overflow-wrap: anywhere; cursor: pointer; }
+.adminUserNameButton:hover { background: var(--surface-2, rgba(100, 140, 170, .08)); }
+.adminUserNameButton:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.adminUserDetails { border-top: 1px solid var(--border); padding: 16px; min-width: 0; }
+.adminUserDetailSections { display: grid; gap: 22px; }
+.adminUserDetailSections h4 { margin: 0 0 10px; }
+.adminUserDetailGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px 20px; margin: 0; }
+.adminUserDetailGrid > div { min-width: 0; }
+.adminUserDetailGrid dt { font-size: .8rem; color: var(--muted); }
+.adminUserDetailGrid dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.adminUserRecentEvents { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.adminUserRecentEvents li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; overflow-wrap: anywhere; }
+.adminUserRecentEvents time { color: var(--muted); font-size: .875rem; }
+.adminUserDetailActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px; }
+.adminUserDetailActions button { min-height: 44px; }
 .adminUserPagination { align-items: center; justify-content: space-between; margin-top: 18px; }
-@media (max-width: 600px) {
-  .adminUserRow { display: block; }
-  .adminUserControls { justify-items: start; margin-top: 12px; }
-  .adminUserControls .tableActions { justify-content: flex-start; }
-}
 .personalNotesFilters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; margin-bottom: 18px; }
 .personalNotesFilters input, .personalNotesFilters select { width: 100%; min-height: 44px; font-size: 16px; }
 .personalNotesList { display: grid; gap: 12px; margin-bottom: 16px; }
