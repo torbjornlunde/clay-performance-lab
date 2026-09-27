@@ -14,6 +14,11 @@ assert.match(migration, /unique nulls not distinct \(user_id, session_id, note_s
 assert.match(migration, /revoke all on public\.private_session_notes from anon/i, 'no public anon access');
 
 const page = readFileSync('app/sessions/[id]/page.tsx', 'utf8');
+const journal = readFileSync('app/notes/page.tsx', 'utf8');
+assert.match(journal, /openReviewId === note\.id && session\.session_type === "Competition" && note\.note_scope === "session"/, 'only a saved competition session reflection opens the review');
+assert.match(journal, /<ReflectionEvidenceReview sessionId=\{session\.id\} note=\{\{ id: note\.id, body: note\.body, updated_at: note\.updated_at \}\}/, 'journal reuses the reviewed evidence flow for the exact saved note');
+assert.match(journal, /Only suggestions you accept[\s\S]*raw note stays private/, 'journal distinguishes accepted context from raw note text');
+assert.doesNotMatch(journal, /recordAnalyticsEvent|aiEvidencePacket/, 'journal does not send raw note text to analytics or a report');
 assert.match(page, /Private notes/, 'UI contains Private notes section');
 assert.match(page, /Only you can see these notes\./, 'UI says notes are private');
 assert.match(page, /Save session note/, 'session-level note save exists');
