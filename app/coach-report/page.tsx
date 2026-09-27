@@ -36,7 +36,7 @@ function localDateInput(date: Date) {
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
-function defaultFromDate() { const date = new Date(); date.setMonth(date.getMonth() - 1); return localDateInput(date); }
+function defaultFromDate(audience: "shooter" | "coach") { const date = new Date(); if (audience === "shooter") date.setFullYear(date.getFullYear() - 1); else date.setMonth(date.getMonth() - 1); return localDateInput(date); }
 function defaultToDate() { return localDateInput(new Date()); }
 function sessionDate(session: CoachReportPeriodSession) { return String(session.competition_date || session.created_at || "").slice(0, 10); }
 function inRange(session: CoachReportPeriodSession, from: string, to: string) { const date = sessionDate(session); return (!from || date >= from) && (!to || date <= to); }
@@ -52,7 +52,7 @@ function typeLabel(session: CoachReportPeriodSession) { return String(session.se
 export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach" }) {
   const shooterView = audience === "shooter";
   const router = useRouter();
-  const [fromDate, setFromDate] = useState(defaultFromDate);
+  const [fromDate, setFromDate] = useState(() => defaultFromDate(audience));
   const [toDate, setToDate] = useState(defaultToDate);
   const [sessions, setSessions] = useState<CoachReportPeriodSession[]>([]);
   const [misses, setMisses] = useState<MissRow[]>([]);
@@ -200,7 +200,7 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
       <p className="small muted"><Link href="/dashboard">← Back to dashboard</Link></p>
       <nav className="analysisPath" aria-label="Analysis areas"><Link href="/stats">Performance <small>Results and trends</small></Link><Link href="/lab-insights" aria-current={shooterView ? "page" : undefined}>Lab Insights <small>What to work on and how</small></Link><Link href="/coach-report" aria-current={shooterView ? undefined : "page"}>Coach brief <small>Prepare for your coach</small></Link></nav>
       <div className="coachReportHeroHeader"><div><h1>{shooterView ? "Lab Insights" : "Coach brief"}</h1><p className="muted">{fromDate} to {toDate}</p></div><button type="button" onClick={generateAiReport} disabled={selectedSessions.length === 0 || aiStatus.startsWith("Generating")}>{shooterView ? "Generate Lab Insights" : "Generate Coach brief"}</button></div>
-      <p className="small muted">{shooterView ? "Explore patterns in your shooting, decide what to work on, and find ways to train it. AI suggestions are hypotheses to test, not diagnoses from watching you shoot." : "Prepare evidence and open questions for a coach. Review the private preview before choosing to copy and share it."}</p>
+      <p className="small muted">{shooterView ? "Explore longer-term patterns and ways to train them. The starting range is 12 months; adjust it below. AI suggestions are hypotheses to test, not diagnoses from watching you shoot." : "Prepare evidence and open questions for a coach. Review the private preview before choosing to copy and share it."}</p>
       <div className="coachReportDateGrid"><label>From date<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>To date<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label></div>
       {notesForSelected.length > 0 && <div className="analysisPrivateNotesControl"><label className="checkboxRow"><input type="checkbox" checked={includeNotesContext} onChange={(event) => setIncludeNotesContext(event.target.checked)} /><span>Include reviewed context</span></label><p className="small muted">Only explicit context tags and current accepted reflection evidence are included. Raw private note text is not interpreted.</p></div>}
       <div className="btns"><button className="button secondary" type="button" onClick={() => void updatePreview()} disabled={selectedSessions.length === 0}>Update evidence preview</button>{previewNeedsUpdate && <span className="warningInline">Evidence preview needs update</span>}</div>

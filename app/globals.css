@@ -10412,6 +10412,40 @@ select {
 .analysisPath a[aria-current="page"] { border-color: var(--accent); background: var(--surface-2, rgba(100, 140, 170, .08)); }
 .analysisPath small { color: var(--muted); font-size: .78rem; font-weight: 400; }
 @media (max-width: 600px) { .analysisPath { grid-template-columns: 1fr; } .analysisPath a { min-height: 44px; } }
+.dashboardMain .polishedDashboardHero { gap: 12px; }
+.dashboardMain .dashboardPrimaryActions { gap: 8px; }
+.dashboardMain .dashboardActionCard { min-height: 70px; padding: 12px 14px; gap: 2px; border-radius: 14px; }
+.dashboardMain .dashboardActionCard small { font-size: .82rem; font-weight: 500; }
+.dashboardMain .dashboardLabCard { position: relative; border-color: var(--border-accent); background: radial-gradient(circle at 100% 0%, rgba(216, 165, 58, .28), transparent 70%), var(--surface-raised); padding-right: 32px; }
+.dashboardMain .dashboardLabCard::after { content: "✦"; position: absolute; right: 10px; top: 9px; color: var(--gold2); font-size: 19px; }
+.dashboardCoachLink { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--text-primary); font-size: .875rem; font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
+.dashboardMain .dashboardTrendCard { cursor: default; padding: 18px; }
+.dashboardMain .dashboardTrendHeader { align-items: center; margin-bottom: 8px; gap: 12px; }
+.dashboardMain .dashboardTrendHeader .eyebrow { margin-bottom: 4px; }
+.dashboardTrendLink { flex: 0 0 auto; color: var(--text-primary); font-size: .82rem; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; }
+.dashboardMain .dashboardPeriodControls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 12px 0; }
+.dashboardMain .dashboardPeriodControls .periodButton { width: 100%; min-height: 42px; padding: 6px 4px; font-size: .875rem; }
+.dashboardTrendFooter { display: grid; gap: 2px; margin-top: 8px; }
+.dashboardMiniLegend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--text-secondary); font-size: .8rem; }
+.dashboardMiniLegend span { display: inline-flex; align-items: center; gap: 6px; }
+.dashboardMiniLegend i { width: 17px; height: 3px; border-radius: 3px; background: var(--gold2); }
+.dashboardMiniLegend .dashboardLegendBlue { background: #3984ad; border-top: 1px dashed #3984ad; }
+.dashboardTrendDetails { color: var(--text-secondary); font-size: .8rem; }
+.dashboardTrendDetails summary { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.dashboardTrendDetails p { margin: 0 0 4px; line-height: 1.45; }
+.dashboardResultsHeader { align-items: center; gap: 8px; }
+.dashboardResultsHeader .sectionHeaderActions { justify-content: flex-end; }
+.dashboardResultsLink { display: inline-flex; align-items: center; min-height: 44px; color: var(--text-primary); font-size: .875rem; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+@media (max-width: 720px) {
+  .dashboardMain .polishedDashboardHero { padding: 16px; }
+  .dashboardMain .dashboardPrimaryActions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboardMain .dashboardActionCard { min-width: 0; min-height: 68px; }
+  .dashboardMain .dashboardTrendHeader { align-items: flex-start; }
+  .dashboardMain .dashboardTrendHeader h2 { font-size: 1.35rem; }
+  .dashboardTrendLink { text-align: right; max-width: 105px; }
+  .dashboardMain .dashboardPerformanceChart { height: 130px; }
+  .dashboardResultsHeader h2 { font-size: 1.35rem; }
+}
 .adminUserPagination { align-items: center; justify-content: space-between; margin-top: 18px; }
 .personalNotesFilters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; margin-bottom: 18px; }
 .personalNotesFilters input, .personalNotesFilters select { width: 100%; min-height: 44px; font-size: 16px; }

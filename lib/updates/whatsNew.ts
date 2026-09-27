@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v35.09.26", title: "See the bigger picture in Lab Insights", bullets: ["Start with a full year of results when exploring training priorities, and adjust the dates whenever you need.", "Find Dashboard actions and the Performance trend with less clutter on your phone; chart details remain available when you open them."], href: "/lab-insights", linkLabel: "Open Lab Insights" },
   { id: "v34.09.26", title: "Turn results into a training direction", bullets: ["Open Lab Insights to explore patterns, priorities and ways to train, with AI suggestions kept separate from observed results.", "Use Performance for the numbers and Coach brief when you want to bring evidence and questions to a coach."], href: "/lab-insights", linkLabel: "Open Lab Insights" },
   { id: "v33.09.26", title: "Review reflections from your journal", bullets: ["Open a saved competition note and review optional coaching suggestions without leaving Personal notes.", "Only the suggestions you accept can support Coach Report; your raw note is not silently interpreted."], href: "/notes", linkLabel: "Open personal notes" },
   { id: "v32.09.26", title: "Find your personal notes", bullets: ["See your saved competition and training notes together in a private journal.", "Filter by discipline, search your loaded notes and open the session to edit or review your reflection."], href: "/notes", linkLabel: "Open personal notes" },

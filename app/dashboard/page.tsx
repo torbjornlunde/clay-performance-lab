@@ -487,10 +487,6 @@ function PerformanceTrendCard({
     ? padding + (bounds.maxPercentage - 100) * ((height - padding * 2) / bounds.range)
     : baselineY;
 
-  function openStats() {
-    router.push("/stats");
-  }
-
   function handlePointClick(point: TrendPoint) {
     if (selectedPointId === point.id) {
       router.push(`/sessions/${point.id}`);
@@ -500,26 +496,24 @@ function PerformanceTrendCard({
   }
 
   return (
-    <section className="card dashboardTrendCard" aria-labelledby="trend-heading" onClick={openStats} role="link" tabIndex={0} onKeyDown={(event) => {
-      if (event.key === "Enter") openStats();
-    }}>
+    <section className="card dashboardTrendCard" aria-labelledby="trend-heading">
       <div className="sectionHeader dashboardTrendHeader">
         <div>
-          <p className="eyebrow">Stats shortcut</p>
+          <p className="eyebrow">Your form</p>
           <h2 id="trend-heading">Performance trend</h2>
-          <p className="small muted trendHint">Performance vs winning score over time. Rolling average shows your trend across the latest 5 results.</p>
+          <p className="small muted trendHint">{filteredScored.length} results · Compared with winning scores</p>
         </div>
-        <span className="pill"><strong>{filteredScored.length}</strong> shown</span>
+        <Link href="/stats" className="dashboardTrendLink">View Performance <span aria-hidden="true">→</span></Link>
       </div>
-      <div className="periodControls" onClick={(event) => event.stopPropagation()}>
+      <div className="periodControls dashboardPeriodControls" aria-label="Chart period">
         {(["month", "year", "all", "custom"] as ChartPeriod[]).map((option) => (
-          <button key={option} type="button" className={`periodButton ${period === option ? "activePeriod" : ""}`} onClick={() => setPeriod(option)}>
-            {option === "month" ? "Last month" : option === "year" ? "Last year" : option === "all" ? "All" : "Custom"}
+          <button key={option} type="button" className={`periodButton ${period === option ? "activePeriod" : ""}`} aria-pressed={period === option} aria-label={option === "month" ? "Last month" : option === "year" ? "Last year" : option === "all" ? "All time" : "Custom dates"} onClick={() => setPeriod(option)}>
+            {option === "month" ? "1 mo" : option === "year" ? "1 yr" : option === "all" ? "All" : "Dates"}
           </button>
         ))}
       </div>
       {period === "custom" && (
-        <div className="customPeriodControls" onClick={(event) => event.stopPropagation()}>
+        <div className="customPeriodControls">
           <label>
             From
             <input type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} />
@@ -532,7 +526,7 @@ function PerformanceTrendCard({
       )}
       {/* Future: add year-over-year comparison. */}
       {points.length === 0 ? (
-        <div className="emptyState compactEmptyState" onClick={(event) => event.stopPropagation()}>
+        <div className="emptyState compactEmptyState">
           Add or import results to see your performance trend.
         </div>
       ) : (
@@ -561,9 +555,8 @@ function PerformanceTrendCard({
               </g>
             ))}
           </svg>
-          <p className="dashboardScaleNote">Scale adjusted to highlight variation.</p>
           {selectedPoint && (
-            <div className="chartPreview" onClick={(event) => event.stopPropagation()}>
+            <div className="chartPreview">
               <strong>{selectedPoint.name}</strong>
               <span>{formatDate(selectedPoint.date)}</span>
               <span>{selectedPoint.discipline}{selectedPoint.shootingGround ? ` · ${selectedPoint.shootingGround}` : ""}</span>
@@ -575,12 +568,9 @@ function PerformanceTrendCard({
               <small>Tap point again to open.</small>
             </div>
           )}
-          <div className="chartLegend dashboardChartLegend">
-            <span>Oldest {formatDate(points[0].date)}</span>
-            <span>Newest {formatDate(points[points.length - 1].date)}</span>
-            <span>Performance</span>
-            <span>Rolling average · Last 5 results</span>
-            <span>Entries without winning score skipped</span>
+          <div className="dashboardTrendFooter">
+            <div className="dashboardMiniLegend"><span><i className="dashboardLegendGold" aria-hidden="true" /> Performance</span><span><i className="dashboardLegendBlue" aria-hidden="true" /> 5-result average</span></div>
+            <details className="dashboardTrendDetails"><summary>About this chart</summary><p>From {formatDate(points[0].date)} to {formatDate(points[points.length - 1].date)}. Results without a winning score are excluded. The scale highlights variation. Tap a point for its result; tap it again to open the session.</p></details>
           </div>
         </div>
       )}
@@ -674,44 +664,42 @@ export default function DashboardPage() {
       <div className="heroCard dashboardHero polishedDashboardHero">
         <div className="dashboardTopRow">
           <div>
-            <p className="eyebrow">Shooter workspace</p>
+            <p className="eyebrow">Your shooting</p>
             <h2>Dashboard</h2>
-            <p className="dashboardHeroCopy">Your recent shooting and next steps.</p>
           </div>
 
         </div>
         <div className="dashboardPrimaryActions" aria-label="Dashboard product areas">
           <Link href="/log-competition" className="dashboardActionCard secondaryAction">
             <span>Log competition</span>
-            <small>Record competition results manually, from scorecards, or from supported result services.</small>
+            <small>Add a result</small>
           </Link>
           <Link href="/log-training" className="dashboardActionCard secondaryAction">
             <span>Log training</span>
-            <small>Create training score sheets, personal training logs, or simple training results.</small>
+            <small>Record practice</small>
           </Link>
           <Link href="/stats" className="dashboardActionCard secondaryAction">
             <span>Performance</span>
-            <small>See your results, form and trends in numbers.</small>
+            <small>Results and trends</small>
           </Link>
-          <Link href="/lab-insights" className="dashboardActionCard secondaryAction">
+          <Link href="/lab-insights" className="dashboardActionCard secondaryAction dashboardLabCard">
             <span>Lab Insights</span>
-            <small>Find patterns, what to work on and ways to train it.</small>
+            <small>What to work on next</small>
           </Link>
         </div>
-        <p className="small muted">Working with a coach? <Link href="/coach-report">Prepare a Coach brief</Link> with evidence and questions to discuss.</p>
+        <Link className="dashboardCoachLink" href="/coach-report">Working with a coach? Prepare a Coach brief <span aria-hidden="true">→</span></Link>
       </div>
 
       <PerformanceTrendCard sessions={sessions} missCounts={missCounts} />
 
       <section className="card dashboardSectionCard" aria-labelledby="results-heading">
-        <div className="sectionHeader listSectionHeader">
+        <div className="sectionHeader listSectionHeader dashboardResultsHeader">
           <div>
-            <p className="eyebrow">Competitions and scores</p>
-            <h2 id="results-heading">Results</h2>
+            <p className="eyebrow">Competitions</p>
+            <h2 id="results-heading">Recent results</h2>
           </div>
           <div className="sectionHeaderActions">
-            {!loading && <span className="countPill">{results.length}</span>}
-            <Link href="/results" className="button secondary smallButton">View all results</Link>
+            <Link href="/results" className="dashboardResultsLink">All results{!loading ? ` (${results.length})` : ""} <span aria-hidden="true">→</span></Link>
           </div>
         </div>
         {loading ? (
