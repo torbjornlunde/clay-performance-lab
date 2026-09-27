@@ -16,7 +16,7 @@ assert.deepEqual(tags.normalizeCompetitionContextTags(null), []);
 assert.equal(tags.shortCompetitionReflectionMaxLength("Brief reflection"), 600);
 assert.equal(tags.shortCompetitionReflectionMaxLength("x".repeat(601)), undefined, "an existing long Competition note remains unrestricted in quick context");
 const page = readFileSync("app/sessions/[id]/page.tsx", "utf8");
-for (const text of ["How did it go?", "Short reflection", "Save context", "Describe missed targets"]) assert(page.includes(text), `${text} remains reachable`);
+for (const text of ["Personal note", "Save note", "Save context", "Describe missed targets"]) assert(page.includes(text), `${text} remains reachable`);
 assert.match(page, /aria-pressed=\{selected\}/);
 assert.match(page, /current\.filter\(\(id\) => id !== tag\.id\)/);
 assert.match(page, /body: pending\.body, context_tags/);

@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { buildEquipmentSnapshot, ammoSummary, chokeLabelFromAssignment, slotLabel, weaponOptionLabel, weaponSummary, weaponTechnicalSummary, type EquipmentAmmo, type EquipmentAssignment, type EquipmentChoke, type EquipmentSelection, type EquipmentWeapon } from "@/lib/equipment/logSnapshots";
 import { supabase } from "@/lib/supabase/client";
 
-type Props = { value: EquipmentSelection; onChange: (selection: EquipmentSelection, snapshot: any) => void; defaultOpen?: boolean };
+type Props = { value: EquipmentSelection; onChange: (selection: EquipmentSelection, snapshot: any) => void; defaultOpen?: boolean; suggestDefaults?: boolean };
 
 const emptySelection: EquipmentSelection = { weaponId: "", ammunitionId: "", includeChokes: true };
 
-export function EquipmentUsedSelector({ value, onChange, defaultOpen = false }: Props) {
+export function EquipmentUsedSelector({ value, onChange, defaultOpen = false, suggestDefaults = true }: Props) {
   const [weapons, setWeapons] = useState<EquipmentWeapon[]>([]);
   const [ammo, setAmmo] = useState<EquipmentAmmo[]>([]);
   const [assignments, setAssignments] = useState<EquipmentAssignment[]>([]);
@@ -36,8 +36,10 @@ export function EquipmentUsedSelector({ value, onChange, defaultOpen = false }: 
     const nextChokes = (ch.data || []) as EquipmentChoke[];
     setWeapons(nextWeapons); setAmmo(nextAmmo); setAssignments(nextAssignments); setChokes(nextChokes); setLoading(false);
     const next = { ...value };
-    if (!next.weaponId) next.weaponId = nextWeapons.find((item) => item.is_default)?.id || "";
-    if (!next.ammunitionId) next.ammunitionId = nextAmmo.find((item) => item.is_default)?.id || "";
+    if (suggestDefaults) {
+      if (!next.weaponId) next.weaponId = nextWeapons.find((item) => item.is_default)?.id || "";
+      if (!next.ammunitionId) next.ammunitionId = nextAmmo.find((item) => item.is_default)?.id || "";
+    }
     if (next.weaponId || next.ammunitionId) onChange(next, buildEquipmentSnapshot(next, nextWeapons, nextAmmo, nextAssignments, nextChokes));
   }
 

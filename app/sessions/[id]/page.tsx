@@ -30,8 +30,9 @@ import {
 } from "@/lib/quick-score/metadata";
 import { equipmentSnapshotLines } from "@/lib/equipment/logSnapshots";
 import ScorecardEvidenceSection from "@/app/components/ScorecardEvidenceSection";
+import { CompetitionEquipmentReview } from "@/app/components/CompetitionEquipmentReview";
 import { deleteSessionWithEvidenceCleanup } from "@/lib/sessionDeletion";
-import { COMPETITION_CONTEXT_TAGS, normalizeCompetitionContextTags, shortCompetitionReflectionMaxLength } from "@/lib/competitionContext";
+import { COMPETITION_CONTEXT_TAGS, normalizeCompetitionContextTags } from "@/lib/competitionContext";
 import { isPostBasedScorecardImportDiscipline } from "@/lib/scorecards/scorecardProfiles";
 
 type Miss = {
@@ -915,22 +916,29 @@ export default function Page() {
 
       {session.session_type === "Competition" && (
         <section className="card competitionContextCard" id="competition-context" aria-labelledby="competition-context-heading">
-          <p className="eyebrow">Optional private context</p>
-          <h2 id="competition-context-heading">How did it go?</h2>
-          <p className="small muted">Mark anything that felt relevant. These are your own observations, not proven causes.</p>
-          <div className="competitionContextTags" aria-label="Competition context tags">
-            {COMPETITION_CONTEXT_TAGS.map((tag) => {
-              const selected = contextTags.includes(tag.id);
-              return <button key={tag.id} type="button" className={`competitionContextTag${selected ? " selected" : ""}`} aria-pressed={selected} onClick={() => setContextTags((current) => selected ? current.filter((id) => id !== tag.id) : [...current, tag.id])}>{tag.label}</button>;
-            })}
-          </div>
-          <label htmlFor="competition-reflection">Short reflection</label>
-          <textarea id="competition-reflection" maxLength={shortCompetitionReflectionMaxLength(noteDrafts.session || "")} value={noteDrafts.session || ""} onChange={(event) => setNoteDraft("session", event.target.value, "session")} placeholder="What felt important overall?" />
+          <p className="eyebrow">After the competition</p>
+          <h2 id="competition-context-heading">Add your own details</h2>
+          <label htmlFor="competition-reflection">Personal note</label>
+          <textarea id="competition-reflection" value={noteDrafts.session || ""} onChange={(event) => setNoteDraft("session", event.target.value, "session")} placeholder="What felt important overall? What would you train next time?" />
           <div className="btns compactActions">
-            <button type="button" className="smallButton" disabled={noteSavingKey === "session"} onClick={() => void savePrivateNote("session")}>{noteSavingKey === "session" ? "Saving..." : "Save context"}</button>
-            <span className="small muted">Optional — you can edit this later.</span>
+            <button type="button" className="smallButton" disabled={noteSavingKey === "session"} onClick={() => void savePrivateNote("session")}>{noteSavingKey === "session" ? "Saving..." : "Save note"}</button>
+            {noteFor("session") && <button type="button" className="secondary smallButton" disabled={noteSavingKey === "session"} onClick={() => void deletePrivateNote("session")}>Clear note</button>}
             {noteStatus.session && <span className="small privateNoteSyncStatus" role="status">{noteStatus.session}</span>}
           </div>
+          <details className="detailAccordion aftercareContextDetails">
+            <summary>What affected your round? (optional)</summary>
+            <div className="detailAccordionBody">
+              <p className="small muted">Your observations can help put the result in context. They are not proven causes.</p>
+              <div className="competitionContextTags" aria-label="Competition context tags">
+                {COMPETITION_CONTEXT_TAGS.map((tag) => {
+                  const selected = contextTags.includes(tag.id);
+                  return <button key={tag.id} type="button" className={`competitionContextTag${selected ? " selected" : ""}`} aria-pressed={selected} onClick={() => setContextTags((current) => selected ? current.filter((id) => id !== tag.id) : [...current, tag.id])}>{tag.label}</button>;
+                })}
+              </div>
+              <button type="button" className="secondary smallButton" disabled={noteSavingKey === "session"} onClick={() => void savePrivateNote("session")}>Save context</button>
+            </div>
+          </details>
+          {currentUserId && <CompetitionEquipmentReview session={session} userId={currentUserId} onSaved={(weaponId, ammoId, snapshot) => setSession((current: any) => ({ ...current, equipment_weapon_id: weaponId, equipment_ammunition_profile_id: ammoId, equipment_snapshot: snapshot }))} />}
           <ReflectionEvidenceReview sessionId={session.id} note={noteFor("session") ? { id: noteFor("session")!.id, body: noteFor("session")!.body, updated_at: noteFor("session")!.updated_at } : null} canInterpret={noteSavingKey !== "session" && Boolean(noteFor("session")) && (noteDrafts.session || "") === (noteFor("session")?.body || "")} />
         </section>
       )}
@@ -1034,16 +1042,16 @@ export default function Page() {
         <ScorecardEvidenceSection sessionId={session.id} userId={currentUserId} courseCount={session.course_count || courses.length || 0} />
       )}
 
-      <div className="card privateNotesCard">
+      {(session.session_type !== "Competition" || privateNotePosts.length > 0) && <div className="card privateNotesCard">
         <details className="detailAccordion">
           <summary>
-            <span>Private notes</span>
+            <span>{session.session_type === "Competition" ? "Optional per-post notes" : "Private notes"}</span>
             <span className="countPill">Private</span>
           </summary>
           <div className="detailAccordionBody privateNotesBody">
             <p className="muted small">Only you can see these notes.</p>
-            <p className="muted small">Use this for wind, focus, technical thoughts, or what to train next. Competition notes can be as detailed as you need.</p>
-            <>
+            <p className="muted small">{session.session_type === "Competition" ? "Add a detail for a particular post if it helps you remember the round." : "Use this for wind, focus, technical thoughts, or what to train next."}</p>
+            {session.session_type !== "Competition" && <>
               <label>
                 Session note
                 <textarea value={noteDrafts.session || ""} onChange={(event) => setNoteDraft("session", event.target.value, "session")} placeholder="Wind, light, focus, technical feeling, what went wrong, or what to train next" />
@@ -1053,7 +1061,7 @@ export default function Page() {
                 <button type="button" className="secondary smallButton" disabled={noteSavingKey === "session"} onClick={() => void deletePrivateNote("session")}>Clear/delete</button>
                 {noteStatus.session && <span className="small privateNoteSyncStatus" role="status">{noteStatus.session}</span>}
               </div>
-            </>
+            </>}
             {privateNotePosts.length > 0 && (
               <details className="postPrivateNotes">
                 <summary>Optional per-post notes</summary>
@@ -1087,7 +1095,7 @@ export default function Page() {
             )}
           </div>
         </details>
-      </div>
+      </div>}
 
       <div className="sessionDetailSections">
         <DetailSection title="Misses" badge={count} defaultOpen={count > 0}>
