@@ -76,7 +76,7 @@ export default function CoachReportPage() {
   return <main className="coachReportPage">
     <section className="card coachReportHero">
       <p className="small muted"><Link href={`/sessions/${session.id}/analysis`}>← Back to analysis</Link></p>
-      <h1>Coach report preview</h1>
+      <h1>Coach brief preview</h1>
       <p className="muted">Review this private single-session summary, then copy it manually into a message or email.</p>
       <p className="small muted">This is a training-support summary, not a replacement for a coach watching you shoot.</p>
       {hasPrivateNotes && <div className="analysisPrivateNotesControl">
@@ -88,7 +88,7 @@ export default function CoachReportPage() {
       </div>}
       <div className="btns"><button type="button" onClick={copyReport}>Copy report</button>{copyStatus && <span className={copyStatus === "Copied" ? "successInline" : "errorInline"}>{copyStatus}</span>}</div>
     </section>
-    {!canBuildAnalysis ? <section className="card"><h2>Report not ready</h2><p>Add score or miss data before building a coach report preview.</p></section> : <article className="card coachReportPreview" aria-label="Coach report plain-text preview">
+    {!canBuildAnalysis ? <section className="card"><h2>Brief not ready</h2><p>Add score or miss data before building a Coach brief.</p></section> : <article className="card coachReportPreview" aria-label="Coach brief plain-text preview">
       {report.sections.map((section) => <section key={section.title} className="coachReportSection"><h2>{section.title}</h2>{section.items.map((item) => <p key={item}>• {item}</p>)}</section>)}
     </article>}
   </main>;

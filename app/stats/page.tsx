@@ -776,8 +776,9 @@ export default function StatsPage() {
     <main className="performancePage">
       <header className="statsPageHeader">
         <h1>Performance</h1>
-        <p>Track form, trends and key performance patterns.</p>
+        <p>See your results and trends in numbers. For what to work on and how, open <Link href="/lab-insights">Lab Insights</Link>.</p>
       </header>
+      <nav className="analysisPath" aria-label="Analysis areas"><Link href="/stats" aria-current="page">Performance <small>Results and trends</small></Link><Link href="/lab-insights">Lab Insights <small>What to work on and how</small></Link><Link href="/coach-report">Coach brief <small>Prepare for your coach</small></Link></nav>
 
       <section className="card statsFilterCard compactStatsFilterCard" aria-labelledby="performance-filters-heading">
         <h2 id="performance-filters-heading" className="srOnly">Performance filters</h2>

@@ -39,7 +39,7 @@ assert(!report.plainText.includes('tired'), 'notes context is omitted when toggl
 assert(!report.plainText.includes('Old session'), 'report only includes selected sessions');
 
 const page = readFileSync('app/coach-report/page.tsx', 'utf8');
-for (const text of ['Coach report', 'From date', 'To date', 'Include reviewed context', 'Raw private note text is not interpreted', 'Update evidence preview', 'Evidence preview needs update', 'Generate AI coach report', 'Copy visible report', 'Copied', 'Copy only what is visible here.']) assert(page.includes(text), `/coach-report page includes ${text}`);
+for (const text of ['Coach brief', 'From date', 'To date', 'Include reviewed context', 'Raw private note text is not interpreted', 'Update evidence preview', 'Evidence preview needs update', 'Generate Coach brief', 'Copy visible report', 'Copied', 'Copy only what is visible here.']) assert(page.includes(text), `/coach-report page includes ${text}`);
 assert.doesNotMatch(page.match(/<section className="card coachReportHero">[\s\S]*?<\/section>/)?.[0] || '', /Copy visible report|Copy report/, 'copy button is not in top settings card');
 assert.match(page.match(/<article className="card coachReportPreview"[\s\S]*?<\/article>/)?.[0] || '', /Copy visible report/, 'copy button is in report preview section');
 assert.match(page, /coachReportAiCards/, 'AI report renders card container');
@@ -59,7 +59,7 @@ assert.doesNotMatch(page, /plainText[\s\S]{0,120}metadata|body[\s\S]{0,120}metad
 assert.match(page, /coach_report_period_preview_opened/, 'period preview analytics event exists');
 assert.match(page, /coach_report_copied/, 'period copied analytics event exists');
 const dashboard = readFileSync('app/dashboard/page.tsx', 'utf8');
-assert.match(dashboard, /href="\/coach-report"[\s\S]*Coach report/, 'dashboard entry point exists');
+assert.match(dashboard, /href="\/coach-report"[\s\S]*Coach brief/, 'dashboard entry point exists');
 const analytics = readFileSync('lib/analytics.ts', 'utf8');
 for (const token of ['coach_report_period_preview_opened', 'coach_report_copied', 'selectedSessionCount', 'trainingCount', 'competitionCount', 'hasNotesContext', 'periodDays']) assert(analytics.includes(token), `${token} is allowlisted`);
 const css = readFileSync('app/globals.css', 'utf8');

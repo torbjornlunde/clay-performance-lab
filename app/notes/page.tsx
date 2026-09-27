@@ -88,7 +88,7 @@ export default function NotesPage() {
           {openReviewId === note.id && session.session_type === "Competition" && note.note_scope === "session" && <div className="personalNoteReview">
             <ReflectionEvidenceReview sessionId={session.id} note={{ id: note.id, body: note.body, updated_at: note.updated_at }} />
             <p className="small muted">Only suggestions you accept from this saved reflection can be included as reviewed context. Your raw note stays private and is not silently interpreted in the report.</p>
-            <Link href={`/sessions/${session.id}/coach-report`}>View this session’s Coach Report</Link>
+            <Link href={`/sessions/${session.id}/coach-report`}>Prepare this session’s Coach brief</Link>
           </div>}
         </article>;
       })}</div>

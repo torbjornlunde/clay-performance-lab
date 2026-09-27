@@ -691,10 +691,14 @@ export default function DashboardPage() {
           </Link>
           <Link href="/stats" className="dashboardActionCard secondaryAction">
             <span>Performance</span>
-            <small>View trends, results, and performance insights.</small>
+            <small>See your results, form and trends in numbers.</small>
+          </Link>
+          <Link href="/lab-insights" className="dashboardActionCard secondaryAction">
+            <span>Lab Insights</span>
+            <small>Find patterns, what to work on and ways to train it.</small>
           </Link>
         </div>
-        <p className="small muted">Sharing with a coach? <Link href="/coach-report">Coach report</Link>.</p>
+        <p className="small muted">Working with a coach? <Link href="/coach-report">Prepare a Coach brief</Link> with evidence and questions to discuss.</p>
       </div>
 
       <PerformanceTrendCard sessions={sessions} missCounts={missCounts} />

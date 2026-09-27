@@ -27,10 +27,10 @@ assert(!report.sections.some((s) => s.title === 'Reviewed context'), 'reviewed c
 assert(!report.plainText.includes('tired at the end'), 'disabled notes are omitted from report');
 
 const analysisPage = readFileSync('app/sessions/[id]/analysis/page.tsx', 'utf8');
-assert.match(analysisPage, /Coach report preview/, 'Coach report entry point exists from analysis page');
+assert.match(analysisPage, /Coach brief preview/, 'Coach brief entry point exists from analysis page');
 assert.match(analysisPage, /deterministic\.findings\.length > 0 && deterministic\.recommendations\.length > 0/, 'entry point only shows when analysis can be built');
 const page = readFileSync('app/sessions/[id]/coach-report/page.tsx', 'utf8');
-for (const text of ['Coach report preview', 'Include reviewed context', 'Raw private note text is not interpreted', 'Copy report', 'Copied']) assert(page.includes(text), `coach report page includes ${text}`);
+for (const text of ['Coach brief preview', 'Include reviewed context', 'Raw private note text is not interpreted', 'Copy report', 'Copied']) assert(page.includes(text), `coach report page includes ${text}`);
 assert.doesNotMatch(page, /select\("[^"]*location/, 'single-session coach report page does not select location from sessions');
 assert.match(page, /shooting_ground/, 'single-session coach report page selects shooting_ground for venue/ground');
 assert.match(page, /navigator\.clipboard\.writeText\(report\.plainText\)/, 'copy report button writes plain text');

@@ -10407,6 +10407,11 @@ select {
 .adminUserRecentEvents time { color: var(--muted); font-size: .875rem; }
 .adminUserDetailActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px; }
 .adminUserDetailActions button { min-height: 44px; }
+.analysisPath { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0 20px; }
+.analysisPath a { display: grid; gap: 3px; min-height: 62px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; text-decoration: none; color: var(--text); font-weight: 700; overflow-wrap: anywhere; }
+.analysisPath a[aria-current="page"] { border-color: var(--accent); background: var(--surface-2, rgba(100, 140, 170, .08)); }
+.analysisPath small { color: var(--muted); font-size: .78rem; font-weight: 400; }
+@media (max-width: 600px) { .analysisPath { grid-template-columns: 1fr; } .analysisPath a { min-height: 44px; } }
 .adminUserPagination { align-items: center; justify-content: space-between; margin-top: 18px; }
 .personalNotesFilters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; margin-bottom: 18px; }
 .personalNotesFilters input, .personalNotesFilters select { width: 100%; min-height: 44px; font-size: 16px; }
