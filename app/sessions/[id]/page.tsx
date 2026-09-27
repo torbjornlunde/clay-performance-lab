@@ -1042,7 +1042,7 @@ export default function Page() {
         <ScorecardEvidenceSection sessionId={session.id} userId={currentUserId} courseCount={session.course_count || courses.length || 0} />
       )}
 
-      {(session.session_type !== "Competition" || privateNotePosts.length > 0) && <div className="card privateNotesCard">
+      {(session.session_type !== "Competition" || privateNotePosts.length > 0) && <div className="card privateNotesCard" id={session.session_type !== "Competition" ? "private-notes" : undefined}>
         <details className="detailAccordion">
           <summary>
             <span>{session.session_type === "Competition" ? "Optional per-post notes" : "Private notes"}</span>

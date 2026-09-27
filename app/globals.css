@@ -10401,3 +10401,10 @@ select {
   .adminUserControls { justify-items: start; margin-top: 12px; }
   .adminUserControls .tableActions { justify-content: flex-start; }
 }
+.personalNotesFilters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; margin-bottom: 18px; }
+.personalNotesFilters input, .personalNotesFilters select { width: 100%; min-height: 44px; font-size: 16px; }
+.personalNotesList { display: grid; gap: 12px; margin-bottom: 16px; }
+.personalNoteEntry { min-width: 0; }
+.personalNoteMeta { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); font-size: .875rem; }
+.personalNoteEntry h3 { overflow-wrap: anywhere; margin: 8px 0 3px; }
+.personalNoteBody { white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0 16px; }
