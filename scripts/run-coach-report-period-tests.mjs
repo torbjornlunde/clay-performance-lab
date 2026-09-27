@@ -50,7 +50,8 @@ assert.match(page, /previewNeedsUpdate/, 'date or session changes can mark previ
 assert.match(page, /from\("sessions"\)[\s\S]*\.eq\("user_id", authData\.user\.id\)/, 'sessions are queried for signed-in user');
 assert.doesNotMatch(page, /select\("[^"]*location/, 'coach report period page does not select location from sessions');
 assert.match(page, /shooting_ground/, 'coach report period page uses shooting_ground for venue/ground display');
-assert.match(page, /date\.setMonth\(date\.getMonth\(\) - 1\)/, 'default date range is last 1 month');
+assert.match(page, /audience === "shooter"\) date\.setFullYear\(date\.getFullYear\(\) - 1\)/, 'Lab Insights starts with one year');
+assert.match(page, /else date\.setMonth\(date\.getMonth\(\) - 1\)/, 'Coach brief retains a one-month default');
 assert.match(page, /inRange\(session, fromDate, toDate\)/, 'sessions inside range are shown and outside range filtered');
 assert.match(page, /setSelectedIds\(new Set\(visible\)\)/, 'sessions are selected by default');
 assert.match(page, /event\.target\.checked[\s\S]*next\.add\(session\.id\)[\s\S]*next\.delete\(session\.id\)/, 'user can select/deselect sessions');
