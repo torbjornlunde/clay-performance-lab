@@ -33,6 +33,11 @@ export const ANALYTICS_EVENTS = [
   "coach_report_ai_generate_clicked",
   "coach_report_ai_generated",
   "coach_report_ai_failed",
+  "lab_insights_preview_opened",
+  "lab_insights_copied",
+  "lab_insights_ai_generate_clicked",
+  "lab_insights_ai_generated",
+  "lab_insights_ai_failed",
 ] as const;
 
 export type AnalyticsEventName = (typeof ANALYTICS_EVENTS)[number];

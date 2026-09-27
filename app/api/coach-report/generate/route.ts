@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildCoachReportPrompt, COACH_REPORT_AI_SECTIONS } from "@/lib/ai/coachReportPrompt";
+import { buildLabInsightsPrompt, LAB_INSIGHTS_AI_SECTIONS } from "@/lib/ai/labInsightsPrompt";
 import { getBillingMode } from "@/lib/entitlements/check";
 import { createEntitlementUserContext } from "@/lib/entitlements/userContext";
 import { FeatureAccessError, recordFeatureUsage, requirePaidCostAccess } from "@/lib/entitlements/server";
@@ -82,7 +83,7 @@ function textFromResponse(json: any) {
   return parts.map((part: any) => part?.text || "").join("\n").trim();
 }
 
-export async function handleCoachReportGenerate(request: Request, deps: CoachReportGenerateDeps = {}) {
+export async function handleCoachReportGenerate(request: Request, deps: CoachReportGenerateDeps = {}, audience: "coach" | "shooter" = "coach") {
   const auth = await requireUser(request, deps);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const profileResult = await auth.supabase.from("user_access_profiles").select("user_id,access_status,system_role").eq("user_id", auth.userId).maybeSingle();
@@ -90,22 +91,23 @@ export async function handleCoachReportGenerate(request: Request, deps: CoachRep
   const entitlementResult = await auth.supabase.from("user_entitlements").select("plan,status,valid_until").eq("user_id", auth.userId).maybeSingle();
   const billingMode = getBillingMode(deps.env || process.env);
   const userContext = createEntitlementUserContext({ userId: auth.userId, accessProfile: profileResult.data || null, entitlement: entitlementResult.error ? null : entitlementResult.data || null, billingMode });
-  try { requirePaidCostAccess("ai.coach_report_summary", userContext); } catch (error) { if (error instanceof FeatureAccessError) return NextResponse.json({ error: error.message }, { status: error.status }); throw error; }
+  const featureKey = audience === "shooter" ? "ai.training_recommendations" : "ai.coach_report_summary";
+  try { requirePaidCostAccess(featureKey, userContext); } catch (error) { if (error instanceof FeatureAccessError) return NextResponse.json({ error: error.message }, { status: error.status }); throw error; }
   const packet = await evidencePacketFromRequest(request);
   if (!packet.ok) return NextResponse.json({ error: packet.error }, { status: packet.status });
   try {
     const env = deps.env || process.env;
     const apiKey = env.OPENAI_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: "AI coach report is not configured." }, { status: 503 });
+    if (!apiKey) return NextResponse.json({ error: "AI analysis is not configured." }, { status: 503 });
     const openAiFetch = deps.openAiFetch || fetch;
-    const response = await openAiFetch("https://api.openai.com/v1/responses", { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: env.OPENAI_COACH_REPORT_MODEL || "gpt-4.1-mini", input: [{ role: "user", content: [{ type: "input_text", text: buildCoachReportPrompt(packet.evidencePacket) }] }], temperature: 0.3 }) });
-    if (!response.ok) return NextResponse.json({ error: "AI coach report failed. The deterministic evidence preview is still available." }, { status: 502 });
+    const response = await openAiFetch("https://api.openai.com/v1/responses", { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: env.OPENAI_COACH_REPORT_MODEL || "gpt-4.1-mini", input: [{ role: "user", content: [{ type: "input_text", text: audience === "shooter" ? buildLabInsightsPrompt(packet.evidencePacket) : buildCoachReportPrompt(packet.evidencePacket) }] }], temperature: 0.3 }) });
+    if (!response.ok) return NextResponse.json({ error: "AI analysis failed. The evidence preview is still available." }, { status: 502 });
     const reportText = textFromResponse(await response.json());
-    if (!reportText) return NextResponse.json({ error: "AI coach report returned an empty response." }, { status: 502 });
-    await recordFeatureUsage(auth.supabase, "ai.coach_report_summary", auth.userId, { route: "/api/coach-report/generate" });
-    return NextResponse.json({ reportText, sections: COACH_REPORT_AI_SECTIONS });
+    if (!reportText) return NextResponse.json({ error: "AI analysis returned an empty response." }, { status: 502 });
+    await recordFeatureUsage(auth.supabase, featureKey, auth.userId, { route: audience === "shooter" ? "/api/lab-insights/generate" : "/api/coach-report/generate" });
+    return NextResponse.json({ reportText, sections: audience === "shooter" ? LAB_INSIGHTS_AI_SECTIONS : COACH_REPORT_AI_SECTIONS });
   } catch {
-    return NextResponse.json({ error: "AI coach report failed. The deterministic evidence preview is still available." }, { status: 500 });
+    return NextResponse.json({ error: "AI analysis failed. The evidence preview is still available." }, { status: 500 });
   }
 }
 

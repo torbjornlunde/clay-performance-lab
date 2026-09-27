@@ -195,7 +195,7 @@ export default function AnalysisPage() {
           </Link>
           {deterministic.findings.length > 0 && deterministic.recommendations.length > 0 && (
             <Link className="button secondary" href={`/sessions/${session.id}/coach-report`}>
-              Coach report preview
+              Coach brief preview
             </Link>
           )}
         </div>

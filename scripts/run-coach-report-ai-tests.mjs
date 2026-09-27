@@ -5,12 +5,17 @@ import { readFileSync, writeFileSync } from 'node:fs';
 writeFileSync('.coach-report-ai-test-tsconfig.json', JSON.stringify({ compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', target: 'ES2022', jsx: 'react-jsx', lib: ['ES2022','DOM'], outDir: '.coach-report-ai-test-build', skipLibCheck: true, rootDir: '.', baseUrl: '.', ignoreDeprecations: '6.0', paths: { '@/*': ['./*'] } }, include: ['lib/ai/coachReportPrompt.ts', 'lib/entitlements/**/*.ts', 'app/api/coach-report/generate/route.ts'] }));
 execSync('rm -rf .coach-report-ai-test-build && npx tsc -p .coach-report-ai-test-tsconfig.json && mkdir -p .coach-report-ai-test-build/node_modules/@/lib && cp -R .coach-report-ai-test-build/lib/ai .coach-report-ai-test-build/node_modules/@/lib/ai && cp -R .coach-report-ai-test-build/lib/entitlements .coach-report-ai-test-build/node_modules/@/lib/entitlements', { stdio: 'inherit' });
 const { buildCoachReportPrompt, COACH_REPORT_AI_SECTIONS } = await import('../.coach-report-ai-test-build/lib/ai/coachReportPrompt.js');
+const { buildLabInsightsPrompt, LAB_INSIGHTS_AI_SECTIONS } = await import('../.coach-report-ai-test-build/lib/ai/labInsightsPrompt.js');
 const { handleCoachReportGenerate, __test } = await import('../.coach-report-ai-test-build/app/api/coach-report/generate/route.js');
 
 const prompt = buildCoachReportPrompt({ evidenceLevels: { currentAcceptedReflectionEvidence: [{ basis: 'self_report', sessionType: 'Competition' }] }, privacy: { rawPrivateNotesIncluded: false } });
 for (const heading of ['Coach summary','Performance context','Main findings','Discipline-specific notes','What to train next','Data quality']) assert(prompt.includes(heading), `${heading} is required`);
 for (const guardrail of ['The data suggests','This should be tested, not assumed','Compared with the field level','Do not compare only against the winning score','reviewed hypothesis','Never merge self-report and AI inference']) assert(prompt.includes(guardrail), `${guardrail} guardrail exists`);
 assert.equal(COACH_REPORT_AI_SECTIONS.length, 6, 'AI route exposes required sections');
+const shooterPrompt = buildLabInsightsPrompt({ evidenceLevels: { observedFacts: [{ discipline: 'Sporting', score: 19 }] } });
+for (const heading of LAB_INSIGHTS_AI_SECTIONS) assert(shooterPrompt.includes(heading), `${heading} is required in Lab Insights`);
+assert.match(shooterPrompt, /not just one prescribed training session/, 'Lab Insights covers longer development direction');
+assert.match(shooterPrompt, /reviewed hypotheses, not observations/, 'Lab Insights keeps hypotheses separate from facts');
 
 function deps({ user = { id: 'u1' }, openAiText = 'Coach summary\n- Good', capture = {}, profile = { user_id: 'u1', access_status: 'approved', system_role: 'user' }, profileError = null, entitlement = null, entitlementError = null, billingMode = 'beta_hidden' } = {}) {
   return {
@@ -40,6 +45,15 @@ assert.equal((await response.json()).reportText, 'Coach summary\n- Good', 'authe
 assert.equal(capture.supabaseOptions.global.headers.Authorization, 'Bearer token', 'request auth header is forwarded to Supabase auth');
 assert(!JSON.stringify(capture.openAiBody).includes('RAW PRIVATE NOTE'), 'raw private note body is not forwarded to OpenAI');
 assert(JSON.stringify(capture.openAiBody).includes('self_report'), 'structured evidence basis reaches OpenAI packet');
+const shooterCapture = {};
+response = await handleCoachReportGenerate(req({ evidenceLevels: { observedFacts: [{ discipline: 'Sporting' }] } }, { authorization: 'Bearer token' }), deps({ capture: shooterCapture, openAiText: 'What stands out\n- Pattern' }), 'shooter');
+assert.equal(response.status, 200, 'Lab Insights uses the same authenticated and gated evidence path');
+assert.deepEqual((await response.json()).sections, LAB_INSIGHTS_AI_SECTIONS, 'Lab Insights returns shooter-facing sections');
+assert(JSON.stringify(shooterCapture.openAiBody).includes('How to train it'), 'shooter prompt reaches AI');
+response = await handleCoachReportGenerate(req({ selectedSessions: [] }), deps({ billingMode: 'enabled', profile: null }), 'shooter');
+assert.equal(response.status, 402, 'Lab Insights respects paid AI access');
+response = await handleCoachReportGenerate(req({ body: 'RAW PRIVATE NOTE' }), deps(), 'shooter');
+assert.equal(response.status, 400, 'Lab Insights rejects raw private note text');
 
 response = await handleCoachReportGenerate(req({ selectedSessions: [] }), deps({ profile: null }));
 assert.equal(response.status, 403, 'authenticated user without approved beta access cannot generate AI in beta_hidden');
@@ -70,7 +84,7 @@ const sanitized = __test.sanitizeEvidencePacket({ evidenceLevels: { explicitSelf
 assert(!JSON.stringify(sanitized).includes('RAW PRIVATE NOTE'), 'sanitized AI packet has no raw private note body');
 
 const page = readFileSync('app/coach-report/page.tsx', 'utf8');
-assert.match(page, /Generate AI coach report/, 'generate button exists');
+assert.match(page, /Generate Coach brief/, 'generate button exists');
 assert.match(page, /supabase\.auth\.getSession\(\)/, 'client reads current Supabase session');
 assert.match(page, /Authorization: `Bearer \$\{accessToken\}`/, 'client sends access token to AI route');
 assert.match(page, /coach_report_ai_generate_clicked/, 'generate click analytics exists');
@@ -79,4 +93,10 @@ assert.match(page, /coach_report_ai_failed/, 'failure analytics exists');
 assert.match(page, /setAiError/, 'AI failure shows an error');
 assert.match(page, /setSelectedIds/, 'selected sessions remain managed locally when AI fails');
 assert.doesNotMatch(page, /metadata: [^{]*reportText/, 'report body is not sent to analytics metadata');
+const labPage = readFileSync('app/lab-insights/page.tsx', 'utf8');
+assert.match(labPage, /PeriodAnalysisPage audience="shooter"/, 'Lab Insights opens the shooter view');
+assert.match(page, /\/api\/lab-insights\/generate/, 'shooter view uses its own AI endpoint');
+assert.match(page, /What to work on/, 'shooter view gives priorities');
+assert.match(page, /How to train it/, 'shooter view gives training options');
+assert.match(page, /Coach brief/, 'coach view remains distinct');
 console.log('coach report AI focused tests passed');

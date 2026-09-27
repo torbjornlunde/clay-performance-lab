@@ -236,6 +236,7 @@ export default function AuthHeader() {
           <nav className="topNav" aria-label="Primary navigation">
             <Link className="desktopNavItem" href="/dashboard">Dashboard</Link>
             <Link className="desktopNavItem" href="/stats">Performance</Link>
+            <Link className="desktopNavItem" href="/lab-insights">Lab Insights</Link>
             <Link className="notificationBell" href="/notifications" aria-label={unreadNotifications > 0 ? `${unreadNotifications > 9 ? "9+" : unreadNotifications} unread notifications` : "Notifications"}>
               <span aria-hidden="true">🔔</span>
               {unreadNotifications > 0 ? <span className="notificationBadge">{unreadNotifications > 9 ? "9+" : unreadNotifications}</span> : null}
@@ -258,6 +259,8 @@ export default function AuthHeader() {
                   <div className="globalMenuSection" role="group" aria-label="Main navigation">
                     <Link className="mobileMenuItem" role="menuitem" href="/dashboard" onClick={() => closeMenu()}>Dashboard</Link>
                     <Link className="mobileMenuItem" role="menuitem" href="/stats" onClick={() => closeMenu()}>Performance</Link>
+                    <Link className="mobileMenuItem" role="menuitem" href="/lab-insights" onClick={() => closeMenu()}>Lab Insights</Link>
+                    <Link className="mobileMenuItem" role="menuitem" href="/coach-report" onClick={() => closeMenu()}>Coach brief</Link>
                     <Link role="menuitem" href="/log-competition" onClick={() => closeMenu()}>Log competition</Link>
                     <Link role="menuitem" href="/log-training" onClick={() => closeMenu()}>Log training</Link>
                   </div>

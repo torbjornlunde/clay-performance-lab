@@ -21,7 +21,7 @@ assert.doesNotMatch(route, /metadata|route,discipline|email|user_agent|ip/i, 'su
 const ui = readFileSync('app/admin/analytics/page.tsx', 'utf8');
 for (const text of ['Active users 7d','Active users 30d','Events 7d','Errors 7d','Top features','Top events','Leirdue import funnel','Scorecard funnel','Training score sheet usage','Events by day']) assert.match(ui, new RegExp(text), `admin UI contains ${text}`);
 const nav = readFileSync('app/components/AuthHeader.tsx', 'utf8');
-assert.match(nav, /showBetaAdmin && <Link role="menuitem" href="\/admin\/analytics"/, 'admin nav link is admin-only');
+assert.match(nav, /showBetaAdmin && \([\s\S]*href="\/admin\/analytics"/, 'admin nav link is admin-only');
 const css = readFileSync('app/globals.css', 'utf8');
 assert.match(css, /adminAnalyticsPage|analyticsMetricGrid|overflow-wrap: anywhere/, 'analytics styles are responsive and theme-token based');
 

@@ -7,6 +7,7 @@ import { buildPeriodCoachReport, type CoachReportPeriodSession } from "@/lib/ana
 import { recordAnalyticsEvent } from "@/lib/analytics";
 import { supabase } from "@/lib/supabase/client";
 import { currentAcceptedReflectionEvidence } from "@/lib/ai/currentReflectionEvidence";
+import { LAB_INSIGHTS_AI_SECTIONS } from "@/lib/ai/labInsightsPrompt";
 
 type MissRow = { id?: string; session_id: string; course_number: number | null; target_position?: number | null; target_number: number | null; missed_target?: string | null; main_reason?: string | null; where_miss?: string | null; created_at?: string | null };
 type NoteRow = { id: string; session_id: string; note_scope: "session" | "post"; post_number?: number | null; body?: string | null; context_tags?: string[] | null; updated_at: string };
@@ -16,13 +17,13 @@ type EvidenceRow = { session_id: string; category: any; normalized_value: string
 type AiReport = { reportText: string; sections: string[] };
 
 const AI_SECTION_TITLES = ["Coach summary", "Performance context", "Main findings", "Discipline-specific notes", "What to train next", "Data quality"];
-function parseAiReportCards(text: string) {
-  const cards = AI_SECTION_TITLES.map((title) => ({ title, items: [] as string[] }));
+function parseAiReportCards(text: string, titles: readonly string[]) {
+  const cards = titles.map((title) => ({ title, items: [] as string[] }));
   let current = cards[0];
   for (const rawLine of text.split("\n")) {
     const line = rawLine.trim();
     if (!line) continue;
-    const heading = AI_SECTION_TITLES.find((title) => line.toLowerCase().replace(/:$/, "") === title.toLowerCase());
+    const heading = titles.find((title) => line.toLowerCase().replace(/:$/, "") === title.toLowerCase());
     if (heading) { current = cards.find((card) => card.title === heading) || current; continue; }
     current.items.push(line.replace(/^[-•*]\s*/, ""));
   }
@@ -48,7 +49,8 @@ function scoreLabel(session: CoachReportPeriodSession, misses: MissRow[]) {
 }
 function typeLabel(session: CoachReportPeriodSession) { return String(session.session_type || "").toLowerCase() === "competition" ? "Competition" : "Training"; }
 
-export default function CoachReportPeriodPage() {
+export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach" }) {
+  const shooterView = audience === "shooter";
   const router = useRouter();
   const [fromDate, setFromDate] = useState(defaultFromDate);
   const [toDate, setToDate] = useState(defaultToDate);
@@ -121,7 +123,14 @@ export default function CoachReportPeriodPage() {
   const currentPrivateNotesBySession = useMemo(() => Object.fromEntries(selectedSessions.map((session) => [session.id, notes.filter((note) => note.session_id === session.id)])), [selectedSessions, notes]);
   const currentAcceptedEvidenceBySession = useMemo(() => Object.fromEntries(selectedSessions.map((session) => [session.id, acceptedEvidence.filter((item) => item.session_id === session.id)])), [selectedSessions, acceptedEvidence]);
   const currentScorecardImportsBySession = useMemo(() => Object.fromEntries(selectedSessions.map((session) => [session.id, scorecardImports.find((row) => row.session_id === session.id) || null])), [selectedSessions, scorecardImports]);
-  const aiReportCards = aiReport ? parseAiReportCards(aiReport.reportText) : [];
+  const aiReportCards = aiReport ? parseAiReportCards(aiReport.reportText, shooterView ? LAB_INSIGHTS_AI_SECTIONS : AI_SECTION_TITLES) : [];
+  const shooterFallbackCards = [
+    { title: "What stands out", items: report.sections.find((section) => section.title === "Coach takeaway")?.items.slice(1, 3) || [] },
+    { title: "What to work on", items: report.sections.find((section) => section.title === "What to test next")?.items || [] },
+    { title: "How to train it", items: report.sections.find((section) => section.title === "Training plan for next 1–2 weeks")?.items || [] },
+    { title: "Evidence and uncertainty", items: report.sections.find((section) => section.title === "Confidence and uncertainty")?.items || [] },
+  ];
+  const coachPreviewSections = report.sections.filter((section) => ["Coach takeaway", "Performance context", "Recurring reviewed context", "Confidence and uncertainty", "Questions for your coach", "Discipline-specific notes", "What to test next", "Data quality and what to log next"].includes(section.title));
   const evidenceSummaryItems = [`Sessions used: ${report.selectedSessionCount}`, `Disciplines: ${report.evidence.disciplineGroups.map((group) => group.discipline).join(", ") || "none"}`, `Matched Leirdue events: ${report.evidence.leirdueFieldContexts.length}`, `Scorecard sessions: ${report.evidence.sessionsWithScorecardImportEvidence.length}`, `Detailed miss rows: ${report.evidence.detailedMissCount}`, `Notes context: ${report.hasNotesContext ? "yes" : "no"}`, `Data quality: ${report.dataQuality}`];
   const previewNeedsUpdate = !previewInput || previewInput.fromDate !== fromDate || previewInput.toDate !== toDate || previewInput.includeNotesContext !== includeNotesContext || previewInput.selectedIds.length !== selectedIds.size || previewInput.selectedIds.some((id) => !selectedIds.has(id));
   async function fetchLeirdueContextFor(reportSessions: CoachReportPeriodSession[]) {
@@ -142,60 +151,64 @@ export default function CoachReportPeriodPage() {
 
   useEffect(() => {
     if (loading) return;
-    void recordAnalyticsEvent(supabase, "coach_report_period_preview_opened", { route: "/coach-report", feature: "coach_report", metadata: { reportType: aiReport ? "ai_period" : "period", selectedSessionCount: report.selectedSessionCount, trainingCount: report.trainingCount, competitionCount: report.competitionCount, hasNotesContext: report.hasNotesContext, periodDays: report.periodDays } });
+    void recordAnalyticsEvent(supabase, shooterView ? "lab_insights_preview_opened" : "coach_report_period_preview_opened", { route: shooterView ? "/lab-insights" : "/coach-report", feature: shooterView ? "lab_insights" : "coach_report", metadata: { reportType: aiReport ? "ai_period" : "period", selectedSessionCount: report.selectedSessionCount, trainingCount: report.trainingCount, competitionCount: report.competitionCount, hasNotesContext: report.hasNotesContext, periodDays: report.periodDays } });
   }, [loading, previewInput?.fromDate, previewInput?.toDate]);
 
   async function copyReport() {
     setCopyStatus("");
     try {
-      await navigator.clipboard.writeText(aiReport?.reportText || `Deterministic evidence preview\n\n${report.plainText}`);
+      const visibleSections = shooterView ? shooterFallbackCards : coachPreviewSections;
+      await navigator.clipboard.writeText(aiReport?.reportText || visibleSections.map((section) => `${section.title}\n${(shooterView ? section.items : section.items.slice(0, 4)).map((item) => `- ${item}`).join("\n")}`).join("\n\n"));
       setCopyStatus("Copied");
-      void recordAnalyticsEvent(supabase, "coach_report_copied", { route: "/coach-report", feature: "coach_report", metadata: { reportType: aiReport ? "ai_period" : "period", selectedSessionCount: report.selectedSessionCount, trainingCount: report.trainingCount, competitionCount: report.competitionCount, hasNotesContext: report.hasNotesContext, periodDays: report.periodDays } });
+      void recordAnalyticsEvent(supabase, shooterView ? "lab_insights_copied" : "coach_report_copied", { route: shooterView ? "/lab-insights" : "/coach-report", feature: shooterView ? "lab_insights" : "coach_report", metadata: { reportType: aiReport ? "ai_period" : "period", selectedSessionCount: report.selectedSessionCount, trainingCount: report.trainingCount, competitionCount: report.competitionCount, hasNotesContext: report.hasNotesContext, periodDays: report.periodDays } });
     } catch {
       setCopyStatus("Copy failed. Select the report text and copy it manually.");
     }
   }
 
   async function generateAiReport() {
-    setAiStatus("Generating AI coach report...");
+    setAiStatus(shooterView ? "Generating Lab Insights..." : "Generating Coach brief...");
     setAiError("");
     setAiReport(null);
     const freshLeirdueRows = await fetchLeirdueContextFor(selectedSessions);
     setPreviewInput({ fromDate, toDate, selectedIds: [...selectedIds], includeNotesContext });
     const currentReport = buildPeriodCoachReport({ fromDate, toDate, sessions: selectedSessions, missesBySession: currentMissesBySession, scorecardImportsBySession: currentScorecardImportsBySession, privateNotesBySession: currentPrivateNotesBySession, acceptedEvidenceBySession: currentAcceptedEvidenceBySession, includeNotesContext, leirdueRows: freshLeirdueRows });
     const safeMetadata = { reportType: "ai_period", selectedSessionCount: selectedSessions.length, trainingCount: selectedSessions.filter((session) => typeLabel(session) === "Training").length, competitionCount: selectedSessions.filter((session) => typeLabel(session) === "Competition").length, disciplineCount: new Set(selectedSessions.map((session) => session.discipline || "Unknown")).size, hasLeirdueContext: currentReport.evidence.leirdueFieldContexts.length > 0, hasNotesContext: currentReport.hasNotesContext, dataQuality: currentReport.dataQuality };
-    void recordAnalyticsEvent(supabase, "coach_report_ai_generate_clicked", { route: "/coach-report", feature: "coach_report", metadata: safeMetadata });
+    void recordAnalyticsEvent(supabase, shooterView ? "lab_insights_ai_generate_clicked" : "coach_report_ai_generate_clicked", { route: shooterView ? "/lab-insights" : "/coach-report", feature: shooterView ? "lab_insights" : "coach_report", metadata: safeMetadata });
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData.session?.access_token;
-      if (!accessToken) throw new Error("You must be signed in to generate an AI coach report.");
-      const response = await fetch("/api/coach-report/generate", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ evidencePacket: currentReport.aiEvidencePacket }) });
+      if (!accessToken) throw new Error("Sign in to generate this analysis.");
+      const response = await fetch(shooterView ? "/api/lab-insights/generate" : "/api/coach-report/generate", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ evidencePacket: currentReport.aiEvidencePacket }) });
       const json = await response.json();
-      if (!response.ok) throw new Error(json?.error || "AI coach report failed.");
+      if (!response.ok) throw new Error(json?.error || (shooterView ? "Lab Insights generation failed." : "Coach brief generation failed."));
       setAiReport({ reportText: json.reportText, sections: json.sections || [] });
-      setAiStatus("AI coach report ready.");
-      void recordAnalyticsEvent(supabase, "coach_report_ai_generated", { route: "/coach-report", feature: "coach_report", metadata: safeMetadata });
+      setAiStatus(shooterView ? "Lab Insights ready." : "Coach brief ready.");
+      void recordAnalyticsEvent(supabase, shooterView ? "lab_insights_ai_generated" : "coach_report_ai_generated", { route: shooterView ? "/lab-insights" : "/coach-report", feature: shooterView ? "lab_insights" : "coach_report", metadata: safeMetadata });
     } catch (error: any) {
       setAiStatus("");
-      setAiError(error?.message || "AI coach report failed. The deterministic evidence preview is still available.");
-      void recordAnalyticsEvent(supabase, "coach_report_ai_failed", { route: "/coach-report", feature: "coach_report", metadata: safeMetadata });
+      setAiError(error?.message || "AI analysis failed. The evidence preview is still available.");
+      void recordAnalyticsEvent(supabase, shooterView ? "lab_insights_ai_failed" : "coach_report_ai_failed", { route: shooterView ? "/lab-insights" : "/coach-report", feature: shooterView ? "lab_insights" : "coach_report", metadata: safeMetadata });
     }
   }
 
   const selectedSummary = `${selectedSessions.length} selected · ${selectedSessions.filter((session) => typeLabel(session) === "Training").length} training · ${selectedSessions.filter((session) => typeLabel(session) === "Competition").length} competition`;
 
-  if (loading) return <main className="coachReportPage"><section className="card">Loading coach report...</section></main>;
+  if (loading) return <main className="coachReportPage"><section className="card">Loading {shooterView ? "Lab Insights" : "Coach brief"}...</section></main>;
   return <main className="coachReportPage">
     <section className="card coachReportHero">
       <p className="small muted"><Link href="/dashboard">← Back to dashboard</Link></p>
-      <div className="coachReportHeroHeader"><div><h1>Coach report</h1><p className="muted">{fromDate} to {toDate}</p></div><button type="button" onClick={generateAiReport} disabled={selectedSessions.length === 0 || aiStatus === "Generating AI coach report..."}>Generate AI coach report</button></div>
-      <p className="small muted">Private AI preview based on deterministic evidence. This is training support, not a replacement for a coach watching you shoot.</p>
+      <nav className="analysisPath" aria-label="Analysis areas"><Link href="/stats">Performance <small>Results and trends</small></Link><Link href="/lab-insights" aria-current={shooterView ? "page" : undefined}>Lab Insights <small>What to work on and how</small></Link><Link href="/coach-report" aria-current={shooterView ? undefined : "page"}>Coach brief <small>Prepare for your coach</small></Link></nav>
+      <div className="coachReportHeroHeader"><div><h1>{shooterView ? "Lab Insights" : "Coach brief"}</h1><p className="muted">{fromDate} to {toDate}</p></div><button type="button" onClick={generateAiReport} disabled={selectedSessions.length === 0 || aiStatus.startsWith("Generating")}>{shooterView ? "Generate Lab Insights" : "Generate Coach brief"}</button></div>
+      <p className="small muted">{shooterView ? "Explore patterns in your shooting, decide what to work on, and find ways to train it. AI suggestions are hypotheses to test, not diagnoses from watching you shoot." : "Prepare evidence and open questions for a coach. Review the private preview before choosing to copy and share it."}</p>
       <div className="coachReportDateGrid"><label>From date<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>To date<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label></div>
       {notesForSelected.length > 0 && <div className="analysisPrivateNotesControl"><label className="checkboxRow"><input type="checkbox" checked={includeNotesContext} onChange={(event) => setIncludeNotesContext(event.target.checked)} /><span>Include reviewed context</span></label><p className="small muted">Only explicit context tags and current accepted reflection evidence are included. Raw private note text is not interpreted.</p></div>}
       <div className="btns"><button className="button secondary" type="button" onClick={() => void updatePreview()} disabled={selectedSessions.length === 0}>Update evidence preview</button>{previewNeedsUpdate && <span className="warningInline">Evidence preview needs update</span>}</div>
       {aiStatus && <p className="successInline">{aiStatus}</p>}{aiError && <p className="errorInline">{aiError}</p>}{leirdueStatus === "unavailable" && leirdueError && <p className="warningInline">Leirdue context could not be loaded. The report can still be generated without field-strength comparison.</p>}
     </section>
     <section className="card coachReportSessionList"><button type="button" className="coachReportAccordionButton" aria-expanded={sessionsOpen} onClick={() => setSessionsOpen((open) => !open)}><span><strong>Selected sessions</strong><small>{selectedSummary}</small></span><span>{sessionsOpen ? "Hide" : "Show"}</span></button>{sessionsOpen && <div className="coachReportSessionPanel"><div className="btns"><button type="button" className="button secondary" onClick={() => setSelectedIds(new Set(visibleSessions.map((session) => session.id)))}>Select all</button><button type="button" className="button secondary" onClick={() => setSelectedIds(new Set())}>Clear all</button></div>{visibleSessions.length === 0 ? <p>No training or competition sessions found in this date range.</p> : visibleSessions.map((session) => { const sessionMisses = misses.filter((miss) => miss.session_id === session.id); return <label key={session.id} className="coachReportSessionCard"><input type="checkbox" checked={selectedIds.has(session.id)} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); if (event.target.checked) next.add(session.id); else next.delete(session.id); return next; })} /><span><strong>{sessionDate(session)} — {session.name || "Untitled session"}</strong><span className="small muted">{session.discipline || "Discipline not recorded"} · {typeLabel(session)} · {scoreLabel(session, sessionMisses)}{session.shooting_ground ? ` · ${session.shooting_ground}` : ""}</span></span></label>; })}</div>}</section>
-    <article className="card coachReportPreview" aria-label="Coach report plain-text preview"><div className="coachReportPreviewHeader"><div><p className="eyebrow">Private coach report preview</p><h2>{aiReport ? "AI coach report" : "Deterministic evidence preview"}</h2><p className="small muted">Copy only what is visible here. AI failures keep this evidence preview available.</p></div><div className="btns"><button type="button" onClick={copyReport} disabled={report.selectedSessionCount === 0}>Copy visible report</button>{copyStatus && <span className={copyStatus === "Copied" ? "successInline" : "errorInline"}>{copyStatus}</span>}</div></div><div className="coachReportSummaryGrid"><span>{report.selectedSessionCount} sessions</span><span>{previewInput?.fromDate || fromDate} to {previewInput?.toDate || toDate}</span><span>{report.trainingCount} training</span><span>{report.competitionCount} competition</span><span>Leirdue context: {report.evidence.leirdueFieldContexts.length ? "yes" : "no"}</span><span>Confidence: {report.evidence.confidence.level}</span></div>{aiReport ? <div className="coachReportAiCards">{aiReportCards.map((card) => <section key={card.title} className="coachReportAiCard"><h3>{card.title}</h3>{card.items.map((item) => <p key={item}>• {item}</p>)}</section>)}</div> : report.sections.filter((section) => ["Coach takeaway", "Performance context", "Recurring reviewed context", "Confidence and uncertainty", "Questions for your coach", "Discipline-specific notes", "What to test next", "Data quality and what to log next"].includes(section.title)).map((section) => <section key={section.title} className="coachReportSection"><h2>{section.title}</h2>{section.items.slice(0, 4).map((item) => <p key={item}>• {item}</p>)}</section>)}<details><summary>Leirdue field comparison</summary>{report.evidence.leirdueFieldContexts.length ? report.evidence.leirdueFieldContexts.map((field) => <p key={field.sessionId}>{field.eventTitle}: {field.fieldSize} shooters · placement {field.placement ?? "?"} · median {field.medianScore ?? "?"} · {field.competitionLevel}</p>) : <p>No matched Leirdue field context.</p>}</details><details><summary>Evidence summary</summary>{evidenceSummaryItems.map((item) => <p key={item}>{item}</p>)}</details></article>
+    <article className="card coachReportPreview" aria-label={shooterView ? "Lab Insights preview" : "Coach brief preview"}><div className="coachReportPreviewHeader"><div><p className="eyebrow">{shooterView ? "Private development analysis" : "Private Coach brief preview"}</p><h2>{aiReport ? (shooterView ? "Lab Insights" : "AI Coach brief") : "Deterministic evidence preview"}</h2><p className="small muted">Copy only what is visible here. AI failures keep this evidence preview available.</p></div><div className="btns"><button type="button" onClick={copyReport} disabled={report.selectedSessionCount === 0 || previewNeedsUpdate}>Copy visible report</button>{copyStatus && <span className={copyStatus === "Copied" ? "successInline" : "errorInline"}>{copyStatus}</span>}</div></div><div className="coachReportSummaryGrid"><span>{report.selectedSessionCount} sessions</span><span>{previewInput?.fromDate || fromDate} to {previewInput?.toDate || toDate}</span><span>{report.trainingCount} training</span><span>{report.competitionCount} competition</span><span>Leirdue context: {report.evidence.leirdueFieldContexts.length ? "yes" : "no"}</span><span>Confidence: {report.evidence.confidence.level}</span></div>{aiReport ? <div className="coachReportAiCards">{aiReportCards.map((card) => <section key={card.title} className="coachReportAiCard"><h3>{card.title}</h3>{card.items.map((item) => <p key={item}>• {item}</p>)}</section>)}</div> : shooterView ? <div className="coachReportAiCards">{[{ title: "What stands out", items: report.sections.find((section) => section.title === "Coach takeaway")?.items.slice(1, 3) || [] }, { title: "What to work on", items: report.sections.find((section) => section.title === "What to test next")?.items || [] }, { title: "How to train it", items: report.sections.find((section) => section.title === "Training plan for next 1–2 weeks")?.items || [] }, { title: "Evidence and uncertainty", items: report.sections.find((section) => section.title === "Confidence and uncertainty")?.items || [] }].map((card) => <section key={card.title} className="coachReportAiCard"><h3>{card.title}</h3>{card.items.map((item) => <p key={item}>• {item}</p>)}</section>)}</div> : report.sections.filter((section) => ["Coach takeaway", "Performance context", "Recurring reviewed context", "Confidence and uncertainty", "Questions for your coach", "Discipline-specific notes", "What to test next", "Data quality and what to log next"].includes(section.title)).map((section) => <section key={section.title} className="coachReportSection"><h2>{section.title}</h2>{section.items.slice(0, 4).map((item) => <p key={item}>• {item}</p>)}</section>)}<details><summary>Leirdue field comparison</summary>{report.evidence.leirdueFieldContexts.length ? report.evidence.leirdueFieldContexts.map((field) => <p key={field.sessionId}>{field.eventTitle}: {field.fieldSize} shooters · placement {field.placement ?? "?"} · median {field.medianScore ?? "?"} · {field.competitionLevel}</p>) : <p>No matched Leirdue field context.</p>}</details><details><summary>Evidence summary</summary>{evidenceSummaryItems.map((item) => <p key={item}>{item}</p>)}</details></article>
   </main>;
 }
+
+export default function CoachReportPeriodPage() { return <PeriodAnalysisPage audience="coach" />; }

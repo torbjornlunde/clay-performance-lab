@@ -80,7 +80,7 @@ export function OnboardingHelpPanel() {
           <li><strong>Scorecards:</strong> open a saved competition to import a photo and review its scores. Target setup is optional.</li>
           <li><Link href="/log-training" onClick={() => dismiss("get_started")}>Training:</Link> save a simple training log or use Training Score Sheet for several shooters.</li>
           <li><strong>Target details:</strong> add posts, targets and misses later from your saved competition.</li>
-          <li><Link href="/coach-report" onClick={() => dismiss("get_started")}>Coach Report:</Link> bring scores and optional notes together for a discussion with your coach. Missing detail stays uncertain.</li>
+          <li><Link href="/lab-insights" onClick={() => dismiss("get_started")}>Lab Insights:</Link> explore what to work on and ways to train it. Use <Link href="/coach-report" onClick={() => dismiss("get_started")}>Coach brief</Link> to prepare evidence and questions for a coach.</li>
           <li><Link href="/notifications" onClick={() => dismiss("get_started")}>Notifications:</Link> review updates in the app. You can also install CPL from your browser for easier access.</li>
         </ul>
       </details>
