@@ -10408,3 +10408,5 @@ select {
 .personalNoteMeta { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); font-size: .875rem; }
 .personalNoteEntry h3 { overflow-wrap: anywhere; margin: 8px 0 3px; }
 .personalNoteBody { white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0 16px; }
+.personalNoteReview { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 4px; min-width: 0; }
+.personalNoteReview input { min-width: 0; font-size: 16px; }

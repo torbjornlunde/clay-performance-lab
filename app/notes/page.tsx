@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ReflectionEvidenceReview } from "@/app/components/ReflectionEvidenceReview";
 import { supabase } from "@/lib/supabase/client";
 
 type Session = { id: string; name: string; discipline: string | null; session_type: string | null; competition_date: string | null; created_at: string };
@@ -18,6 +19,7 @@ export default function NotesPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [discipline, setDiscipline] = useState("all");
   const [query, setQuery] = useState("");
+  const [openReviewId, setOpenReviewId] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -79,7 +81,15 @@ export default function NotesPage() {
           <h3>{session.name}</h3>
           {session.discipline && <p className="small muted">{session.discipline}</p>}
           <p className="personalNoteBody">{note.body}</p>
-          <Link className="button secondary smallButton" href={`/sessions/${session.id}#${session.session_type === "Competition" && note.note_scope === "session" ? "competition-context" : "private-notes"}`}>Open session</Link>
+          <div className="btns compactActions">
+            <Link className="button secondary smallButton" href={`/sessions/${session.id}#${session.session_type === "Competition" && note.note_scope === "session" ? "competition-context" : "private-notes"}`}>Open session</Link>
+            {session.session_type === "Competition" && note.note_scope === "session" && <button type="button" className="secondary smallButton" aria-expanded={openReviewId === note.id} onClick={() => setOpenReviewId((current) => current === note.id ? null : note.id)}>{openReviewId === note.id ? "Close review" : "Review for coaching"}</button>}
+          </div>
+          {openReviewId === note.id && session.session_type === "Competition" && note.note_scope === "session" && <div className="personalNoteReview">
+            <ReflectionEvidenceReview sessionId={session.id} note={{ id: note.id, body: note.body, updated_at: note.updated_at }} />
+            <p className="small muted">Only suggestions you accept from this saved reflection can be included as reviewed context. Your raw note stays private and is not silently interpreted in the report.</p>
+            <Link href={`/sessions/${session.id}/coach-report`}>View this session’s Coach Report</Link>
+          </div>}
         </article>;
       })}</div>
       {hasMore && <button type="button" className="secondary" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Loading..." : "Load more notes"}</button>}
