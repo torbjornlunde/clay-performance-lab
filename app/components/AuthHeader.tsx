@@ -281,7 +281,7 @@ export default function AuthHeader() {
                   {showBetaAdmin && (
                     <div className="globalMenuSection globalMenuAdminSection" role="group" aria-label="Admin tools">
                       <div className="globalMenuSectionLabel">Admin tools</div>
-                      <Link role="menuitem" href="/beta/admin" onClick={() => closeMenu()}>Beta approvals</Link>
+                      <Link role="menuitem" href="/admin/users" onClick={() => closeMenu()}>Users</Link>
                       <Link role="menuitem" href="/admin/feedback" onClick={() => closeMenu()}>Beta feedback</Link>
                       <Link role="menuitem" href="/admin/analytics" onClick={() => closeMenu()}>Analytics</Link>
                       <Link role="menuitem" href="/admin/leirdue-health" onClick={() => closeMenu()}>Leirdue health</Link>

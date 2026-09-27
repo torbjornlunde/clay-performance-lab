@@ -101,7 +101,7 @@ export default function ProfileGate({ children }: { children: React.ReactNode })
         return;
       }
 
-      if (currentPath === BETA_ADMIN_PATH) {
+      if (currentPath === BETA_ADMIN_PATH || currentPath === "/admin/users") {
         if (!canManageBetaAccess(accessProfile)) {
           router.replace("/dashboard");
           setReady(false);

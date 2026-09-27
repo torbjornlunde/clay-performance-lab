@@ -1,4 +1,4 @@
-export type AccessStatus = "pending" | "approved" | "rejected" | "revoked";
+export type AccessStatus = "pending" | "approved" | "paused" | "rejected" | "revoked" | "removed";
 export type SystemRole = "owner" | "admin" | "user";
 export type AccountType = "personal";
 
@@ -13,6 +13,7 @@ export type UserAccessProfile = {
   updated_at: string;
   approved_at: string | null;
   approved_by: string | null;
+  removed_at?: string | null;
 };
 
 export type BetaInterestAdminStatus =
