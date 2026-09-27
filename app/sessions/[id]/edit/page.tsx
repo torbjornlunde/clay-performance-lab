@@ -368,7 +368,7 @@ export default function EditSessionPage() {
           leirdue_result_url: leirdueResultUrl.trim() || null,
           notes: notes.trim() || null,
           equipment_weapon_id: equipmentSelection.weaponId || null,
-          equipment_ammunition_profile_id: equipmentSelection.ammunitionId || null,
+          equipment_ammunition_profile_id: Array.isArray(equipmentSnapshot?.ammunitions) && equipmentSnapshot.ammunitions.length > 1 ? null : equipmentSelection.ammunitionId || null,
           equipment_snapshot: equipmentSnapshot,
         })
         .eq("id", sessionId);
@@ -433,7 +433,7 @@ export default function EditSessionPage() {
         leirdue_result_url: leirdueResultUrl.trim() || null,
         notes: notes.trim() || null,
         equipment_weapon_id: equipmentSelection.weaponId || null,
-        equipment_ammunition_profile_id: equipmentSelection.ammunitionId || null,
+        equipment_ammunition_profile_id: Array.isArray(equipmentSnapshot?.ammunitions) && equipmentSnapshot.ammunitions.length > 1 ? null : equipmentSelection.ammunitionId || null,
         equipment_snapshot: equipmentSnapshot,
       })
       .eq("id", sessionId);
@@ -668,16 +668,14 @@ export default function EditSessionPage() {
           </div>
         )}
 
-        <EquipmentUsedSelector
+        {Array.isArray(equipmentSnapshot?.ammunitions) && equipmentSnapshot.ammunitions.length > 1 ? (
+          <div className="compactNotice">Multiple ammunition types are recorded. <Link href={`/sessions/${sessionId}#competition-context`}>Edit equipment on the result page</Link>.</div>
+        ) : <EquipmentUsedSelector
           value={equipmentSelection}
+          suggestDefaults={!isResultOnlyImport}
           onChange={(selection, snapshot) => { setEquipmentSelection(selection); setEquipmentSnapshot(snapshot); }}
-        />
-        <label>Notes</label>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Optional notes"
-        />
+        />}
+        {!isResultOnlyImport && <><label>Notes</label><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes" /></>}
         {isResultOnlyImport ? (
           <details className="optionalDetails advancedSetupDetails" open={advancedSetupEnabled} onToggle={(event) => setAdvancedSetupEnabled(event.currentTarget.open)}>
             <summary>Advanced shooting setup</summary>
