@@ -264,6 +264,7 @@ export default function AuthHeader() {
                   <div className="globalMenuSection" role="group" aria-label="Shooter">
                     <div className="globalMenuSectionLabel">Shooter</div>
                     <Link role="menuitem" href="/profile" onClick={() => closeMenu()}>Shooter profile</Link>
+                    <Link role="menuitem" href="/notes" onClick={() => closeMenu()}>Personal notes</Link>
                     <Link role="menuitem" href="/equipment" onClick={() => closeMenu()}>Equipment</Link>
                     <Link role="menuitem" href="/settings" onClick={() => closeMenu()}>Settings</Link>
                     {installAvailable ? <button role="menuitem" type="button" onClick={() => { closeMenu({ restoreFocus: true }); void openInstallExperience(); }}>Install app</button> : null}
