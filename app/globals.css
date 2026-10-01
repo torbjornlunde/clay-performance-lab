@@ -10446,6 +10446,36 @@ select {
   .dashboardMain .dashboardPerformanceChart { height: 130px; }
   .dashboardResultsHeader h2 { font-size: 1.35rem; }
 }
+.labFocusPage { max-width: 920px; gap: 14px; }
+.labFocusPage > * { min-width: 0; }
+.labFocusHeader { padding: 0 4px 8px; }
+.labBack { display: inline-flex; align-items: center; min-height: 44px; font-size: .875rem; }
+.labFocusNav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 8px 0 24px; border-bottom: 1px solid var(--border); }
+.labFocusNav a { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 6px 2px; font-size: .85rem; font-weight: 650; text-align: center; border-bottom: 3px solid transparent; }
+.labFocusNav a[aria-current="page"] { border-bottom-color: var(--gold2); color: var(--text-primary); }
+.labFocusHeader h1 { margin: 4px 0 8px; font-size: clamp(1.8rem, 6vw, 2.5rem); }
+.labFocusHeader p { margin: 0; }
+.labFocusPage .card { padding: 20px; border-radius: 20px; }
+.labFocusPage .labFocusLead { border-color: var(--border-accent); background: radial-gradient(ellipse at 100% 0%, rgba(216, 165, 58, .2), transparent 70%), var(--surface-raised); }
+.labFocusLead h2, .labFocusResult h2 { font-size: 1.4rem; margin: 6px 0 12px; line-height: 1.25; }
+.labFocusLead > button { width: 100%; min-height: 48px; margin-top: 8px; }
+.labFocusLead p, .labFocusResult p { line-height: 1.55; }
+.labFocusResults { display: grid; gap: 14px; }
+.labFocusResult .eyebrow { margin: 0; }
+.labFocusResult.labPriority { border-left: 4px solid var(--gold2); }
+.labFocusPage details > summary { cursor: pointer; min-height: 44px; line-height: 1.4; font-weight: 700; }
+.labFocusPage details > summary span { display: block; padding-left: 18px; font-weight: 400; }
+.labSettingsBody { display: grid; gap: 16px; margin-top: 16px; }
+.labFocusPage .coachReportDateGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.coachReportDateGrid label { min-width: 0; }
+.coachReportDateGrid input[type="date"] { display: block; box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; font-size: 16px; min-height: 48px; padding: 10px 8px; }
+.coachReportDateGrid input::-webkit-date-and-time-value { text-align: left; min-width: 0; }
+.labFocusPage .coachReportSessionCard { min-width: 0; padding: 12px 0; border: 0; border-radius: 0; border-bottom: 1px solid var(--border); }
+.labFocusPage .coachReportSessionCard span { min-width: 0; overflow-wrap: anywhere; }
+.labSessionPicker .btns { margin: 12px 0; }
+.labCopy { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.labDisclaimer { margin: 0 4px; line-height: 1.5; }
+@media (max-width: 360px) { .labFocusPage .coachReportDateGrid { grid-template-columns: 1fr; } .labFocusPage .card { padding: 16px; } .labFocusNav a { font-size: .8rem; } }
 .adminUserPagination { align-items: center; justify-content: space-between; margin-top: 18px; }
 .personalNotesFilters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; margin-bottom: 18px; }
 .personalNotesFilters input, .personalNotesFilters select { width: 100%; min-height: 44px; font-size: 16px; }

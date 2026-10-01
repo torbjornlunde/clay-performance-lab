@@ -65,6 +65,8 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
   const [aiReport, setAiReport] = useState<AiReport | null>(null);
   const [aiStatus, setAiStatus] = useState("");
   const [aiError, setAiError] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [includeNotesContext, setIncludeNotesContext] = useState(false);
@@ -72,25 +74,27 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
   const [loading, setLoading] = useState(true);
   const [previewInput, setPreviewInput] = useState<{ fromDate: string; toDate: string; selectedIds: string[]; includeNotesContext: boolean } | null>(null);
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load().catch(() => { setLoadError("Your data could not be loaded. Refresh to try again."); setLoading(false); }); }, []);
 
   async function load() {
     setLoading(true);
     const { data: authData } = await supabase.auth.getUser();
     if (!authData.user) { router.push("/login"); return; }
-    const { data: sessionRows } = await supabase
+    const { data: sessionRows, error: sessionError } = await supabase
       .from("sessions")
       .select("id,name,discipline,session_type,own_score,total_targets,winning_score,created_at,competition_date,shooting_ground,user_id,leirdue_result_url")
       .eq("user_id", authData.user.id)
       .order("competition_date", { ascending: false, nullsFirst: false });
+    if (sessionError) { setLoadError("Your sessions could not be loaded. Refresh to try again."); setLoading(false); return; }
     const rows = (sessionRows || []) as CoachReportPeriodSession[];
     const ids = rows.map((session) => session.id);
-    const [{ data: missRows }, { data: noteRows }, { data: importRows }, { data: evidenceRows }] = ids.length ? await Promise.all([
+    const [{ data: missRows, error: missError }, { data: noteRows, error: noteError }, { data: importRows, error: importError }, { data: evidenceRows, error: evidenceError }] = ids.length ? await Promise.all([
       supabase.from("misses").select("id,session_id,course_number,target_position,target_number,missed_target,main_reason,where_miss,created_at").in("session_id", ids),
       supabase.from("private_session_notes").select("id,session_id,note_scope,post_number,body,context_tags,updated_at").in("session_id", ids),
       supabase.from("scorecard_imports").select("session_id,reviewed_total_targets,reviewed_hits,reviewed_misses,inserted_misses,skipped_duplicates,created_at").in("session_id", ids).order("created_at", { ascending: false }),
       supabase.from("private_reflection_evidence").select("session_id,category,normalized_value,label,evidence_basis,confidence,reference,source_note_id,source_note_updated_at,review_status").in("session_id", ids).eq("review_status", "accepted"),
-    ]) : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
+    ]) : [{ data: [], error: null }, { data: [], error: null }, { data: [], error: null }, { data: [], error: null }];
+    if (missError || noteError || importError || evidenceError) { setLoadError("Some analysis data could not be loaded. Refresh to try again; no insights have been generated from incomplete data."); setLoading(false); return; }
     setSessions(rows);
     setMisses((missRows || []) as MissRow[]);
     setScorecardImports((importRows || []) as ScorecardImportRow[]);
@@ -139,6 +143,7 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData.session?.access_token;
     if (!accessToken) { setLeirdueStatus("unavailable"); setLeirdueError("Sign in again to load Leirdue field context."); return [] as LeirdueRow[]; }
+    try {
     const response = await fetch("/api/coach-report/leirdue-context", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ sessions: competitions }) });
     const json = await response.json();
     const rows = Array.isArray(json.rows) ? json.rows as LeirdueRow[] : [];
@@ -146,6 +151,10 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
     setLeirdueStatus(json.status === "available" ? "available" : "unavailable");
     setLeirdueError(Array.isArray(json.errors) ? json.errors.join(" ") : "");
     return rows;
+    } catch {
+      setLeirdueRows([]); setLeirdueStatus("unavailable"); setLeirdueError("Competition field context could not be loaded.");
+      return [] as LeirdueRow[];
+    }
   }
   async function updatePreview() { setCopyStatus(""); setAiReport(null); setAiError(""); const rows = await fetchLeirdueContextFor(selectedSessions); setPreviewInput({ fromDate, toDate, selectedIds: [...selectedIds], includeNotesContext }); return rows; }
 
@@ -167,15 +176,17 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
   }
 
   async function generateAiReport() {
+    if (generating || !fromDate || !toDate || fromDate > toDate || !selectedSessions.length) return;
+    setGenerating(true);
     setAiStatus(shooterView ? "Generating Lab Insights..." : "Generating Coach brief...");
     setAiError("");
     setAiReport(null);
-    const freshLeirdueRows = await fetchLeirdueContextFor(selectedSessions);
-    setPreviewInput({ fromDate, toDate, selectedIds: [...selectedIds], includeNotesContext });
-    const currentReport = buildPeriodCoachReport({ fromDate, toDate, sessions: selectedSessions, missesBySession: currentMissesBySession, scorecardImportsBySession: currentScorecardImportsBySession, privateNotesBySession: currentPrivateNotesBySession, acceptedEvidenceBySession: currentAcceptedEvidenceBySession, includeNotesContext, leirdueRows: freshLeirdueRows });
-    const safeMetadata = { reportType: "ai_period", selectedSessionCount: selectedSessions.length, trainingCount: selectedSessions.filter((session) => typeLabel(session) === "Training").length, competitionCount: selectedSessions.filter((session) => typeLabel(session) === "Competition").length, disciplineCount: new Set(selectedSessions.map((session) => session.discipline || "Unknown")).size, hasLeirdueContext: currentReport.evidence.leirdueFieldContexts.length > 0, hasNotesContext: currentReport.hasNotesContext, dataQuality: currentReport.dataQuality };
-    void recordAnalyticsEvent(supabase, shooterView ? "lab_insights_ai_generate_clicked" : "coach_report_ai_generate_clicked", { route: shooterView ? "/lab-insights" : "/coach-report", feature: shooterView ? "lab_insights" : "coach_report", metadata: safeMetadata });
     try {
+      const freshLeirdueRows = await fetchLeirdueContextFor(selectedSessions);
+      setPreviewInput({ fromDate, toDate, selectedIds: [...selectedIds], includeNotesContext });
+      const currentReport = buildPeriodCoachReport({ fromDate, toDate, sessions: selectedSessions, missesBySession: currentMissesBySession, scorecardImportsBySession: currentScorecardImportsBySession, privateNotesBySession: currentPrivateNotesBySession, acceptedEvidenceBySession: currentAcceptedEvidenceBySession, includeNotesContext, leirdueRows: freshLeirdueRows });
+      const safeMetadata = { reportType: "ai_period", selectedSessionCount: selectedSessions.length, trainingCount: selectedSessions.filter((session) => typeLabel(session) === "Training").length, competitionCount: selectedSessions.filter((session) => typeLabel(session) === "Competition").length, disciplineCount: new Set(selectedSessions.map((session) => session.discipline || "Unknown")).size, hasLeirdueContext: currentReport.evidence.leirdueFieldContexts.length > 0, hasNotesContext: currentReport.hasNotesContext, dataQuality: currentReport.dataQuality };
+      void recordAnalyticsEvent(supabase, shooterView ? "lab_insights_ai_generate_clicked" : "coach_report_ai_generate_clicked", { route: shooterView ? "/lab-insights" : "/coach-report", feature: shooterView ? "lab_insights" : "coach_report", metadata: safeMetadata });
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData.session?.access_token;
       if (!accessToken) throw new Error("Sign in to generate this analysis.");
@@ -188,13 +199,62 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
     } catch (error: any) {
       setAiStatus("");
       setAiError(error?.message || "AI analysis failed. The evidence preview is still available.");
-      void recordAnalyticsEvent(supabase, shooterView ? "lab_insights_ai_failed" : "coach_report_ai_failed", { route: shooterView ? "/lab-insights" : "/coach-report", feature: shooterView ? "lab_insights" : "coach_report", metadata: safeMetadata });
+      void recordAnalyticsEvent(supabase, shooterView ? "lab_insights_ai_failed" : "coach_report_ai_failed", { route: shooterView ? "/lab-insights" : "/coach-report", feature: shooterView ? "lab_insights" : "coach_report" });
+    } finally {
+      setGenerating(false);
     }
   }
 
   const selectedSummary = `${selectedSessions.length} selected · ${selectedSessions.filter((session) => typeLabel(session) === "Training").length} training · ${selectedSessions.filter((session) => typeLabel(session) === "Competition").length} competition`;
 
   if (loading) return <main className="coachReportPage"><section className="card">Loading {shooterView ? "Lab Insights" : "Coach brief"}...</section></main>;
+  if (loadError) return <main className="coachReportPage"><section className="card" role="alert">{loadError}</section></main>;
+  if (shooterView) return <main className="coachReportPage labFocusPage">
+    <header className="labFocusHeader">
+      <Link href="/dashboard" className="labBack">← Dashboard</Link>
+      <nav className="labFocusNav" aria-label="Analysis areas"><Link href="/stats">Performance</Link><Link href="/lab-insights" aria-current="page">Lab Insights</Link><Link href="/coach-report">Coach brief</Link></nav>
+      <p className="eyebrow">Your development</p><h1>Lab Insights</h1>
+      <p className="muted">Find your focus. Build a way forward.</p>
+    </header>
+    <section className="card labFocusLead">
+      <p className="eyebrow">{aiReport && !previewNeedsUpdate ? "AI development direction" : "Ready to explore"}</p>
+      <h2>{aiReport && !previewNeedsUpdate ? "Your next focus" : "What should you work on next?"}</h2>
+      {!aiReport && <p>Explore patterns across your shooting, choose a priority and find a practical way to work on it.</p>}
+      <p className="small muted">{selectedSummary}<br />{fromDate} – {toDate}</p>
+      <button type="button" onClick={() => void generateAiReport()} disabled={generating || !selectedSessions.length || !fromDate || !toDate || fromDate > toDate}>{generating ? "Finding your focus…" : aiReport ? "Refresh insights" : "Find my focus"}</button>
+      {generating && <p role="status" className="small muted">Comparing your results and reviewed context. This can take a moment.</p>}
+      {aiError && <p role="alert" className="errorInline">{aiError} Your data is still available below. You can try again.</p>}
+      {leirdueStatus === "unavailable" && <p className="small muted">Competition field context is unavailable. Insights use your saved data without that comparison.</p>}
+      {previewNeedsUpdate && aiReport && <p role="status" className="warningInline">Your selection changed. Refresh insights to use it.</p>}
+      {!selectedSessions.length && <p className="small muted">No sessions selected. Change the dates or select sessions below.</p>}
+    </section>
+    {aiReport && !previewNeedsUpdate && <article className="labFocusResults" aria-label="Lab Insights">
+      {aiReportCards.map((card, index) => <section key={card.title} className={`card labFocusResult ${index === 1 ? "labPriority" : ""}`}><p className="eyebrow">{String(index + 1).padStart(2, "0")}</p><h2>{card.title}</h2>{card.items.map((item, itemIndex) => <p key={itemIndex}>{item.replace(/^\d+[.)]\s*/, "")}</p>)}</section>)}
+      <div className="labCopy"><button type="button" className="button secondary" onClick={() => void copyReport()}>Copy insights</button>{copyStatus && <span role="status">{copyStatus}</span>}</div>
+    </article>}
+    <details className="card labFocusSettings"><summary>Analysis settings <span className="small muted">Dates, sessions & context</span></summary>
+      <div className="labSettingsBody">
+        <div className="coachReportDateGrid"><label>From date<input type="date" value={fromDate} disabled={generating} onChange={(event) => setFromDate(event.target.value)} /></label><label>To date<input type="date" value={toDate} disabled={generating} onChange={(event) => setToDate(event.target.value)} /></label></div>
+        {(!fromDate || !toDate || fromDate > toDate) && <p role="alert" className="errorInline">Choose a valid date range. The start must be before the end.</p>}
+        {notesForSelected.length > 0 && <label className="checkboxRow"><input type="checkbox" checked={includeNotesContext} disabled={generating} onChange={(event) => setIncludeNotesContext(event.target.checked)} /><span>Include reviewed context</span></label>}
+        <p className="small muted">Only your context tags and accepted reflection suggestions are used. Raw private notes are not sent to AI.</p>
+        <details className="labSessionPicker"><summary>{selectedSummary}</summary><div className="btns"><button type="button" className="button secondary" disabled={generating} onClick={() => setSelectedIds(new Set(visibleSessions.map((session) => session.id)))}>Select all</button><button type="button" className="button secondary" disabled={generating} onClick={() => setSelectedIds(new Set())}>Clear all</button></div>
+          {visibleSessions.map((session) => <label key={session.id} className="coachReportSessionCard"><input type="checkbox" checked={selectedIds.has(session.id)} disabled={generating} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); if (event.target.checked) next.add(session.id); else next.delete(session.id); return next; })} /><span><strong>{session.name || "Untitled session"}</strong><span className="small muted">{sessionDate(session)} · {session.discipline} · {typeLabel(session)}</span></span></label>)}
+        </details>
+      </div>
+    </details>
+    <details className="card labFocusEvidence"><summary>Your data <span className="small muted">Not an AI analysis</span></summary>
+      <p>{report.selectedSessionCount} sessions · {report.trainingCount} training · {report.competitionCount} competition</p>
+      <p>{report.evidence.sessionsWithOnlyResultScore.length} sessions have final scores only. Scores can show results, but cannot explain a technique fault.</p>
+      {report.evidence.repeatedMissCategories[0] && <p>Most recorded repeated category: <strong>{report.evidence.repeatedMissCategories[0].label}</strong> ({report.evidence.repeatedMissCategories[0].count} misses). {report.evidence.repeatedMissCategories[0].isBroad ? "This category is too broad to choose a technical fix." : "This is a recorded pattern, not a confirmed cause."}</p>}
+      <h3>What we still need to know</h3><p>Which target presentation repeats the problem, in which discipline, and what did you observe when it happened? Log that detail or ask a coach to observe it before changing technique.</p>
+      <p className="small muted">Confidence in technical conclusions: {report.evidence.confidence.level}. This is separate from whether scores are complete.</p>
+      {report.evidence.confidence.reasons.map((reason) => <p key={reason} className="small muted">{reason}</p>)}
+      {previewNeedsUpdate && <><p className="warningInline">These data details use your previous selection.</p><button className="button secondary" type="button" disabled={generating || !selectedSessions.length} onClick={() => void updatePreview().catch(() => setAiError("Data details could not be refreshed."))}>Refresh data details</button></>}
+      {report.evidence.leirdueFieldContexts.length > 0 && <details><summary>Competition field context</summary>{report.evidence.leirdueFieldContexts.map((field) => <p key={field.sessionId}>{field.eventTitle}: {field.fieldSize} shooters · placement {field.placement ?? "?"}</p>)}</details>}
+    </details>
+    <p className="labDisclaimer small muted">AI suggests directions to test, not a diagnosis. For direct observation, take a <Link href="/coach-report">Coach brief</Link> to your coach.</p>
+  </main>;
   return <main className="coachReportPage">
     <section className="card coachReportHero">
       <p className="small muted"><Link href="/dashboard">← Back to dashboard</Link></p>
