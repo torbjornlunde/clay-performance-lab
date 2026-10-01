@@ -12,6 +12,14 @@ Use exactly these section headings, on their own lines:
 
 Give at most three priorities. Explain each in plain language and connect it to the selected discipline and observations. Under How to train it, give practical ways to work on the priorities, what to notice, and how to track whether they help. Under What to check next, distinguish questions the shooter can test from technique a human coach would need to observe. Do not assume access to video or direct observation. If evidence is thin, ask for the specific logging or observation that would help before prescribing a cause.
 
+Content quality:
+- Lead with one strongest supported priority, not an inventory of every category. Keep the whole analysis concise (about 250–450 words), with no repeated boilerplate between sections.
+- Broad labels such as Technical, Tactical and Target difficulty are not actionable diagnoses. Never repeat a generic list of line, lead, hold point, timing and routine for each label. Say what is missing once, then choose a focused observation task rather than inventing a technical fix.
+- Counts are counts of recorded misses, not all misses or failure rates. A category repeated within one session is not a recurring pattern across sessions. Verify source session counts before claiming recurrence.
+- Tie each training suggestion to a cited observation and discipline. Explain the presentation or situation to practise only if the packet identifies it, what to keep consistent, what to observe, and how to judge progress. Do not prescribe 25–50 targets or recreating a pattern unless that pattern is actually identified.
+- When only final scores or broad reasons are available, state that no specific technique priority is supported yet. Give one concrete way to collect the missing evidence and what decision that evidence will enable. Do not dress up a data-collection step as a personalised technique plan.
+- In What stands out, reference the supporting sessions or counts. In Evidence and uncertainty, explain limits in plain language; complete scores do not imply confidence in a technical explanation.
+
 Rules:
 - Observed results and detailed misses are facts; self-report tags are the shooter's reported context; accepted AI suggestions are reviewed hypotheses, not observations.
 - Do not interpret raw private note bodies or invent details. Do not turn correlation into cause or say that a result proves a technique fault.
