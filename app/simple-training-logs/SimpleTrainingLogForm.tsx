@@ -9,6 +9,7 @@ import { type EquipmentSelection } from "@/lib/equipment/logSnapshots";
 import { supabase } from "@/lib/supabase/client";
 import { userFacingDeleteError, userFacingSaveError } from "@/lib/userFacingErrors";
 import { normalizeDisciplines, prioritizedDisciplineOptions, type ShooterProfile } from "@/lib/profile";
+import { readTrainingDraft, clearTrainingDraft, safeDraftStorage, trainingDraftNote, type LabTrainingDraft } from "@/lib/analysis/labTrainingDraft";
 
 export type SimpleTrainingLogFormValues = {
   id?: string;
@@ -115,6 +116,7 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
   const [upgrading, setUpgrading] = useState(false);
   const [myDisciplines, setMyDisciplines] = useState<string[]>([]);
   const [shooterCountry, setShooterCountry] = useState("");
+  const [labDraft, setLabDraft] = useState<LabTrainingDraft | null>(null);
 
   const disciplineOptions = useMemo(() => prioritizedDisciplineOptions(DISCIPLINE_OPTIONS, myDisciplines, shooterCountry), [myDisciplines, shooterCountry]);
 
@@ -123,6 +125,9 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
     async function loadProfileDisciplines() {
       const { data: userData } = await supabase.auth.getUser();
       if (!active || !userData.user) return;
+      if (mode === "create" && new URLSearchParams(window.location.search).get("from") === "lab-insights") {
+        setLabDraft(readTrainingDraft(safeDraftStorage(window), userData.user.id));
+      }
       const { data } = await supabase.from("shooter_profiles").select("country,my_disciplines").eq("user_id", userData.user.id).maybeSingle<Pick<ShooterProfile, "country" | "my_disciplines">>();
       if (active) {
         setMyDisciplines(normalizeDisciplines(data?.my_disciplines));
@@ -131,7 +136,7 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
     }
     loadProfileDisciplines();
     return () => { active = false; };
-  }, []);
+  }, [mode]);
 
   const previewPercentage = useMemo(() => {
     if (!hits || !targetsFired) return null;
@@ -192,6 +197,7 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
       return;
     }
 
+    if (labDraft) clearTrainingDraft(safeDraftStorage(window), userData.user.id);
     router.push("/log-training?simpleLogSaved=1");
   }
 
@@ -268,6 +274,12 @@ export function SimpleTrainingLogForm({ mode, initialValues }: SimpleTrainingLog
         </div>
       </div>
 
+      {labDraft && <section className="subcard labTrainingSuggestion"><p className="eyebrow">Focus from Lab Insights</p><h2>{labDraft.focus}</h2>{labDraft.steps.map((step, index) => <p key={index}>{step}</p>)}<p className="small muted">A suggestion to test, not a recorded result. Add it to your note only if useful. Scores and targets stay blank until you log what happened.</p><div className="btns"><button type="button" className="button secondary" onClick={() => {
+        setNotes((current) => [current.trim(), trainingDraftNote(labDraft)].filter(Boolean).join("\n\n"));
+        if (DISCIPLINE_OPTIONS.some((option) => option === labDraft.discipline)) setDiscipline((current) => current || labDraft.discipline);
+        clearTrainingDraft(safeDraftStorage(window), labDraft.userId);
+        setLabDraft(null);
+      }}>Use as training note</button><button type="button" className="button secondary" onClick={() => { clearTrainingDraft(safeDraftStorage(window), labDraft.userId); setLabDraft(null); }}>Dismiss</button></div></section>}
       <div className="subcard simpleTrainingRequiredFields">
         <h2>Minimum details</h2>
         <div className="row">

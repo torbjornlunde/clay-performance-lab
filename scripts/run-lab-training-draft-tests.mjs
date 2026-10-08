@@ -1,0 +1,68 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import ts from "typescript";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const module = { exports: {} };
+new Function("module", "exports", ts.transpileModule(readFileSync("lib/analysis/labTrainingDraft.ts", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(module, module.exports);
+const api = module.exports;
+const memory = new Map();
+const storage = { getItem: key => memory.get(key) || null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) };
+const draft = { userId: "one", createdAt: 1000, focus: "Check a repeated pattern", steps: ["Observe and record"], discipline: "Trap" };
+assert.equal(api.saveTrainingDraft(storage, draft), true);
+assert.deepEqual(api.readTrainingDraft(storage, "one", 1001), draft);
+assert.equal(api.readTrainingDraft(storage, "other", 1001), null);
+assert.equal(api.readTrainingDraft(storage, "one", 1000 + 3600001), null);
+assert.equal(api.readTrainingDraft(storage, "one", 999), null);
+assert.equal(api.saveTrainingDraft(storage, { ...draft, steps: [] }), false);
+assert.equal(api.saveTrainingDraft(null, draft), false);
+assert.equal(api.saveTrainingDraft({ ...storage, setItem() { throw Error("blocked"); } }, draft), false);
+assert.equal(api.safeDraftStorage({ get sessionStorage() { throw Error("blocked"); } }), null);
+memory.set("cpl:lab-training:v1:one", "invalid");
+assert.equal(api.readTrainingDraft(storage, "one", 1001), null);
+api.saveTrainingDraft(storage, draft);
+api.clearTrainingDraft(storage, "one");
+assert.equal(api.readTrainingDraft(storage, "one", 1001), null);
+assert.match(api.trainingDraftNote(draft), /suggestion to test \(not an observed result\)/);
+const page = readFileSync("app/coach-report/page.tsx", "utf8");
+assert.match(page, /router.push\("\/simple-training-logs\/new\?from=lab-insights"\)/);
+assert.match(page, /new URLSearchParams\(\{ from: fromDate, to: toDate/);
+const form = readFileSync("app/simple-training-logs/SimpleTrainingLogForm.tsx", "utf8");
+assert.match(form, /mode === "create".*from.*lab-insights/);
+assert.match(form, /setNotes\(\(current\) => \[current.trim\(\), trainingDraftNote/);
+assert.match(form, /setDiscipline\(\(current\) => current \|\| labDraft.discipline\)/);
+assert.doesNotMatch(form.split("{labDraft &&")[1].split('className="subcard simpleTrainingRequiredFields"')[0], /setHits|setTargetsFired|\.insert/);
+// Execute the real acceptance/dismissal handlers with controlled React state.
+const states = []; let index = 0;
+const formModule = { exports: {} };
+const mockedRequire = (id) => {
+  if (id === "react") return { useEffect() {}, useMemo: fn => fn(), useState(initial) { const slot = index++; states[slot] = slot === 14 ? draft : initial; return [states[slot], value => { states[slot] = typeof value === "function" ? value(states[slot]) : value; }]; } };
+  if (id === "next/navigation") return { useRouter: () => ({ push() {} }) };
+  if (id === "@/lib/analysis/labTrainingDraft") return api;
+  if (id === "@/lib/disciplines") return { DISCIPLINE_OPTIONS: ["Trap"] };
+  if (id === "@/lib/profile") return { prioritizedDisciplineOptions: options => options };
+  if (id.startsWith("@/")) return {};
+  return require(id);
+};
+new Function("module", "exports", "require", ts.transpileModule(form, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText)(formModule, formModule.exports, mockedRequire);
+const tree = formModule.exports.SimpleTrainingLogForm({ mode: "create", initialValues: { notes: "Existing note", discipline: "Skeet" } });
+function findButton(node, text) {
+  if (!node || typeof node !== "object") return null;
+  if (node.type === "button" && node.props.children === text) return node;
+  for (const child of [node.props?.children].flat(Infinity)) { const found = findButton(child, text); if (found) return found; }
+  return null;
+}
+global.window = { sessionStorage: storage };
+api.saveTrainingDraft(storage, draft);
+findButton(tree, "Use as training note").props.onClick();
+assert.equal(states[5], `Existing note\n\n${api.trainingDraftNote(draft)}`);
+assert.equal(states[3], "Skeet", "existing discipline is not overwritten");
+assert.equal(states[1], "", "targets remain unknown");
+assert.equal(states[2], "", "hits remain unknown");
+assert.equal(states[14], null);
+assert.equal(api.readTrainingDraft(storage, "one", 1001), null);
+states[5] = "Untouched"; api.saveTrainingDraft(storage, draft);
+findButton(tree, "Dismiss").props.onClick();
+assert.equal(states[5], "Untouched");
+delete global.window;
+console.log("Lab Insights training draft and acceptance interaction checks passed");
