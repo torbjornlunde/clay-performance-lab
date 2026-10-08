@@ -67,6 +67,8 @@ assert.ok(!initial.includes("How to train it"), "pre-AI data is not presented as
 assert.ok(!initial.includes("Deterministic"));
 const ai = { reportText: "What stands out\nExample recorded pattern\nWhat to work on\nExample priority\nHow to train it\nExample observation task\nWhat to check next\nExample question\nEvidence and uncertainty\nLimited evidence", sections: [] };
 assert.ok(renderPage({ ai }).includes("Example priority"));
+assert.ok(renderPage({ ai: { ...ai, mainFocus: 'My specific focus', cards: [{ title: 'What to work on', items: ['Structured priority'] }] } }).includes('My specific focus'));
+assert.ok(renderPage({ ai: { ...ai, mainFocus: 'My specific focus', cards: [{ title: 'What to work on', items: ['Structured priority'] }] } }).includes('Structured priority'));
 assert.ok(!renderPage({ ai, from: "2026-08-01" }).includes("Example priority"), "stale AI content is hidden after selection changes");
 assert.ok(!renderPage({ ai, discipline: "Trap" }).includes("Example priority"), "discipline changes hide old AI before selection-reset effect runs");
 assert.match(renderPage({ busy: true }), /disabled=""[^>]*>Finding your focus/);

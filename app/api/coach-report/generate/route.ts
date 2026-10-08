@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildCoachReportPrompt, COACH_REPORT_AI_SECTIONS } from "@/lib/ai/coachReportPrompt";
 import { buildLabInsightsPrompt, LAB_INSIGHTS_AI_SECTIONS } from "@/lib/ai/labInsightsPrompt";
+import { labInsightsJsonSchema, labInsightsPlainText, validateLabInsightsResult } from "@/lib/ai/labInsightsResult";
 import { getBillingMode } from "@/lib/entitlements/check";
 import { createEntitlementUserContext } from "@/lib/entitlements/userContext";
 import { FeatureAccessError, recordFeatureUsage, requirePaidCostAccess } from "@/lib/entitlements/server";
@@ -100,13 +101,19 @@ export async function handleCoachReportGenerate(request: Request, deps: CoachRep
     const apiKey = env.OPENAI_API_KEY;
     if (!apiKey) return NextResponse.json({ error: "AI analysis is not configured." }, { status: 503 });
     const openAiFetch = deps.openAiFetch || fetch;
-    const response = await openAiFetch("https://api.openai.com/v1/responses", { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: env.OPENAI_COACH_REPORT_MODEL || "gpt-4.1-mini", input: [{ role: "user", content: [{ type: "input_text", text: audience === "shooter" ? buildLabInsightsPrompt(packet.evidencePacket) : buildCoachReportPrompt(packet.evidencePacket) }] }], temperature: 0.3 }) });
+    const response = await openAiFetch("https://api.openai.com/v1/responses", { method: "POST", signal: AbortSignal.timeout(60_000), headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: env.OPENAI_COACH_REPORT_MODEL || "gpt-4.1-mini", input: [{ role: "user", content: [{ type: "input_text", text: audience === "shooter" ? buildLabInsightsPrompt(packet.evidencePacket) : buildCoachReportPrompt(packet.evidencePacket) }] }], temperature: 0.3, ...(audience === "shooter" ? { max_output_tokens: 2500, text: { format: { type: "json_schema", name: "lab_insights", strict: true, schema: labInsightsJsonSchema } } } : {}) }) });
     if (!response.ok) return NextResponse.json({ error: "AI analysis failed. The evidence preview is still available." }, { status: 502 });
     const reportText = textFromResponse(await response.json());
     if (!reportText) return NextResponse.json({ error: "AI analysis returned an empty response." }, { status: 502 });
+    let insights;
+    if (audience === "shooter") {
+      try { insights = validateLabInsightsResult(JSON.parse(reportText)); }
+      catch { return NextResponse.json({ error: "AI returned incomplete insights. Your data is unchanged; try again." }, { status: 502 }); }
+    }
     await recordFeatureUsage(auth.supabase, featureKey, auth.userId, { route: audience === "shooter" ? "/api/lab-insights/generate" : "/api/coach-report/generate" });
-    return NextResponse.json({ reportText, sections: audience === "shooter" ? LAB_INSIGHTS_AI_SECTIONS : COACH_REPORT_AI_SECTIONS });
-  } catch {
+    return NextResponse.json({ reportText: insights ? labInsightsPlainText(insights) : reportText, ...(insights || {}), sections: audience === "shooter" ? LAB_INSIGHTS_AI_SECTIONS : COACH_REPORT_AI_SECTIONS });
+  } catch (error) {
+    if (error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)) return NextResponse.json({ error: "AI took too long. Your data is unchanged; try again." }, { status: 504 });
     return NextResponse.json({ error: "AI analysis failed. The evidence preview is still available." }, { status: 500 });
   }
 }
