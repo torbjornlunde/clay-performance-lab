@@ -6,6 +6,7 @@ writeFileSync('.coach-report-ai-test-tsconfig.json', JSON.stringify({ compilerOp
 execSync('rm -rf .coach-report-ai-test-build && npx tsc -p .coach-report-ai-test-tsconfig.json && mkdir -p .coach-report-ai-test-build/node_modules/@/lib && cp -R .coach-report-ai-test-build/lib/ai .coach-report-ai-test-build/node_modules/@/lib/ai && cp -R .coach-report-ai-test-build/lib/entitlements .coach-report-ai-test-build/node_modules/@/lib/entitlements', { stdio: 'inherit' });
 const { buildCoachReportPrompt, COACH_REPORT_AI_SECTIONS } = await import('../.coach-report-ai-test-build/lib/ai/coachReportPrompt.js');
 const { buildLabInsightsPrompt, LAB_INSIGHTS_AI_SECTIONS } = await import('../.coach-report-ai-test-build/lib/ai/labInsightsPrompt.js');
+const { validateLabInsightsResult } = await import('../.coach-report-ai-test-build/lib/ai/labInsightsResult.js');
 const { handleCoachReportGenerate, __test } = await import('../.coach-report-ai-test-build/app/api/coach-report/generate/route.js');
 
 const prompt = buildCoachReportPrompt({ evidenceLevels: { currentAcceptedReflectionEvidence: [{ basis: 'self_report', sessionType: 'Competition' }] }, privacy: { rawPrivateNotesIncluded: false } });
@@ -46,10 +47,18 @@ assert.equal(capture.supabaseOptions.global.headers.Authorization, 'Bearer token
 assert(!JSON.stringify(capture.openAiBody).includes('RAW PRIVATE NOTE'), 'raw private note body is not forwarded to OpenAI');
 assert(JSON.stringify(capture.openAiBody).includes('self_report'), 'structured evidence basis reaches OpenAI packet');
 const shooterCapture = {};
-response = await handleCoachReportGenerate(req({ evidenceLevels: { observedFacts: [{ discipline: 'Sporting' }] } }, { authorization: 'Bearer token' }), deps({ capture: shooterCapture, openAiText: 'What stands out\n- Pattern' }), 'shooter');
+const structuredInsights = { mainFocus: 'Observe the repeated presentation in FITASC Sporting', cards: LAB_INSIGHTS_AI_SECTIONS.map(title => ({ title, items: ['Evidence-supported example'] })) };
+response = await handleCoachReportGenerate(req({ evidenceLevels: { observedFacts: [{ discipline: 'Sporting' }] } }, { authorization: 'Bearer token' }), deps({ capture: shooterCapture, openAiText: JSON.stringify(structuredInsights) }), 'shooter');
 assert.equal(response.status, 200, 'Lab Insights uses the same authenticated and gated evidence path');
 assert.deepEqual((await response.json()).sections, LAB_INSIGHTS_AI_SECTIONS, 'Lab Insights returns shooter-facing sections');
 assert(JSON.stringify(shooterCapture.openAiBody).includes('How to train it'), 'shooter prompt reaches AI');
+assert.equal(shooterCapture.openAiBody.text.format.type, 'json_schema');
+assert.equal(shooterCapture.openAiBody.text.format.strict, true);
+for (const value of [{ ...structuredInsights, mainFocus: '' }, { ...structuredInsights, cards: structuredInsights.cards.slice(1) }, { ...structuredInsights, cards: structuredInsights.cards.map(() => structuredInsights.cards[0]) }, { ...structuredInsights, cards: structuredInsights.cards.map(card => ({ ...card, items: [] })) }]) assert.throws(() => validateLabInsightsResult(value));
+response = await handleCoachReportGenerate(req({ evidenceLevels: {} }), deps({ openAiText: 'What stands out\n- Partial' }), 'shooter');
+assert.equal(response.status, 502, 'malformed or partial output is not a successful insight');
+response = await handleCoachReportGenerate(req({ evidenceLevels: {} }), { ...deps(), openAiFetch: async () => { throw new DOMException('Timeout', 'TimeoutError'); } }, 'shooter');
+assert.equal(response.status, 504, 'timeout leaves data untouched and returns a retryable error');
 response = await handleCoachReportGenerate(req({ selectedSessions: [] }), deps({ billingMode: 'enabled', profile: null }), 'shooter');
 assert.equal(response.status, 402, 'Lab Insights respects paid AI access');
 response = await handleCoachReportGenerate(req({ body: 'RAW PRIVATE NOTE' }), deps(), 'shooter');

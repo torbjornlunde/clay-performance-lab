@@ -10,13 +10,14 @@ import { currentAcceptedReflectionEvidence } from "@/lib/ai/currentReflectionEvi
 import { LAB_INSIGHTS_AI_SECTIONS } from "@/lib/ai/labInsightsPrompt";
 import { normalizeDisciplineGroup } from "@/lib/analysis/coachReportEvidence";
 import { analysisMonthsRange, analysisSelectionFromQuery } from "@/lib/analysis/analysisSelection";
+import { type LabInsightCard } from "@/lib/ai/labInsightsResult";
 
 type MissRow = { id?: string; session_id: string; course_number: number | null; target_position?: number | null; target_number: number | null; missed_target?: string | null; main_reason?: string | null; where_miss?: string | null; created_at?: string | null };
 type NoteRow = { id: string; session_id: string; note_scope: "session" | "post"; post_number?: number | null; body?: string | null; context_tags?: string[] | null; updated_at: string };
 type ScorecardImportRow = { session_id: string; reviewed_total_targets: number; reviewed_hits: number; reviewed_misses: number; inserted_misses?: number | null; skipped_duplicates?: number | null; created_at?: string | null };
 type LeirdueRow = { event_id?: string | null; liste_id?: string | null; normalized_name?: string | null; original_name?: string | null; club?: string | null; placement?: number | null; score?: number | null; own_score?: number | null; total_targets?: number | null; winning_score?: number | null; discipline?: string | null; event_date?: string | null; event_title?: string | null; organizer?: string | null; source_url?: string | null; validation_status?: string | null };
 type EvidenceRow = { session_id: string; category: any; normalized_value: string; label: string; evidence_basis: any; confidence: any; reference?: string | null; source_note_id?: string; source_note_updated_at?: string; review_status?: "accepted" };
-type AiReport = { reportText: string; sections: string[] };
+type AiReport = { reportText: string; sections: string[]; mainFocus?: string; cards?: LabInsightCard[] };
 
 const AI_SECTION_TITLES = ["Coach summary", "Performance context", "Main findings", "Discipline-specific notes", "What to train next", "Data quality"];
 function parseAiReportCards(text: string, titles: readonly string[]) {
@@ -135,7 +136,7 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
   const currentPrivateNotesBySession = useMemo(() => Object.fromEntries(selectedSessions.map((session) => [session.id, notes.filter((note) => note.session_id === session.id)])), [selectedSessions, notes]);
   const currentAcceptedEvidenceBySession = useMemo(() => Object.fromEntries(selectedSessions.map((session) => [session.id, acceptedEvidence.filter((item) => item.session_id === session.id)])), [selectedSessions, acceptedEvidence]);
   const currentScorecardImportsBySession = useMemo(() => Object.fromEntries(selectedSessions.map((session) => [session.id, scorecardImports.find((row) => row.session_id === session.id) || null])), [selectedSessions, scorecardImports]);
-  const aiReportCards = aiReport ? parseAiReportCards(aiReport.reportText, shooterView ? LAB_INSIGHTS_AI_SECTIONS : AI_SECTION_TITLES) : [];
+  const aiReportCards = aiReport ? (shooterView && aiReport.cards ? aiReport.cards : parseAiReportCards(aiReport.reportText, shooterView ? LAB_INSIGHTS_AI_SECTIONS : AI_SECTION_TITLES)) : [];
   const shooterFallbackCards = [
     { title: "What stands out", items: report.sections.find((section) => section.title === "Coach takeaway")?.items.slice(1, 3) || [] },
     { title: "What to work on", items: report.sections.find((section) => section.title === "What to test next")?.items || [] },
@@ -201,7 +202,7 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
       const response = await fetch(shooterView ? "/api/lab-insights/generate" : "/api/coach-report/generate", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ evidencePacket: currentReport.aiEvidencePacket }) });
       const json = await response.json();
       if (!response.ok) throw new Error(json?.error || (shooterView ? "Lab Insights generation failed." : "Coach brief generation failed."));
-      setAiReport({ reportText: json.reportText, sections: json.sections || [] });
+      setAiReport({ reportText: json.reportText, sections: json.sections || [], mainFocus: json.mainFocus, cards: json.cards });
       setAiStatus(shooterView ? "Lab Insights ready." : "Coach brief ready.");
       void recordAnalyticsEvent(supabase, shooterView ? "lab_insights_ai_generated" : "coach_report_ai_generated", { route: shooterView ? "/lab-insights" : "/coach-report", feature: shooterView ? "lab_insights" : "coach_report", metadata: safeMetadata });
     } catch (error: any) {
@@ -227,7 +228,8 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
     </header>
     <section className="card labFocusLead">
       <p className="eyebrow">{aiReport && !previewNeedsUpdate ? "AI development direction" : "Ready to explore"}</p>
-      <h2>{aiReport && !previewNeedsUpdate ? "Your next focus" : "What should you work on next?"}</h2>
+      {aiReport && !previewNeedsUpdate && <p className="small muted">Your next focus</p>}
+      <h2>{aiReport && !previewNeedsUpdate ? aiReport.mainFocus || "Your next focus" : "What should you work on next?"}</h2>
       {!aiReport && <p>Explore patterns across your shooting, choose a priority and find a practical way to work on it.</p>}
       <p className="small muted">{selectedDiscipline || "All disciplines"} · {selectedSummary}<br />{fromDate} – {toDate}</p>
       <button type="button" onClick={() => void generateAiReport()} disabled={generating || !selectedSessions.length || !fromDate || !toDate || fromDate > toDate}>{generating ? "Finding your focus…" : aiReport ? "Refresh insights" : "Find my focus"}</button>
