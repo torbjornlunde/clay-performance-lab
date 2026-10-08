@@ -10466,6 +10466,10 @@ select {
 .labFocusPage details > summary { cursor: pointer; min-height: 44px; line-height: 1.4; font-weight: 700; }
 .labFocusPage details > summary span { display: block; padding-left: 18px; font-weight: 400; }
 .labSettingsBody { display: grid; gap: 16px; margin-top: 16px; }
+.labRangePresets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.labRangePresets button { min-width: 0; min-height: 44px; padding: 8px; font-size: 16px; }
+.labDisciplineSelect { display: grid; gap: 6px; min-width: 0; font-weight: 650; }
+.labDisciplineSelect select { width: 100%; max-width: 100%; min-width: 0; min-height: 48px; font-size: 16px; }
 .labFocusPage .coachReportDateGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .coachReportDateGrid label { min-width: 0; }
 .coachReportDateGrid input[type="date"] { display: block; box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; font-size: 16px; min-height: 48px; padding: 10px 8px; }

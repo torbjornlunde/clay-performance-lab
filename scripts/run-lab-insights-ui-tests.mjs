@@ -33,16 +33,25 @@ assert.ok(prompt.includes('"Technical"'));
 const { renderToStaticMarkup } = require("react-dom/server");
 execSync("node scripts/run-coach-report-period-tests.mjs", { stdio: "inherit" });
 const { buildPeriodCoachReport } = await import("../.coach-report-period-test-build/analysis/coachReportPeriod.js");
+const { normalizeDisciplineGroup } = await import("../.coach-report-period-test-build/analysis/coachReportEvidence.js");
+const selectionModule = { exports: {} };
+new Function("module", "exports", ts.transpileModule(readFileSync("lib/analysis/analysisSelection.ts", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(selectionModule, selectionModule.exports);
+assert.equal(selectionModule.exports.analysisMonthsRange(12, new Date(2024, 1, 29)).fromDate, "2023-02-28", "leap day clamps instead of rolling into March");
+assert.equal(selectionModule.exports.analysisMonthsRange(3, new Date(2026, 4, 31)).fromDate, "2026-02-28", "month-end clamps");
+assert.equal(selectionModule.exports.validAnalysisDate("2026-02-30"), false);
+assert.equal(selectionModule.exports.analysisSelectionFromQuery("?from=2026-02-30&to=2026-10-01", { fromDate: "2025-10-01", toDate: "2026-10-01" }).fromDate, "2025-10-01");
 const sessions = [{ id: "one", name: "Example competition", discipline: "FITASC Sporting", session_type: "Competition", own_score: 80, total_targets: 100, competition_date: "2026-09-20" }];
-function renderPage({ ai = null, from = "2025-10-01", selected = new Set(["one"]), busy = false } = {}) {
+function renderPage({ ai = null, from = "2025-10-01", selected = new Set(["one"]), busy = false, discipline = "" } = {}) {
   let index = 0;
-  const states = [from, "2026-10-01", sessions, [], [], [], [], [], "idle", "", ai, "", "", busy, "", false, selected, false, "", false, { fromDate: "2025-10-01", toDate: "2026-10-01", selectedIds: ["one"], includeNotesContext: false }];
+  const states = [from, "2026-10-01", sessions, [], [], [], [], [], "idle", "", ai, "", "", busy, "", false, selected, false, "", false, { fromDate: "2025-10-01", toDate: "2026-10-01", selectedIds: ["one"], includeNotesContext: false }, discipline];
   const module = { exports: {} };
   const mockedRequire = (id) => {
     if (id === "react") return { useState: () => [states[index++], () => {}], useEffect: () => {}, useMemo: (fn) => fn() };
     if (id === "next/link") return { __esModule: true, default: ({ href, children, ...props }) => require("react").createElement("a", { href, ...props }, children) };
     if (id === "next/navigation") return { useRouter: () => ({ push() {} }) };
     if (id === "@/lib/analysis/coachReportPeriod") return { buildPeriodCoachReport };
+    if (id === "@/lib/analysis/coachReportEvidence") return { normalizeDisciplineGroup };
+    if (id === "@/lib/analysis/analysisSelection") return selectionModule.exports;
     if (id === "@/lib/ai/labInsightsPrompt") return { LAB_INSIGHTS_AI_SECTIONS: ["What stands out", "What to work on", "How to train it", "What to check next", "Evidence and uncertainty"] };
     if (id.startsWith("@/")) return {};
     return require(id);
@@ -53,11 +62,13 @@ function renderPage({ ai = null, from = "2025-10-01", selected = new Set(["one"]
 }
 const initial = renderPage();
 assert.ok(initial.includes("Find my focus"));
+assert.ok(initial.includes("12 months") && initial.includes("All history") && initial.includes("FITASC Sporting"));
 assert.ok(!initial.includes("How to train it"), "pre-AI data is not presented as training advice");
 assert.ok(!initial.includes("Deterministic"));
 const ai = { reportText: "What stands out\nExample recorded pattern\nWhat to work on\nExample priority\nHow to train it\nExample observation task\nWhat to check next\nExample question\nEvidence and uncertainty\nLimited evidence", sections: [] };
 assert.ok(renderPage({ ai }).includes("Example priority"));
 assert.ok(!renderPage({ ai, from: "2026-08-01" }).includes("Example priority"), "stale AI content is hidden after selection changes");
+assert.ok(!renderPage({ ai, discipline: "Trap" }).includes("Example priority"), "discipline changes hide old AI before selection-reset effect runs");
 assert.match(renderPage({ busy: true }), /disabled=""[^>]*>Finding your focus/);
 assert.ok(renderPage({ selected: new Set() }).includes("No sessions selected"));
 console.log("Lab Insights presentation and prompt checks passed");
