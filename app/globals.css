@@ -10493,3 +10493,8 @@ select {
 .labNextStep .btns, .labTrainingSuggestion .btns { flex-wrap: wrap; }
 .labNextStep .button, .labNextStep button, .labTrainingSuggestion button { min-height: 44px; font-size: 16px; white-space: normal; }
 .labNextStep, .labTrainingSuggestion { min-width: 0; overflow-wrap: anywhere; }
+.dashboardTrendDiscipline { display: grid; gap: 4px; margin: 8px 0 12px; min-width: 0; font-size: .8rem; }
+.dashboardTrendDiscipline select { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; font-size: 16px; box-sizing: border-box; }
+.dashboardTrendCard .customPeriodControls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dashboardTrendCard .customPeriodControls input { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; font-size: 16px; box-sizing: border-box; }
+@media (max-width: 360px) { .dashboardTrendCard .customPeriodControls { grid-template-columns: 1fr; } }
