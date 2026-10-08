@@ -8,6 +8,8 @@ import { recordAnalyticsEvent } from "@/lib/analytics";
 import { supabase } from "@/lib/supabase/client";
 import { currentAcceptedReflectionEvidence } from "@/lib/ai/currentReflectionEvidence";
 import { LAB_INSIGHTS_AI_SECTIONS } from "@/lib/ai/labInsightsPrompt";
+import { normalizeDisciplineGroup } from "@/lib/analysis/coachReportEvidence";
+import { analysisMonthsRange, analysisSelectionFromQuery } from "@/lib/analysis/analysisSelection";
 
 type MissRow = { id?: string; session_id: string; course_number: number | null; target_position?: number | null; target_number: number | null; missed_target?: string | null; main_reason?: string | null; where_miss?: string | null; created_at?: string | null };
 type NoteRow = { id: string; session_id: string; note_scope: "session" | "post"; post_number?: number | null; body?: string | null; context_tags?: string[] | null; updated_at: string };
@@ -36,7 +38,7 @@ function localDateInput(date: Date) {
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
-function defaultFromDate(audience: "shooter" | "coach") { const date = new Date(); if (audience === "shooter") date.setFullYear(date.getFullYear() - 1); else date.setMonth(date.getMonth() - 1); return localDateInput(date); }
+function defaultFromDate(audience: "shooter" | "coach") { if (audience === "shooter") return analysisMonthsRange(12).fromDate; const date = new Date(); date.setMonth(date.getMonth() - 1); return localDateInput(date); }
 function defaultToDate() { return localDateInput(new Date()); }
 function sessionDate(session: CoachReportPeriodSession) { return String(session.competition_date || session.created_at || "").slice(0, 10); }
 function inRange(session: CoachReportPeriodSession, from: string, to: string) { const date = sessionDate(session); return (!from || date >= from) && (!to || date <= to); }
@@ -73,11 +75,14 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
   const [copyStatus, setCopyStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [previewInput, setPreviewInput] = useState<{ fromDate: string; toDate: string; selectedIds: string[]; includeNotesContext: boolean } | null>(null);
+  const [selectedDiscipline, setSelectedDiscipline] = useState("");
 
   useEffect(() => { void load().catch(() => { setLoadError("Your data could not be loaded. Refresh to try again."); setLoading(false); }); }, []);
 
   async function load() {
     setLoading(true);
+    const selection = analysisSelectionFromQuery(window.location.search, { fromDate, toDate });
+    setFromDate(selection.fromDate); setToDate(selection.toDate);
     const { data: authData } = await supabase.auth.getUser();
     if (!authData.user) { router.push("/login"); return; }
     const { data: sessionRows, error: sessionError } = await supabase
@@ -87,6 +92,8 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
       .order("competition_date", { ascending: false, nullsFirst: false });
     if (sessionError) { setLoadError("Your sessions could not be loaded. Refresh to try again."); setLoading(false); return; }
     const rows = (sessionRows || []) as CoachReportPeriodSession[];
+    const initialDiscipline = rows.some((session) => normalizeDisciplineGroup(session.discipline) === selection.discipline) ? selection.discipline : "";
+    setSelectedDiscipline(initialDiscipline);
     const ids = rows.map((session) => session.id);
     const [{ data: missRows, error: missError }, { data: noteRows, error: noteError }, { data: importRows, error: importError }, { data: evidenceRows, error: evidenceError }] = ids.length ? await Promise.all([
       supabase.from("misses").select("id,session_id,course_number,target_position,target_number,missed_target,main_reason,where_miss,created_at").in("session_id", ids),
@@ -101,18 +108,19 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
     setAcceptedEvidence(currentAcceptedReflectionEvidence(evidenceRows || [], noteRows || []) as EvidenceRow[]);
     const privateNotes = ((noteRows || []) as NoteRow[]).filter((note) => String(note.body || "").trim() || (Array.isArray(note.context_tags) && note.context_tags.length > 0));
     setNotes(privateNotes);
-    const visible = rows.filter((session) => inRange(session, fromDate, toDate)).map((session) => session.id);
+    const visible = rows.filter((session) => inRange(session, selection.fromDate, selection.toDate) && (!initialDiscipline || normalizeDisciplineGroup(session.discipline) === initialDiscipline)).map((session) => session.id);
     setSelectedIds(new Set(visible));
     const hasNotes = privateNotes.some((note) => visible.includes(note.session_id));
     setIncludeNotesContext(hasNotes);
-    setPreviewInput({ fromDate, toDate, selectedIds: visible, includeNotesContext: hasNotes });
+    setPreviewInput({ fromDate: selection.fromDate, toDate: selection.toDate, selectedIds: visible, includeNotesContext: hasNotes });
     setLoading(false);
   }
 
-  const visibleSessions = useMemo(() => sessions.filter((session) => inRange(session, fromDate, toDate)).sort((a, b) => sessionDate(b).localeCompare(sessionDate(a))), [sessions, fromDate, toDate]);
+  const disciplineOptions = useMemo(() => [...new Set(sessions.map((session) => normalizeDisciplineGroup(session.discipline)))].sort(), [sessions]);
+  const visibleSessions = useMemo(() => sessions.filter((session) => inRange(session, fromDate, toDate) && (!selectedDiscipline || normalizeDisciplineGroup(session.discipline) === selectedDiscipline)).sort((a, b) => sessionDate(b).localeCompare(sessionDate(a))), [sessions, fromDate, toDate, selectedDiscipline]);
   useEffect(() => {
     setSelectedIds(new Set(visibleSessions.map((session) => session.id)));
-  }, [fromDate, toDate, sessions.length]);
+  }, [fromDate, toDate, selectedDiscipline, sessions.length]);
   const selectedSessions = visibleSessions.filter((session) => selectedIds.has(session.id));
   const previewSelectedIds = new Set(previewInput?.selectedIds || [...selectedIds]);
   const previewSessions = sessions.filter((session) => previewSelectedIds.has(session.id)).sort((a, b) => sessionDate(b).localeCompare(sessionDate(a)));
@@ -136,7 +144,7 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
   ];
   const coachPreviewSections = report.sections.filter((section) => ["Coach takeaway", "Performance context", "Recurring reviewed context", "Confidence and uncertainty", "Questions for your coach", "Discipline-specific notes", "What to test next", "Data quality and what to log next"].includes(section.title));
   const evidenceSummaryItems = [`Sessions used: ${report.selectedSessionCount}`, `Disciplines: ${report.evidence.disciplineGroups.map((group) => group.discipline).join(", ") || "none"}`, `Matched Leirdue events: ${report.evidence.leirdueFieldContexts.length}`, `Scorecard sessions: ${report.evidence.sessionsWithScorecardImportEvidence.length}`, `Detailed miss rows: ${report.evidence.detailedMissCount}`, `Notes context: ${report.hasNotesContext ? "yes" : "no"}`, `Data quality: ${report.dataQuality}`];
-  const previewNeedsUpdate = !previewInput || previewInput.fromDate !== fromDate || previewInput.toDate !== toDate || previewInput.includeNotesContext !== includeNotesContext || previewInput.selectedIds.length !== selectedIds.size || previewInput.selectedIds.some((id) => !selectedIds.has(id));
+  const previewNeedsUpdate = !previewInput || previewInput.fromDate !== fromDate || previewInput.toDate !== toDate || previewInput.includeNotesContext !== includeNotesContext || previewInput.selectedIds.length !== selectedSessions.length || previewInput.selectedIds.some((id) => !selectedSessions.some((session) => session.id === id));
   async function fetchLeirdueContextFor(reportSessions: CoachReportPeriodSession[]) {
     const competitions = reportSessions.filter((session) => typeLabel(session) === "Competition");
     if (competitions.length === 0) { setLeirdueRows([]); setLeirdueStatus("available"); setLeirdueError(""); return [] as LeirdueRow[]; }
@@ -206,6 +214,7 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
   }
 
   const selectedSummary = `${selectedSessions.length} selected · ${selectedSessions.filter((session) => typeLabel(session) === "Training").length} training · ${selectedSessions.filter((session) => typeLabel(session) === "Competition").length} competition`;
+  function applyRange(months: 3 | 6 | 12) { const range = analysisMonthsRange(months); setFromDate(range.fromDate); setToDate(range.toDate); }
 
   if (loading) return <main className="coachReportPage"><section className="card">Loading {shooterView ? "Lab Insights" : "Coach brief"}...</section></main>;
   if (loadError) return <main className="coachReportPage"><section className="card" role="alert">{loadError}</section></main>;
@@ -220,7 +229,7 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
       <p className="eyebrow">{aiReport && !previewNeedsUpdate ? "AI development direction" : "Ready to explore"}</p>
       <h2>{aiReport && !previewNeedsUpdate ? "Your next focus" : "What should you work on next?"}</h2>
       {!aiReport && <p>Explore patterns across your shooting, choose a priority and find a practical way to work on it.</p>}
-      <p className="small muted">{selectedSummary}<br />{fromDate} – {toDate}</p>
+      <p className="small muted">{selectedDiscipline || "All disciplines"} · {selectedSummary}<br />{fromDate} – {toDate}</p>
       <button type="button" onClick={() => void generateAiReport()} disabled={generating || !selectedSessions.length || !fromDate || !toDate || fromDate > toDate}>{generating ? "Finding your focus…" : aiReport ? "Refresh insights" : "Find my focus"}</button>
       {generating && <p role="status" className="small muted">Comparing your results and reviewed context. This can take a moment.</p>}
       {aiError && <p role="alert" className="errorInline">{aiError} Your data is still available below. You can try again.</p>}
@@ -234,10 +243,12 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
     </article>}
     <details className="card labFocusSettings"><summary>Analysis settings <span className="small muted">Dates, sessions & context</span></summary>
       <div className="labSettingsBody">
+        <div className="labRangePresets" aria-label="Analysis period">{([3, 6, 12] as const).map((months) => <button key={months} type="button" className="button secondary" disabled={generating} onClick={() => applyRange(months)}>{months} months</button>)}<button type="button" className="button secondary" disabled={generating || !sessions.length} onClick={() => { setFromDate(sessions.map(sessionDate).filter(Boolean).sort()[0] || fromDate); setToDate(defaultToDate()); }}>All history</button></div>
+        <label className="labDisciplineSelect">Discipline<select value={selectedDiscipline} disabled={generating} onChange={(event) => setSelectedDiscipline(event.target.value)}><option value="">All disciplines</option>{disciplineOptions.map((discipline) => <option key={discipline} value={discipline}>{discipline}</option>)}</select></label>
         <div className="coachReportDateGrid"><label>From date<input type="date" value={fromDate} disabled={generating} onChange={(event) => setFromDate(event.target.value)} /></label><label>To date<input type="date" value={toDate} disabled={generating} onChange={(event) => setToDate(event.target.value)} /></label></div>
         {(!fromDate || !toDate || fromDate > toDate) && <p role="alert" className="errorInline">Choose a valid date range. The start must be before the end.</p>}
         {notesForSelected.length > 0 && <label className="checkboxRow"><input type="checkbox" checked={includeNotesContext} disabled={generating} onChange={(event) => setIncludeNotesContext(event.target.checked)} /><span>Include reviewed context</span></label>}
-        <p className="small muted">Only your context tags and accepted reflection suggestions are used. Raw private notes are not sent to AI.</p>
+        <p className="small muted">Only your context tags and accepted reflection suggestions are used. Raw private notes are not sent to AI. Each discipline is analysed separately.</p>
         <details className="labSessionPicker"><summary>{selectedSummary}</summary><div className="btns"><button type="button" className="button secondary" disabled={generating} onClick={() => setSelectedIds(new Set(visibleSessions.map((session) => session.id)))}>Select all</button><button type="button" className="button secondary" disabled={generating} onClick={() => setSelectedIds(new Set())}>Clear all</button></div>
           {visibleSessions.map((session) => <label key={session.id} className="coachReportSessionCard"><input type="checkbox" checked={selectedIds.has(session.id)} disabled={generating} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); if (event.target.checked) next.add(session.id); else next.delete(session.id); return next; })} /><span><strong>{session.name || "Untitled session"}</strong><span className="small muted">{sessionDate(session)} · {session.discipline} · {typeLabel(session)}</span></span></label>)}
         </details>
