@@ -10490,3 +10490,6 @@ select {
 .personalNoteBody { white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0 16px; }
 .personalNoteReview { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 4px; min-width: 0; }
 .personalNoteReview input { min-width: 0; font-size: 16px; }
+.labNextStep .btns, .labTrainingSuggestion .btns { flex-wrap: wrap; }
+.labNextStep .button, .labNextStep button, .labTrainingSuggestion button { min-height: 44px; font-size: 16px; white-space: normal; }
+.labNextStep, .labTrainingSuggestion { min-width: 0; overflow-wrap: anywhere; }

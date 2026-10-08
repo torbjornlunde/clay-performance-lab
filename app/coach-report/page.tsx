@@ -11,6 +11,7 @@ import { LAB_INSIGHTS_AI_SECTIONS } from "@/lib/ai/labInsightsPrompt";
 import { normalizeDisciplineGroup } from "@/lib/analysis/coachReportEvidence";
 import { analysisMonthsRange, analysisSelectionFromQuery } from "@/lib/analysis/analysisSelection";
 import { type LabInsightCard } from "@/lib/ai/labInsightsResult";
+import { safeDraftStorage, saveTrainingDraft } from "@/lib/analysis/labTrainingDraft";
 
 type MissRow = { id?: string; session_id: string; course_number: number | null; target_position?: number | null; target_number: number | null; missed_target?: string | null; main_reason?: string | null; where_miss?: string | null; created_at?: string | null };
 type NoteRow = { id: string; session_id: string; note_scope: "session" | "post"; post_number?: number | null; body?: string | null; context_tags?: string[] | null; updated_at: string };
@@ -217,6 +218,22 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
   const selectedSummary = `${selectedSessions.length} selected · ${selectedSessions.filter((session) => typeLabel(session) === "Training").length} training · ${selectedSessions.filter((session) => typeLabel(session) === "Competition").length} competition`;
   function applyRange(months: 3 | 6 | 12) { const range = analysisMonthsRange(months); setFromDate(range.fromDate); setToDate(range.toDate); }
 
+  const coachBriefHref = `/coach-report?${new URLSearchParams({ from: fromDate, to: toDate, ...(selectedDiscipline ? { discipline: selectedDiscipline } : {}) })}`;
+  async function useForTraining() {
+    if (!aiReport?.mainFocus || previewNeedsUpdate) return;
+    try {
+    const steps = aiReport.cards?.find((card) => card.title === "How to train it")?.items || [];
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user || !saveTrainingDraft(safeDraftStorage(window), { userId: data.user.id, createdAt: Date.now(), focus: aiReport.mainFocus, steps, discipline: selectedDiscipline || (disciplineOptions.length === 1 ? disciplineOptions[0] : "") })) {
+      setAiError("Could not prepare the training suggestion. Your insights are still available; try again or copy them.");
+      return;
+    }
+    router.push("/simple-training-logs/new?from=lab-insights");
+    } catch {
+      setAiError("Could not prepare the training suggestion. Your insights are still available; try again or copy them.");
+    }
+  }
+
   if (loading) return <main className="coachReportPage"><section className="card">Loading {shooterView ? "Lab Insights" : "Coach brief"}...</section></main>;
   if (loadError) return <main className="coachReportPage"><section className="card" role="alert">{loadError}</section></main>;
   if (shooterView) return <main className="coachReportPage labFocusPage">
@@ -243,6 +260,7 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
       {aiReportCards.map((card, index) => <section key={card.title} className={`card labFocusResult ${index === 1 ? "labPriority" : ""}`}><p className="eyebrow">{String(index + 1).padStart(2, "0")}</p><h2>{card.title}</h2>{card.items.map((item, itemIndex) => <p key={itemIndex}>{item.replace(/^\d+[.)]\s*/, "")}</p>)}</section>)}
       <div className="labCopy"><button type="button" className="button secondary" onClick={() => void copyReport()}>Copy insights</button>{copyStatus && <span role="status">{copyStatus}</span>}</div>
     </article>}
+    {aiReport && !previewNeedsUpdate && <section className="card labNextStep"><h2>Put it to work</h2><p className="small muted">Review a suggestion in your training log, or prepare a separate brief for your coach using this period and discipline. Nothing is saved or shared automatically.</p><div className="btns"><button type="button" onClick={() => void useForTraining()} disabled={!aiReport.mainFocus || !aiReport.cards?.some((card) => card.title === "How to train it" && card.items.length)}>Use for training</button><Link href={coachBriefHref} className="button secondary">Prepare Coach brief</Link></div></section>}
     <details className="card labFocusSettings"><summary>Analysis settings <span className="small muted">Dates, sessions & context</span></summary>
       <div className="labSettingsBody">
         <div className="labRangePresets" aria-label="Analysis period">{([3, 6, 12] as const).map((months) => <button key={months} type="button" className="button secondary" disabled={generating} onClick={() => applyRange(months)}>{months} months</button>)}<button type="button" className="button secondary" disabled={generating || !sessions.length} onClick={() => { setFromDate(sessions.map(sessionDate).filter(Boolean).sort()[0] || fromDate); setToDate(defaultToDate()); }}>All history</button></div>
@@ -266,7 +284,7 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
       {previewNeedsUpdate && <><p className="warningInline">These data details use your previous selection.</p><button className="button secondary" type="button" disabled={generating || !selectedSessions.length} onClick={() => void updatePreview().catch(() => setAiError("Data details could not be refreshed."))}>Refresh data details</button></>}
       {report.evidence.leirdueFieldContexts.length > 0 && <details><summary>Competition field context</summary>{report.evidence.leirdueFieldContexts.map((field) => <p key={field.sessionId}>{field.eventTitle}: {field.fieldSize} shooters · placement {field.placement ?? "?"}</p>)}</details>}
     </details>
-    <p className="labDisclaimer small muted">AI suggests directions to test, not a diagnosis. For direct observation, take a <Link href="/coach-report">Coach brief</Link> to your coach.</p>
+    <p className="labDisclaimer small muted">AI suggests directions to test, not a diagnosis. For direct observation, take a <Link href={coachBriefHref}>Coach brief</Link> to your coach.</p>
   </main>;
   return <main className="coachReportPage">
     <section className="card coachReportHero">
@@ -274,6 +292,7 @@ export function PeriodAnalysisPage({ audience }: { audience: "shooter" | "coach"
       <nav className="analysisPath" aria-label="Analysis areas"><Link href="/stats">Performance <small>Results and trends</small></Link><Link href="/lab-insights" aria-current={shooterView ? "page" : undefined}>Lab Insights <small>What to work on and how</small></Link><Link href="/coach-report" aria-current={shooterView ? undefined : "page"}>Coach brief <small>Prepare for your coach</small></Link></nav>
       <div className="coachReportHeroHeader"><div><h1>{shooterView ? "Lab Insights" : "Coach brief"}</h1><p className="muted">{fromDate} to {toDate}</p></div><button type="button" onClick={generateAiReport} disabled={selectedSessions.length === 0 || aiStatus.startsWith("Generating")}>{shooterView ? "Generate Lab Insights" : "Generate Coach brief"}</button></div>
       <p className="small muted">{shooterView ? "Explore longer-term patterns and ways to train them. The starting range is 12 months; adjust it below. AI suggestions are hypotheses to test, not diagnoses from watching you shoot." : "Prepare evidence and open questions for a coach. Review the private preview before choosing to copy and share it."}</p>
+      <label className="labDisciplineSelect">Discipline<select value={selectedDiscipline} onChange={(event) => setSelectedDiscipline(event.target.value)}><option value="">All disciplines</option>{disciplineOptions.map((discipline) => <option key={discipline} value={discipline}>{discipline}</option>)}</select></label>
       <div className="coachReportDateGrid"><label>From date<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>To date<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label></div>
       {notesForSelected.length > 0 && <div className="analysisPrivateNotesControl"><label className="checkboxRow"><input type="checkbox" checked={includeNotesContext} onChange={(event) => setIncludeNotesContext(event.target.checked)} /><span>Include reviewed context</span></label><p className="small muted">Only explicit context tags and current accepted reflection evidence are included. Raw private note text is not interpreted.</p></div>}
       <div className="btns"><button className="button secondary" type="button" onClick={() => void updatePreview()} disabled={selectedSessions.length === 0}>Update evidence preview</button>{previewNeedsUpdate && <span className="warningInline">Evidence preview needs update</span>}</div>

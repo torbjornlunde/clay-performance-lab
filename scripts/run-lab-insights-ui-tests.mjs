@@ -16,7 +16,7 @@ assert.ok(shooter.indexOf('labFocusResults') < shooter.indexOf('labFocusSettings
 assert.ok(shooter.includes('Not an AI analysis'));
 assert.ok(shooter.includes('repeatedMissCategories[0].isBroad'));
 assert.ok(shooter.includes('leirdueFieldContexts.length > 0'));
-assert.doesNotMatch(shooter, /Deterministic|Copy visible report|Training plan for next|Update evidence preview|How to train it/);
+assert.doesNotMatch(shooter, /Deterministic|Copy visible report|Training plan for next|Update evidence preview/);
 assert.match(page, /finally\s*\{\s*setGenerating\(false\)/);
 const css = readFileSync("app/globals.css", "utf8");
 assert.match(css, /input\[type="date"\][^}]*box-sizing: border-box[^}]*min-width: 0/);
@@ -69,6 +69,10 @@ const ai = { reportText: "What stands out\nExample recorded pattern\nWhat to wor
 assert.ok(renderPage({ ai }).includes("Example priority"));
 assert.ok(renderPage({ ai: { ...ai, mainFocus: 'My specific focus', cards: [{ title: 'What to work on', items: ['Structured priority'] }] } }).includes('My specific focus'));
 assert.ok(renderPage({ ai: { ...ai, mainFocus: 'My specific focus', cards: [{ title: 'What to work on', items: ['Structured priority'] }] } }).includes('Structured priority'));
+const handoff = renderPage({ ai: { ...ai, mainFocus: 'My specific focus', cards: [{ title: 'How to train it', items: ['Observe first'] }] } });
+assert.match(handoff, /Use for training/);
+assert.match(handoff, /coach-report\?from=2025-10-01&amp;to=2026-10-01/);
+assert.ok(!renderPage({ ai, from: "2026-08-01" }).includes("Use for training"));
 assert.ok(!renderPage({ ai, from: "2026-08-01" }).includes("Example priority"), "stale AI content is hidden after selection changes");
 assert.ok(!renderPage({ ai, discipline: "Trap" }).includes("Example priority"), "discipline changes hide old AI before selection-reset effect runs");
 assert.match(renderPage({ busy: true }), /disabled=""[^>]*>Finding your focus/);
