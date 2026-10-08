@@ -1,0 +1,84 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import ts from "typescript";
+const require = createRequire(import.meta.url);
+const { renderToStaticMarkup } = require("react-dom/server");
+const source = readFileSync("app/dashboard/page.tsx", "utf8");
+const states = []; let index = 0; let effects = [];
+const destinations = [];
+function transpileFile(path, mockedRequire) {
+  const module = { exports: {} };
+  new Function("module", "exports", "require", ts.transpileModule(readFileSync(path, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText)(module, module.exports, mockedRequire);
+  return module.exports;
+}
+const disciplines = transpileFile("lib/disciplines.ts", require);
+const stats = transpileFile("lib/analysis/stats.ts", require);
+const { normalizeDisciplineGroup: normalizer } = transpileFile("lib/analysis/coachReportEvidence.ts", id => id === "../disciplines" ? disciplines : {});
+const mockedRequire = id => {
+  if (id === "react") return { useMemo: fn => fn(), useEffect: fn => effects.push(fn), useState(initial) { const slot = index++; if (!(slot in states)) states[slot] = typeof initial === "function" ? initial() : initial; return [states[slot], value => { states[slot] = typeof value === "function" ? value(states[slot]) : value; }]; } };
+  if (id === "next/navigation") return { useRouter: () => ({ push(url) { destinations.push(url); } }) };
+  if (id === "next/link") return { __esModule: true, default: ({ href, children, ...props }) => require("react").createElement("a", { href, ...props }, children) };
+  if (id === "@/lib/disciplines") return disciplines;
+  if (id === "@/lib/analysis/stats") return stats;
+  if (id === "@/lib/analysis/coachReportEvidence") return { normalizeDisciplineGroup: normalizer };
+  if (id.startsWith("@/")) return {};
+  return require(id);
+};
+const module = { exports: {} };
+new Function("module", "exports", "require", ts.transpileModule(source + "\nexports.testTrend = PerformanceTrendCard; exports.testScore = scoreUsed;", { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText)(module, module.exports, mockedRequire);
+const row = (id, discipline, date, score = 80) => ({ id, name: id, discipline, created_at: `${date}T12:00:00Z`, competition_date: date, session_type: "Competition", own_score: score, total_targets: 100, winning_score: 100 });
+const rows = [row("Trap older", "Trap", "2026-02-01"), row("Skeet result", "Skeet", "2026-07-01"), row("Trap latest", "Trap", "2026-09-01"), row("Missing score", "Trap", "2026-09-02", null)];
+assert.equal(module.exports.testScore(rows[3], {}), null);
+assert.equal(module.exports.testScore({ ...rows[3], own_score: -1 }, {}), null);
+assert.equal(module.exports.testScore({ ...rows[3], own_score: 101 }, {}), null);
+assert.equal(module.exports.testScore({ ...rows[3], own_score: 0 }, {}), 0);
+assert.equal(module.exports.testScore({ ...rows[3], calculated_score: 78 }, {}), 78);
+function render(sessions = rows) { index = 0; effects = []; return module.exports.testTrend({ sessions, missCounts: {} }); }
+function find(node, predicate) {
+  if (!node || typeof node !== "object") return null;
+  if (predicate(node)) return node;
+  for (const child of [node.props?.children].flat(Infinity)) { const found = find(child, predicate); if (found) return found; }
+  return null;
+}
+let tree = render(); let html = renderToStaticMarkup(tree);
+assert.match(html, /Trap · 2 results/);
+assert.doesNotMatch(html, /Preview Skeet result|Preview Missing score/);
+let point = find(tree, node => node.props?.role === "button" && node.props?.["aria-label"] === "Preview Trap latest");
+point.props.onKeyDown({ key: "Enter", preventDefault() {}, stopPropagation() {} });
+assert.equal(states[3], "Trap latest", "keyboard activation previews the selected point");
+tree = render();
+point = find(tree, node => node.props?.role === "button" && node.props?.["aria-label"] === "Preview Trap latest");
+point.props.onKeyDown({ key: " ", preventDefault() {}, stopPropagation() {} });
+assert.equal(destinations.at(-1), "/sessions/Trap latest", "second activation opens the recorded session");
+assert.doesNotMatch(renderToStaticMarkup(tree), /<svg[^>]*aria-hidden="true"/, "interactive chart is not hidden from assistive technology");
+for (const effect of effects) effect();
+tree = render();
+find(tree, node => node.type === "select").props.onChange({ target: { value: "Skeet" } });
+html = renderToStaticMarkup(render());
+assert.match(html, /Skeet · 1 results/);
+assert.doesNotMatch(html, /Preview Trap latest/);
+tree = render();
+find(tree, node => node.type === "button" && node.props.children === "Dates").props.onClick();
+tree = render();
+find(tree, node => node.type === "input" && node.props.type === "date").props.onChange({ target: { value: "2026-08-01" } });
+for (const effect of effects) effect();
+html = renderToStaticMarkup(render());
+assert.match(html, /No scored results in this date range/);
+assert.equal(states[0], "custom", "date editing does not reset the selected period");
+assert.equal(states[1], "2026-08-01");
+states[0] = "all"; states[4] = "Trap";
+html = renderToStaticMarkup(render([row("alias", "trap", "2026-08-01"), row("canonical", "Trap", "2026-09-01"), row("distinct skeet", "Skeet", "2026-09-02")]));
+assert.match(html, /Trap · 2 results/);
+assert.doesNotMatch(html, /Preview distinct skeet/);
+states[4] = "Removed discipline";
+html = renderToStaticMarkup(render());
+assert.match(html, /Trap · 2 results/, "selection falls back when the chosen discipline disappears");
+states.length = 0;
+html = renderToStaticMarkup(render([]));
+assert.match(html, /your score and the winning score/);
+assert.doesNotMatch(source, /setPeriod\(allScored.length/);
+const css = readFileSync("app/globals.css", "utf8");
+assert.match(css, /dashboardTrendDiscipline select[^}]*font-size: 16px/);
+assert.match(css, /dashboardTrendCard \.customPeriodControls input[^}]*min-width: 0/);
+console.log("Dashboard discipline, score and date-control interactions passed");
