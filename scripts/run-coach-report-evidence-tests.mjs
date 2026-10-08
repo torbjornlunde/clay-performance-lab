@@ -92,3 +92,18 @@ assert.equal(reasonOnlyEvidence.sessionsWithUsableTargetPositions.length, 0, 're
 assert.equal(reasonOnlyEvidence.confidence.level, 'Medium', 'recurring self-report and detailed reasons without positions cannot produce Higher confidence');
 assert(!reasonOnlyEvidence.confidence.reasons.some((reason) => /mapped target/.test(reason)), 'confidence does not describe reason-only misses as mapped positions');
 console.log('coach report evidence focused tests passed');
+const incomplete = buildCoachReportEvidence({ sessions: [{ id: 'missing', total_targets: 25 }, { id: 'partial', total_targets: 25 }, { id: 'invalid', own_score: 30, total_targets: 25 }], missesBySession: { partial: [{ main_reason: 'Behind' }] } });
+assert.equal(incomplete.scoredSessions.length, 0, 'missing or invalid scores are not manufactured from miss logs');
+const distinct = buildCoachReportEvidence({ sessions: [
+  { id: 'fitasc', name: 'Same name', discipline: 'FITASC Sporting' },
+  { id: 'compak', name: 'Same name', discipline: 'Compak Sporting' },
+  { id: 'fitasc2', name: 'Same name', discipline: 'FITASC Sporting' },
+  { id: 'trap', discipline: 'Trap' }, { id: 'skeet', discipline: 'Skeet' }, { id: 'kompakt', discipline: 'Kompakt leirduesti' },
+], missesBySession: { fitasc: [{ main_reason: 'Behind' }, { main_reason: 'behind' }], compak: [{ main_reason: 'Behind' }, { main_reason: 'Behind' }], fitasc2: [{ main_reason: 'Behind' }] } });
+assert.equal(distinct.disciplineGroups.length, 5, 'known disciplines and variants remain distinct');
+const fitascPattern = distinct.repeatedMissCategories.find((item) => item.discipline === 'FITASC Sporting');
+assert.equal(fitascPattern.count, 3);
+assert.equal(fitascPattern.sessionCount, 2, 'distinct IDs count even when names match');
+assert.equal(fitascPattern.sourceSessions.length, 2);
+assert.equal(distinct.repeatedMissCategories.find((item) => item.discipline === 'Compak Sporting').sessionCount, 1);
+assert.match(distinct.repeatedMissCategories.find((item) => item.discipline === 'Compak Sporting').likelyMeaning, /within one.*not established/);
