@@ -398,8 +398,11 @@ function PerformanceTrendCard({
   }, [sessions, missCounts]);
 
   const disciplines = useMemo(() => [...new Set(scoredAcrossDisciplines.map((item) => normalizeDisciplineGroup(item.session.discipline)))].sort(), [scoredAcrossDisciplines]);
-  const activeDiscipline = disciplines.includes(selectedDiscipline) ? selectedDiscipline : scoredAcrossDisciplines.length ? normalizeDisciplineGroup(scoredAcrossDisciplines[scoredAcrossDisciplines.length - 1].session.discipline) : "";
-  const allScored = useMemo(() => scoredAcrossDisciplines.filter((item) => normalizeDisciplineGroup(item.session.discipline) === activeDiscipline), [scoredAcrossDisciplines, activeDiscipline]);
+  const activeDiscipline = disciplines.includes(selectedDiscipline) ? selectedDiscipline : "";
+  const disciplineLabel = activeDiscipline || "All disciplines";
+  const allScored = useMemo(() => activeDiscipline
+    ? scoredAcrossDisciplines.filter((item) => normalizeDisciplineGroup(item.session.discipline) === activeDiscipline)
+    : scoredAcrossDisciplines, [scoredAcrossDisciplines, activeDiscipline]);
 
   useEffect(() => {
     if (allScored.length > 0) {
@@ -504,11 +507,22 @@ function PerformanceTrendCard({
         <div>
           <p className="eyebrow">Your form</p>
           <h2 id="trend-heading">Performance trend</h2>
-          <p className="small muted trendHint">{activeDiscipline || "No scored results yet"} · {filteredScored.length} results<br />Compared with winning scores</p>
+          <p className="small muted trendHint">{disciplineLabel} · {filteredScored.length} results<br />Compared with winning scores</p>
         </div>
         <Link href="/stats" className="dashboardTrendLink">View Performance <span aria-hidden="true">→</span></Link>
       </div>
-      {disciplines.length > 1 && <label className="dashboardTrendDiscipline">Discipline<select value={activeDiscipline} onChange={(event) => { setSelectedDiscipline(event.target.value); setSelectedPointId(null); }}>{disciplines.map((discipline) => <option key={discipline} value={discipline}>{discipline}</option>)}</select></label>}
+      {disciplines.length > 1 && (
+        <details className="dashboardTrendDetails dashboardTrendFilters">
+          <summary>{activeDiscipline ? `Filter chart · ${activeDiscipline}` : "Filter chart"}</summary>
+          <label className="dashboardTrendDiscipline">
+            Discipline
+            <select value={activeDiscipline} onChange={(event) => { setSelectedDiscipline(event.target.value); setSelectedPointId(null); }}>
+              <option value="">All disciplines</option>
+              {disciplines.map((discipline) => <option key={discipline} value={discipline}>{discipline}</option>)}
+            </select>
+          </label>
+        </details>
+      )}
       <div className="periodControls dashboardPeriodControls" aria-label="Chart period">
         {(["month", "year", "all", "custom"] as ChartPeriod[]).map((option) => (
           <button key={option} type="button" className={`periodButton ${period === option ? "activePeriod" : ""}`} aria-pressed={period === option} aria-label={option === "month" ? "Last month" : option === "year" ? "Last year" : option === "all" ? "All time" : "Custom dates"} onClick={() => setPeriod(option)}>
@@ -535,7 +549,7 @@ function PerformanceTrendCard({
         </div>
       ) : (
         <div className="dashboardChartWrap">
-          <svg className="performanceChart dashboardPerformanceChart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="group" aria-label={`${activeDiscipline} performance trend. Select a result to preview it.`}>
+          <svg className="performanceChart dashboardPerformanceChart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="group" aria-label={`${disciplineLabel} performance trend. Select a result to preview it.`}>
             <line x1={padding} x2={width - padding} y1={referenceY} y2={referenceY} className="chartReference" />
             <text x={padding} y={Math.max(referenceY - 8, 14)} className="chartText">100%</text>
             <line x1={padding} x2={padding} y1={padding} y2={baselineY} className="chartAxis" />
@@ -574,7 +588,7 @@ function PerformanceTrendCard({
           )}
           <div className="dashboardTrendFooter">
             <div className="dashboardMiniLegend"><span><i className="dashboardLegendGold" aria-hidden="true" /> Performance</span><span><i className="dashboardLegendBlue" aria-hidden="true" /> 5-result average</span></div>
-            <details className="dashboardTrendDetails"><summary>About this chart</summary><p>From {formatDate(points[0].date)} to {formatDate(points[points.length - 1].date)}. One discipline at a time; results need a recorded score and a winning score. The 1-month and 1-year windows end at your latest result in this discipline, not today. The scale highlights variation. Tap a point for its result; tap it again to open the session.</p></details>
+            <details className="dashboardTrendDetails"><summary>About this chart</summary><p>From {formatDate(points[0].date)} to {formatDate(points[points.length - 1].date)}. All disciplines are included unless you choose a discipline under Filter chart. Results need a recorded score and a winning score. The 1-month and 1-year windows end at your latest result in the selected disciplines, not today. The scale highlights variation. Tap a point for its result; tap it again to open the session.</p></details>
           </div>
         </div>
       )}
