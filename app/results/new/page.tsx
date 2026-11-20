@@ -52,11 +52,14 @@ export default function NewResultPage() {
       return false;
     }
     setApplyingTemplate(true);
-    const { error } = await supabase.rpc("apply_competition_template_to_empty_session", { p_template_id: selectedTemplateCandidate.id, p_session_id: sessionId });
-    setApplyingTemplate(false);
-    if (error) {
-      setApplyMessage(error.message?.includes("empty competition") ? "This setup can only be applied to a new, empty competition." : "The result was saved, but the shared setup could not be applied. You can continue without it.");
+    try {
+      const { error } = await supabase.rpc("apply_competition_template_to_empty_session", { p_template_id: selectedTemplateCandidate.id, p_session_id: sessionId });
+      if (error) throw error;
+    } catch {
+      setApplyMessage("The result was saved, but the shared setup could not be applied. You can continue without it.");
       return false;
+    } finally {
+      setApplyingTemplate(false);
     }
     return true;
   }
@@ -119,39 +122,43 @@ export default function NewResultPage() {
     }
 
     setSaving(true);
-    const { data: u } = await supabase.auth.getUser();
-    if (!u.user) { router.push("/login"); return; }
-    const { data: inserted, error } = await supabase.from("sessions").insert({
-      user_id: u.user.id,
-      name: name.trim(),
-      discipline,
-      session_type: "Competition",
-      shooting_format: null,
-      course_count: null,
-      total_targets: totalTargetsValue,
-      competition_date: competitionDate,
-      shooting_ground: shootingGround.trim() || null,
-      own_score: ownScoreValue,
-      winning_score: winningScoreValue,
-      leirdue_result_url: leirdueResultUrl.trim() || null,
-      equipment_weapon_id: equipmentSelection.weaponId || null,
-      equipment_ammunition_profile_id: equipmentSelection.ammunitionId || null,
-      equipment_snapshot: equipmentSnapshot,
-      notes: notes.trim() || null,
-    }).select("id").single();
-    if (error || !inserted) {
-      setErr(userFacingSaveError(error, "Could not save this result right now. Try again when online."));
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) { router.push("/login"); return; }
+      const { data: inserted, error } = await supabase.from("sessions").insert({
+        user_id: u.user.id,
+        name: name.trim(),
+        discipline,
+        session_type: "Competition",
+        shooting_format: null,
+        course_count: null,
+        total_targets: totalTargetsValue,
+        competition_date: competitionDate,
+        shooting_ground: shootingGround.trim() || null,
+        own_score: ownScoreValue,
+        winning_score: winningScoreValue,
+        leirdue_result_url: leirdueResultUrl.trim() || null,
+        equipment_weapon_id: equipmentSelection.weaponId || null,
+        equipment_ammunition_profile_id: equipmentSelection.ammunitionId || null,
+        equipment_snapshot: equipmentSnapshot,
+        notes: notes.trim() || null,
+      }).select("id").single();
+      if (error || !inserted) {
+        setErr(userFacingSaveError(error, "Could not save this result right now. Try again when online."));
+        return;
+      }
+      await recordAnalyticsEvent(supabase, "result_created_manual", { route: "/results/new", feature: "manual_result", discipline, sessionId: inserted.id, metadata: { targetCount: totalTargets } });
+      const applied = await applySelectedTemplate(inserted.id);
+      const params = new URLSearchParams();
+      if (!applied) params.set("templateApplyFailed", "result");
+      if (ownScoreValue !== null) { params.set("resultSaved", "1"); params.set("context", "1"); }
+      const query = params.toString();
+      router.push(`/sessions/${inserted.id}${query ? `?${query}` : ""}${ownScoreValue !== null ? "#competition-context" : ""}`);
+    } catch (error) {
+      setErr(userFacingSaveError(error, "Could not save this result right now. Check your connection and try again."));
+    } finally {
       setSaving(false);
-      return;
     }
-    await recordAnalyticsEvent(supabase, "result_created_manual", { route: "/results/new", feature: "manual_result", discipline, sessionId: inserted.id, metadata: { targetCount: totalTargets } });
-    const applied = await applySelectedTemplate(inserted.id);
-    setSaving(false);
-    const params = new URLSearchParams();
-    if (!applied) params.set("templateApplyFailed", "result");
-    if (ownScoreValue !== null) { params.set("resultSaved", "1"); params.set("context", "1"); }
-    const query = params.toString();
-    router.push(`/sessions/${inserted.id}${query ? `?${query}` : ""}${ownScoreValue !== null ? "#competition-context" : ""}`);
   }
 
   return (
