@@ -82,7 +82,7 @@ assert.match(uiPage, /Last alert email status/, 'admin health page shows last al
 assert.match(uiPage, /Email alerts not configured/, 'admin health page shows email alerts not configured');
 
 const header = readFileSync('app/components/AuthHeader.tsx', 'utf8');
-assert.match(header, /showBetaAdmin && <Link role="menuitem" href="\/admin\/leirdue-health"/, 'admin navigation links health only for admins');
+assert.match(header, /showBetaAdmin && \([\s\S]*?<Link role="menuitem" href="\/admin\/leirdue-health"/, 'admin navigation links health only for admins');
 assert.equal((header.match(/Leirdue health/g) || []).length, 1, 'normal users cannot see admin alert/status link outside admin gate');
 
 rmSync('.leirdue-health-test-build', { recursive: true, force: true });

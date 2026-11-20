@@ -52,6 +52,7 @@
     "test:simple-training-upgrade": "node scripts/run-simple-training-upgrade-tests.mjs",
     "test:leirdue-import-edit": "node scripts/run-leirdue-import-edit-tests.mjs",
     "test:clayarena-import": "node scripts/run-clayarena-import-tests.mjs",
+    "test:result-save": "node scripts/run-result-save-tests.mjs",
     "test:competition-entry": "node scripts/run-competition-entry-tests.mjs",
     "test:leirdue-normal-ui": "node scripts/leirdue-normal-ui-check.mjs",
     "test:compak-partial-programme": "node scripts/run-compak-partial-programme-tests.mjs",
@@ -68,7 +69,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",
-    "next": "latest",
+    "next": "16.4.6",
     "react": "latest",
     "react-dom": "latest",
     "resend": "latest",
@@ -78,9 +79,9 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "typescript": "latest",
     "eslint": "latest",
-    "eslint-config-next": "latest",
-    "postcss": "^8.5.23"
+    "eslint-config-next": "16.4.6",
+    "postcss": "^8.5.23",
+    "typescript": "latest"
   }
 }

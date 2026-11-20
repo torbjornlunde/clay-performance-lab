@@ -76,6 +76,7 @@ export function latestWhatsNewEntry(entries: readonly WhatsNewEntry[]) {
 }
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
+  { id: "v1.11.26", title: "More reliable competition saves", bullets: ["If a connection fails while saving a competition, the form becomes available again with a clear error.", "If an optional shared target setup fails after saving, your saved competition still opens so you can continue."], href: "/results/new", linkLabel: "Log competition" },
   { id: "v7.10.26", title: "Your full performance picture", bullets: ["Dashboard Performance trend starts with all disciplines together.", "Open Filter chart to focus on one discipline, or choose All disciplines to return to the full view."], href: "/dashboard", linkLabel: "Open Dashboard" },
   { id: "v6.10.26", title: "A trend that stays with your discipline", bullets: ["Dashboard trends now show one discipline at a time, starting with your latest scored result. Switch disciplines without blending different shooting formats.", "Custom date choices stay selected, and missing final scores are no longer guessed from incomplete miss logs."], href: "/dashboard", linkLabel: "Open Dashboard" },
   { id: "v5.10.26", title: "Put your insights to work", bullets: ["Take a Lab Insights suggestion into a new training log and choose whether to add it to your note. Your existing text is preserved and no result is invented.", "Prepare a separate Coach brief with the same period and discipline, then review it before sharing."], href: "/lab-insights", linkLabel: "Open Lab Insights" },
